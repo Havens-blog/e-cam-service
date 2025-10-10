@@ -1,0 +1,95 @@
+e-cam-service:
+  port: "8001"
+
+crypto_aes_key: "1234567890"
+
+# 数据加密，根据模块划分
+encryption:
+  user:
+    version: "V1"
+    key: "1234567890"
+  resource:
+    version: "V1"
+    key: "1234567890"
+  runner:
+    version: "V1"
+    key: "1234567890"
+
+ldap:
+  url: "ldap://43.138.170.150:389"
+  base_dn: "DC=example,DC=com"
+  bind_dn: "CN=cn,OU=ou,DC=example,DC=com"
+  bind_password: "1234567890"
+  username_attribute: "sAMAccountName"
+  mail_attribute: "mail"
+  display_name_attribute: "displayName"
+  title_attribute: "title"
+  group_name_attribute: "cn"
+  user_filter: "(&(sAMAccountName={input})(!(UserAccountControl=514)))"
+  group_filter: "(|(member={dn}))"
+
+session:
+  session_encrypted_key: "1234567890Key"
+  cookie:
+    domain: ".example.com"
+    name: "ecmdb-token-key"
+
+redis:
+  addr: "118.145.73.93:6378"
+  password: "1234567890"
+  db: 1
+
+casbin:
+  redis:
+    addr: "118.145.73.93:6378"
+    db: 2
+    password: ""
+
+mongodb:
+  dsn: mongodb://118.145.73.93:27017/ecmdb?authSource=admin
+  db: ecmdb
+  username: ecmdb
+  password: 123456
+
+# 118.145.73.93:3306
+mysql:
+  dsn: ecmdb:123456@tcp(118.145.73.93:3307)/ecmdb?charset=utf8mb4&parseTime=True&loc=Local&timeout=5s
+
+kafka:
+  network: tcp
+  addresses:
+    - 118.145.73.93:9094
+
+etcd:
+  endpoints:
+    - 118.145.73.93:2379
+
+minio:
+  endpoint: 106.52.187.69:9000
+  accessKeyID: minio
+  secretAccessKey: minio123
+  useSSL: false
+
+# 用于查询企业微信API
+wechat:
+  corpId: ""
+  corpSecret: ""
+  agentId: 1000002
+
+# 用于飞书发送消息通知
+feishu:
+  appId: ""
+  appSecret: ""
+
+cronjob:
+  enabled: true
+
+frontend:
+  logicflow_url: http://localhost:3333/logicflow-preview
+
+grpc:
+  server:
+    name: "e-cam-service"
+    port: 8098
+    etcdTTL: 60
+    key: "1234567890"
