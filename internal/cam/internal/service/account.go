@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/internal/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/internal/repository"
+	"github.com/Havens-blog/e-cam-service/internal/cloudx"
+	"github.com/Havens-blog/e-cam-service/internal/domain"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -42,15 +43,17 @@ type CloudAccountService interface {
 }
 
 type cloudAccountService struct {
-	repo   repository.CloudAccountRepository
-	logger *elog.Component // 简化 logger 类型，避免依赖问题
+	repo             repository.CloudAccountRepository
+	logger           *elog.Component
+	validatorFactory cloudx.CloudValidatorFactory
 }
 
 // NewCloudAccountService 创建云账号服务
 func NewCloudAccountService(repo repository.CloudAccountRepository, logger *elog.Component) CloudAccountService {
 	return &cloudAccountService{
-		repo:   repo,
-		logger: elog.DefaultLogger,
+		repo:             repo,
+		logger:           elog.DefaultLogger,
+		validatorFactory: cloudx.NewCloudValidatorFactory(),
 	}
 }
 
@@ -83,6 +86,12 @@ func (s *cloudAccountService) CreateAccount(ctx context.Context, req *domain.Cre
 
 	// 验证账号数据
 	if err := account.Validate(); err != nil {
+		return nil, err
+	}
+
+	// 验证云厂商凭证
+	if err := s.validateCloudCredentials(ctx, &account); err != nil {
+		s.logger.Error("cloud credentials validation failed", elog.FieldErr(err))
 		return nil, err
 	}
 
@@ -207,13 +216,41 @@ func (s *cloudAccountService) TestConnection(ctx context.Context, id int64) (*do
 		s.logger.Error("failed to update test status", elog.FieldErr(err), elog.Int64("id", id))
 	}
 
-	// TODO: 实现具体的云厂商连接测试逻辑
-	// 这里暂时返回模拟结果
+	// 使用云厂商验证器进行连接测试
+	validator, err := s.validatorFactory.CreateValidator(account.Provider)
+	if err != nil {
+		s.logger.Error("failed to create validator", elog.FieldErr(err), elog.String("provider", string(account.Provider)))
+		return nil, fmt.Errorf("不支持的云厂商: %s", account.Provider)
+	}
+
+	// 执行验证
+	validationResult, err := validator.ValidateCredentials(ctx, account)
+	if err != nil {
+		s.logger.Error("credential validation failed", elog.FieldErr(err), elog.Int64("id", id))
+
+		// 更新错误状态
+		if updateErr := s.repo.UpdateTestTime(ctx, id, testTime, domain.CloudAccountStatusError, err.Error()); updateErr != nil {
+			s.logger.Error("failed to update error status", elog.FieldErr(updateErr), elog.Int64("id", id))
+		}
+
+		return &domain.ConnectionTestResult{
+			Status:   "failed",
+			Message:  fmt.Sprintf("连接测试失败: %v", err),
+			TestTime: testTime,
+		}, nil
+	}
+
+	// 构建测试结果
 	result := &domain.ConnectionTestResult{
 		Status:   "success",
-		Message:  "连接测试成功",
-		Regions:  []string{account.Region},
-		TestTime: testTime,
+		Message:  validationResult.Message,
+		Regions:  validationResult.Regions,
+		TestTime: validationResult.ValidatedAt,
+	}
+
+	if !validationResult.Valid {
+		result.Status = "failed"
+		result.Message = validationResult.Message
 	}
 
 	// 更新测试结果
@@ -228,7 +265,11 @@ func (s *cloudAccountService) TestConnection(ctx context.Context, id int64) (*do
 		s.logger.Error("failed to update test result", elog.FieldErr(err), elog.Int64("id", id))
 	}
 
-	s.logger.Info("cloud account connection tested", elog.Int64("id", id), elog.String("status", result.Status))
+	s.logger.Info("cloud account connection tested",
+		elog.Int64("id", id),
+		elog.String("status", result.Status),
+		elog.Int64("response_time", validationResult.ResponseTime))
+
 	return result, nil
 }
 
@@ -302,4 +343,34 @@ func (s *cloudAccountService) SyncAccount(ctx context.Context, id int64, req *do
 
 	s.logger.Info("cloud account sync started", elog.Int64("id", id), elog.String("sync_id", result.SyncID))
 	return result, nil
+}
+
+// validateCloudCredentials 验证云厂商凭证
+func (s *cloudAccountService) validateCloudCredentials(ctx context.Context, account *domain.CloudAccount) error {
+	// 创建对应的云厂商验证器
+	validator, err := s.validatorFactory.CreateValidator(account.Provider)
+	if err != nil {
+		return fmt.Errorf("不支持的云厂商 %s: %w", account.Provider, err)
+	}
+
+	// 设置验证超时
+	validateCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	// 执行凭证验证
+	result, err := validator.ValidateCredentials(validateCtx, account)
+	if err != nil {
+		return fmt.Errorf("凭证验证失败: %w", err)
+	}
+
+	if !result.Valid {
+		return fmt.Errorf("凭证无效: %s", result.Message)
+	}
+
+	s.logger.Info("cloud credentials validated successfully",
+		elog.String("provider", string(account.Provider)),
+		elog.String("account_info", result.AccountInfo),
+		elog.Int64("response_time", result.ResponseTime))
+
+	return nil
 }

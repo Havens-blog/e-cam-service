@@ -2,41 +2,51 @@
 
 //go:generate go run -mod=mod github.com/google/wire/cmd/wire
 //go:build !wireinject
+// +build !wireinject
 
 package cam
 
 import (
-	"sync"
-
 	"github.com/Havens-blog/e-cam-service/internal/cam/internal/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/internal/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/internal/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/internal/web"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/google/wire"
+	"github.com/gotomicro/ego/core/elog"
+	"sync"
 )
 
 // Injectors from wire.go:
 
 // InitModule 初始化CAM模块
 func InitModule(db *mongox.Mongo) (*Module, error) {
-	InitCollectionOnce(db)
 	assetDAO := InitAssetDAO(db)
 	assetRepository := repository.NewAssetRepository(assetDAO)
 	serviceService := service.NewService(assetRepository)
-	handler := web.NewHandler(serviceService)
+	cloudAccountDAO := InitCloudAccountDAO(db)
+	cloudAccountRepository := repository.NewCloudAccountRepository(cloudAccountDAO)
+	component := ProvideLogger()
+	cloudAccountService := service.NewCloudAccountService(cloudAccountRepository, component)
+	handler := web.NewHandler(serviceService, cloudAccountService)
 	module := &Module{
-		Hdl: handler,
-		Svc: serviceService,
+		Hdl:        handler,
+		Svc:        serviceService,
+		AccountSvc: cloudAccountService,
 	}
 	return module, nil
 }
 
-// InitCollectionOnce 初始化数据库集合和索引（只执行一次）
-var camInitOnce sync.Once
+// wire.go:
 
+var (
+	camInitOnce sync.Once
+)
+
+// InitCollectionOnce 初始化数据库集合和索引（只执行一次）
 func InitCollectionOnce(db *mongox.Mongo) {
 	camInitOnce.Do(func() {
-		// 初始化索引
+
 		if err := dao.InitIndexes(db); err != nil {
 			panic("failed to init cam indexes: " + err.Error())
 		}
@@ -45,5 +55,24 @@ func InitCollectionOnce(db *mongox.Mongo) {
 
 // InitAssetDAO 初始化资产DAO
 func InitAssetDAO(db *mongox.Mongo) dao.AssetDAO {
+	InitCollectionOnce(db)
 	return dao.NewAssetDAO(db)
+}
+
+// InitCloudAccountDAO 初始化云账号DAO
+func InitCloudAccountDAO(db *mongox.Mongo) dao.CloudAccountDAO {
+	InitCollectionOnce(db)
+	return dao.NewCloudAccountDAO(db)
+}
+
+// ProviderSet Wire依赖注入集合
+var ProviderSet = wire.NewSet(
+
+	InitAssetDAO,
+	InitCloudAccountDAO, repository.NewAssetRepository, repository.NewCloudAccountRepository, service.NewService, service.NewCloudAccountService, ProvideLogger, web.NewHandler, wire.Struct(new(Module), "*"),
+)
+
+// ProvideLogger 提供默认logger
+func ProvideLogger() *elog.Component {
+	return elog.DefaultLogger
 }

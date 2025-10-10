@@ -54,6 +54,9 @@ var ProviderSet = wire.NewSet(
 	service.NewService,
 	service.NewCloudAccountService,
 
+	// Logger
+	ProvideLogger,
+
 	// Web层
 	web.NewHandler,
 
@@ -62,7 +65,12 @@ var ProviderSet = wire.NewSet(
 )
 
 // InitModule 初始化CAM模块
-func InitModule(db *mongox.Mongo, logger *elog.Logger) (*Module, error) {
+func InitModule(db *mongox.Mongo) (*Module, error) {
 	wire.Build(ProviderSet)
 	return &Module{}, nil
+}
+
+// ProvideLogger 提供默认logger
+func ProvideLogger() *elog.Component {
+	return elog.DefaultLogger
 }

@@ -45,17 +45,17 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 		camGroup.POST("/cost-analysis", ginx.WrapBody[CostAnalysisReq](h.GetCostAnalysis))
 
 		// 云账号管理
-		camGroup.POST("/accounts", ginx.WrapBody[CreateCloudAccountReq](h.CreateCloudAccount))
-		camGroup.GET("/accounts/:id", h.GetCloudAccount)
-		camGroup.POST("/accounts/list", ginx.WrapBody[ListCloudAccountsReq](h.ListCloudAccounts))
-		camGroup.PUT("/accounts/:id", ginx.WrapBody[UpdateCloudAccountReq](h.UpdateCloudAccount))
-		camGroup.DELETE("/accounts/:id", h.DeleteCloudAccount)
+		camGroup.POST("/cloudaccounts", ginx.WrapBody[CreateCloudAccountReq](h.CreateCloudAccount))
+		camGroup.GET("/cloudaccounts/:id", h.GetCloudAccount)
+		camGroup.POST("/cloudaccounts/list", ginx.WrapBody[ListCloudAccountsReq](h.ListCloudAccounts))
+		camGroup.PUT("/cloudaccounts/:id", ginx.WrapBody[UpdateCloudAccountReq](h.UpdateCloudAccount))
+		camGroup.DELETE("/cloudaccounts/:id", h.DeleteCloudAccount)
 
 		// 云账号操作
-		camGroup.POST("/accounts/:id/test", h.TestCloudAccountConnection)
-		camGroup.POST("/accounts/:id/enable", h.EnableCloudAccount)
-		camGroup.POST("/accounts/:id/disable", h.DisableCloudAccount)
-		camGroup.POST("/accounts/:id/sync", ginx.WrapBody[SyncAccountReq](h.SyncCloudAccount))
+		camGroup.POST("/cloudaccounts/:id/test", h.TestCloudAccountConnection)
+		camGroup.POST("/cloudaccounts/:id/enable", h.EnableCloudAccount)
+		camGroup.POST("/cloudaccounts/:id/disable", h.DisableCloudAccount)
+		camGroup.POST("/cloudaccounts/:id/sync", ginx.WrapBody[SyncAccountReq](h.SyncCloudAccount))
 	}
 }
 
