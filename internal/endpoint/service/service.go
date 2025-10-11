@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"github.com/Havens-blog/e-cam-service/internal/endpoint/internal/domain"
-	"github.com/Havens-blog/e-cam-service/internal/endpoint/internal/repository"
+	"github.com/Havens-blog/e-cam-service/internal/endpoint/domain"
+	"github.com/Havens-blog/e-cam-service/internal/endpoint/repository"
 	"golang.org/x/sync/errgroup"
 )
 

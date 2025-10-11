@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/domain"
+	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

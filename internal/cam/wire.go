@@ -5,10 +5,10 @@ package cam
 import (
 	"sync"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/repository"
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/repository/dao"
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/service"
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/web"
+	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
+	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/cam/service"
+	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/google/wire"
 	"github.com/gotomicro/ego/core/elog"

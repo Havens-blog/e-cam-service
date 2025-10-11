@@ -3,9 +3,10 @@ package web
 import (
 	"strconv"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/domain"
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/errs"
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/service"
+	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/Havens-blog/e-cam-service/internal/cam/service"
+	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
 )
@@ -79,7 +80,7 @@ func (h *Handler) CreateMultiAssets(ctx *gin.Context, req CreateMultiAssetsReq) 
 		return ErrorResult(errs.ParamsError), nil
 	}
 
-	assets := make([]domain.CloudAsset, len(req.Assets))
+	assets := make([]camdomain.CloudAsset, len(req.Assets))
 	for i, assetReq := range req.Assets {
 		assets[i] = h.toDomain(assetReq)
 	}
@@ -110,9 +111,9 @@ func (h *Handler) UpdateAsset(ctx *gin.Context, req UpdateAssetReq) (ginx.Result
 		existingAsset.Status = req.Status
 	}
 	if req.Tags != nil {
-		tags := make([]domain.Tag, len(req.Tags))
+		tags := make([]camdomain.Tag, len(req.Tags))
 		for i, tag := range req.Tags {
-			tags[i] = domain.Tag{Key: tag.Key, Value: tag.Value}
+			tags[i] = camdomain.Tag{Key: tag.Key, Value: tag.Value}
 		}
 		existingAsset.Tags = tags
 	}
@@ -151,7 +152,7 @@ func (h *Handler) GetAssetById(ctx *gin.Context) {
 
 // ListAssets 获取资产列表
 func (h *Handler) ListAssets(ctx *gin.Context, req ListAssetsReq) (ginx.Result, error) {
-	filter := domain.AssetFilter{
+	filter := camdomain.AssetFilter{
 		Provider:  req.Provider,
 		AssetType: req.AssetType,
 		Region:    req.Region,
@@ -278,13 +279,13 @@ func (h *Handler) GetCostAnalysis(ctx *gin.Context, req CostAnalysisReq) (ginx.R
 }
 
 // toDomain 将请求转换为领域模型
-func (h *Handler) toDomain(req CreateAssetReq) domain.CloudAsset {
-	tags := make([]domain.Tag, len(req.Tags))
+func (h *Handler) toDomain(req CreateAssetReq) camdomain.CloudAsset {
+	tags := make([]camdomain.Tag, len(req.Tags))
 	for i, tag := range req.Tags {
-		tags[i] = domain.Tag{Key: tag.Key, Value: tag.Value}
+		tags[i] = camdomain.Tag{Key: tag.Key, Value: tag.Value}
 	}
 
-	return domain.CloudAsset{
+	return camdomain.CloudAsset{
 		AssetId:      req.AssetId,
 		AssetName:    req.AssetName,
 		AssetType:    req.AssetType,
@@ -302,7 +303,7 @@ func (h *Handler) toDomain(req CreateAssetReq) domain.CloudAsset {
 }
 
 // toAssetVO 将领域模型转换为VO
-func (h *Handler) toAssetVO(asset domain.CloudAsset) CloudAsset {
+func (h *Handler) toAssetVO(asset camdomain.CloudAsset) CloudAsset {
 	tags := make([]Tag, len(asset.Tags))
 	for i, tag := range asset.Tags {
 		tags[i] = Tag{Key: tag.Key, Value: tag.Value}

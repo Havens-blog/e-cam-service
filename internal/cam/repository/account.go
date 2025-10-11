@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/domain"
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 )
 
 // CloudAccountRepository 云账号仓储接口

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/domain"
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/repository"
+	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 )
 
 // Service CAM服务接口

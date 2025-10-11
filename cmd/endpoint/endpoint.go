@@ -20,7 +20,7 @@ var Cmd = &cobra.Command{
 			panic(err)
 		}
 
-		err = initEndpoint(app.Web, app.Svc)
+		err = initEndpoint(app.Web, app.EndSvc)
 		fmt.Print(err)
 		panic(err)
 	},

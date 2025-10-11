@@ -1,7 +1,7 @@
 package web
 
 import (
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/errs"
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 )
 

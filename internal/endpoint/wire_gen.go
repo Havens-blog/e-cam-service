@@ -7,10 +7,10 @@
 package endpoint
 
 import (
-	"github.com/Havens-blog/e-cam-service/internal/endpoint/internal/repository"
-	"github.com/Havens-blog/e-cam-service/internal/endpoint/internal/repository/dao"
-	"github.com/Havens-blog/e-cam-service/internal/endpoint/internal/service"
-	"github.com/Havens-blog/e-cam-service/internal/endpoint/internal/web"
+	"github.com/Havens-blog/e-cam-service/internal/endpoint/repository"
+	"github.com/Havens-blog/e-cam-service/internal/endpoint/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/endpoint/service"
+	"github.com/Havens-blog/e-cam-service/internal/endpoint/web"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/google/wire"
 	"sync"

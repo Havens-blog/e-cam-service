@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/domain"
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/errs"
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )

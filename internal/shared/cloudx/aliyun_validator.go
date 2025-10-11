@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/domain"
+	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/ecs"
 )
 

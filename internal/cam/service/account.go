@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/errs"
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/repository"
-	"github.com/Havens-blog/e-cam-service/internal/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
+	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -224,7 +224,7 @@ func (s *cloudAccountService) TestConnection(ctx context.Context, id int64) (*do
 	}
 
 	// 执行验证
-	validationResult, err := validator.ValidateCredentials(ctx, account)
+	validationResult, err := validator.ValidateCredentials(ctx, &account)
 	if err != nil {
 		s.logger.Error("credential validation failed", elog.FieldErr(err), elog.Int64("id", id))
 

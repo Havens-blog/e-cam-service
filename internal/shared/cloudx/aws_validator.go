@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/domain"
+	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 )
 
 // AWSValidator AWS 验证器

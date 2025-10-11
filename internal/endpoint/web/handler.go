@@ -1,8 +1,8 @@
 package web
 
 import (
-	"github.com/Havens-blog/e-cam-service/internal/endpoint/internal/domain"
-	"github.com/Havens-blog/e-cam-service/internal/endpoint/internal/service"
+	"github.com/Havens-blog/e-cam-service/internal/endpoint/domain"
+	"github.com/Havens-blog/e-cam-service/internal/endpoint/service"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/gin-gonic/gin"

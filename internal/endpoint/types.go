@@ -1,9 +1,9 @@
 package endpoint
 
 import (
-	"github.com/Havens-blog/e-cam-service/internal/endpoint/internal/domain"
-	"github.com/Havens-blog/e-cam-service/internal/endpoint/internal/service"
-	"github.com/Havens-blog/e-cam-service/internal/endpoint/internal/web"
+	"github.com/Havens-blog/e-cam-service/internal/endpoint/domain"
+	"github.com/Havens-blog/e-cam-service/internal/endpoint/service"
+	"github.com/Havens-blog/e-cam-service/internal/endpoint/web"
 )
 
 type Handler = web.Handler

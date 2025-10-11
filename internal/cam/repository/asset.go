@@ -3,8 +3,8 @@ package repository
 import (
 	"context"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/domain"
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 )
 
 // AssetRepository 资产仓储接口
@@ -80,17 +80,17 @@ func (repo *assetRepository) ListAssets(ctx context.Context, filter domain.Asset
 		Offset:    filter.Offset,
 		Limit:     filter.Limit,
 	}
-	
+
 	daoAssets, err := repo.dao.ListAssets(ctx, daoFilter)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	assets := make([]domain.CloudAsset, len(daoAssets))
 	for i, daoAsset := range daoAssets {
 		assets[i] = repo.toDomain(daoAsset)
 	}
-	
+
 	return assets, nil
 }
 
@@ -103,7 +103,7 @@ func (repo *assetRepository) CountAssets(ctx context.Context, filter domain.Asse
 		Status:    filter.Status,
 		AssetName: filter.AssetName,
 	}
-	
+
 	return repo.dao.CountAssets(ctx, daoFilter)
 }
 
@@ -121,7 +121,7 @@ func (repo *assetRepository) toDomain(daoAsset dao.Asset) domain.CloudAsset {
 			Value: tag.Value,
 		}
 	}
-	
+
 	return domain.CloudAsset{
 		Id:           daoAsset.Id,
 		AssetId:      daoAsset.AssetId,
@@ -149,7 +149,7 @@ func (repo *assetRepository) toEntity(asset domain.CloudAsset) dao.Asset {
 			Value: tag.Value,
 		}
 	}
-	
+
 	return dao.Asset{
 		Id:           asset.Id,
 		AssetId:      asset.AssetId,

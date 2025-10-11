@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/domain"
+	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 )
 
 // CloudValidator 云厂商验证器接口

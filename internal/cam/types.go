@@ -1,8 +1,8 @@
 package cam
 
 import (
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/service"
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/web"
+	"github.com/Havens-blog/e-cam-service/internal/cam/service"
+	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 )
 
 // 导出类型别名，方便外部使用

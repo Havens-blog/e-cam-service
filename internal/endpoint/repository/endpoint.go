@@ -3,8 +3,8 @@ package repository
 import (
 	"context"
 
-	"github.com/Havens-blog/e-cam-service/internal/endpoint/internal/domain"
-	"github.com/Havens-blog/e-cam-service/internal/endpoint/internal/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/endpoint/domain"
+	"github.com/Havens-blog/e-cam-service/internal/endpoint/repository/dao"
 	"github.com/ecodeclub/ekit/slice"
 )
 

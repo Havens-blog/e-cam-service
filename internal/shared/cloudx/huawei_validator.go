@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/domain"
+	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 )
 
 // HuaweiValidator 华为云验证器

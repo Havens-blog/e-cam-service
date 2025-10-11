@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/internal/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )

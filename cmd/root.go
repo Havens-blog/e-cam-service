@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/Havens-blog/e-cam-service/cmd/endpoint"
 	"github.com/Havens-blog/e-cam-service/cmd/start"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -39,8 +40,7 @@ func Execute(version string) {
 	// 初始化设置
 	cobra.OnInitialize(initAll)
 	rootCmd.AddCommand(start.Cmd)
-	// TODO: 暂时注释掉有问题的命令，等修复import路径后再启用
-	// rootCmd.AddCommand(endpoint.Cmd)
+	rootCmd.AddCommand(endpoint.Cmd)
 	err := rootCmd.Execute()
 	cobra.CheckErr(err)
 }
