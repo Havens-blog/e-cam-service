@@ -8,6 +8,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
+	"github.com/Havens-blog/e-cam-service/internal/cam/sync/service/adapters"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/google/wire"
@@ -40,19 +41,47 @@ func InitCloudAccountDAO(db *mongox.Mongo) dao.CloudAccountDAO {
 	return dao.NewCloudAccountDAO(db)
 }
 
+// InitModelDAO 初始化模型DAO
+func InitModelDAO(db *mongox.Mongo) dao.ModelDAO {
+	InitCollectionOnce(db)
+	return dao.NewModelDAO(db)
+}
+
+// InitModelFieldDAO 初始化字段DAO
+func InitModelFieldDAO(db *mongox.Mongo) dao.ModelFieldDAO {
+	InitCollectionOnce(db)
+	return dao.NewModelFieldDAO(db)
+}
+
+// InitModelFieldGroupDAO 初始化字段分组DAO
+func InitModelFieldGroupDAO(db *mongox.Mongo) dao.ModelFieldGroupDAO {
+	InitCollectionOnce(db)
+	return dao.NewModelFieldGroupDAO(db)
+}
+
 // ProviderSet Wire依赖注入集合
 var ProviderSet = wire.NewSet(
 	// DAO层
 	InitAssetDAO,
 	InitCloudAccountDAO,
+	InitModelDAO,
+	InitModelFieldDAO,
+	InitModelFieldGroupDAO,
 
 	// Repository层
 	repository.NewAssetRepository,
 	repository.NewCloudAccountRepository,
+	repository.NewModelRepository,
+	repository.NewModelFieldRepository,
+	repository.NewModelFieldGroupRepository,
+
+	// Sync层
+	adapters.NewAdapterFactory,
 
 	// Service层
 	service.NewService,
 	service.NewCloudAccountService,
+	service.NewModelService,
 
 	// Logger
 	ProvideLogger,

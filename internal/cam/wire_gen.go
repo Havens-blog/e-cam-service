@@ -7,14 +7,16 @@
 package cam
 
 import (
+	"sync"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
+	"github.com/Havens-blog/e-cam-service/internal/cam/sync/service/adapters"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/google/wire"
 	"github.com/gotomicro/ego/core/elog"
-	"sync"
 )
 
 // Injectors from wire.go:
@@ -23,16 +25,25 @@ import (
 func InitModule(db *mongox.Mongo) (*Module, error) {
 	assetDAO := InitAssetDAO(db)
 	assetRepository := repository.NewAssetRepository(assetDAO)
-	serviceService := service.NewService(assetRepository)
 	cloudAccountDAO := InitCloudAccountDAO(db)
 	cloudAccountRepository := repository.NewCloudAccountRepository(cloudAccountDAO)
 	component := ProvideLogger()
+	adapterFactory := adapters.NewAdapterFactory(component)
+	serviceService := service.NewService(assetRepository, cloudAccountRepository, adapterFactory, component)
 	cloudAccountService := service.NewCloudAccountService(cloudAccountRepository, component)
-	v := web.NewHandler(serviceService, cloudAccountService)
+	modelDAO := InitModelDAO(db)
+	modelRepository := repository.NewModelRepository(modelDAO)
+	modelFieldDAO := InitModelFieldDAO(db)
+	modelFieldRepository := repository.NewModelFieldRepository(modelFieldDAO)
+	modelFieldGroupDAO := InitModelFieldGroupDAO(db)
+	modelFieldGroupRepository := repository.NewModelFieldGroupRepository(modelFieldGroupDAO)
+	modelService := service.NewModelService(modelRepository, modelFieldRepository, modelFieldGroupRepository)
+	v := web.NewHandler(serviceService, cloudAccountService, modelService)
 	module := &Module{
 		Hdl:        v,
 		Svc:        serviceService,
 		AccountSvc: cloudAccountService,
+		ModelSvc:   modelService,
 	}
 	return module, nil
 }
@@ -65,11 +76,42 @@ func InitCloudAccountDAO(db *mongox.Mongo) dao.CloudAccountDAO {
 	return dao.NewCloudAccountDAO(db)
 }
 
+// InitModelDAO 初始化模型DAO
+func InitModelDAO(db *mongox.Mongo) dao.ModelDAO {
+	InitCollectionOnce(db)
+	return dao.NewModelDAO(db)
+}
+
+// InitModelFieldDAO 初始化字段DAO
+func InitModelFieldDAO(db *mongox.Mongo) dao.ModelFieldDAO {
+	InitCollectionOnce(db)
+	return dao.NewModelFieldDAO(db)
+}
+
+// InitModelFieldGroupDAO 初始化字段分组DAO
+func InitModelFieldGroupDAO(db *mongox.Mongo) dao.ModelFieldGroupDAO {
+	InitCollectionOnce(db)
+	return dao.NewModelFieldGroupDAO(db)
+}
+
 // ProviderSet Wire依赖注入集合
 var ProviderSet = wire.NewSet(
-
 	InitAssetDAO,
-	InitCloudAccountDAO, repository.NewAssetRepository, repository.NewCloudAccountRepository, service.NewService, service.NewCloudAccountService, ProvideLogger, web.NewHandler, wire.Struct(new(Module), "*"),
+	InitCloudAccountDAO,
+	InitModelDAO,
+	InitModelFieldDAO,
+	InitModelFieldGroupDAO,
+	repository.NewAssetRepository,
+	repository.NewCloudAccountRepository,
+	repository.NewModelRepository,
+	repository.NewModelFieldRepository,
+	repository.NewModelFieldGroupRepository,
+	service.NewService,
+	service.NewCloudAccountService,
+	service.NewModelService,
+	ProvideLogger,
+	web.NewHandler,
+	wire.Struct(new(Module), "*"),
 )
 
 // ProvideLogger 提供默认logger

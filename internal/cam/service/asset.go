@@ -2,11 +2,16 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
+	syncdomain "github.com/Havens-blog/e-cam-service/internal/cam/sync/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/sync/service/adapters"
+	shareddomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/gotomicro/ego/core/elog"
 )
 
 // Service CAM服务接口
@@ -21,8 +26,8 @@ type Service interface {
 	DeleteAsset(ctx context.Context, id int64) error
 
 	// 资产发现
-	DiscoverAssets(ctx context.Context, provider, region string) ([]domain.CloudAsset, error)
-	SyncAssets(ctx context.Context, provider string) error
+	DiscoverAssets(ctx context.Context, provider, region string, assetTypes []string) ([]domain.CloudAsset, error)
+	SyncAssets(ctx context.Context, provider string, assetTypes []string) error
 
 	// 统计分析
 	GetAssetStatistics(ctx context.Context) (AssetStatistics, error)
@@ -64,13 +69,24 @@ type AssetCost struct {
 }
 
 type service struct {
-	repo repository.AssetRepository
+	repo           repository.AssetRepository
+	accountRepo    repository.CloudAccountRepository
+	adapterFactory *adapters.AdapterFactory
+	logger         *elog.Component
 }
 
 // NewService 创建CAM服务
-func NewService(repo repository.AssetRepository) Service {
+func NewService(
+	repo repository.AssetRepository,
+	accountRepo repository.CloudAccountRepository,
+	adapterFactory *adapters.AdapterFactory,
+	logger *elog.Component,
+) Service {
 	return &service{
-		repo: repo,
+		repo:           repo,
+		accountRepo:    accountRepo,
+		adapterFactory: adapterFactory,
+		logger:         logger,
 	}
 }
 
@@ -179,16 +195,380 @@ func (s *service) DeleteAsset(ctx context.Context, id int64) error {
 	return s.repo.DeleteAsset(ctx, id)
 }
 
-// DiscoverAssets 发现资产 (暂时返回空实现，后续扩展)
-func (s *service) DiscoverAssets(ctx context.Context, provider, region string) ([]domain.CloudAsset, error) {
-	// TODO: 实现云厂商资产发现逻辑
-	return []domain.CloudAsset{}, nil
+// DiscoverAssets 发现资产（不保存到数据库）
+// assetTypes: 要发现的资源类型列表，为空则发现所有支持的类型
+func (s *service) DiscoverAssets(ctx context.Context, provider, region string, assetTypes []string) ([]domain.CloudAsset, error) {
+	// 如果未指定资源类型，默认发现所有支持的类型
+	if len(assetTypes) == 0 {
+		assetTypes = []string{"ecs"} // 默认只同步 ECS，后续可扩展
+	}
+
+	s.logger.Info("开始发现云资产",
+		elog.String("provider", provider),
+		elog.String("region", region),
+		elog.Any("asset_types", assetTypes))
+
+	// 获取该云厂商的第一个可用账号
+	filter := shareddomain.CloudAccountFilter{
+		Provider: shareddomain.CloudProvider(provider),
+		Status:   shareddomain.CloudAccountStatusActive,
+		Limit:    1,
+	}
+
+	accounts, _, err := s.accountRepo.List(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("获取云账号失败: %w", err)
+	}
+
+	if len(accounts) == 0 {
+		return nil, fmt.Errorf("未找到可用的%s云账号", provider)
+	}
+
+	account := accounts[0]
+
+	// 转换为同步域的账号格式
+	syncAccount := &syncdomain.CloudAccount{
+		ID:              account.ID,
+		Name:            account.Name,
+		Provider:        syncdomain.CloudProvider(account.Provider),
+		AccessKeyID:     account.AccessKeyID,
+		AccessKeySecret: account.AccessKeySecret,
+		DefaultRegion:   account.Region,
+		Enabled:         account.Status == shareddomain.CloudAccountStatusActive,
+	}
+
+	// 创建适配器
+	adapter, err := s.adapterFactory.CreateAdapter(syncAccount)
+	if err != nil {
+		return nil, fmt.Errorf("创建适配器失败: %w", err)
+	}
+
+	// 根据资源类型发现资产
+	var allAssets []domain.CloudAsset
+
+	for _, assetType := range assetTypes {
+		switch assetType {
+		case "ecs":
+			// 获取 ECS 实例
+			instances, err := adapter.GetECSInstances(ctx, region)
+			if err != nil {
+				s.logger.Error("获取ECS实例失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+
+			// 转换为资产格式
+			for _, inst := range instances {
+				asset, err := s.convertECSToAsset(inst)
+				if err != nil {
+					s.logger.Warn("转换ECS实例失败",
+						elog.String("instance_id", inst.InstanceID),
+						elog.FieldErr(err))
+					continue
+				}
+				allAssets = append(allAssets, asset)
+			}
+
+		// TODO: 添加其他资源类型的支持
+		// case "rds":
+		// case "oss":
+		// case "slb":
+		default:
+			s.logger.Warn("不支持的资源类型",
+				elog.String("asset_type", assetType))
+		}
+	}
+
+	s.logger.Info("云资产发现完成",
+		elog.String("provider", provider),
+		elog.String("region", region),
+		elog.Any("asset_types", assetTypes),
+		elog.Int("count", len(allAssets)))
+
+	return allAssets, nil
 }
 
-// SyncAssets 同步资产 (暂时返回空实现，后续扩展)
-func (s *service) SyncAssets(ctx context.Context, provider string) error {
-	// TODO: 实现资产同步逻辑
+// SyncAssets 同步资产到数据库
+// assetTypes: 要同步的资源类型列表，为空则同步所有支持的类型
+func (s *service) SyncAssets(ctx context.Context, provider string, assetTypes []string) error {
+	// 如果未指定资源类型，默认同步所有支持的类型
+	if len(assetTypes) == 0 {
+		assetTypes = []string{"ecs"} // 默认只同步 ECS，后续可扩展
+	}
+
+	s.logger.Info("开始同步云资产",
+		elog.String("provider", provider),
+		elog.Any("asset_types", assetTypes))
+
+	// 获取该云厂商的所有可用账号
+	filter := shareddomain.CloudAccountFilter{
+		Provider: shareddomain.CloudProvider(provider),
+		Status:   shareddomain.CloudAccountStatusActive,
+		Limit:    100,
+	}
+
+	accounts, _, err := s.accountRepo.List(ctx, filter)
+	if err != nil {
+		return fmt.Errorf("获取云账号失败: %w", err)
+	}
+
+	if len(accounts) == 0 {
+		return fmt.Errorf("未找到可用的%s云账号", provider)
+	}
+
+	// 同步每个账号的资产
+	totalSynced := 0
+	for i := range accounts {
+		synced, err := s.syncAccountAssets(ctx, &accounts[i], assetTypes)
+		if err != nil {
+			s.logger.Error("同步账号资产失败",
+				elog.String("account", accounts[i].Name),
+				elog.FieldErr(err))
+			continue
+		}
+		totalSynced += synced
+	}
+
+	s.logger.Info("云资产同步完成",
+		elog.String("provider", provider),
+		elog.Any("asset_types", assetTypes),
+		elog.Int("total_synced", totalSynced))
+
 	return nil
+}
+
+// syncAccountAssets 同步单个账号的资产
+func (s *service) syncAccountAssets(ctx context.Context, account *shareddomain.CloudAccount, assetTypes []string) (int, error) {
+	s.logger.Info("同步账号资产",
+		elog.String("account", account.Name),
+		elog.Any("asset_types", assetTypes))
+
+	// 转换为同步域的账号格式
+	syncAccount := &syncdomain.CloudAccount{
+		ID:              account.ID,
+		Name:            account.Name,
+		Provider:        syncdomain.CloudProvider(account.Provider),
+		AccessKeyID:     account.AccessKeyID,
+		AccessKeySecret: account.AccessKeySecret,
+		DefaultRegion:   account.Region,
+		Enabled:         account.Status == shareddomain.CloudAccountStatusActive,
+	}
+
+	// 创建适配器
+	adapter, err := s.adapterFactory.CreateAdapter(syncAccount)
+	if err != nil {
+		return 0, fmt.Errorf("创建适配器失败: %w", err)
+	}
+
+	// 获取所有地域
+	regions, err := adapter.GetRegions(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("获取地域列表失败: %w", err)
+	}
+
+	// 如果账号配置了支持的地域，则只同步这些地域
+	supportedRegions := account.Config.SupportedRegions
+	if len(supportedRegions) > 0 {
+		regionMap := make(map[string]bool)
+		for _, r := range supportedRegions {
+			regionMap[r] = true
+		}
+
+		filteredRegions := make([]syncdomain.Region, 0)
+		for _, r := range regions {
+			if regionMap[r.ID] {
+				filteredRegions = append(filteredRegions, r)
+			}
+		}
+		regions = filteredRegions
+	}
+
+	// 同步每个地域的资产
+	totalSynced := 0
+	for _, region := range regions {
+		synced, err := s.syncRegionAssets(ctx, adapter, account, region.ID, assetTypes)
+		if err != nil {
+			s.logger.Error("同步地域资产失败",
+				elog.String("region", region.ID),
+				elog.FieldErr(err))
+			continue
+		}
+		totalSynced += synced
+	}
+
+	// 更新账号的最后同步时间
+	now := time.Now()
+	err = s.accountRepo.UpdateSyncTime(ctx, account.ID, now, int64(totalSynced))
+	if err != nil {
+		s.logger.Warn("更新账号同步时间失败", elog.FieldErr(err))
+	}
+
+	return totalSynced, nil
+}
+
+// syncRegionAssets 同步单个地域的资产
+func (s *service) syncRegionAssets(
+	ctx context.Context,
+	adapter syncdomain.CloudAdapter,
+	account *shareddomain.CloudAccount,
+	region string,
+	assetTypes []string,
+) (int, error) {
+	s.logger.Info("同步地域资产",
+		elog.String("account", account.Name),
+		elog.String("region", region),
+		elog.Any("asset_types", assetTypes))
+
+	totalSynced := 0
+
+	// 根据资源类型同步不同的资产
+	for _, assetType := range assetTypes {
+		switch assetType {
+		case "ecs":
+			synced, err := s.syncRegionECSInstances(ctx, adapter, account, region)
+			if err != nil {
+				s.logger.Error("同步地域ECS实例失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+
+		// TODO: 添加其他资源类型的支持
+		// case "rds":
+		//     synced, err := s.syncRegionRDSInstances(ctx, adapter, account, region)
+		// case "oss":
+		//     synced, err := s.syncRegionOSSBuckets(ctx, adapter, account, region)
+		// case "slb":
+		//     synced, err := s.syncRegionSLBInstances(ctx, adapter, account, region)
+
+		default:
+			s.logger.Warn("不支持的资源类型",
+				elog.String("asset_type", assetType),
+				elog.String("region", region))
+		}
+	}
+
+	s.logger.Info("地域资产同步完成",
+		elog.String("region", region),
+		elog.Any("asset_types", assetTypes),
+		elog.Int("synced", totalSynced))
+
+	return totalSynced, nil
+}
+
+// syncRegionECSInstances 同步单个地域的 ECS 实例
+func (s *service) syncRegionECSInstances(
+	ctx context.Context,
+	adapter syncdomain.CloudAdapter,
+	account *shareddomain.CloudAccount,
+	region string,
+) (int, error) {
+	s.logger.Debug("同步地域ECS实例",
+		elog.String("account", account.Name),
+		elog.String("region", region))
+
+	// 获取 ECS 实例
+	instances, err := adapter.GetECSInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取ECS实例失败: %w", err)
+	}
+
+	if len(instances) == 0 {
+		s.logger.Debug("该地域没有ECS实例", elog.String("region", region))
+		return 0, nil
+	}
+
+	// 转换为资产格式
+	assets := make([]domain.CloudAsset, 0, len(instances))
+	for _, inst := range instances {
+		asset, err := s.convertECSToAsset(inst)
+		if err != nil {
+			s.logger.Warn("转换ECS实例失败",
+				elog.String("instance_id", inst.InstanceID),
+				elog.FieldErr(err))
+			continue
+		}
+		assets = append(assets, asset)
+	}
+
+	// 批量保存或更新资产
+	synced := 0
+	for _, asset := range assets {
+		// 检查资产是否已存在
+		existing, err := s.repo.GetAssetByAssetId(ctx, asset.AssetId)
+		if err != nil {
+			// 资产不存在，创建新资产
+			_, err = s.CreateAsset(ctx, asset)
+			if err != nil {
+				s.logger.Error("创建资产失败",
+					elog.String("asset_id", asset.AssetId),
+					elog.FieldErr(err))
+				continue
+			}
+			synced++
+		} else {
+			// 资产已存在，更新资产
+			asset.Id = existing.Id
+			asset.CreateTime = existing.CreateTime
+			err = s.UpdateAsset(ctx, asset)
+			if err != nil {
+				s.logger.Error("更新资产失败",
+					elog.String("asset_id", asset.AssetId),
+					elog.FieldErr(err))
+				continue
+			}
+			synced++
+		}
+	}
+
+	s.logger.Debug("地域ECS实例同步完成",
+		elog.String("region", region),
+		elog.Int("total", len(instances)),
+		elog.Int("synced", synced))
+
+	return synced, nil
+}
+
+// convertECSToAsset 将 ECS 实例转换为资产
+func (s *service) convertECSToAsset(inst syncdomain.ECSInstance) (domain.CloudAsset, error) {
+	// 转换标签
+	tags := make([]domain.Tag, 0, len(inst.Tags))
+	for k, v := range inst.Tags {
+		tags = append(tags, domain.Tag{
+			Key:   k,
+			Value: v,
+		})
+	}
+
+	// 将实例详细信息序列化为 JSON 作为元数据
+	metadata, err := json.Marshal(inst)
+	if err != nil {
+		return domain.CloudAsset{}, fmt.Errorf("序列化元数据失败: %w", err)
+	}
+
+	// 解析创建时间
+	createTime, _ := time.Parse("2006-01-02T15:04:05Z", inst.CreationTime)
+	if createTime.IsZero() {
+		createTime = time.Now()
+	}
+
+	return domain.CloudAsset{
+		AssetId:      inst.InstanceID,
+		AssetName:    inst.InstanceName,
+		AssetType:    "ecs",
+		Provider:     inst.Provider,
+		Region:       inst.Region,
+		Zone:         inst.Zone,
+		Status:       inst.Status,
+		Tags:         tags,
+		Metadata:     string(metadata),
+		Cost:         0, // TODO: 获取实际成本
+		CreateTime:   createTime,
+		UpdateTime:   time.Now(),
+		DiscoverTime: time.Now(),
+	}, nil
 }
 
 // GetAssetStatistics 获取资产统计信息
