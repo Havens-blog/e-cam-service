@@ -1,0 +1,392 @@
+{
+  "info": {
+    "name": "E-CAM Service API",
+    "description": "企业云资产管理服务 API 文档",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "1"
+  },
+  "item": [
+    {
+      "name": "云账号管理",
+      "item": [
+        {
+          "name": "创建云账号",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"生产环境阿里云账号\",\n  \"provider\": \"aliyun\",\n  \"environment\": \"production\",\n  \"access_key_id\": \"LTAI...\",\n  \"access_key_secret\": \"xxx\",\n  \"region\": \"cn-shenzhen\",\n  \"description\": \"生产环境主账号\",\n  \"config\": {\n    \"enable_auto_sync\": true,\n    \"sync_interval\": 3600,\n    \"read_only\": false,\n    \"show_sub_accounts\": true,\n    \"enable_cost_monitoring\": true,\n    \"supported_regions\": [\"cn-beijing\", \"cn-shanghai\", \"cn-shenzhen\"],\n    \"supported_asset_types\": [\"ecs\", \"rds\", \"oss\"]\n  },\n  \"tenant_id\": \"tenant_001\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/cloud-accounts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "cloud-accounts"]
+            }
+          }
+        },
+        {
+          "name": "获取云账号列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/cloud-accounts?provider=aliyun&environment=production&status=active&offset=0&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "cloud-accounts"],
+              "query": [
+                {"key": "provider", "value": "aliyun"},
+                {"key": "environment", "value": "production"},
+                {"key": "status", "value": "active"},
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "20"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "获取云账号详情",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/cloud-accounts/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "cloud-accounts", ":id"],
+              "variable": [
+                {"key": "id", "value": "1"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "更新云账号",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"更新后的账号名称\",\n  \"description\": \"更新后的描述\",\n  \"config\": {\n    \"enable_auto_sync\": true,\n    \"sync_interval\": 7200\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/cloud-accounts/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "cloud-accounts", ":id"],
+              "variable": [
+                {"key": "id", "value": "1"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "删除云账号",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/cloud-accounts/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "cloud-accounts", ":id"],
+              "variable": [
+                {"key": "id", "value": "1"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "测试云账号连接",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/cloud-accounts/:id/test-connection",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "cloud-accounts", ":id", "test-connection"],
+              "variable": [
+                {"key": "id", "value": "1"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "启用云账号",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/cloud-accounts/:id/enable",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "cloud-accounts", ":id", "enable"],
+              "variable": [
+                {"key": "id", "value": "1"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "禁用云账号",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/cloud-accounts/:id/disable",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "cloud-accounts", ":id", "disable"],
+              "variable": [
+                {"key": "id", "value": "1"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "同步云账号资产",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"asset_types\": [\"ecs\", \"rds\", \"oss\"],\n  \"regions\": [\"cn-beijing\", \"cn-shanghai\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/cloud-accounts/:id/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "cloud-accounts", ":id", "sync"],
+              "variable": [
+                {"key": "id", "value": "1"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "资源同步",
+      "item": [
+        {
+          "name": "发现云资产",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"aliyun\",\n  \"region\": \"cn-beijing\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/assets/discover",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "assets", "discover"]
+            }
+          }
+        },
+        {
+          "name": "同步云资产",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"aliyun\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/assets/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "assets", "sync"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "云资产管理",
+      "item": [
+        {
+          "name": "获取资产列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/assets?provider=aliyun&asset_type=ecs&region=cn-beijing&status=running&offset=0&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "assets"],
+              "query": [
+                {"key": "provider", "value": "aliyun"},
+                {"key": "asset_type", "value": "ecs"},
+                {"key": "region", "value": "cn-beijing"},
+                {"key": "status", "value": "running"},
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "20"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "获取资产详情",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/assets/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "assets", ":id"],
+              "variable": [
+                {"key": "id", "value": "1"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "获取资产统计",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/assets/statistics",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "assets", "statistics"]
+            }
+          }
+        },
+        {
+          "name": "获取成本分析",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/assets/cost-analysis?provider=aliyun&days=30",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "assets", "cost-analysis"],
+              "query": [
+                {"key": "provider", "value": "aliyun"},
+                {"key": "days", "value": "30"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "模型管理",
+      "item": [
+        {
+          "name": "创建模型",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uid\": \"cloud_ecs\",\n  \"name\": \"云主机\",\n  \"model_group_id\": 1,\n  \"category\": \"compute\",\n  \"icon\": \"server\",\n  \"description\": \"云服务器实例\",\n  \"provider\": \"all\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/models",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "models"]
+            }
+          }
+        },
+        {
+          "name": "获取模型列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/models",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "models"]
+            }
+          }
+        },
+        {
+          "name": "获取模型详情",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/models/:uid",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "models", ":uid"],
+              "variable": [
+                {"key": "uid", "value": "cloud_ecs"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "添加模型字段",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"field_uid\": \"ecs_instance_id\",\n  \"field_name\": \"instance_id\",\n  \"field_type\": \"string\",\n  \"model_uid\": \"cloud_ecs\",\n  \"group_id\": 1,\n  \"display_name\": \"实例ID\",\n  \"display\": true,\n  \"index\": 1,\n  \"required\": true,\n  \"secure\": false,\n  \"link\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/models/:uid/fields",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "models", ":uid", "fields"],
+              "variable": [
+                {"key": "uid", "value": "cloud_ecs"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "获取模型字段",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cam/models/:uid/fields",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cam", "models", ":uid", "fields"],
+              "variable": [
+                {"key": "uid", "value": "cloud_ecs"}
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8001",
+      "type": "string"
+    }
+  ]
+}

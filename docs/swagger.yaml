@@ -1,0 +1,1178 @@
+openapi: 3.0.3
+info:
+  title: E-CAM Service API
+  description: |
+    企业云资产管理服务 API 文档
+
+    ## 功能模块
+    - 云资产管理
+    - 模型管理
+    - 云账号管理
+    - 资源同步
+
+    ## 认证方式
+    使用 JWT Token 进行认证，在请求头中添加：
+    ```
+    Authorization: Bearer <token>
+    ```
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8001
+    description: 开发环境
+  - url: https://api.example.com
+    description: 生产环境
+
+tags:
+  - name: 云资产
+    description: 云资产管理相关接口
+  - name: 模型管理
+    description: 资源模型管理接口
+  - name: 云账号
+    description: 云账号管理接口
+  - name: 资源同步
+    description: 云资源同步接口
+
+paths:
+  /api/v1/cam/assets:
+    get:
+      tags:
+        - 云资产
+      summary: 获取资产列表
+      description: 获取云资产列表，支持分页和筛选
+      parameters:
+        - name: provider
+          in: query
+          description: 云厂商（aliyun/aws/azure）
+          schema:
+            type: string
+            enum: [aliyun, aws, azure]
+        - name: model_uid
+          in: query
+          description: 模型UID
+          schema:
+            type: string
+        - name: region
+          in: query
+          description: 地域
+          schema:
+            type: string
+        - name: page
+          in: query
+          description: 页码
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          description: 每页数量
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  msg:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Asset"
+                      total:
+                        type: integer
+                        example: 100
+
+    post:
+      tags:
+        - 云资产
+      summary: 创建资产
+      description: 创建单个云资产
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssetRequest"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /api/v1/cam/assets/{id}:
+    get:
+      tags:
+        - 云资产
+      summary: 获取资产详情
+      description: 根据ID获取资产详细信息
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 资产ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  msg:
+                    type: string
+                    example: success
+                  data:
+                    $ref: "#/components/schemas/Asset"
+
+    put:
+      tags:
+        - 云资产
+      summary: 更新资产
+      description: 更新资产信息
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 资产ID
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAssetRequest"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+    delete:
+      tags:
+        - 云资产
+      summary: 删除资产
+      description: 删除指定资产
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 资产ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /api/v1/cam/assets/batch:
+    post:
+      tags:
+        - 云资产
+      summary: 批量创建资产
+      description: 批量创建多个云资产
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                assets:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/CreateAssetRequest"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /api/v1/cam/assets/statistics:
+    get:
+      tags:
+        - 云资产
+      summary: 获取资产统计
+      description: 获取资产统计信息
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  msg:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        description: 总资产数
+                      by_provider:
+                        type: object
+                        description: 按云厂商统计
+                        additionalProperties:
+                          type: integer
+                      by_model:
+                        type: object
+                        description: 按模型统计
+                        additionalProperties:
+                          type: integer
+
+  /api/v1/cam/assets/discover:
+    post:
+      tags:
+        - 资源同步
+      summary: 发现云资产
+      description: 从云厂商发现资产（不保存到数据库）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - provider
+                - region
+              properties:
+                provider:
+                  type: string
+                  description: 云厂商
+                  enum: [aliyun, aws, azure]
+                  example: aliyun
+                region:
+                  type: string
+                  description: 地域
+                  example: cn-beijing
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  msg:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      assets:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Asset"
+                      count:
+                        type: integer
+                        example: 10
+
+  /api/v1/cam/assets/sync:
+    post:
+      tags:
+        - 资源同步
+      summary: 同步云资产
+      description: 同步云资产到数据库
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - provider
+              properties:
+                provider:
+                  type: string
+                  description: 云厂商
+                  enum: [aliyun, aws, azure]
+                  example: aliyun
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /api/v1/cam/cloud-accounts:
+    get:
+      tags:
+        - 云账号
+      summary: 获取云账号列表
+      description: 获取云账号列表，支持筛选和分页
+      parameters:
+        - name: provider
+          in: query
+          description: 云厂商
+          schema:
+            type: string
+            enum: [aliyun, aws, azure]
+        - name: environment
+          in: query
+          description: 环境
+          schema:
+            type: string
+            enum: [development, staging, production]
+        - name: status
+          in: query
+          description: 状态
+          schema:
+            type: string
+            enum: [active, inactive, error]
+        - name: offset
+          in: query
+          description: 偏移量
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          description: 每页数量
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  msg:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      accounts:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/CloudAccount"
+                      total:
+                        type: integer
+                        example: 10
+
+    post:
+      tags:
+        - 云账号
+      summary: 创建云账号
+      description: 创建新的云账号配置
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCloudAccountRequest"
+            example:
+              name: "生产环境阿里云账号"
+              provider: "aliyun"
+              environment: "production"
+              access_key_id: "LTAI..."
+              access_key_secret: "xxx"
+              region: "cn-shenzhen"
+              description: "生产环境主账号"
+              config:
+                enable_auto_sync: true
+                sync_interval: 3600
+                supported_regions: ["cn-beijing", "cn-shanghai"]
+                supported_asset_types: ["ecs", "rds", "oss"]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  msg:
+                    type: string
+                    example: success
+                  data:
+                    $ref: "#/components/schemas/CloudAccount"
+
+  /api/v1/cam/cloud-accounts/{id}:
+    get:
+      tags:
+        - 云账号
+      summary: 获取云账号详情
+      description: 获取指定云账号的详细信息
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 云账号ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  msg:
+                    type: string
+                    example: success
+                  data:
+                    $ref: "#/components/schemas/CloudAccount"
+
+    put:
+      tags:
+        - 云账号
+      summary: 更新云账号
+      description: 更新云账号信息
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 云账号ID
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCloudAccountRequest"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+    delete:
+      tags:
+        - 云账号
+      summary: 删除云账号
+      description: 删除指定云账号
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 云账号ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /api/v1/cam/cloud-accounts/{id}/test-connection:
+    post:
+      tags:
+        - 云账号
+      summary: 测试云账号连接
+      description: 测试云账号的连接性和凭证有效性
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 云账号ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  msg:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: success
+                      message:
+                        type: string
+                        example: 连接测试成功
+                      regions:
+                        type: array
+                        items:
+                          type: string
+                        example: ["cn-beijing", "cn-shanghai"]
+                      test_time:
+                        type: string
+                        example: "2025-10-30 17:00:00"
+
+  /api/v1/cam/cloud-accounts/{id}/enable:
+    post:
+      tags:
+        - 云账号
+      summary: 启用云账号
+      description: 启用指定云账号
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 云账号ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /api/v1/cam/cloud-accounts/{id}/disable:
+    post:
+      tags:
+        - 云账号
+      summary: 禁用云账号
+      description: 禁用指定云账号
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 云账号ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /api/v1/cam/cloud-accounts/{id}/sync:
+    post:
+      tags:
+        - 云账号
+      summary: 同步云账号资产
+      description: 触发指定云账号的资产同步
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 云账号ID
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                asset_types:
+                  type: array
+                  description: 要同步的资产类型
+                  items:
+                    type: string
+                  example: ["ecs", "rds", "oss"]
+                regions:
+                  type: array
+                  description: 要同步的地域
+                  items:
+                    type: string
+                  example: ["cn-beijing", "cn-shanghai"]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  msg:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      sync_id:
+                        type: string
+                        example: "sync_20251030170000"
+                      status:
+                        type: string
+                        example: "running"
+                      start_time:
+                        type: string
+                        example: "2025-10-30 17:00:00"
+
+  /api/v1/cam/models:
+    get:
+      tags:
+        - 模型管理
+      summary: 获取模型列表
+      description: 获取资源模型列表
+      parameters:
+        - name: provider
+          in: query
+          description: 云厂商
+          schema:
+            type: string
+        - name: category
+          in: query
+          description: 分类
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  msg:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Model"
+
+    post:
+      tags:
+        - 模型管理
+      summary: 创建模型
+      description: 创建新的资源模型
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateModelRequest"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /api/v1/cam/models/{uid}:
+    get:
+      tags:
+        - 模型管理
+      summary: 获取模型详情
+      description: 获取模型详细信息，包含字段和分组
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          description: 模型UID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  msg:
+                    type: string
+                    example: success
+                  data:
+                    $ref: "#/components/schemas/ModelDetail"
+
+components:
+  schemas:
+    Asset:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 资产ID
+        uid:
+          type: string
+          description: 资产唯一标识
+        name:
+          type: string
+          description: 资产名称
+        model_uid:
+          type: string
+          description: 模型UID
+        provider:
+          type: string
+          description: 云厂商
+          enum: [aliyun, aws, azure]
+        region:
+          type: string
+          description: 地域
+        properties:
+          type: object
+          description: 资产属性（动态字段）
+          additionalProperties: true
+        tags:
+          type: object
+          description: 标签
+          additionalProperties:
+            type: string
+        ctime:
+          type: integer
+          format: int64
+          description: 创建时间（时间戳）
+        utime:
+          type: integer
+          format: int64
+          description: 更新时间（时间戳）
+
+    CreateAssetRequest:
+      type: object
+      required:
+        - uid
+        - name
+        - model_uid
+        - provider
+      properties:
+        uid:
+          type: string
+          description: 资产唯一标识
+        name:
+          type: string
+          description: 资产名称
+        model_uid:
+          type: string
+          description: 模型UID
+        provider:
+          type: string
+          description: 云厂商
+          enum: [aliyun, aws, azure]
+        region:
+          type: string
+          description: 地域
+        properties:
+          type: object
+          description: 资产属性
+          additionalProperties: true
+        tags:
+          type: object
+          description: 标签
+          additionalProperties:
+            type: string
+
+    UpdateAssetRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: 资产名称
+        properties:
+          type: object
+          description: 资产属性
+          additionalProperties: true
+        tags:
+          type: object
+          description: 标签
+          additionalProperties:
+            type: string
+
+    Model:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 模型ID
+        uid:
+          type: string
+          description: 模型UID
+        name:
+          type: string
+          description: 模型名称
+        model_group_id:
+          type: integer
+          format: int64
+          description: 模型分组ID
+        parent_uid:
+          type: string
+          description: 父模型UID
+        category:
+          type: string
+          description: 分类
+        level:
+          type: integer
+          description: 层级
+        icon:
+          type: string
+          description: 图标
+        description:
+          type: string
+          description: 描述
+        provider:
+          type: string
+          description: 云厂商
+        extensible:
+          type: boolean
+          description: 是否可扩展
+
+    ModelDetail:
+      type: object
+      properties:
+        model:
+          $ref: "#/components/schemas/Model"
+        field_groups:
+          type: array
+          description: 字段分组
+          items:
+            type: object
+            properties:
+              group:
+                $ref: "#/components/schemas/FieldGroup"
+              fields:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ModelField"
+
+    ModelField:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        field_uid:
+          type: string
+          description: 字段UID
+        field_name:
+          type: string
+          description: 字段名称
+        field_type:
+          type: string
+          description: 字段类型
+          enum: [string, int, float, bool, datetime, enum, json]
+        display_name:
+          type: string
+          description: 显示名称
+        display:
+          type: boolean
+          description: 是否显示
+        required:
+          type: boolean
+          description: 是否必填
+        secure:
+          type: boolean
+          description: 是否敏感
+
+    FieldGroup:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        model_uid:
+          type: string
+          description: 模型UID
+        name:
+          type: string
+          description: 分组名称
+        index:
+          type: integer
+          description: 排序索引
+
+    CreateModelRequest:
+      type: object
+      required:
+        - uid
+        - name
+      properties:
+        uid:
+          type: string
+          description: 模型UID
+        name:
+          type: string
+          description: 模型名称
+        model_group_id:
+          type: integer
+          format: int64
+          description: 模型分组ID
+        category:
+          type: string
+          description: 分类
+        icon:
+          type: string
+          description: 图标
+        description:
+          type: string
+          description: 描述
+        provider:
+          type: string
+          description: 云厂商
+        extensible:
+          type: boolean
+          description: 是否可扩展
+
+    CloudAccount:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 账号ID
+        name:
+          type: string
+          description: 账号名称
+          example: "生产环境阿里云账号"
+        provider:
+          type: string
+          description: 云厂商
+          enum: [aliyun, aws, azure]
+          example: aliyun
+        environment:
+          type: string
+          description: 环境
+          enum: [development, staging, production]
+          example: production
+        access_key_id:
+          type: string
+          description: 访问密钥ID
+          example: "LTAI..."
+        access_key_secret:
+          type: string
+          description: 访问密钥Secret（脱敏）
+          example: "***"
+        region:
+          type: string
+          description: 默认地域
+          example: "cn-shenzhen"
+        description:
+          type: string
+          description: 描述
+        status:
+          type: string
+          description: 状态
+          enum: [active, inactive, error]
+          example: active
+        config:
+          $ref: "#/components/schemas/CloudAccountConfig"
+        tenant_id:
+          type: string
+          description: 租户ID
+        asset_count:
+          type: integer
+          description: 资产数量
+          example: 150
+        last_sync_time:
+          type: string
+          description: 上次同步时间
+          example: "2025-10-30 16:00:00"
+        last_test_time:
+          type: string
+          description: 上次测试时间
+          example: "2025-10-30 15:00:00"
+        error_message:
+          type: string
+          description: 错误信息
+        create_time:
+          type: string
+          description: 创建时间
+          example: "2025-10-30 10:00:00"
+        update_time:
+          type: string
+          description: 更新时间
+          example: "2025-10-30 15:00:00"
+
+    CloudAccountConfig:
+      type: object
+      properties:
+        enable_auto_sync:
+          type: boolean
+          description: 是否启用自动同步
+          example: true
+        sync_interval:
+          type: integer
+          description: 同步间隔（秒）
+          example: 3600
+        read_only:
+          type: boolean
+          description: 是否只读
+          example: false
+        show_sub_accounts:
+          type: boolean
+          description: 是否显示子账号
+          example: true
+        enable_cost_monitoring:
+          type: boolean
+          description: 是否启用成本监控
+          example: true
+        supported_regions:
+          type: array
+          description: 支持的地域列表
+          items:
+            type: string
+          example: ["cn-beijing", "cn-shanghai", "cn-shenzhen"]
+        supported_asset_types:
+          type: array
+          description: 支持的资产类型
+          items:
+            type: string
+          example: ["ecs", "rds", "oss"]
+
+    CreateCloudAccountRequest:
+      type: object
+      required:
+        - name
+        - provider
+        - access_key_id
+        - access_key_secret
+      properties:
+        name:
+          type: string
+          description: 账号名称
+          example: "生产环境阿里云账号"
+        provider:
+          type: string
+          description: 云厂商
+          enum: [aliyun, aws, azure]
+          example: aliyun
+        environment:
+          type: string
+          description: 环境
+          enum: [development, staging, production]
+          example: production
+        access_key_id:
+          type: string
+          description: 访问密钥ID
+          example: "LTAI..."
+        access_key_secret:
+          type: string
+          description: 访问密钥Secret
+          example: "xxx"
+        region:
+          type: string
+          description: 默认地域
+          example: "cn-shenzhen"
+        description:
+          type: string
+          description: 描述
+        config:
+          $ref: "#/components/schemas/CloudAccountConfig"
+        tenant_id:
+          type: string
+          description: 租户ID
+
+    UpdateCloudAccountRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: 账号名称
+        description:
+          type: string
+          description: 描述
+        config:
+          $ref: "#/components/schemas/CloudAccountConfig"
+
+    SuccessResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        msg:
+          type: string
+          example: success
+        data:
+          type: object
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 1
+        msg:
+          type: string
+          example: error message
+        data:
+          type: object
+          nullable: true
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - BearerAuth: []
