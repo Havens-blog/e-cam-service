@@ -1,6 +1,33 @@
 e-cam-service:
   port: "8001"
 
+# 日志配置 - 清晰易读的格式
+logger:
+  default:
+    level: "info"
+    format: "console" # 使用 console 格式，更易读
+    enableCaller: true
+    callerSkip: 2
+    enableStacktrace: false
+    timeFormat: "2006-01-02 15:04:05"
+    outputPaths:
+      - "stdout"
+      - "logs/app.log"
+    errorOutputPaths:
+      - "stderr"
+      - "logs/error.log"
+    encoderConfig:
+      timeKey: "time"
+      levelKey: "level"
+      nameKey: "logger"
+      callerKey: "caller"
+      messageKey: "msg"
+      stacktraceKey: "stacktrace"
+      levelEncoder: "capital" # 大写级别: INFO, WARN, ERROR
+      timeEncoder: "2006-01-02 15:04:05"
+      durationEncoder: "string"
+      callerEncoder: "short" # 短路径: file.go:123
+
 crypto_aes_key: "1234567890"
 
 # 数据加密，根据模块划分
