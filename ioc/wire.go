@@ -11,6 +11,7 @@ import (
 //go:generate go run github.com/google/wire/cmd/wire
 
 var BaseSet = wire.NewSet(
+	InitLogger, // 日志初始化（最先初始化）
 	InitMongoDB,
 	InitRedis,
 	InitGrpcServer,
@@ -20,7 +21,8 @@ var BaseSet = wire.NewSet(
 	InitJobs,
 	endpoint.InitModule,
 	cam.InitModule,
-	wire.FieldsOf(new(*endpoint.Module), "Hdl", "Svc"),
+	wire.FieldsOf(new(*endpoint.Module), "Hdl"),
+	wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
 )
 
 func InitApp() (*App, error) {

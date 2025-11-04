@@ -82,9 +82,9 @@ coverage.html
 *.sqlite3
 
 # Backup files
-bak/
 *.bak
 *.backup
+bak/
 
 # Archives
 *.zip

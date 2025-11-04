@@ -15,30 +15,30 @@ import (
 // Injectors from wire.go:
 
 func InitApp() (*App, error) {
+	logger := InitLogger()
 	cmdable := InitRedis()
 	provider := InitSessionProvider(cmdable)
 	v := InitGinMiddlewares()
-	server := InitGrpcServer()
-	v2 := InitJobs()
 	mongo := InitMongoDB()
-	endpointModule, err := endpoint.InitModule(mongo)
+	module, err := endpoint.InitModule(mongo)
 	if err != nil {
 		return nil, err
 	}
-	endpointService := endpointModule.Svc
-	endpointHandler := endpointModule.Hdl
+	handler := module.Hdl
 	camModule, err := cam.InitModule(mongo)
 	if err != nil {
 		return nil, err
 	}
-	camService := camModule.Svc
-	engine := InitWebServer(provider, v, endpointHandler, camModule)
+	engine := InitWebServer(provider, v, handler, camModule)
+	server := InitGrpcServer()
+	v2 := InitJobs()
 	app := &App{
-		Web:    engine,
-		Grpc:   server,
-		Jobs:   v2,
-		EndSvc: endpointService,
-		CamSvc: camService,
+		Logger:    logger,
+		Web:       engine,
+		Grpc:      server,
+		Jobs:      v2,
+		EndModule: module,
+		CamModule: camModule,
 	}
 	return app, nil
 }
@@ -46,15 +46,12 @@ func InitApp() (*App, error) {
 // wire.go:
 
 var BaseSet = wire.NewSet(
+	InitLogger,
 	InitMongoDB,
 	InitRedis,
 	InitGrpcServer,
 	InitSessionProvider,
 	InitGinMiddlewares,
 	InitWebServer,
-	InitJobs,
-	endpoint.InitModule,
-	cam.InitModule,
-	wire.FieldsOf(new(*endpoint.Module), "Hdl", "Svc"),
-	wire.FieldsOf(new(*cam.Module), "Hdl", "Svc"),
+	InitJobs, endpoint.InitModule, cam.InitModule, wire.FieldsOf(new(*endpoint.Module), "Hdl"), wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
 )

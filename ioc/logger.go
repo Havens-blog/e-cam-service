@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gotomicro/ego/core/elog"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -38,7 +37,7 @@ type EncoderConfig struct {
 }
 
 // InitLogger 初始化日志系统
-func InitLogger() *elog.Component {
+func InitLogger() *zap.Logger {
 	// 读取日志配置
 	var cfg LoggerConfig
 	if err := viper.UnmarshalKey("logger.default", &cfg); err != nil {
@@ -70,18 +69,12 @@ func InitLogger() *elog.Component {
 		return initDefaultLogger()
 	}
 
-	// 设置为默认 logger
-	elog.DefaultLogger = logger
-
 	logger.Info("日志系统初始化完成",
 		zap.String("level", cfg.Level),
 		zap.String("format", cfg.Format),
 		zap.Bool("enableCaller", cfg.EnableCaller))
 
-	return &elog.Component{
-		Config: nil,
-		Logger: logger,
-	}
+	return logger
 }
 
 // buildZapConfig 构建 zap 配置
@@ -208,7 +201,7 @@ func parseLogLevel(level string) zapcore.Level {
 }
 
 // initDefaultLogger 初始化默认日志器
-func initDefaultLogger() *elog.Component {
+func initDefaultLogger() *zap.Logger {
 	config := zap.NewProductionConfig()
 	config.Encoding = "console"
 	config.EncoderConfig.TimeKey = "time"
@@ -226,10 +219,5 @@ func initDefaultLogger() *elog.Component {
 		panic(fmt.Sprintf("无法创建默认日志器: %v", err))
 	}
 
-	elog.DefaultLogger = logger
-
-	return &elog.Component{
-		Config: nil,
-		Logger: logger,
-	}
+	return logger
 }
