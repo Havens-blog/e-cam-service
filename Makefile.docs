@@ -1,0 +1,50 @@
+.PHONY: docs docs-serve docs-gen docs-validate help
+
+# 默认目标
+help:
+	@echo "API 文档管理命令:"
+	@echo "  make docs-serve     - 启动文档服务器"
+	@echo "  make docs-gen       - 生成 Swagger 文档（需要 swag 工具）"
+	@echo "  make docs-validate  - 验证 OpenAPI 规范"
+	@echo "  make docs-install   - 安装文档工具"
+
+# 启动文档服务器
+docs-serve:
+	@echo "🚀 启动 API 文档服务器..."
+	@cd docs && python3 -m http.server 8080 || python -m http.server 8080
+
+# 生成 Swagger 文档（使用 swag 工具）
+docs-gen:
+	@echo "📝 生成 Swagger 文档..."
+	@if command -v swag >/dev/null 2>&1; then \
+		swag init -g docs/docs.go -o docs/swagger --parseDependency --parseInternal; \
+		echo "✅ 文档生成完成"; \
+	else \
+		echo "❌ 未找到 swag 工具，请先运行: make docs-install"; \
+		exit 1; \
+	fi
+
+# 验证 OpenAPI 规范
+docs-validate:
+	@echo "🔍 验证 OpenAPI 规范..."
+	@if command -v swagger >/dev/null 2>&1; then \
+		swagger validate docs/swagger.yaml; \
+	elif command -v openapi-generator-cli >/dev/null 2>&1; then \
+		openapi-generator-cli validate -i docs/swagger.yaml; \
+	else \
+		echo "⚠️  未找到验证工具，跳过验证"; \
+	fi
+
+# 安装文档工具
+docs-install:
+	@echo "📦 安装文档工具..."
+	@echo "安装 swag..."
+	@go install github.com/swaggo/swag/cmd/swag@latest
+	@echo "✅ 工具安装完成"
+	@echo ""
+	@echo "可选工具:"
+	@echo "  - Swagger CLI: npm install -g @apidevtools/swagger-cli"
+	@echo "  - OpenAPI Generator: npm install -g @openapitools/openapi-generator-cli"
+
+# 快捷命令
+docs: docs-serve
