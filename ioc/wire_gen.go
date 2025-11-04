@@ -32,8 +32,7 @@ func InitApp() (*App, error) {
 		return nil, err
 	}
 	camService := camModule.Svc
-	camHandler := camModule.Hdl
-	engine := InitWebServer(provider, v, endpointHandler, camHandler)
+	engine := InitWebServer(provider, v, endpointHandler, camModule)
 	app := &App{
 		Web:    engine,
 		Grpc:   server,

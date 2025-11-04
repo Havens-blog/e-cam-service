@@ -13,8 +13,12 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/sync/service/adapters"
+	"github.com/Havens-blog/e-cam-service/internal/cam/task"
+	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
+	taskweb "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/google/wire"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -38,17 +42,32 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	modelFieldGroupDAO := InitModelFieldGroupDAO(db)
 	modelFieldGroupRepository := repository.NewModelFieldGroupRepository(modelFieldGroupDAO)
 	modelService := service.NewModelService(modelRepository, modelFieldRepository, modelFieldGroupRepository)
+	taskModule, err := task.InitModule(db, serviceService, component)
+	if err != nil {
+		return nil, err
+	}
+	taskRepository := InitTaskRepository(db)
+	taskService := taskservice.NewTaskService(taskModule.Queue, taskRepository, component)
+	taskHandler := taskweb.NewTaskHandler(taskService)
 	v := web.NewHandler(serviceService, cloudAccountService, modelService)
 	module := &Module{
 		Hdl:        v,
 		Svc:        serviceService,
 		AccountSvc: cloudAccountService,
 		ModelSvc:   modelService,
+		TaskModule: taskModule,
+		TaskSvc:    taskService,
+		TaskHdl:    taskHandler,
 	}
 	return module, nil
 }
 
 // wire.go:
+
+// InitTaskRepository 初始化任务仓储
+func InitTaskRepository(db *mongox.Mongo) taskx.TaskRepository {
+	return taskx.NewMongoRepository(db, "tasks")
+}
 
 var (
 	camInitOnce sync.Once

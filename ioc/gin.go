@@ -11,7 +11,7 @@ import (
 	"github.com/gotomicro/ego/core/elog"
 )
 
-func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, endpointHdl *endpoint.Handler, camHdl *cam.Handler) *gin.Engine {
+func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, endpointHdl *endpoint.Handler, camModule *cam.Module) *gin.Engine {
 	logger := elog.DefaultLogger
 	logger.Info("开始初始化Web服务器")
 	session.SetDefaultProvider(sp)
@@ -29,7 +29,12 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, endpointHdl *end
 	// 注册路由
 	logger.Info("注册路由")
 	endpointHdl.PrivateRoutes(server)
-	camHdl.PrivateRoutes(server)
+	camModule.Hdl.PrivateRoutes(server)
+
+	// 注册任务路由
+	logger.Info("注册任务路由")
+	camGroup := server.Group("/api/v1/cam")
+	camModule.TaskHdl.RegisterRoutes(camGroup)
 
 	logger.Info("Web服务器初始化完成")
 	return server

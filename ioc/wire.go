@@ -21,7 +21,6 @@ var BaseSet = wire.NewSet(
 	endpoint.InitModule,
 	cam.InitModule,
 	wire.FieldsOf(new(*endpoint.Module), "Hdl", "Svc"),
-	wire.FieldsOf(new(*cam.Module), "Hdl", "Svc"),
 )
 
 func InitApp() (*App, error) {

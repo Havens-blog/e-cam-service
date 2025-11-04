@@ -59,6 +59,11 @@ func InitModelFieldGroupDAO(db *mongox.Mongo) dao.ModelFieldGroupDAO {
 	return dao.NewModelFieldGroupDAO(db)
 }
 
+// InitTaskRepository 初始化任务仓储
+func InitTaskRepository(db *mongox.Mongo) taskx.TaskRepository {
+	return taskx.NewMongoRepository(db, "tasks")
+}
+
 // ProviderSet Wire依赖注入集合
 var ProviderSet = wire.NewSet(
 	// DAO层
@@ -75,6 +80,9 @@ var ProviderSet = wire.NewSet(
 	repository.NewModelFieldRepository,
 	repository.NewModelFieldGroupRepository,
 
+	// Task Repository
+	InitTaskRepository,
+
 	// Sync层
 	adapters.NewAdapterFactory,
 
@@ -82,6 +90,11 @@ var ProviderSet = wire.NewSet(
 	service.NewService,
 	service.NewCloudAccountService,
 	service.NewModelService,
+
+	// Task层
+	task.InitModule,
+	taskservice.NewTaskService,
+	taskweb.NewTaskHandler,
 
 	// Logger
 	ProvideLogger,
