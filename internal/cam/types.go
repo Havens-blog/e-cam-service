@@ -9,5 +9,6 @@ import (
 type (
 	Service             = service.Service
 	CloudAccountService = service.CloudAccountService
+	ModelService        = service.ModelService
 	Handler             = web.Handler
 )

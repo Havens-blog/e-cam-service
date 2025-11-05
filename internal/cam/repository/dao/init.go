@@ -25,6 +25,21 @@ func InitIndexes(db *mongox.Mongo) error {
 		return err
 	}
 
+	// 初始化模型集合索引
+	if err := initModelIndexes(ctx, db); err != nil {
+		return err
+	}
+
+	// 初始化字段集合索引
+	if err := initFieldIndexes(ctx, db); err != nil {
+		return err
+	}
+
+	// 初始化字段分组集合索引
+	if err := initFieldGroupIndexes(ctx, db); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -119,6 +134,121 @@ func initAccountIndexes(ctx context.Context, db *mongox.Mongo) error {
 		{
 			Keys: bson.D{
 				{Key: "last_sync_time", Value: -1},
+			},
+		},
+	}
+
+	_, err := collection.Indexes().CreateMany(ctx, indexes)
+	return err
+}
+
+// initModelIndexes 初始化模型集合索引
+func initModelIndexes(ctx context.Context, db *mongox.Mongo) error {
+	collection := db.Collection(ModelCollection)
+
+	indexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "uid", Value: 1},
+			},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			Keys: bson.D{
+				{Key: "id", Value: 1},
+			},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			Keys: bson.D{
+				{Key: "model_group_id", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "provider", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "category", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "parent_uid", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "level", Value: 1},
+			},
+		},
+	}
+
+	_, err := collection.Indexes().CreateMany(ctx, indexes)
+	return err
+}
+
+// initFieldIndexes 初始化字段集合索引
+func initFieldIndexes(ctx context.Context, db *mongox.Mongo) error {
+	collection := db.Collection(FieldCollection)
+
+	indexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "field_uid", Value: 1},
+			},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			Keys: bson.D{
+				{Key: "id", Value: 1},
+			},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			Keys: bson.D{
+				{Key: "model_uid", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "model_uid", Value: 1},
+				{Key: "index", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "group_id", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "field_type", Value: 1},
+			},
+		},
+	}
+
+	_, err := collection.Indexes().CreateMany(ctx, indexes)
+	return err
+}
+
+// initFieldGroupIndexes 初始化字段分组集合索引
+func initFieldGroupIndexes(ctx context.Context, db *mongox.Mongo) error {
+	collection := db.Collection(FieldGroupCollection)
+
+	indexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "id", Value: 1},
+			},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			Keys: bson.D{
+				{Key: "model_uid", Value: 1},
+				{Key: "index", Value: 1},
 			},
 		},
 	}

@@ -1,3 +1,15 @@
+// E-CAM Service API
+// @title E-CAM Service API
+// @version 1.0
+// @description 企业云资产管理服务 API 文档
+// @termsOfService http://swagger.io/terms/
+// @contact.name API Support
+// @contact.email support@example.com
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+// @host localhost:8001
+// @BasePath /api/v1
+// @schemes http https
 package main
 
 import (

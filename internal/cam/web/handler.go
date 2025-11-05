@@ -15,13 +15,15 @@ import (
 type Handler struct {
 	svc        service.Service
 	accountSvc service.CloudAccountService
+	modelSvc   service.ModelService
 }
 
 // NewHandler 创建CAM处理器
-func NewHandler(svc service.Service, accountSvc service.CloudAccountService) *Handler {
+func NewHandler(svc service.Service, accountSvc service.CloudAccountService, modelSvc service.ModelService) *Handler {
 	return &Handler{
 		svc:        svc,
 		accountSvc: accountSvc,
+		modelSvc:   modelSvc,
 	}
 }
 
@@ -32,35 +34,64 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 		// 资产管理
 		camGroup.POST("/assets", ginx.WrapBody[CreateAssetReq](h.CreateAsset))
 		camGroup.POST("/assets/batch", ginx.WrapBody[CreateMultiAssetsReq](h.CreateMultiAssets))
-		camGroup.PUT("/assets", ginx.WrapBody[UpdateAssetReq](h.UpdateAsset))
+		camGroup.PUT("/assets/:id", ginx.WrapBody[UpdateAssetReq](h.UpdateAsset))
 		camGroup.GET("/assets/:id", h.GetAssetById)
-		camGroup.POST("/assets/list", ginx.WrapBody[ListAssetsReq](h.ListAssets))
+		camGroup.GET("/assets", h.ListAssets)
 		camGroup.DELETE("/assets/:id", h.DeleteAsset)
 
 		// 资产发现
-		camGroup.POST("/discover", ginx.WrapBody[DiscoverAssetsReq](h.DiscoverAssets))
-		camGroup.POST("/sync", ginx.WrapBody[SyncAssetsReq](h.SyncAssets))
+		camGroup.POST("/assets/discover", ginx.WrapBody[DiscoverAssetsReq](h.DiscoverAssets))
+		camGroup.POST("/assets/sync", ginx.WrapBody[SyncAssetsReq](h.SyncAssets))
 
 		// 统计分析
-		camGroup.GET("/statistics", h.GetAssetStatistics)
-		camGroup.POST("/cost-analysis", ginx.WrapBody[CostAnalysisReq](h.GetCostAnalysis))
+		camGroup.GET("/assets/statistics", h.GetAssetStatistics)
+		camGroup.GET("/assets/cost-analysis", h.GetCostAnalysis)
 
 		// 云账号管理
-		camGroup.POST("/cloudaccounts", ginx.WrapBody[CreateCloudAccountReq](h.CreateCloudAccount))
-		camGroup.GET("/cloudaccounts/:id", h.GetCloudAccount)
-		camGroup.POST("/cloudaccounts/list", ginx.WrapBody[ListCloudAccountsReq](h.ListCloudAccounts))
-		camGroup.PUT("/cloudaccounts/:id", ginx.WrapBody[UpdateCloudAccountReq](h.UpdateCloudAccount))
-		camGroup.DELETE("/cloudaccounts/:id", h.DeleteCloudAccount)
+		camGroup.POST("/cloud-accounts", ginx.WrapBody[CreateCloudAccountReq](h.CreateCloudAccount))
+		camGroup.GET("/cloud-accounts/:id", h.GetCloudAccount)
+		camGroup.GET("/cloud-accounts", h.ListCloudAccounts)
+		camGroup.PUT("/cloud-accounts/:id", ginx.WrapBody[UpdateCloudAccountReq](h.UpdateCloudAccount))
+		camGroup.DELETE("/cloud-accounts/:id", h.DeleteCloudAccount)
 
 		// 云账号操作
-		camGroup.POST("/cloudaccounts/:id/test", h.TestCloudAccountConnection)
-		camGroup.POST("/cloudaccounts/:id/enable", h.EnableCloudAccount)
-		camGroup.POST("/cloudaccounts/:id/disable", h.DisableCloudAccount)
-		camGroup.POST("/cloudaccounts/:id/sync", ginx.WrapBody[SyncAccountReq](h.SyncCloudAccount))
+		camGroup.POST("/cloud-accounts/:id/test-connection", h.TestCloudAccountConnection)
+		camGroup.POST("/cloud-accounts/:id/enable", h.EnableCloudAccount)
+		camGroup.POST("/cloud-accounts/:id/disable", h.DisableCloudAccount)
+		camGroup.POST("/cloud-accounts/:id/sync", ginx.WrapBody[SyncAccountReq](h.SyncCloudAccount))
+
+		// 模型管理
+		camGroup.POST("/models", ginx.WrapBody[CreateModelReq](h.CreateModel))
+		camGroup.GET("/models/:uid", h.GetModel)
+		camGroup.GET("/models", h.ListModels)
+		camGroup.PUT("/models/:uid", ginx.WrapBody[UpdateModelReq](h.UpdateModel))
+		camGroup.DELETE("/models/:uid", h.DeleteModel)
+
+		// 字段管理
+		camGroup.POST("/models/:uid/fields", ginx.WrapBody[CreateFieldReq](h.AddField))
+		camGroup.GET("/models/:uid/fields", h.GetModelFields)
+		camGroup.PUT("/fields/:field_uid", ginx.WrapBody[UpdateFieldReq](h.UpdateField))
+		camGroup.DELETE("/fields/:field_uid", h.DeleteField)
+
+		// 字段分组管理
+		camGroup.POST("/models/:uid/field-groups", ginx.WrapBody[CreateFieldGroupReq](h.AddFieldGroup))
+		camGroup.GET("/models/:uid/field-groups", h.GetModelFieldGroups)
+		camGroup.PUT("/field-groups/:id", ginx.WrapBody[UpdateFieldGroupReq](h.UpdateFieldGroup))
+		camGroup.DELETE("/field-groups/:id", h.DeleteFieldGroup)
 	}
 }
 
 // CreateAsset 创建资产
+// @Summary 创建资产
+// @Description 创建新的云资产记录
+// @Tags 资产管理
+// @Accept json
+// @Produce json
+// @Param request body CreateAssetReq true "资产信息"
+// @Success 200 {object} ginx.Result{data=CloudAsset} "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/assets [post]
 func (h *Handler) CreateAsset(ctx *gin.Context, req CreateAssetReq) (ginx.Result, error) {
 	asset := h.toDomain(req)
 
@@ -75,6 +106,16 @@ func (h *Handler) CreateAsset(ctx *gin.Context, req CreateAssetReq) (ginx.Result
 }
 
 // CreateMultiAssets 批量创建资产
+// @Summary 批量创建资产
+// @Description 批量创建多个云资产记录
+// @Tags 资产管理
+// @Accept json
+// @Produce json
+// @Param request body CreateMultiAssetsReq true "批量资产信息"
+// @Success 200 {object} ginx.Result{data=[]CloudAsset} "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/assets/batch [post]
 func (h *Handler) CreateMultiAssets(ctx *gin.Context, req CreateMultiAssetsReq) (ginx.Result, error) {
 	if len(req.Assets) == 0 {
 		return ErrorResult(errs.ParamsError), nil
@@ -96,9 +137,27 @@ func (h *Handler) CreateMultiAssets(ctx *gin.Context, req CreateMultiAssetsReq) 
 }
 
 // UpdateAsset 更新资产
+// @Summary 更新资产
+// @Description 更新指定ID的云资产信息
+// @Tags 资产管理
+// @Accept json
+// @Produce json
+// @Param id path int true "资产ID"
+// @Param request body UpdateAssetReq true "更新的资产信息"
+// @Success 200 {object} ginx.Result{data=CloudAsset} "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 404 {object} ginx.Result "资产不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/assets/{id} [put]
 func (h *Handler) UpdateAsset(ctx *gin.Context, req UpdateAssetReq) (ginx.Result, error) {
+	idStr := ctx.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		return ErrorResult(errs.ParamsError), nil
+	}
+
 	// 先获取现有资产
-	existingAsset, err := h.svc.GetAssetById(ctx.Request.Context(), req.Id)
+	existingAsset, err := h.svc.GetAssetById(ctx.Request.Context(), id)
 	if err != nil {
 		return ErrorResult(errs.AssetNotFound), nil
 	}
@@ -133,6 +192,17 @@ func (h *Handler) UpdateAsset(ctx *gin.Context, req UpdateAssetReq) (ginx.Result
 }
 
 // GetAssetById 根据ID获取资产
+// @Summary 获取资产详情
+// @Description 根据资产ID获取详细信息
+// @Tags 资产管理
+// @Accept json
+// @Produce json
+// @Param id path int true "资产ID"
+// @Success 200 {object} ginx.Result{data=CloudAsset} "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 404 {object} ginx.Result "资产不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/assets/{id} [get]
 func (h *Handler) GetAssetById(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -151,20 +221,46 @@ func (h *Handler) GetAssetById(ctx *gin.Context) {
 }
 
 // ListAssets 获取资产列表
-func (h *Handler) ListAssets(ctx *gin.Context, req ListAssetsReq) (ginx.Result, error) {
+// @Summary 获取资产列表
+// @Description 获取云资产列表，支持按云厂商、资产类型、状态等条件过滤
+// @Tags 资产管理
+// @Accept json
+// @Produce json
+// @Param provider query string false "云厂商" Enums(aliyun,aws,azure)
+// @Param asset_type query string false "资产类型" Enums(ecs,rds,oss,vpc)
+// @Param status query string false "资产状态" Enums(running,stopped,deleted)
+// @Param region query string false "地域"
+// @Param tenant_id query string false "租户ID"
+// @Param offset query int false "偏移量" default(0)
+// @Param limit query int false "限制数量" default(20)
+// @Success 200 {object} ginx.Result{data=[]CloudAsset} "成功"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/assets [get]
+func (h *Handler) ListAssets(ctx *gin.Context) {
+	// 从 query 参数获取过滤条件
+	provider := ctx.Query("provider")
+	assetType := ctx.Query("asset_type")
+	region := ctx.Query("region")
+	status := ctx.Query("status")
+	assetName := ctx.Query("asset_name")
+
+	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+
 	filter := camdomain.AssetFilter{
-		Provider:  req.Provider,
-		AssetType: req.AssetType,
-		Region:    req.Region,
-		Status:    req.Status,
-		AssetName: req.AssetName,
-		Offset:    req.Offset,
-		Limit:     req.Limit,
+		Provider:  provider,
+		AssetType: assetType,
+		Region:    region,
+		Status:    status,
+		AssetName: assetName,
+		Offset:    int64(offset),
+		Limit:     int64(limit),
 	}
 
 	assets, total, err := h.svc.ListAssets(ctx.Request.Context(), filter)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
 	}
 
 	assetVOs := make([]CloudAsset, len(assets))
@@ -177,10 +273,21 @@ func (h *Handler) ListAssets(ctx *gin.Context, req ListAssetsReq) (ginx.Result, 
 		Total:  total,
 	}
 
-	return Result(resp), nil
+	ctx.JSON(200, Result(resp))
 }
 
 // DeleteAsset 删除资产
+// @Summary 删除资产
+// @Description 删除指定ID的云资产记录
+// @Tags 资产管理
+// @Accept json
+// @Produce json
+// @Param id path int true "资产ID"
+// @Success 200 {object} ginx.Result "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 404 {object} ginx.Result "资产不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/assets/{id} [delete]
 func (h *Handler) DeleteAsset(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -199,8 +306,18 @@ func (h *Handler) DeleteAsset(ctx *gin.Context) {
 }
 
 // DiscoverAssets 发现资产
+// @Summary 发现云资产
+// @Description 从指定云厂商和地域发现新的云资产
+// @Tags 资产发现
+// @Accept json
+// @Produce json
+// @Param request body DiscoverAssetsReq true "发现资产请求"
+// @Success 200 {object} ginx.Result{data=[]CloudAsset} "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/assets/discover [post]
 func (h *Handler) DiscoverAssets(ctx *gin.Context, req DiscoverAssetsReq) (ginx.Result, error) {
-	assets, err := h.svc.DiscoverAssets(ctx.Request.Context(), req.Provider, req.Region)
+	assets, err := h.svc.DiscoverAssets(ctx.Request.Context(), req.Provider, req.Region, req.AssetTypes)
 	if err != nil {
 		return ErrorResultWithMsg(errs.DiscoveryFailed, err.Error()), nil
 	}
@@ -210,23 +327,44 @@ func (h *Handler) DiscoverAssets(ctx *gin.Context, req DiscoverAssetsReq) (ginx.
 		assetVOs[i] = h.toAssetVO(asset)
 	}
 
-	return Result(map[string]interface{}{
-		"assets": assetVOs,
-		"count":  len(assetVOs),
+	return Result(map[string]any{
+		"assets":      assetVOs,
+		"count":       len(assetVOs),
+		"asset_types": req.AssetTypes,
 	}), nil
 }
 
 // SyncAssets 同步资产
+// @Summary 同步云资产
+// @Description 同步指定云厂商的资产状态和信息
+// @Tags 资产发现
+// @Accept json
+// @Produce json
+// @Param request body SyncAssetsReq true "同步资产请求"
+// @Success 200 {object} ginx.Result "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/assets/sync [post]
 func (h *Handler) SyncAssets(ctx *gin.Context, req SyncAssetsReq) (ginx.Result, error) {
-	err := h.svc.SyncAssets(ctx.Request.Context(), req.Provider)
+	err := h.svc.SyncAssets(ctx.Request.Context(), req.Provider, req.AssetTypes)
 	if err != nil {
 		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
 	}
 
-	return Result(nil), nil
+	return Result(map[string]any{
+		"asset_types": req.AssetTypes,
+	}), nil
 }
 
 // GetAssetStatistics 获取资产统计
+// @Summary 获取资产统计
+// @Description 获取云资产的统计信息，包括数量、类型分布等
+// @Tags 统计分析
+// @Accept json
+// @Produce json
+// @Success 200 {object} ginx.Result{data=object} "成功"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/assets/statistics [get]
 func (h *Handler) GetAssetStatistics(ctx *gin.Context) {
 	stats, err := h.svc.GetAssetStatistics(ctx.Request.Context())
 	if err != nil {
@@ -248,10 +386,24 @@ func (h *Handler) GetAssetStatistics(ctx *gin.Context) {
 }
 
 // GetCostAnalysis 获取成本分析
-func (h *Handler) GetCostAnalysis(ctx *gin.Context, req CostAnalysisReq) (ginx.Result, error) {
-	analysis, err := h.svc.GetCostAnalysis(ctx.Request.Context(), req.Provider, req.Days)
+// @Summary 获取成本分析
+// @Description 获取云资产的成本分析报告
+// @Tags 统计分析
+// @Accept json
+// @Produce json
+// @Param provider query string false "云厂商" Enums(aliyun,aws,azure)
+// @Param days query int false "分析天数" default(30)
+// @Success 200 {object} ginx.Result{data=object} "成功"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/assets/cost-analysis [get]
+func (h *Handler) GetCostAnalysis(ctx *gin.Context) {
+	provider := ctx.Query("provider")
+	days, _ := strconv.Atoi(ctx.DefaultQuery("days", "30"))
+
+	analysis, err := h.svc.GetCostAnalysis(ctx.Request.Context(), provider, days)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
 	}
 
 	resp := CostAnalysisResp{
@@ -275,7 +427,7 @@ func (h *Handler) GetCostAnalysis(ctx *gin.Context, req CostAnalysisReq) (ginx.R
 		}
 	}
 
-	return Result(resp), nil
+	ctx.JSON(200, Result(resp))
 }
 
 // toDomain 将请求转换为领域模型
@@ -330,6 +482,16 @@ func (h *Handler) toAssetVO(asset camdomain.CloudAsset) CloudAsset {
 // ==================== 云账号处理器 ====================
 
 // CreateCloudAccount 创建云账号
+// @Summary 创建云账号
+// @Description 创建新的云账号配置
+// @Tags 云账号管理
+// @Accept json
+// @Produce json
+// @Param request body CreateCloudAccountReq true "云账号信息"
+// @Success 200 {object} ginx.Result{data=domain.CloudAccount} "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/cloud-accounts [post]
 func (h *Handler) CreateCloudAccount(ctx *gin.Context, req CreateCloudAccountReq) (ginx.Result, error) {
 	domainReq := &domain.CreateCloudAccountRequest{
 		Name:            req.Name,
@@ -360,6 +522,17 @@ func (h *Handler) CreateCloudAccount(ctx *gin.Context, req CreateCloudAccountReq
 }
 
 // GetCloudAccount 获取云账号详情
+// @Summary 获取云账号详情
+// @Description 根据ID获取云账号的详细信息
+// @Tags 云账号管理
+// @Accept json
+// @Produce json
+// @Param id path int true "云账号ID"
+// @Success 200 {object} ginx.Result{data=CloudAccount} "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 404 {object} ginx.Result "云账号不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/cloud-accounts/{id} [get]
 func (h *Handler) GetCloudAccount(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -378,19 +551,43 @@ func (h *Handler) GetCloudAccount(ctx *gin.Context) {
 }
 
 // ListCloudAccounts 获取云账号列表
-func (h *Handler) ListCloudAccounts(ctx *gin.Context, req ListCloudAccountsReq) (ginx.Result, error) {
+// @Summary 获取云账号列表
+// @Description 获取云账号列表，支持按云厂商、环境、状态等条件过滤
+// @Tags 云账号管理
+// @Accept json
+// @Produce json
+// @Param provider query string false "云厂商" Enums(aliyun,aws,azure)
+// @Param environment query string false "环境" Enums(dev,test,prod)
+// @Param status query string false "状态" Enums(active,inactive)
+// @Param tenant_id query string false "租户ID"
+// @Param offset query int false "偏移量" default(0)
+// @Param limit query int false "限制数量" default(20)
+// @Success 200 {object} ginx.Result{data=[]domain.CloudAccount} "成功"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/cloud-accounts [get]
+func (h *Handler) ListCloudAccounts(ctx *gin.Context) {
+	// 从 query 参数获取过滤条件
+	provider := ctx.Query("provider")
+	environment := ctx.Query("environment")
+	status := ctx.Query("status")
+	tenantID := ctx.Query("tenant_id")
+
+	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+
 	filter := domain.CloudAccountFilter{
-		Provider:    domain.CloudProvider(req.Provider),
-		Environment: domain.Environment(req.Environment),
-		Status:      domain.CloudAccountStatus(req.Status),
-		TenantID:    req.TenantID,
-		Offset:      req.Offset,
-		Limit:       req.Limit,
+		Provider:    domain.CloudProvider(provider),
+		Environment: domain.Environment(environment),
+		Status:      domain.CloudAccountStatus(status),
+		TenantID:    tenantID,
+		Offset:      int64(offset),
+		Limit:       int64(limit),
 	}
 
 	accounts, total, err := h.accountSvc.ListAccounts(ctx.Request.Context(), filter)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
 	}
 
 	accountVOs := make([]CloudAccount, len(accounts))
@@ -403,10 +600,22 @@ func (h *Handler) ListCloudAccounts(ctx *gin.Context, req ListCloudAccountsReq) 
 		Total:    total,
 	}
 
-	return Result(resp), nil
+	ctx.JSON(200, Result(resp))
 }
 
 // UpdateCloudAccount 更新云账号
+// @Summary 更新云账号
+// @Description 更新指定ID的云账号信息
+// @Tags 云账号管理
+// @Accept json
+// @Produce json
+// @Param id path int true "云账号ID"
+// @Param request body UpdateCloudAccountReq true "更新的云账号信息"
+// @Success 200 {object} ginx.Result{data=CloudAccount} "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 404 {object} ginx.Result "云账号不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/cloud-accounts/{id} [put]
 func (h *Handler) UpdateCloudAccount(ctx *gin.Context, req UpdateCloudAccountReq) (ginx.Result, error) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -440,6 +649,17 @@ func (h *Handler) UpdateCloudAccount(ctx *gin.Context, req UpdateCloudAccountReq
 }
 
 // DeleteCloudAccount 删除云账号
+// @Summary 删除云账号
+// @Description 删除指定ID的云账号
+// @Tags 云账号管理
+// @Accept json
+// @Produce json
+// @Param id path int true "云账号ID"
+// @Success 200 {object} ginx.Result "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 404 {object} ginx.Result "云账号不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/cloud-accounts/{id} [delete]
 func (h *Handler) DeleteCloudAccount(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -458,6 +678,17 @@ func (h *Handler) DeleteCloudAccount(ctx *gin.Context) {
 }
 
 // TestCloudAccountConnection 测试云账号连接
+// @Summary 测试云账号连接
+// @Description 测试指定云账号的连接状态
+// @Tags 云账号操作
+// @Accept json
+// @Produce json
+// @Param id path int true "云账号ID"
+// @Success 200 {object} ginx.Result{data=object} "连接成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 404 {object} ginx.Result "云账号不存在"
+// @Failure 500 {object} ginx.Result "连接失败"
+// @Router /cam/cloud-accounts/{id}/test-connection [post]
 func (h *Handler) TestCloudAccountConnection(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -483,6 +714,17 @@ func (h *Handler) TestCloudAccountConnection(ctx *gin.Context) {
 }
 
 // EnableCloudAccount 启用云账号
+// @Summary 启用云账号
+// @Description 启用指定的云账号
+// @Tags 云账号操作
+// @Accept json
+// @Produce json
+// @Param id path int true "云账号ID"
+// @Success 200 {object} ginx.Result "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 404 {object} ginx.Result "云账号不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/cloud-accounts/{id}/enable [post]
 func (h *Handler) EnableCloudAccount(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -501,6 +743,17 @@ func (h *Handler) EnableCloudAccount(ctx *gin.Context) {
 }
 
 // DisableCloudAccount 禁用云账号
+// @Summary 禁用云账号
+// @Description 禁用指定的云账号
+// @Tags 云账号操作
+// @Accept json
+// @Produce json
+// @Param id path int true "云账号ID"
+// @Success 200 {object} ginx.Result "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 404 {object} ginx.Result "云账号不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/cloud-accounts/{id}/disable [post]
 func (h *Handler) DisableCloudAccount(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -519,6 +772,18 @@ func (h *Handler) DisableCloudAccount(ctx *gin.Context) {
 }
 
 // SyncCloudAccount 同步云账号资产
+// @Summary 同步云账号资产
+// @Description 同步指定云账号下的所有资产
+// @Tags 云账号操作
+// @Accept json
+// @Produce json
+// @Param id path int true "云账号ID"
+// @Param request body SyncAccountReq true "同步请求参数"
+// @Success 200 {object} ginx.Result "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 404 {object} ginx.Result "云账号不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/cloud-accounts/{id}/sync [post]
 func (h *Handler) SyncCloudAccount(ctx *gin.Context, req SyncAccountReq) (ginx.Result, error) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)

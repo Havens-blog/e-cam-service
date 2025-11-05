@@ -323,9 +323,9 @@ func (s *cloudAccountService) SyncAccount(ctx context.Context, id int64, req *do
 	}
 
 	// 检查是否只读账号
-	if account.IsReadOnly() {
-		return nil, errs.ReadOnlyAccount
-	}
+	//if account.IsReadOnly() {
+	//	return nil, errs.ReadOnlyAccount
+	//}
 
 	// TODO: 实现具体的同步逻辑
 	// 这里暂时返回模拟结果

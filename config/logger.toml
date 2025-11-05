@@ -1,0 +1,52 @@
+[logger.default]
+# 日志级别: debug, info, warn, error
+level = "info"
+
+# 日志格式: json 或 console
+format = "console"
+
+# 是否启用调用者信息（文件名和行号）
+enableCaller = true
+
+# 调用者跳过的层数
+callerSkip = 2
+
+# 是否启用堆栈跟踪
+enableStacktrace = false
+
+# 时间格式: 使用可读的时间格式
+# 2006-01-02 15:04:05 是 Go 的时间格式模板
+timeFormat = "2006-01-02 15:04:05"
+
+# 日志输出路径
+outputPaths = ["stdout", "logs/default.log"]
+
+# 错误日志输出路径
+errorOutputPaths = ["stderr", "logs/error.log"]
+
+# 日志编码器配置
+[logger.default.encoderConfig]
+# 时间键名
+timeKey = "time"
+# 级别键名
+levelKey = "level"
+# 名称键名
+nameKey = "logger"
+# 调用者键名
+callerKey = "caller"
+# 消息键名
+messageKey = "msg"
+# 堆栈跟踪键名
+stacktraceKey = "stacktrace"
+
+# 级别编码器: lowercase, capital, color
+levelEncoder = "capital"
+
+# 时间编码器: iso8601, millis, nanos, 或自定义格式
+timeEncoder = "2006-01-02 15:04:05"
+
+# 持续时间编码器: string, nanos, ms
+durationEncoder = "string"
+
+# 调用者编码器: full, short
+callerEncoder = "short"

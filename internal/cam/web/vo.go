@@ -56,7 +56,6 @@ type CreateMultiAssetsReq struct {
 
 // UpdateAssetReq 更新资产请求
 type UpdateAssetReq struct {
-	Id         int64     `json:"id" binding:"required"`
 	AssetName  string    `json:"asset_name"`
 	Status     string    `json:"status"`
 	Tags       []Tag     `json:"tags"`
@@ -65,7 +64,8 @@ type UpdateAssetReq struct {
 	UpdateTime time.Time `json:"update_time"`
 }
 
-// ListAssetsReq 获取资产列表请求
+// ListAssetsReq 获取资产列表请求（已废弃，改用 query 参数）
+// Deprecated: 使用 GET /api/v1/cam/assets?provider=xxx&offset=0&limit=20
 type ListAssetsReq struct {
 	Page
 	Provider  string `json:"provider"`
@@ -83,13 +83,15 @@ type AssetListResp struct {
 
 // DiscoverAssetsReq 发现资产请求
 type DiscoverAssetsReq struct {
-	Provider string `json:"provider" binding:"required"`
-	Region   string `json:"region"`
+	Provider   string   `json:"provider" binding:"required"`
+	Region     string   `json:"region"`
+	AssetTypes []string `json:"asset_types"` // 要发现的资源类型，为空则发现所有支持的类型
 }
 
 // SyncAssetsReq 同步资产请求
 type SyncAssetsReq struct {
-	Provider string `json:"provider" binding:"required"`
+	Provider   string   `json:"provider" binding:"required"`
+	AssetTypes []string `json:"asset_types"` // 要同步的资源类型，为空则同步所有支持的类型
 }
 
 // AssetStatisticsResp 资产统计响应
@@ -103,7 +105,8 @@ type AssetStatisticsResp struct {
 	LastDiscoverTime time.Time        `json:"last_discover_time"`
 }
 
-// CostAnalysisReq 成本分析请求
+// CostAnalysisReq 成本分析请求（已废弃，改用 query 参数）
+// Deprecated: 使用 GET /api/v1/cam/assets/cost-analysis?provider=xxx&days=30
 type CostAnalysisReq struct {
 	Provider string `json:"provider" binding:"required"`
 	Days     int    `json:"days" binding:"min=1,max=365"`
@@ -186,7 +189,8 @@ type UpdateCloudAccountReq struct {
 	Config      *CloudAccountConfigVO `json:"config,omitempty"`
 }
 
-// ListCloudAccountsReq 获取云账号列表请求
+// ListCloudAccountsReq 获取云账号列表请求（已废弃，改用 query 参数）
+// Deprecated: 使用 GET /api/v1/cam/cloud-accounts?provider=xxx&offset=0&limit=20
 type ListCloudAccountsReq struct {
 	Page
 	Provider    string `json:"provider"`
@@ -220,4 +224,151 @@ type SyncResult struct {
 	SyncID    string    `json:"sync_id"`
 	Status    string    `json:"status"`
 	StartTime time.Time `json:"start_time"`
+}
+
+// ==================== 模型管理相关 VO ====================
+
+// ModelVO 模型VO
+type ModelVO struct {
+	ID           int64     `json:"id"`
+	UID          string    `json:"uid"`
+	Name         string    `json:"name"`
+	ModelGroupID int64     `json:"model_group_id"`
+	ParentUID    string    `json:"parent_uid,omitempty"`
+	Category     string    `json:"category"`
+	Level        int       `json:"level"`
+	Icon         string    `json:"icon,omitempty"`
+	Description  string    `json:"description,omitempty"`
+	Provider     string    `json:"provider"`
+	Extensible   bool      `json:"extensible"`
+	CreateTime   time.Time `json:"create_time"`
+	UpdateTime   time.Time `json:"update_time"`
+}
+
+// ModelFieldVO 模型字段VO
+type ModelFieldVO struct {
+	ID          int64     `json:"id"`
+	FieldUID    string    `json:"field_uid"`
+	FieldName   string    `json:"field_name"`
+	FieldType   string    `json:"field_type"`
+	ModelUID    string    `json:"model_uid"`
+	GroupID     int64     `json:"group_id"`
+	DisplayName string    `json:"display_name"` // 显示名称
+	Display     bool      `json:"display"`      // 是否显示
+	Index       int       `json:"index"`
+	Required    bool      `json:"required"`
+	Secure      bool      `json:"secure"`
+	Link        bool      `json:"link"`                 // 是否为关联字段
+	LinkModel   string    `json:"link_model,omitempty"` // 关联模型UID
+	Option      string    `json:"option,omitempty"`
+	CreateTime  time.Time `json:"create_time"`
+	UpdateTime  time.Time `json:"update_time"`
+}
+
+// ModelFieldGroupVO 模型字段分组VO
+type ModelFieldGroupVO struct {
+	ID         int64     `json:"id"`
+	ModelUID   string    `json:"model_uid"`
+	Name       string    `json:"name"`
+	Index      int       `json:"index"`
+	CreateTime time.Time `json:"create_time"`
+	UpdateTime time.Time `json:"update_time"`
+}
+
+// FieldGroupWithFieldsVO 带字段的分组VO
+type FieldGroupWithFieldsVO struct {
+	Group  *ModelFieldGroupVO `json:"group"`
+	Fields []*ModelFieldVO    `json:"fields"`
+}
+
+// ModelDetailVO 模型详情VO
+type ModelDetailVO struct {
+	Model       *ModelVO                  `json:"model"`
+	FieldGroups []*FieldGroupWithFieldsVO `json:"field_groups"`
+}
+
+// CreateModelReq 创建模型请求
+type CreateModelReq struct {
+	UID          string `json:"uid" binding:"required,min=1,max=100"`
+	Name         string `json:"name" binding:"required,min=1,max=100"`
+	ModelGroupID int64  `json:"model_group_id"`
+	ParentUID    string `json:"parent_uid,omitempty"`
+	Category     string `json:"category" binding:"required"`
+	Level        int    `json:"level" binding:"required,min=1"`
+	Icon         string `json:"icon,omitempty"`
+	Description  string `json:"description,omitempty"`
+	Provider     string `json:"provider" binding:"required"`
+	Extensible   bool   `json:"extensible"`
+}
+
+// UpdateModelReq 更新模型请求
+type UpdateModelReq struct {
+	Name         string `json:"name,omitempty"`
+	ModelGroupID int64  `json:"model_group_id,omitempty"`
+	Icon         string `json:"icon,omitempty"`
+	Description  string `json:"description,omitempty"`
+	Extensible   bool   `json:"extensible"`
+}
+
+// ModelListResp 模型列表响应
+type ModelListResp struct {
+	Models []*ModelVO `json:"models"`
+	Total  int64      `json:"total"`
+}
+
+// CreateFieldReq 创建字段请求
+type CreateFieldReq struct {
+	FieldUID    string `json:"field_uid" binding:"required,min=1,max=100"`
+	FieldName   string `json:"field_name" binding:"required,min=1,max=100"`
+	FieldType   string `json:"field_type" binding:"required"`
+	ModelUID    string `json:"model_uid" binding:"required"`
+	GroupID     int64  `json:"group_id"`
+	DisplayName string `json:"display_name" binding:"required"` // 显示名称
+	Display     bool   `json:"display"`                         // 是否显示（默认true）
+	Index       int    `json:"index"`
+	Required    bool   `json:"required"`
+	Secure      bool   `json:"secure"`
+	Link        bool   `json:"link"`                 // 是否为关联字段
+	LinkModel   string `json:"link_model,omitempty"` // 关联模型UID
+	Option      string `json:"option,omitempty"`
+}
+
+// UpdateFieldReq 更新字段请求
+type UpdateFieldReq struct {
+	FieldName   string `json:"field_name,omitempty"`
+	FieldType   string `json:"field_type,omitempty"`
+	GroupID     int64  `json:"group_id,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
+	Display     bool   `json:"display"`
+	Index       int    `json:"index,omitempty"`
+	Required    bool   `json:"required"`
+	Secure      bool   `json:"secure"`
+	Link        bool   `json:"link"`                 // 是否为关联字段
+	LinkModel   string `json:"link_model,omitempty"` // 关联模型UID
+	Option      string `json:"option,omitempty"`
+}
+
+// FieldListResp 字段列表响应
+type FieldListResp struct {
+	Fields []*ModelFieldVO `json:"fields"`
+	Total  int64           `json:"total"`
+}
+
+// CreateFieldGroupReq 创建字段分组请求
+type CreateFieldGroupReq struct {
+	ModelUID string `json:"model_uid" binding:"required"`
+	Name     string `json:"name" binding:"required,min=1,max=100"`
+	Index    int    `json:"index"`
+}
+
+// UpdateFieldGroupReq 更新字段分组请求
+type UpdateFieldGroupReq struct {
+	Name  string `json:"name,omitempty"`
+	Index int    `json:"index,omitempty"`
+}
+
+// FieldGroupListResp 字段分组列表响应
+type FieldGroupListResp struct {
+	Groups []*ModelFieldGroupVO `json:"groups"`
+	Total  int64                `json:"total"`
 }

@@ -64,3 +64,30 @@ var (
 	ErrNotImplemented = errors.New("not implemented")
 	ErrServiceBusy    = errors.New("service busy")
 )
+
+// 模型相关错误码 (404xxx, 409xxx, 400xxx)
+var (
+	ModelNotFound     = ErrorCode{Code: 404006, Msg: "model not found"}
+	ModelAlreadyExist = ErrorCode{Code: 409005, Msg: "model already exist"}
+	ModelInvalid      = ErrorCode{Code: 400005, Msg: "model invalid"}
+	FieldNotFound     = ErrorCode{Code: 404007, Msg: "field not found"}
+	FieldAlreadyExist = ErrorCode{Code: 409006, Msg: "field already exist"}
+	FieldInvalid      = ErrorCode{Code: 400006, Msg: "field invalid"}
+	GroupNotFound     = ErrorCode{Code: 404008, Msg: "field group not found"}
+	GroupAlreadyExist = ErrorCode{Code: 409007, Msg: "field group already exist"}
+	RelationNotFound  = ErrorCode{Code: 404009, Msg: "relation not found"}
+	RelationInvalid   = ErrorCode{Code: 400007, Msg: "relation invalid"}
+)
+
+// 模型相关标准错误
+var (
+	ErrInvalidModelUID      = errors.New("invalid model uid")
+	ErrInvalidModelName     = errors.New("invalid model name")
+	ErrInvalidModelCategory = errors.New("invalid model category")
+	ErrInvalidFieldUID      = errors.New("invalid field uid")
+	ErrInvalidFieldName     = errors.New("invalid field name")
+	ErrInvalidFieldType     = errors.New("invalid field type")
+	ErrInvalidGroupName     = errors.New("invalid group name")
+	ErrCircularReference    = errors.New("circular reference detected")
+	ErrInvalidRelation      = errors.New("invalid relation")
+)

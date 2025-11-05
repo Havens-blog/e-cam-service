@@ -61,24 +61,26 @@ func (v *AliyunValidator) ValidateCredentials(ctx context.Context, account *doma
 }
 
 // GetSupportedRegions 获取阿里云支持的地域
-func (v *AliyunValidator) GetSupportedRegions(ctx context.Context, account *domain.CloudAccount) ([]string, error) {
-	// TODO: 调用阿里云 API 获取真实地域列表
-	// 这里返回常用地域
-	return []string{
-		"cn-hangzhou",    // 华东1（杭州）
-		"cn-shanghai",    // 华东2（上海）
-		"cn-beijing",     // 华北2（北京）
-		"cn-shenzhen",    // 华南1（深圳）
-		"cn-qingdao",     // 华北1（青岛）
-		"cn-zhangjiakou", // 华北3（张家口）
-		"cn-huhehaote",   // 华北5（呼和浩特）
-		"cn-chengdu",     // 西南1（成都）
-		"cn-hongkong",    // 香港
-		"ap-southeast-1", // 新加坡
-		"us-west-1",      // 美国西部1（硅谷）
-		"us-east-1",      // 美国东部1（弗吉尼亚）
-		"eu-central-1",   // 欧洲中部1（法兰克福）
-	}, nil
+func (v *AliyunValidator) GetSupportedRegions(ctx context.Context, account *domain.CloudAccount) (regionsList []string, err error) {
+	client, err := ecs.NewClientWithAccessKey(account.Region, account.AccessKeyID, account.AccessKeySecret)
+	if err != nil {
+		return regionsList, fmt.Errorf("创建阿里云客户端失败: %w", err)
+	}
+
+	request := ecs.CreateDescribeRegionsRequest()
+	request.Scheme = "https"
+
+	DescribeRegionsResponse, err := client.DescribeRegions(request)
+	if err != nil {
+		if strings.Contains(err.Error(), "InvalidAccessKeyId") {
+			return regionsList, ErrInvalidCredentials
+		}
+		return regionsList, fmt.Errorf("阿里云 API 调用失败: %w", err)
+	}
+	for _, region := range DescribeRegionsResponse.Regions.Region {
+		regionsList = append(regionsList, region.RegionId)
+	}
+	return regionsList, nil
 }
 
 // TestConnection 测试阿里云连接

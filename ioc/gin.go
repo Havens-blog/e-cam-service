@@ -3,12 +3,15 @@ package ioc
 import (
 	"time"
 
+	_ "github.com/Havens-blog/e-cam-service/docs" // 导入生成的文档
 	"github.com/Havens-blog/e-cam-service/internal/cam"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, endpointHdl *endpoint.Handler, camModule *cam.Module) *gin.Engine {
@@ -35,6 +38,13 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, endpointHdl *end
 	logger.Info("注册任务路由")
 	camGroup := server.Group("/api/v1/cam")
 	camModule.TaskHdl.RegisterRoutes(camGroup)
+
+	// 注册 Swagger 文档路由
+	logger.Info("注册 Swagger 文档路由")
+	server.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	server.GET("/docs", func(c *gin.Context) {
+		c.Redirect(302, "/swagger/index.html")
+	})
 
 	logger.Info("Web服务器初始化完成")
 	return server

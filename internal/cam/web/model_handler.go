@@ -13,6 +13,16 @@ import (
 // ==================== 模型管理处理器 ====================
 
 // CreateModel 创建模型
+// @Summary 创建模型
+// @Description 创建新的资产模型定义
+// @Tags 模型管理
+// @Accept json
+// @Produce json
+// @Param request body CreateModelReq true "模型信息"
+// @Success 200 {object} ginx.Result{data=domain.Model} "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/models [post]
 func (h *Handler) CreateModel(ctx *gin.Context, req CreateModelReq) (ginx.Result, error) {
 	model := &domain.Model{
 		UID:          req.UID,
@@ -38,6 +48,16 @@ func (h *Handler) CreateModel(ctx *gin.Context, req CreateModelReq) (ginx.Result
 }
 
 // GetModel 获取模型详情
+// @Summary 获取模型详情
+// @Description 根据模型UID获取模型的详细信息
+// @Tags 模型管理
+// @Accept json
+// @Produce json
+// @Param uid path string true "模型UID"
+// @Success 200 {object} ginx.Result{data=domain.Model} "成功"
+// @Failure 404 {object} ginx.Result "模型不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/models/{uid} [get]
 func (h *Handler) GetModel(ctx *gin.Context) {
 	uid := ctx.Param("uid")
 
@@ -51,6 +71,20 @@ func (h *Handler) GetModel(ctx *gin.Context) {
 }
 
 // ListModels 获取模型列表
+// @Summary 获取模型列表
+// @Description 获取资产模型列表，支持按云厂商、分类等条件过滤
+// @Tags 模型管理
+// @Accept json
+// @Produce json
+// @Param provider query string false "云厂商" Enums(aliyun,aws,azure)
+// @Param category query string false "模型分类"
+// @Param parent_uid query string false "父模型UID"
+// @Param level query int false "模型层级"
+// @Param offset query int false "偏移量" default(0)
+// @Param limit query int false "限制数量" default(20)
+// @Success 200 {object} ginx.Result{data=[]domain.Model} "成功"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/models [get]
 func (h *Handler) ListModels(ctx *gin.Context) {
 	provider := ctx.Query("provider")
 	category := ctx.Query("category")
@@ -99,6 +133,18 @@ func (h *Handler) ListModels(ctx *gin.Context) {
 }
 
 // UpdateModel 更新模型
+// @Summary 更新模型
+// @Description 更新指定UID的模型信息
+// @Tags 模型管理
+// @Accept json
+// @Produce json
+// @Param uid path string true "模型UID"
+// @Param request body UpdateModelReq true "更新的模型信息"
+// @Success 200 {object} ginx.Result{data=domain.Model} "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 404 {object} ginx.Result "模型不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/models/{uid} [put]
 func (h *Handler) UpdateModel(ctx *gin.Context, req UpdateModelReq) (ginx.Result, error) {
 	uid := ctx.Param("uid")
 
@@ -133,6 +179,16 @@ func (h *Handler) UpdateModel(ctx *gin.Context, req UpdateModelReq) (ginx.Result
 }
 
 // DeleteModel 删除模型
+// @Summary 删除模型
+// @Description 删除指定UID的模型
+// @Tags 模型管理
+// @Accept json
+// @Produce json
+// @Param uid path string true "模型UID"
+// @Success 200 {object} ginx.Result "成功"
+// @Failure 404 {object} ginx.Result "模型不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/models/{uid} [delete]
 func (h *Handler) DeleteModel(ctx *gin.Context) {
 	uid := ctx.Param("uid")
 
@@ -148,6 +204,17 @@ func (h *Handler) DeleteModel(ctx *gin.Context) {
 // ==================== 字段管理处理器 ====================
 
 // AddField 添加字段
+// @Summary 添加模型字段
+// @Description 为指定模型添加新的字段定义
+// @Tags 字段管理
+// @Accept json
+// @Produce json
+// @Param uid path string true "模型UID"
+// @Param request body CreateFieldReq true "字段信息"
+// @Success 200 {object} ginx.Result{data=domain.ModelField} "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/models/{uid}/fields [post]
 func (h *Handler) AddField(ctx *gin.Context, req CreateFieldReq) (ginx.Result, error) {
 	field := &domain.ModelField{
 		FieldUID:    req.FieldUID,
@@ -176,6 +243,15 @@ func (h *Handler) AddField(ctx *gin.Context, req CreateFieldReq) (ginx.Result, e
 }
 
 // GetModelFields 获取模型的所有字段
+// @Summary 获取模型字段列表
+// @Description 获取指定模型的所有字段定义
+// @Tags 字段管理
+// @Accept json
+// @Produce json
+// @Param uid path string true "模型UID"
+// @Success 200 {object} ginx.Result{data=[]domain.ModelField} "成功"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/models/{uid}/fields [get]
 func (h *Handler) GetModelFields(ctx *gin.Context) {
 	uid := ctx.Param("uid")
 
@@ -199,6 +275,18 @@ func (h *Handler) GetModelFields(ctx *gin.Context) {
 }
 
 // UpdateField 更新字段
+// @Summary 更新模型字段
+// @Description 更新指定字段的定义信息
+// @Tags 字段管理
+// @Accept json
+// @Produce json
+// @Param field_uid path string true "字段UID"
+// @Param request body UpdateFieldReq true "更新的字段信息"
+// @Success 200 {object} ginx.Result "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 404 {object} ginx.Result "字段不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/fields/{field_uid} [put]
 func (h *Handler) UpdateField(ctx *gin.Context, req UpdateFieldReq) (ginx.Result, error) {
 	fieldUID := ctx.Param("field_uid")
 
@@ -228,6 +316,16 @@ func (h *Handler) UpdateField(ctx *gin.Context, req UpdateFieldReq) (ginx.Result
 }
 
 // DeleteField 删除字段
+// @Summary 删除模型字段
+// @Description 删除指定的模型字段定义
+// @Tags 字段管理
+// @Accept json
+// @Produce json
+// @Param field_uid path string true "字段UID"
+// @Success 200 {object} ginx.Result "成功"
+// @Failure 404 {object} ginx.Result "字段不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/fields/{field_uid} [delete]
 func (h *Handler) DeleteField(ctx *gin.Context) {
 	fieldUID := ctx.Param("field_uid")
 
@@ -243,6 +341,17 @@ func (h *Handler) DeleteField(ctx *gin.Context) {
 // ==================== 字段分组管理处理器 ====================
 
 // AddFieldGroup 添加字段分组
+// @Summary 添加字段分组
+// @Description 为指定模型添加新的字段分组
+// @Tags 字段分组管理
+// @Accept json
+// @Produce json
+// @Param uid path string true "模型UID"
+// @Param request body CreateFieldGroupReq true "字段分组信息"
+// @Success 200 {object} ginx.Result{data=domain.ModelFieldGroup} "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/models/{uid}/field-groups [post]
 func (h *Handler) AddFieldGroup(ctx *gin.Context, req CreateFieldGroupReq) (ginx.Result, error) {
 	group := &domain.ModelFieldGroup{
 		ModelUID:   req.ModelUID,
@@ -261,6 +370,15 @@ func (h *Handler) AddFieldGroup(ctx *gin.Context, req CreateFieldGroupReq) (ginx
 }
 
 // GetModelFieldGroups 获取模型的所有分组
+// @Summary 获取字段分组列表
+// @Description 获取指定模型的所有字段分组
+// @Tags 字段分组管理
+// @Accept json
+// @Produce json
+// @Param uid path string true "模型UID"
+// @Success 200 {object} ginx.Result{data=[]domain.ModelFieldGroup} "成功"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/models/{uid}/field-groups [get]
 func (h *Handler) GetModelFieldGroups(ctx *gin.Context) {
 	uid := ctx.Param("uid")
 
@@ -284,6 +402,18 @@ func (h *Handler) GetModelFieldGroups(ctx *gin.Context) {
 }
 
 // UpdateFieldGroup 更新字段分组
+// @Summary 更新字段分组
+// @Description 更新指定ID的字段分组信息
+// @Tags 字段分组管理
+// @Accept json
+// @Produce json
+// @Param id path int true "分组ID"
+// @Param request body UpdateFieldGroupReq true "更新的分组信息"
+// @Success 200 {object} ginx.Result "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 404 {object} ginx.Result "分组不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/field-groups/{id} [put]
 func (h *Handler) UpdateFieldGroup(ctx *gin.Context, req UpdateFieldGroupReq) (ginx.Result, error) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -307,6 +437,16 @@ func (h *Handler) UpdateFieldGroup(ctx *gin.Context, req UpdateFieldGroupReq) (g
 }
 
 // DeleteFieldGroup 删除字段分组
+// @Summary 删除字段分组
+// @Description 删除指定ID的字段分组
+// @Tags 字段分组管理
+// @Accept json
+// @Produce json
+// @Param id path int true "分组ID"
+// @Success 200 {object} ginx.Result "成功"
+// @Failure 404 {object} ginx.Result "分组不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/field-groups/{id} [delete]
 func (h *Handler) DeleteFieldGroup(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
