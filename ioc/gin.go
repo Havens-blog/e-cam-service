@@ -39,6 +39,15 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, endpointHdl *end
 	camGroup := server.Group("/api/v1/cam")
 	camModule.TaskHdl.RegisterRoutes(camGroup)
 
+	// 注册IAM路由
+	if camModule.IAMModule != nil {
+		logger.Info("注册IAM路由")
+		camModule.IAMModule.RegisterRoutes(server)
+		logger.Info("IAM路由注册完成")
+	} else {
+		logger.Warn("IAM模块未初始化，跳过IAM路由注册")
+	}
+
 	// 注册 Swagger 文档路由
 	logger.Info("注册 Swagger 文档路由")
 	server.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))

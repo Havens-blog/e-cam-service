@@ -12,6 +12,10 @@ import (
 	"github.com/google/wire"
 )
 
+import (
+	_ "github.com/Havens-blog/e-cam-service/docs"
+)
+
 // Injectors from wire.go:
 
 func InitApp() (*App, error) {
@@ -25,7 +29,7 @@ func InitApp() (*App, error) {
 		return nil, err
 	}
 	handler := module.Hdl
-	camModule, err := cam.InitModule(mongo)
+	camModule, err := cam.InitModuleWithIAM(mongo)
 	if err != nil {
 		return nil, err
 	}
@@ -53,5 +57,5 @@ var BaseSet = wire.NewSet(
 	InitSessionProvider,
 	InitGinMiddlewares,
 	InitWebServer,
-	InitJobs, endpoint.InitModule, cam.InitModule, wire.FieldsOf(new(*endpoint.Module), "Hdl"), wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
+	InitJobs, endpoint.InitModule, cam.InitModuleWithIAM, wire.FieldsOf(new(*endpoint.Module), "Hdl"), wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
 )

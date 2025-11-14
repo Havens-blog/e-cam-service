@@ -20,7 +20,7 @@ var BaseSet = wire.NewSet(
 	InitWebServer,
 	InitJobs,
 	endpoint.InitModule,
-	cam.InitModule,
+	cam.InitModuleWithIAM, // 使用包含IAM的初始化函数
 	wire.FieldsOf(new(*endpoint.Module), "Hdl"),
 	wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
 )

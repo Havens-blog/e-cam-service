@@ -9,8 +9,12 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/sync/service/adapters"
+	"github.com/Havens-blog/e-cam-service/internal/cam/task"
+	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
+	taskweb "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/google/wire"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -93,6 +97,7 @@ var ProviderSet = wire.NewSet(
 
 	// Task层
 	task.InitModule,
+	wire.FieldsOf(new(*task.Module), "Queue"),
 	taskservice.NewTaskService,
 	taskweb.NewTaskHandler,
 
@@ -102,8 +107,8 @@ var ProviderSet = wire.NewSet(
 	// Web层
 	web.NewHandler,
 
-	// Module
-	wire.Struct(new(Module), "*"),
+	// Module (排除 IAMModule，手动初始化)
+	wire.Struct(new(Module), "Hdl", "Svc", "AccountSvc", "ModelSvc", "TaskModule", "TaskSvc", "TaskHdl"),
 )
 
 // InitModule 初始化CAM模块
