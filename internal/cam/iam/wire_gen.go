@@ -26,33 +26,41 @@ import (
 func InitModule(db *mongox.Mongo) (*Module, error) {
 	cloudUserDAO := InitCloudUserDAO(db)
 	cloudUserRepository := repository.NewCloudUserRepository(cloudUserDAO)
-	permissionGroupDAO := InitPermissionGroupDAO(db)
-	permissionGroupRepository := repository.NewPermissionGroupRepository(permissionGroupDAO)
+	userGroupDAO := InitUserGroupDAO(db)
+	userGroupRepository := repository.NewUserGroupRepository(userGroupDAO)
 	syncTaskDAO := InitSyncTaskDAO(db)
 	syncTaskRepository := repository.NewSyncTaskRepository(syncTaskDAO)
 	cloudAccountRepository := InitCloudAccountRepository(db)
 	component := ProvideLogger()
-	cloudIAMAdapterFactory := iam.NewCloudIAMAdapterFactory(component)
-	cloudUserService := service.NewCloudUserService(cloudUserRepository, permissionGroupRepository, syncTaskRepository, cloudAccountRepository, cloudIAMAdapterFactory, component)
+	cloudIAMAdapterFactory := iam.New(component)
+	cloudUserService := service.NewCloudUserService(cloudUserRepository, userGroupRepository, syncTaskRepository, cloudAccountRepository, cloudIAMAdapterFactory, component)
 	userHandler := web.NewUserHandler(cloudUserService, component)
 	auditLogDAO := InitAuditLogDAO(db)
 	auditLogRepository := repository.NewAuditLogRepository(auditLogDAO)
-	permissionGroupService := service.NewPermissionGroupService(permissionGroupRepository, cloudUserRepository, syncTaskRepository, auditLogRepository, component)
-	groupHandler := web.NewGroupHandler(permissionGroupService, component)
-	syncService := service.NewSyncService(syncTaskRepository, cloudUserRepository, permissionGroupRepository, cloudAccountRepository, cloudIAMAdapterFactory, component)
+	userGroupService := service.NewUserGroupService(userGroupRepository, cloudUserRepository, syncTaskRepository, auditLogRepository, cloudAccountRepository, cloudIAMAdapterFactory, component)
+	userGroupHandler := web.NewUserGroupHandler(userGroupService, component)
+	permissionService := service.NewPermissionService(cloudUserRepository, userGroupRepository, cloudAccountRepository, cloudIAMAdapterFactory, component)
+	permissionHandler := web.NewPermissionHandler(permissionService, component)
+	syncService := service.NewSyncService(syncTaskRepository, cloudUserRepository, userGroupRepository, cloudAccountRepository, cloudIAMAdapterFactory, component)
 	syncHandler := web.NewSyncHandler(syncService, component)
 	auditService := service.NewAuditService(auditLogRepository, component)
 	auditHandler := web.NewAuditHandler(auditService, component)
 	policyTemplateDAO := InitPolicyTemplateDAO(db)
 	policyTemplateRepository := repository.NewPolicyTemplateRepository(policyTemplateDAO)
-	policyTemplateService := service.NewPolicyTemplateService(policyTemplateRepository, permissionGroupRepository, component)
+	policyTemplateService := service.NewPolicyTemplateService(policyTemplateRepository, userGroupRepository, component)
 	templateHandler := web.NewTemplateHandler(policyTemplateService, component)
+	tenantDAO := InitTenantDAO(db)
+	tenantRepository := repository.NewTenantRepository(tenantDAO)
+	tenantService := service.NewTenantService(tenantRepository, cloudAccountRepository, cloudUserRepository, userGroupRepository, component)
+	tenantHandler := web.NewTenantHandler(tenantService, component)
 	module := &Module{
-		UserHandler:     userHandler,
-		GroupHandler:    groupHandler,
-		SyncHandler:     syncHandler,
-		AuditHandler:    auditHandler,
-		TemplateHandler: templateHandler,
+		UserHandler:       userHandler,
+		GroupHandler:      userGroupHandler,
+		PermissionHandler: permissionHandler,
+		SyncHandler:       syncHandler,
+		AuditHandler:      auditHandler,
+		TemplateHandler:   templateHandler,
+		TenantHandler:     tenantHandler,
 	}
 	return module, nil
 }
@@ -79,10 +87,10 @@ func InitCloudUserDAO(db *mongox.Mongo) dao.CloudUserDAO {
 	return dao.NewCloudUserDAO(db)
 }
 
-// InitPermissionGroupDAO 初始化权限组DAO
-func InitPermissionGroupDAO(db *mongox.Mongo) dao.PermissionGroupDAO {
+// InitUserGroupDAO 初始化用户组DAO
+func InitUserGroupDAO(db *mongox.Mongo) dao.UserGroupDAO {
 	InitCollectionOnce(db)
-	return dao.NewPermissionGroupDAO(db)
+	return dao.NewUserGroupDAO(db)
 }
 
 // InitSyncTaskDAO 初始化同步任务DAO
@@ -103,6 +111,12 @@ func InitPolicyTemplateDAO(db *mongox.Mongo) dao.PolicyTemplateDAO {
 	return dao.NewPolicyTemplateDAO(db)
 }
 
+// InitTenantDAO 初始化租户DAO
+func InitTenantDAO(db *mongox.Mongo) dao.TenantDAO {
+	InitCollectionOnce(db)
+	return dao.NewTenantDAO(db)
+}
+
 // InitCloudAccountRepository 初始化云账号Repository（从CAM模块）
 func InitCloudAccountRepository(db *mongox.Mongo) repository2.CloudAccountRepository {
 
@@ -114,10 +128,11 @@ func InitCloudAccountRepository(db *mongox.Mongo) repository2.CloudAccountReposi
 var ProviderSet = wire.NewSet(
 
 	InitCloudUserDAO,
-	InitPermissionGroupDAO,
+	InitUserGroupDAO,
 	InitSyncTaskDAO,
 	InitAuditLogDAO,
-	InitPolicyTemplateDAO, repository.NewCloudUserRepository, repository.NewPermissionGroupRepository, repository.NewSyncTaskRepository, repository.NewAuditLogRepository, repository.NewPolicyTemplateRepository, InitCloudAccountRepository, iam.NewCloudIAMAdapterFactory, service.NewCloudUserService, service.NewPermissionGroupService, service.NewSyncService, service.NewAuditService, service.NewPolicyTemplateService, ProvideLogger, web.NewUserHandler, web.NewGroupHandler, web.NewSyncHandler, web.NewAuditHandler, web.NewTemplateHandler, wire.Struct(new(Module), "*"),
+	InitPolicyTemplateDAO,
+	InitTenantDAO, repository.NewCloudUserRepository, repository.NewUserGroupRepository, repository.NewSyncTaskRepository, repository.NewAuditLogRepository, repository.NewPolicyTemplateRepository, repository.NewTenantRepository, InitCloudAccountRepository, iam.New, service.NewCloudUserService, service.NewUserGroupService, service.NewPermissionService, service.NewSyncService, service.NewAuditService, service.NewPolicyTemplateService, service.NewTenantService, ProvideLogger, web.NewUserHandler, web.NewUserGroupHandler, web.NewPermissionHandler, web.NewSyncHandler, web.NewAuditHandler, web.NewTemplateHandler, web.NewTenantHandler, wire.Struct(new(Module), "*"),
 )
 
 // ProvideLogger 提供默认logger

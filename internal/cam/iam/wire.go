@@ -1,16 +1,16 @@
-//go:build wireinject
+﻿//go:build wireinject
 
 package iam
 
 import (
 	"sync"
 
-	camrepo "github.com/Havens-blog/e-cam-service/internal/cam/repository"
-	camdao "github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/web"
+	camrepo "github.com/Havens-blog/e-cam-service/internal/cam/repository"
+	camdao "github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/google/wire"
@@ -37,10 +37,10 @@ func InitCloudUserDAO(db *mongox.Mongo) dao.CloudUserDAO {
 	return dao.NewCloudUserDAO(db)
 }
 
-// InitPermissionGroupDAO 初始化权限组DAO
-func InitPermissionGroupDAO(db *mongox.Mongo) dao.PermissionGroupDAO {
+// InitUserGroupDAO 初始化用户组DAO
+func InitUserGroupDAO(db *mongox.Mongo) dao.UserGroupDAO {
 	InitCollectionOnce(db)
-	return dao.NewPermissionGroupDAO(db)
+	return dao.NewUserGroupDAO(db)
 }
 
 // InitSyncTaskDAO 初始化同步任务DAO
@@ -61,6 +61,12 @@ func InitPolicyTemplateDAO(db *mongox.Mongo) dao.PolicyTemplateDAO {
 	return dao.NewPolicyTemplateDAO(db)
 }
 
+// InitTenantDAO 初始化租户DAO
+func InitTenantDAO(db *mongox.Mongo) dao.TenantDAO {
+	InitCollectionOnce(db)
+	return dao.NewTenantDAO(db)
+}
+
 // InitCloudAccountRepository 初始化云账号Repository（从CAM模块）
 func InitCloudAccountRepository(db *mongox.Mongo) camrepo.CloudAccountRepository {
 	// 使用CAM模块的DAO
@@ -72,40 +78,46 @@ func InitCloudAccountRepository(db *mongox.Mongo) camrepo.CloudAccountRepository
 var ProviderSet = wire.NewSet(
 	// DAO层
 	InitCloudUserDAO,
-	InitPermissionGroupDAO,
+	InitUserGroupDAO,
 	InitSyncTaskDAO,
 	InitAuditLogDAO,
 	InitPolicyTemplateDAO,
+	InitTenantDAO,
 
 	// Repository层
 	repository.NewCloudUserRepository,
-	repository.NewPermissionGroupRepository,
+	repository.NewUserGroupRepository,
 	repository.NewSyncTaskRepository,
 	repository.NewAuditLogRepository,
 	repository.NewPolicyTemplateRepository,
-	
+	repository.NewTenantRepository,
+
 	// CAM模块的Repository
 	InitCloudAccountRepository,
 
 	// 云平台适配器工厂
-	iam.NewCloudIAMAdapterFactory,
+	iam.New,
 
 	// Service层
 	service.NewCloudUserService,
-	service.NewPermissionGroupService,
+	service.NewUserGroupService,
+	service.NewPermissionService,
 	service.NewSyncService,
 	service.NewAuditService,
 	service.NewPolicyTemplateService,
+	service.NewTenantService,
 
 	// Logger
 	ProvideLogger,
 
 	// Web层
 	web.NewUserHandler,
-	web.NewGroupHandler,
+	web.NewUserGroupHandler,
+	web.NewPermissionHandler,
 	web.NewSyncHandler,
 	web.NewAuditHandler,
 	web.NewTemplateHandler,
+	web.NewTenantHandler,
 
 	// Module
 	wire.Struct(new(Module), "*"),
