@@ -1,4 +1,4 @@
-package repository
+﻿package repository
 
 import (
 	"context"
@@ -137,7 +137,7 @@ func (repo *cloudAccountRepository) toDomain(daoAccount dao.CloudAccount) domain
 		Environment:     domain.Environment(daoAccount.Environment),
 		AccessKeyID:     daoAccount.AccessKeyID,
 		AccessKeySecret: daoAccount.AccessKeySecret,
-		Region:          daoAccount.Region,
+		Regions:         daoAccount.Regions,
 		Description:     daoAccount.Description,
 		Status:          domain.CloudAccountStatus(daoAccount.Status),
 		Config: domain.CloudAccountConfig{
@@ -170,7 +170,7 @@ func (repo *cloudAccountRepository) toEntity(account domain.CloudAccount) dao.Cl
 		Environment:     dao.Environment(account.Environment),
 		AccessKeyID:     account.AccessKeyID,
 		AccessKeySecret: account.AccessKeySecret,
-		Region:          account.Region,
+		Regions:         account.Regions,
 		Description:     account.Description,
 		Status:          dao.CloudAccountStatus(account.Status),
 		Config: dao.CloudAccountConfig{

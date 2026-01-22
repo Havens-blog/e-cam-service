@@ -1,6 +1,6 @@
-package aliyun
+﻿package aliyun
 
-// CreateUserParams 创建用户参数
+// CreateUserParams 创建用户组参数
 type CreateUserParams struct {
 	Username    string
 	DisplayName string

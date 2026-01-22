@@ -1,4 +1,4 @@
-//go:build wireinject
+﻿//go:build wireinject
 
 package cam
 
@@ -63,6 +63,18 @@ func InitModelFieldGroupDAO(db *mongox.Mongo) dao.ModelFieldGroupDAO {
 	return dao.NewModelFieldGroupDAO(db)
 }
 
+// InitInstanceDAO 初始化实例DAO
+func InitInstanceDAO(db *mongox.Mongo) dao.InstanceDAO {
+	InitCollectionOnce(db)
+	return dao.NewInstanceDAO(db)
+}
+
+// InitInstanceRelationDAO 初始化实例关系DAO
+func InitInstanceRelationDAO(db *mongox.Mongo) dao.InstanceRelationDAO {
+	InitCollectionOnce(db)
+	return dao.NewInstanceRelationDAO(db)
+}
+
 // InitTaskRepository 初始化任务仓储
 func InitTaskRepository(db *mongox.Mongo) taskx.TaskRepository {
 	return taskx.NewMongoRepository(db, "tasks")
@@ -76,6 +88,8 @@ var ProviderSet = wire.NewSet(
 	InitModelDAO,
 	InitModelFieldDAO,
 	InitModelFieldGroupDAO,
+	InitInstanceDAO,
+	InitInstanceRelationDAO,
 
 	// Repository层
 	repository.NewAssetRepository,
@@ -83,6 +97,8 @@ var ProviderSet = wire.NewSet(
 	repository.NewModelRepository,
 	repository.NewModelFieldRepository,
 	repository.NewModelFieldGroupRepository,
+	repository.NewInstanceRepository,
+	repository.NewInstanceRelationRepository,
 
 	// Task Repository
 	InitTaskRepository,
@@ -94,6 +110,7 @@ var ProviderSet = wire.NewSet(
 	service.NewService,
 	service.NewCloudAccountService,
 	service.NewModelService,
+	service.NewInstanceService,
 
 	// Task层
 	task.InitModule,
@@ -106,9 +123,10 @@ var ProviderSet = wire.NewSet(
 
 	// Web层
 	web.NewHandler,
+	web.NewInstanceHandler,
 
 	// Module (排除 IAMModule，手动初始化)
-	wire.Struct(new(Module), "Hdl", "Svc", "AccountSvc", "ModelSvc", "TaskModule", "TaskSvc", "TaskHdl"),
+	wire.Struct(new(Module), "Hdl", "InstanceHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "TaskModule", "TaskSvc", "TaskHdl"),
 )
 
 // InitModule 初始化CAM模块
@@ -118,6 +136,12 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 }
 
 // ProvideLogger 提供默认logger
+// 使用可读的时间格式和调用者信息
 func ProvideLogger() *elog.Component {
-	return elog.DefaultLogger
+	// 优先使用已初始化的 DefaultLogger
+	if elog.DefaultLogger != nil {
+		return elog.DefaultLogger
+	}
+	// 使用 ego 的 Load 方法创建，配置名为 "logger.default"
+	return elog.Load("logger.default").Build()
 }

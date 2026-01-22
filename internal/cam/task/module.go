@@ -1,4 +1,4 @@
-package task
+﻿package task
 
 import (
 	"context"
@@ -32,7 +32,7 @@ func InitModule(
 	// 初始化任务队列
 	queueConfig := taskx.Config{
 		WorkerNum:  5,   // 5个worker
-		BufferSize: 100, // 缓冲100个任务
+		BufferSize: 100, // 缓存冲100个任务
 	}
 	taskQueue := taskx.NewQueue(taskRepo, logger, queueConfig)
 

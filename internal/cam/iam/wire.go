@@ -131,5 +131,10 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 
 // ProvideLogger 提供默认logger
 func ProvideLogger() *elog.Component {
-	return elog.DefaultLogger
+	logger := elog.DefaultLogger
+	if logger == nil {
+		// 如果DefaultLogger未初始化，使用 ego 的 Load 方法创建
+		logger = elog.Load("default").Build()
+	}
+	return logger
 }

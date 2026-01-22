@@ -1,4 +1,4 @@
-package repository
+﻿package repository
 
 import (
 	"context"
@@ -7,24 +7,24 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 )
 
-// PermissionGroupRepository 权限组仓储接口
-type PermissionGroupRepository interface {
-	// Create 创建权限组
-	Create(ctx context.Context, group domain.PermissionGroup) (int64, error)
+// UserGroupRepository 用户组仓储接口
+type UserGroupRepository interface {
+	// Create 创建用户组
+	Create(ctx context.Context, group domain.UserGroup) (int64, error)
 
-	// GetByID 根据ID获取权限组
-	GetByID(ctx context.Context, id int64) (domain.PermissionGroup, error)
+	// GetByID 根据ID获取用户组
+	GetByID(ctx context.Context, id int64) (domain.UserGroup, error)
 
-	// GetByName 根据名称和租户ID获取权限组
-	GetByName(ctx context.Context, name, tenantID string) (domain.PermissionGroup, error)
+	// GetByName 根据名称和租户ID获取用户组
+	GetByName(ctx context.Context, name, tenantID string) (domain.UserGroup, error)
 
-	// List 获取权限组列表
-	List(ctx context.Context, filter domain.PermissionGroupFilter) ([]domain.PermissionGroup, int64, error)
+	// List 获取用户组列表
+	List(ctx context.Context, filter domain.UserGroupFilter) ([]domain.UserGroup, int64, error)
 
-	// Update 更新权限组
-	Update(ctx context.Context, group domain.PermissionGroup) error
+	// Update 更新用户组
+	Update(ctx context.Context, group domain.UserGroup) error
 
-	// Delete 删除权限组
+	// Delete 删除用户组
 	Delete(ctx context.Context, id int64) error
 
 	// UpdatePolicies 更新权限策略
@@ -34,44 +34,44 @@ type PermissionGroupRepository interface {
 	IncrementUserCount(ctx context.Context, id int64, delta int) error
 }
 
-type permissionGroupRepository struct {
-	dao dao.PermissionGroupDAO
+type userGroupRepository struct {
+	dao dao.UserGroupDAO
 }
 
-// NewPermissionGroupRepository 创建权限组仓储
-func NewPermissionGroupRepository(dao dao.PermissionGroupDAO) PermissionGroupRepository {
-	return &permissionGroupRepository{
+// NewUserGroupRepository 创建用户组仓储
+func NewUserGroupRepository(dao dao.UserGroupDAO) UserGroupRepository {
+	return &userGroupRepository{
 		dao: dao,
 	}
 }
 
-// Create 创建权限组
-func (repo *permissionGroupRepository) Create(ctx context.Context, group domain.PermissionGroup) (int64, error) {
+// Create 创建用户组
+func (repo *userGroupRepository) Create(ctx context.Context, group domain.UserGroup) (int64, error) {
 	daoGroup := repo.toEntity(group)
 	return repo.dao.Create(ctx, daoGroup)
 }
 
-// GetByID 根据ID获取权限组
-func (repo *permissionGroupRepository) GetByID(ctx context.Context, id int64) (domain.PermissionGroup, error) {
+// GetByID 根据ID获取用户组
+func (repo *userGroupRepository) GetByID(ctx context.Context, id int64) (domain.UserGroup, error) {
 	daoGroup, err := repo.dao.GetByID(ctx, id)
 	if err != nil {
-		return domain.PermissionGroup{}, err
+		return domain.UserGroup{}, err
 	}
 	return repo.toDomain(daoGroup), nil
 }
 
-// GetByName 根据名称和租户ID获取权限组
-func (repo *permissionGroupRepository) GetByName(ctx context.Context, name, tenantID string) (domain.PermissionGroup, error) {
+// GetByName 根据名称和租户ID获取用户组
+func (repo *userGroupRepository) GetByName(ctx context.Context, name, tenantID string) (domain.UserGroup, error) {
 	daoGroup, err := repo.dao.GetByName(ctx, name, tenantID)
 	if err != nil {
-		return domain.PermissionGroup{}, err
+		return domain.UserGroup{}, err
 	}
 	return repo.toDomain(daoGroup), nil
 }
 
-// List 获取权限组列表
-func (repo *permissionGroupRepository) List(ctx context.Context, filter domain.PermissionGroupFilter) ([]domain.PermissionGroup, int64, error) {
-	daoFilter := dao.PermissionGroupFilter{
+// List 获取用户组列表
+func (repo *userGroupRepository) List(ctx context.Context, filter domain.UserGroupFilter) ([]domain.UserGroup, int64, error) {
+	daoFilter := dao.UserGroupFilter{
 		TenantID: filter.TenantID,
 		Keyword:  filter.Keyword,
 		Offset:   filter.Offset,
@@ -88,7 +88,7 @@ func (repo *permissionGroupRepository) List(ctx context.Context, filter domain.P
 		return nil, 0, err
 	}
 
-	groups := make([]domain.PermissionGroup, len(daoGroups))
+	groups := make([]domain.UserGroup, len(daoGroups))
 	for i, daoGroup := range daoGroups {
 		groups[i] = repo.toDomain(daoGroup)
 	}
@@ -96,19 +96,19 @@ func (repo *permissionGroupRepository) List(ctx context.Context, filter domain.P
 	return groups, count, nil
 }
 
-// Update 更新权限组
-func (repo *permissionGroupRepository) Update(ctx context.Context, group domain.PermissionGroup) error {
+// Update 更新用户组
+func (repo *userGroupRepository) Update(ctx context.Context, group domain.UserGroup) error {
 	daoGroup := repo.toEntity(group)
 	return repo.dao.Update(ctx, daoGroup)
 }
 
-// Delete 删除权限组
-func (repo *permissionGroupRepository) Delete(ctx context.Context, id int64) error {
+// Delete 删除用户组
+func (repo *userGroupRepository) Delete(ctx context.Context, id int64) error {
 	return repo.dao.Delete(ctx, id)
 }
 
 // UpdatePolicies 更新权限策略
-func (repo *permissionGroupRepository) UpdatePolicies(ctx context.Context, id int64, policies []domain.PermissionPolicy) error {
+func (repo *userGroupRepository) UpdatePolicies(ctx context.Context, id int64, policies []domain.PermissionPolicy) error {
 	daoPolicies := make([]dao.PermissionPolicy, len(policies))
 	for i, policy := range policies {
 		daoPolicies[i] = dao.PermissionPolicy{
@@ -123,12 +123,12 @@ func (repo *permissionGroupRepository) UpdatePolicies(ctx context.Context, id in
 }
 
 // IncrementUserCount 增加或减少用户数量
-func (repo *permissionGroupRepository) IncrementUserCount(ctx context.Context, id int64, delta int) error {
+func (repo *userGroupRepository) IncrementUserCount(ctx context.Context, id int64, delta int) error {
 	return repo.dao.IncrementUserCount(ctx, id, delta)
 }
 
 // toDomain 转换为领域模型
-func (repo *permissionGroupRepository) toDomain(daoGroup dao.PermissionGroup) domain.PermissionGroup {
+func (repo *userGroupRepository) toDomain(daoGroup dao.UserGroup) domain.UserGroup {
 	policies := make([]domain.PermissionPolicy, len(daoGroup.Policies))
 	for i, policy := range daoGroup.Policies {
 		policies[i] = domain.PermissionPolicy{
@@ -145,7 +145,7 @@ func (repo *permissionGroupRepository) toDomain(daoGroup dao.PermissionGroup) do
 		cloudPlatforms[i] = domain.CloudProvider(platform)
 	}
 
-	return domain.PermissionGroup{
+	return domain.UserGroup{
 		ID:             daoGroup.ID,
 		Name:           daoGroup.Name,
 		Description:    daoGroup.Description,
@@ -161,7 +161,7 @@ func (repo *permissionGroupRepository) toDomain(daoGroup dao.PermissionGroup) do
 }
 
 // toEntity 转换为DAO实体
-func (repo *permissionGroupRepository) toEntity(group domain.PermissionGroup) dao.PermissionGroup {
+func (repo *userGroupRepository) toEntity(group domain.UserGroup) dao.UserGroup {
 	policies := make([]dao.PermissionPolicy, len(group.Policies))
 	for i, policy := range group.Policies {
 		policies[i] = dao.PermissionPolicy{
@@ -178,7 +178,7 @@ func (repo *permissionGroupRepository) toEntity(group domain.PermissionGroup) da
 		cloudPlatforms[i] = dao.CloudProvider(platform)
 	}
 
-	return dao.PermissionGroup{
+	return dao.UserGroup{
 		ID:             group.ID,
 		Name:           group.Name,
 		Description:    group.Description,

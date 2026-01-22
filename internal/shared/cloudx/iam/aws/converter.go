@@ -1,4 +1,4 @@
-package aws
+﻿package aws
 
 import (
 	"strings"
@@ -8,7 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam/types"
 )
 
-// ConvertIAMUserToCloudUser 转换 IAM 用户为 CloudUser 领域模型
+// ConvertIAMUserToCloudUser 转换器 IAM 用户组�?CloudUser 领域模型型
 func ConvertIAMUserToCloudUser(iamUser types.User, account *domain.CloudAccount) *domain.CloudUser {
 	now := time.Now()
 
@@ -18,7 +18,7 @@ func ConvertIAMUserToCloudUser(iamUser types.User, account *domain.CloudAccount)
 		createTime = *iamUser.CreateDate
 	}
 
-	// 解析最后密码使用时间
+	// 解析最后密码使用时�?
 	var passwordLastSet *time.Time
 	if iamUser.PasswordLastUsed != nil {
 		passwordLastSet = iamUser.PasswordLastUsed
@@ -46,14 +46,14 @@ func ConvertIAMUserToCloudUser(iamUser types.User, account *domain.CloudAccount)
 	return user
 }
 
-// ConvertPolicyScope 转换策略范围为策略类型
+// ConvertPolicyScope 转换器策略范围为策略类�?
 func ConvertPolicyScope(policyArn *string) domain.PolicyType {
 	if policyArn == nil {
 		return domain.PolicyTypeCustom
 	}
 
-	// AWS 托管策略的 ARN 格式: arn:aws:iam::aws:policy/...
-	// 客户托管策略的 ARN 格式: arn:aws:iam::123456789012:policy/...
+	// AWS 托管策略�?ARN 格式: arn:aws:iam::aws:policy/...
+	// 客户托管策略�?ARN 格式: arn:aws:iam::123456789012:policy/...
 	if strings.Contains(*policyArn, ":iam::aws:policy/") {
 		return domain.PolicyTypeSystem
 	}
@@ -61,7 +61,7 @@ func ConvertPolicyScope(policyArn *string) domain.PolicyType {
 	return domain.PolicyTypeCustom
 }
 
-// convertTags 转换 AWS 标签为 map
+// convertTags 转换器 AWS 标签�?map
 func convertTags(tags []types.Tag) map[string]string {
 	result := make(map[string]string)
 	for _, tag := range tags {
@@ -70,4 +70,33 @@ func convertTags(tags []types.Tag) map[string]string {
 		}
 	}
 	return result
+}
+
+// ConvertIAMGroupToUserGroup 转换器 IAM 用户组组为 PermissionGroup 领域模型型
+func ConvertIAMGroupToUserGroup(iamGroup types.Group, account *domain.CloudAccount) *domain.UserGroup {
+	now := time.Now()
+
+	// 解析创建时间
+	createTime := now
+	if iamGroup.CreateDate != nil {
+		createTime = *iamGroup.CreateDate
+	}
+
+	group := &domain.UserGroup{
+		GroupName:      *iamGroup.GroupName,
+		DisplayName:    *iamGroup.GroupName, // AWS IAM 没有单独�?DisplayName 字段
+		Description:    "",                  // AWS IAM Group 没有描述字段
+		CloudAccountID: account.ID,
+		Provider:       domain.CloudProviderAWS,
+		CloudGroupID:   *iamGroup.GroupName, // AWS 使用 GroupName 作为唯一标识
+		TenantID:       account.TenantID,
+		CreateTime:     createTime,
+		UpdateTime:     now,
+		CTime:          createTime.Unix(),
+		UTime:          now.Unix(),
+		Policies:       []domain.PermissionPolicy{}, // 需要单独查�?
+		MemberCount:    0,                           // 需要单独查�?
+	}
+
+	return group
 }

@@ -1,4 +1,4 @@
-package dao
+﻿package dao
 
 import (
 	"context"
@@ -60,7 +60,7 @@ type CloudAccount struct {
 	Environment     Environment        `json:"environment" bson:"environment"`             // 环境
 	AccessKeyID     string             `json:"access_key_id" bson:"access_key_id"`         // 访问密钥ID
 	AccessKeySecret string             `json:"access_key_secret" bson:"access_key_secret"` // 访问密钥Secret (加密存储)
-	Region          string             `json:"region" bson:"region"`                       // 默认地域
+	Regions         []string           `json:"regions" bson:"regions"`                     // 支持的地域列表
 	Description     string             `json:"description" bson:"description"`             // 描述信息
 	Status          CloudAccountStatus `json:"status" bson:"status"`                       // 账号状态
 	Config          CloudAccountConfig `json:"config" bson:"config"`                       // 配置信息

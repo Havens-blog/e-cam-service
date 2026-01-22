@@ -157,16 +157,27 @@ type UpdatePoliciesVO struct {
 	Policies []domain.PermissionPolicy `json:"policies" binding:"required,min=1"`
 }
 
+// GroupSyncResultVO 用户组同步结果VO
+type GroupSyncResultVO struct {
+	TotalGroups   int `json:"total_groups" example:"10"`   // 总用户组数
+	CreatedGroups int `json:"created_groups" example:"3"`  // 新创建的用户组数
+	UpdatedGroups int `json:"updated_groups" example:"7"`  // 更新的用户组数
+	FailedGroups  int `json:"failed_groups" example:"0"`   // 失败的用户组数
+	TotalMembers  int `json:"total_members" example:"45"`  // 总成员数
+	SyncedMembers int `json:"synced_members" example:"43"` // 成功同步的成员数
+	FailedMembers int `json:"failed_members" example:"2"`  // 失败的成员数
+}
+
 // Tenant related VOs
 
 // CreateTenantVO 创建租户请求VO
 type CreateTenantVO struct {
-	ID          string                 `json:"id" binding:"required,min=1,max=50"`
-	Name        string                 `json:"name" binding:"required,min=1,max=100"`
-	DisplayName string                 `json:"display_name" binding:"max=200"`
-	Description string                 `json:"description" binding:"max=500"`
-	Settings    domain.TenantSettings  `json:"settings"`
-	Metadata    domain.TenantMetadata  `json:"metadata"`
+	ID          string                `json:"id" binding:"required,min=1,max=50"`
+	Name        string                `json:"name" binding:"required,min=1,max=100"`
+	DisplayName string                `json:"display_name" binding:"max=200"`
+	Description string                `json:"description" binding:"max=500"`
+	Settings    domain.TenantSettings `json:"settings"`
+	Metadata    domain.TenantMetadata `json:"metadata"`
 }
 
 // UpdateTenantVO 更新租户请求VO

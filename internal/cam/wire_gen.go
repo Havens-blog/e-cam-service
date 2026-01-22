@@ -7,6 +7,8 @@
 package cam
 
 import (
+	"sync"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
@@ -19,7 +21,6 @@ import (
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/google/wire"
 	"github.com/gotomicro/ego/core/elog"
-	"sync"
 )
 
 // Injectors from wire.go:
@@ -41,7 +42,11 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	modelFieldGroupDAO := InitModelFieldGroupDAO(db)
 	modelFieldGroupRepository := repository.NewModelFieldGroupRepository(modelFieldGroupDAO)
 	modelService := service.NewModelService(modelRepository, modelFieldRepository, modelFieldGroupRepository)
-	handler := web.NewHandler(serviceService, cloudAccountService, modelService)
+	v := web.NewHandler(serviceService, cloudAccountService, modelService)
+	instanceDAO := InitInstanceDAO(db)
+	instanceRepository := repository.NewInstanceRepository(instanceDAO)
+	instanceService := service.NewInstanceService(instanceRepository)
+	instanceHandler := web.NewInstanceHandler(instanceService)
 	module, err := task.InitModule(db, serviceService, component)
 	if err != nil {
 		return nil, err
@@ -51,13 +56,15 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	taskService := service2.NewTaskService(queue, taskRepository, component)
 	taskHandler := web2.NewTaskHandler(taskService)
 	camModule := &Module{
-		Hdl:        handler,
-		Svc:        serviceService,
-		AccountSvc: cloudAccountService,
-		ModelSvc:   modelService,
-		TaskModule: module,
-		TaskSvc:    taskService,
-		TaskHdl:    taskHandler,
+		Hdl:         v,
+		InstanceHdl: instanceHandler,
+		Svc:         serviceService,
+		AccountSvc:  cloudAccountService,
+		ModelSvc:    modelService,
+		InstanceSvc: instanceService,
+		TaskModule:  module,
+		TaskSvc:     taskService,
+		TaskHdl:     taskHandler,
 	}
 	return camModule, nil
 }
@@ -108,6 +115,18 @@ func InitModelFieldGroupDAO(db *mongox.Mongo) dao.ModelFieldGroupDAO {
 	return dao.NewModelFieldGroupDAO(db)
 }
 
+// InitInstanceDAO 初始化实例DAO
+func InitInstanceDAO(db *mongox.Mongo) dao.InstanceDAO {
+	InitCollectionOnce(db)
+	return dao.NewInstanceDAO(db)
+}
+
+// InitInstanceRelationDAO 初始化实例关系DAO
+func InitInstanceRelationDAO(db *mongox.Mongo) dao.InstanceRelationDAO {
+	InitCollectionOnce(db)
+	return dao.NewInstanceRelationDAO(db)
+}
+
 // InitTaskRepository 初始化任务仓储
 func InitTaskRepository(db *mongox.Mongo) taskx.TaskRepository {
 	return taskx.NewMongoRepository(db, "tasks")
@@ -120,10 +139,18 @@ var ProviderSet = wire.NewSet(
 	InitCloudAccountDAO,
 	InitModelDAO,
 	InitModelFieldDAO,
-	InitModelFieldGroupDAO, repository.NewAssetRepository, repository.NewCloudAccountRepository, repository.NewModelRepository, repository.NewModelFieldRepository, repository.NewModelFieldGroupRepository, InitTaskRepository, adapters.NewAdapterFactory, service.NewService, service.NewCloudAccountService, service.NewModelService, task.InitModule, wire.FieldsOf(new(*task.Module), "Queue"), service2.NewTaskService, web2.NewTaskHandler, ProvideLogger, web.NewHandler, wire.Struct(new(Module), "Hdl", "Svc", "AccountSvc", "ModelSvc", "TaskModule", "TaskSvc", "TaskHdl"),
+	InitModelFieldGroupDAO,
+	InitInstanceDAO,
+	InitInstanceRelationDAO, repository.NewAssetRepository, repository.NewCloudAccountRepository, repository.NewModelRepository, repository.NewModelFieldRepository, repository.NewModelFieldGroupRepository, repository.NewInstanceRepository, repository.NewInstanceRelationRepository, InitTaskRepository, adapters.NewAdapterFactory, service.NewService, service.NewCloudAccountService, service.NewModelService, service.NewInstanceService, task.InitModule, wire.FieldsOf(new(*task.Module), "Queue"), service2.NewTaskService, web2.NewTaskHandler, ProvideLogger, web.NewHandler, web.NewInstanceHandler, wire.Struct(new(Module), "Hdl", "InstanceHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "TaskModule", "TaskSvc", "TaskHdl"),
 )
 
 // ProvideLogger 提供默认logger
+// 使用可读的时间格式和调用者信息
 func ProvideLogger() *elog.Component {
-	return elog.DefaultLogger
+	// 优先使用已初始化的 DefaultLogger
+	if elog.DefaultLogger != nil {
+		return elog.DefaultLogger
+	}
+	// 使用 ego 的 Load 方法创建，配置名为 "logger.default"
+	return elog.Load("logger.default").Build()
 }

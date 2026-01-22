@@ -1,4 +1,4 @@
-package aws
+﻿package aws
 
 import (
 	"context"
@@ -13,13 +13,13 @@ import (
 	"github.com/gotomicro/ego/core/elog"
 )
 
-// Adapter AWS IAM 适配器
+// Adapter AWS IAM 适配器�?
 type Adapter struct {
 	logger      *elog.Component
 	rateLimiter *awscommon.RateLimiter
 }
 
-// NewAdapter 创建 AWS IAM 适配器实例
+// NewAdapter 创建 AWS IAM 适配器器实例例�?
 func NewAdapter(logger *elog.Component) *Adapter {
 	return &Adapter{
 		logger:      logger,
@@ -38,7 +38,7 @@ func (a *Adapter) ValidateCredentials(ctx context.Context, account *domain.Cloud
 		return err
 	}
 
-	// 尝试获取当前用户信息来验证凭证
+	// 尝试获取当前用户组信息来验证凭�?
 	_, err = client.GetUser(ctx, &iam.GetUserInput{})
 	if err != nil {
 		a.logger.Error("validate aws credentials failed",
@@ -53,7 +53,7 @@ func (a *Adapter) ValidateCredentials(ctx context.Context, account *domain.Cloud
 	return nil
 }
 
-// ListUsers 获取 IAM 用户列表
+// ListUsers 获取 IAM 用户组列表
 func (a *Adapter) ListUsers(ctx context.Context, account *domain.CloudAccount) ([]*domain.CloudUser, error) {
 	if err := a.rateLimiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limit wait failed: %w", err)
@@ -66,7 +66,7 @@ func (a *Adapter) ListUsers(ctx context.Context, account *domain.CloudAccount) (
 
 	var allUsers []*domain.CloudUser
 
-	// 使用分页器获取所有用户
+	// 使用分页器获取所有用�?
 	paginator := iam.NewListUsersPaginator(client, &iam.ListUsersInput{
 		MaxItems: aws.Int32(100),
 	})
@@ -86,7 +86,7 @@ func (a *Adapter) ListUsers(ctx context.Context, account *domain.CloudAccount) (
 			return nil, fmt.Errorf("failed to list IAM users: %w", err)
 		}
 
-		// 转换用户数据
+		// 转换器用户组数据
 		for _, iamUser := range page.Users {
 			user := ConvertIAMUserToCloudUser(iamUser, account)
 			allUsers = append(allUsers, user)
@@ -100,7 +100,7 @@ func (a *Adapter) ListUsers(ctx context.Context, account *domain.CloudAccount) (
 	return allUsers, nil
 }
 
-// GetUser 获取用户详情
+// GetUser 获取用户组详情
 func (a *Adapter) GetUser(ctx context.Context, account *domain.CloudAccount, userID string) (*domain.CloudUser, error) {
 	if err := a.rateLimiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limit wait failed: %w", err)
@@ -130,7 +130,7 @@ func (a *Adapter) GetUser(ctx context.Context, account *domain.CloudAccount, use
 
 	user := ConvertIAMUserToCloudUser(*response.User, account)
 
-	// 获取用户的 AccessKey 信息
+	// 获取用户组�?AccessKey 信息
 	var akResponse *iam.ListAccessKeysOutput
 	err = a.retryWithBackoff(ctx, func() error {
 		var e error
@@ -151,7 +151,7 @@ func (a *Adapter) GetUser(ctx context.Context, account *domain.CloudAccount, use
 	return user, nil
 }
 
-// CreateUser 创建用户
+// CreateUser 创建用户组
 func (a *Adapter) CreateUser(ctx context.Context, account *domain.CloudAccount, req *CreateUserParams) (*domain.CloudUser, error) {
 	if err := a.rateLimiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limit wait failed: %w", err)
@@ -205,7 +205,7 @@ func (a *Adapter) CreateUser(ctx context.Context, account *domain.CloudAccount, 
 	return user, nil
 }
 
-// DeleteUser 删除用户
+// DeleteUser 删除用户组
 func (a *Adapter) DeleteUser(ctx context.Context, account *domain.CloudAccount, userID string) error {
 	if err := a.rateLimiter.Wait(ctx); err != nil {
 		return fmt.Errorf("rate limit wait failed: %w", err)
@@ -216,7 +216,7 @@ func (a *Adapter) DeleteUser(ctx context.Context, account *domain.CloudAccount, 
 		return err
 	}
 
-	// 先删除用户的所有 AccessKey
+	// 先删除用户组的所�?AccessKey
 	var akResponse *iam.ListAccessKeysOutput
 	err = a.retryWithBackoff(ctx, func() error {
 		var e error
@@ -238,7 +238,7 @@ func (a *Adapter) DeleteUser(ctx context.Context, account *domain.CloudAccount, 
 		}
 	}
 
-	// 分离用户的所有策略
+	// 分离用户组的所有策�?
 	var policiesResponse *iam.ListAttachedUserPoliciesOutput
 	err = a.retryWithBackoff(ctx, func() error {
 		var e error
@@ -260,7 +260,7 @@ func (a *Adapter) DeleteUser(ctx context.Context, account *domain.CloudAccount, 
 		}
 	}
 
-	// 删除用户
+	// 删除用户组
 	err = a.retryWithBackoff(ctx, func() error {
 		_, e := client.DeleteUser(ctx, &iam.DeleteUserInput{
 			UserName: aws.String(userID),
@@ -283,7 +283,7 @@ func (a *Adapter) DeleteUser(ctx context.Context, account *domain.CloudAccount, 
 	return nil
 }
 
-// UpdateUserPermissions 更新用户权限
+// UpdateUserPermissions 更新用户组权限
 func (a *Adapter) UpdateUserPermissions(ctx context.Context, account *domain.CloudAccount, userID string, policies []domain.PermissionPolicy) error {
 	if err := a.rateLimiter.Wait(ctx); err != nil {
 		return fmt.Errorf("rate limit wait failed: %w", err)
@@ -294,7 +294,7 @@ func (a *Adapter) UpdateUserPermissions(ctx context.Context, account *domain.Clo
 		return err
 	}
 
-	// 获取用户当前的策略列表
+	// 获取用户组当前的策略列�?
 	var listResponse *iam.ListAttachedUserPoliciesOutput
 	err = a.retryWithBackoff(ctx, func() error {
 		var e error
@@ -326,7 +326,7 @@ func (a *Adapter) UpdateUserPermissions(ctx context.Context, account *domain.Clo
 		}
 	}
 
-	// 分离需要附加和分离的策略
+	// 分离需要附加和分离的策�?
 	var toAttach []domain.PermissionPolicy
 	var toDetach []string
 
@@ -364,7 +364,7 @@ func (a *Adapter) UpdateUserPermissions(ctx context.Context, account *domain.Clo
 		}
 	}
 
-	// 附加新策略
+	// 附加新策�?
 	for _, policy := range toAttach {
 		err = a.retryWithBackoff(ctx, func() error {
 			_, e := client.AttachUserPolicy(ctx, &iam.AttachUserPolicyInput{
@@ -406,9 +406,9 @@ func (a *Adapter) ListPolicies(ctx context.Context, account *domain.CloudAccount
 
 	var allPolicies []domain.PermissionPolicy
 
-	// 使用分页器获取所有策略
+	// 使用分页器获取所有策�?
 	paginator := iam.NewListPoliciesPaginator(client, &iam.ListPoliciesInput{
-		Scope:    types.PolicyScopeTypeAll, // 获取所有策略（AWS 托管 + 客户托管）
+		Scope:    types.PolicyScopeTypeAll, // 获取所有策略（AWS 托管 + 客户托管�?
 		MaxItems: aws.Int32(100),
 	})
 
@@ -427,12 +427,12 @@ func (a *Adapter) ListPolicies(ctx context.Context, account *domain.CloudAccount
 			return nil, fmt.Errorf("failed to list policies: %w", err)
 		}
 
-		// 转换策略数据
+		// 转换器策略数据
 		for _, iamPolicy := range page.Policies {
 			policy := domain.PermissionPolicy{
 				PolicyID:       *iamPolicy.Arn,
 				PolicyName:     *iamPolicy.PolicyName,
-				PolicyDocument: "", // AWS 需要单独调用 GetPolicyVersion 获取文档
+				PolicyDocument: "", // AWS 需要单独调�?GetPolicyVersion 获取文档
 				Provider:       domain.CloudProviderAWS,
 				PolicyType:     ConvertPolicyScope(iamPolicy.Arn),
 			}
@@ -447,7 +447,18 @@ func (a *Adapter) ListPolicies(ctx context.Context, account *domain.CloudAccount
 	return allPolicies, nil
 }
 
-// retryWithBackoff 使用指数退避策略重试
+// GetUserPolicies 获取用户的个人权限策略
+func (a *Adapter) GetUserPolicies(ctx context.Context, account *domain.CloudAccount, userID string) ([]domain.PermissionPolicy, error) {
+	// TODO: 实现 AWS 用户个人权限查询
+	// 目前返回空列表，后续完善
+	a.logger.Warn("GetUserPolicies not fully implemented for aws",
+		elog.String("account_id", fmt.Sprintf("%d", account.ID)),
+		elog.String("user_id", userID))
+
+	return []domain.PermissionPolicy{}, nil
+}
+
+// retryWithBackoff 使用指数退避策略重�?
 func (a *Adapter) retryWithBackoff(ctx context.Context, operation func() error) error {
 	return retry.WithBackoff(ctx, 3, operation, func(err error) bool {
 		if awscommon.IsThrottlingError(err) {

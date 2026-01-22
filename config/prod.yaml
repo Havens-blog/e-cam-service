@@ -43,7 +43,7 @@ encryption:
     key: "1234567890"
 
 ldap:
-  url: "ldap://43.138.170.150:389"
+  url: "ldap://106.52.187.69:389"
   base_dn: "DC=example,DC=com"
   bind_dn: "CN=cn,OU=ou,DC=example,DC=com"
   bind_password: "1234567890"
@@ -62,34 +62,34 @@ session:
     name: "ecmdb-token-key"
 
 redis:
-  addr: "118.145.73.93:6378"
+  addr: "106.52.187.69:6379"
   password: "1234567890"
-  db: 1
+  db: 3
 
 casbin:
   redis:
-    addr: "118.145.73.93:6378"
+    addr: "106.52.187.69:6379"
     db: 2
     password: ""
 
 mongodb:
-  dsn: mongodb://118.145.73.93:27017/ecmdb?authSource=admin
+  dsn: mongodb://106.52.187.69:27017/ecmdb?authSource=admin
   db: ecmdb
   username: ecmdb
   password: 123456
 
-# 118.145.73.93:3306
+# 118.145.232.239
 mysql:
-  dsn: ecmdb:123456@tcp(118.145.73.93:3307)/ecmdb?charset=utf8mb4&parseTime=True&loc=Local&timeout=5s
+  dsn: ecmdb:123456@tcp(106.52.187.69:3307)/ecmdb?charset=utf8mb4&parseTime=True&loc=Local&timeout=5s
 
 kafka:
   network: tcp
   addresses:
-    - 118.145.73.93:9094
+    - 106.52.187.69:9094
 
 etcd:
   endpoints:
-    - 118.145.73.93:2379
+    - 106.52.187.69:2379
 
 minio:
   endpoint: 106.52.187.69:9000

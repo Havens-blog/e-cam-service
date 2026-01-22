@@ -1,4 +1,4 @@
-package web
+﻿package web
 
 import (
 	"strconv"
@@ -42,6 +42,16 @@ func (h *TaskHandler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 // SubmitSyncAssetsTask 提交同步资产任务
+// @Summary 提交同步资产任务
+// @Description 提交异步同步资产任务，支持指定云厂商、资产类型和地域
+// @Tags 异步任务
+// @Accept json
+// @Produce json
+// @Param request body SubmitSyncAssetsTaskReq true "同步任务参数"
+// @Success 200 {object} ginx.Result{data=SubmitTaskResp} "任务提交成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/tasks/sync-assets [post]
 func (h *TaskHandler) SubmitSyncAssetsTask(ctx *gin.Context, req SubmitSyncAssetsTaskReq) (ginx.Result, error) {
 	// TODO: 从上下文获取当前用户
 	createdBy := "system"
@@ -65,6 +75,16 @@ func (h *TaskHandler) SubmitSyncAssetsTask(ctx *gin.Context, req SubmitSyncAsset
 }
 
 // SubmitDiscoverAssetsTask 提交发现资产任务
+// @Summary 提交发现资产任务
+// @Description 提交异步发现资产任务，从指定云厂商和地域发现新资产
+// @Tags 异步任务
+// @Accept json
+// @Produce json
+// @Param request body SubmitDiscoverAssetsTaskReq true "发现任务参数"
+// @Success 200 {object} ginx.Result{data=SubmitTaskResp} "任务提交成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/tasks/discover-assets [post]
 func (h *TaskHandler) SubmitDiscoverAssetsTask(ctx *gin.Context, req SubmitDiscoverAssetsTaskReq) (ginx.Result, error) {
 	// TODO: 从上下文获取当前用户
 	createdBy := "system"
@@ -88,6 +108,16 @@ func (h *TaskHandler) SubmitDiscoverAssetsTask(ctx *gin.Context, req SubmitDisco
 }
 
 // GetTask 获取任务
+// @Summary 获取任务详情
+// @Description 根据任务ID获取异步任务的详细信息和执行状态
+// @Tags 异步任务
+// @Accept json
+// @Produce json
+// @Param id path string true "任务ID"
+// @Success 200 {object} ginx.Result{data=TaskResp} "成功"
+// @Failure 404 {object} ginx.Result "任务不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/tasks/{id} [get]
 func (h *TaskHandler) GetTask(ctx *gin.Context) {
 	taskID := ctx.Param("id")
 
@@ -102,6 +132,19 @@ func (h *TaskHandler) GetTask(ctx *gin.Context) {
 }
 
 // ListTasks 获取任务列表
+// @Summary 获取任务列表
+// @Description 获取异步任务列表，支持按任务类型、状态、创建者等条件过滤
+// @Tags 异步任务
+// @Accept json
+// @Produce json
+// @Param type query string false "任务类型" Enums(sync_assets,discover_assets)
+// @Param status query string false "任务状态" Enums(pending,running,completed,failed,cancelled)
+// @Param created_by query string false "创建者"
+// @Param offset query int false "偏移量" default(0)
+// @Param limit query int false "限制数量" default(20)
+// @Success 200 {object} ginx.Result{data=TaskListResp} "成功"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/tasks [get]
 func (h *TaskHandler) ListTasks(ctx *gin.Context) {
 	// 解析查询参数
 	taskType := ctx.Query("type")
@@ -139,6 +182,17 @@ func (h *TaskHandler) ListTasks(ctx *gin.Context) {
 }
 
 // CancelTask 取消任务
+// @Summary 取消任务
+// @Description 取消正在执行或等待执行的异步任务
+// @Tags 异步任务
+// @Accept json
+// @Produce json
+// @Param id path string true "任务ID"
+// @Success 200 {object} ginx.Result "取消成功"
+// @Failure 400 {object} ginx.Result "任务无法取消"
+// @Failure 404 {object} ginx.Result "任务不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/tasks/{id}/cancel [post]
 func (h *TaskHandler) CancelTask(ctx *gin.Context) {
 	taskID := ctx.Param("id")
 
@@ -152,6 +206,17 @@ func (h *TaskHandler) CancelTask(ctx *gin.Context) {
 }
 
 // DeleteTask 删除任务
+// @Summary 删除任务
+// @Description 删除已完成或已取消的异步任务记录
+// @Tags 异步任务
+// @Accept json
+// @Produce json
+// @Param id path string true "任务ID"
+// @Success 200 {object} ginx.Result "删除成功"
+// @Failure 400 {object} ginx.Result "任务无法删除"
+// @Failure 404 {object} ginx.Result "任务不存在"
+// @Failure 500 {object} ginx.Result "服务器错误"
+// @Router /cam/tasks/{id} [delete]
 func (h *TaskHandler) DeleteTask(ctx *gin.Context) {
 	taskID := ctx.Param("id")
 

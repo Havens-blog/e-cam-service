@@ -1,4 +1,4 @@
-package repository
+﻿package repository
 
 import (
 	"context"
@@ -17,6 +17,9 @@ type CloudUserRepository interface {
 
 	// GetByCloudUserID 根据云平台用户ID和云厂商获取用户
 	GetByCloudUserID(ctx context.Context, cloudUserID string, provider domain.CloudProvider) (domain.CloudUser, error)
+
+	// GetByGroupID 根据用户组ID获取所有成员
+	GetByGroupID(ctx context.Context, groupID int64, tenantID string) ([]domain.CloudUser, error)
 
 	// List 获取云用户列表
 	List(ctx context.Context, filter domain.CloudUserFilter) ([]domain.CloudUser, int64, error)
@@ -73,6 +76,21 @@ func (repo *cloudUserRepository) GetByCloudUserID(ctx context.Context, cloudUser
 		return domain.CloudUser{}, err
 	}
 	return repo.toDomain(daoUser), nil
+}
+
+// GetByGroupID 根据用户组ID获取所有成员
+func (repo *cloudUserRepository) GetByGroupID(ctx context.Context, groupID int64, tenantID string) ([]domain.CloudUser, error) {
+	daoUsers, err := repo.dao.GetByGroupID(ctx, groupID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	users := make([]domain.CloudUser, len(daoUsers))
+	for i, daoUser := range daoUsers {
+		users[i] = repo.toDomain(daoUser)
+	}
+
+	return users, nil
 }
 
 // List 获取云用户列表
@@ -147,6 +165,18 @@ func (repo *cloudUserRepository) UpdateMetadata(ctx context.Context, id int64, m
 
 // toDomain 转换为领域模型
 func (repo *cloudUserRepository) toDomain(daoUser dao.CloudUser) domain.CloudUser {
+	// 转换权限策略
+	policies := make([]domain.PermissionPolicy, len(daoUser.Policies))
+	for i, policy := range daoUser.Policies {
+		policies[i] = domain.PermissionPolicy{
+			PolicyID:       policy.PolicyID,
+			PolicyName:     policy.PolicyName,
+			PolicyDocument: policy.PolicyDocument,
+			Provider:       domain.CloudProvider(policy.Provider),
+			PolicyType:     domain.PolicyType(policy.PolicyType),
+		}
+	}
+
 	return domain.CloudUser{
 		ID:             daoUser.ID,
 		Username:       daoUser.Username,
@@ -156,7 +186,8 @@ func (repo *cloudUserRepository) toDomain(daoUser dao.CloudUser) domain.CloudUse
 		CloudUserID:    daoUser.CloudUserID,
 		DisplayName:    daoUser.DisplayName,
 		Email:          daoUser.Email,
-		PermissionGroups: daoUser.PermissionGroups,
+		UserGroups:     daoUser.PermissionGroups,
+		Policies:       policies,
 		Metadata: domain.CloudUserMetadata{
 			LastLoginTime:   daoUser.Metadata.LastLoginTime,
 			LastSyncTime:    daoUser.Metadata.LastSyncTime,
@@ -176,6 +207,18 @@ func (repo *cloudUserRepository) toDomain(daoUser dao.CloudUser) domain.CloudUse
 
 // toEntity 转换为DAO实体
 func (repo *cloudUserRepository) toEntity(user domain.CloudUser) dao.CloudUser {
+	// 转换权限策略
+	policies := make([]dao.PermissionPolicy, len(user.Policies))
+	for i, policy := range user.Policies {
+		policies[i] = dao.PermissionPolicy{
+			PolicyID:       policy.PolicyID,
+			PolicyName:     policy.PolicyName,
+			PolicyDocument: policy.PolicyDocument,
+			Provider:       dao.CloudProvider(policy.Provider),
+			PolicyType:     dao.PolicyType(policy.PolicyType),
+		}
+	}
+
 	return dao.CloudUser{
 		ID:               user.ID,
 		Username:         user.Username,
@@ -185,7 +228,8 @@ func (repo *cloudUserRepository) toEntity(user domain.CloudUser) dao.CloudUser {
 		CloudUserID:      user.CloudUserID,
 		DisplayName:      user.DisplayName,
 		Email:            user.Email,
-		PermissionGroups: user.PermissionGroups,
+		PermissionGroups: user.UserGroups,
+		Policies:         policies,
 		Metadata: dao.CloudUserMetadata{
 			LastLoginTime:   user.Metadata.LastLoginTime,
 			LastSyncTime:    user.Metadata.LastSyncTime,

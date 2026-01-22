@@ -1,4 +1,4 @@
-package cloudx
+﻿package cloudx
 
 import (
 	"context"
@@ -34,7 +34,7 @@ func (v *HuaweiValidator) ValidateCredentials(ctx context.Context, account *doma
 	if err := v.callHuaweiAPI(ctx, account); err != nil {
 		return &ValidationResult{
 			Valid:        false,
-			Message:      fmt.Sprintf("华为云 API 调用失败: %v", err),
+			Message:      fmt.Sprintf("华为云 API 调用失败败: %v", err),
 			ValidatedAt:  time.Now(),
 			ResponseTime: time.Since(startTime).Milliseconds(),
 		}, nil
@@ -43,12 +43,12 @@ func (v *HuaweiValidator) ValidateCredentials(ctx context.Context, account *doma
 	// 获取支持的地域
 	regions, err := v.GetSupportedRegions(ctx, account)
 	if err != nil {
-		regions = []string{account.Region}
+		regions = account.Regions // 降级处理，使用账号配置的区域
 	}
 
 	return &ValidationResult{
 		Valid:        true,
-		Message:      "华为云凭证验证成功",
+		Message:      "华为云凭证验证成功功",
 		Regions:      regions,
 		Permissions:  []string{"ecs:servers:list", "rds:instance:list", "obs:bucket:ListAllMyBuckets"},
 		AccountInfo:  fmt.Sprintf("AccessKey: %s", maskAccessKey(account.AccessKeyID)),
@@ -101,7 +101,7 @@ func (v *HuaweiValidator) validateCredentialFormat(account *domain.CloudAccount)
 
 // callHuaweiAPI 调用华为云 API 进行验证
 func (v *HuaweiValidator) callHuaweiAPI(ctx context.Context, account *domain.CloudAccount) error {
-	// TODO: 实际集成华为云 SDK
+	// TODO: 实际集成功华为云 SDK
 	// 可以调用 ECS ListServers 接口来验证凭证
 
 	// 模拟 API 调用

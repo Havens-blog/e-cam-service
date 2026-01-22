@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -23,13 +23,13 @@ type PolicyTemplateService interface {
 
 type policyTemplateService struct {
 	templateRepo iamrepo.PolicyTemplateRepository
-	groupRepo    iamrepo.PermissionGroupRepository
+	groupRepo    iamrepo.UserGroupRepository
 	logger       *elog.Component
 }
 
 func NewPolicyTemplateService(
 	templateRepo iamrepo.PolicyTemplateRepository,
-	groupRepo iamrepo.PermissionGroupRepository,
+	groupRepo iamrepo.UserGroupRepository,
 	logger *elog.Component,
 ) PolicyTemplateService {
 	return &policyTemplateService{

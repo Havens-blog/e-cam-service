@@ -1,4 +1,4 @@
-package cloudx
+﻿package cloudx
 
 import (
 	"context"
@@ -35,7 +35,7 @@ func (v *AzureValidator) ValidateCredentials(ctx context.Context, account *domai
 	if err := v.callAzureAPI(ctx, account); err != nil {
 		return &ValidationResult{
 			Valid:        false,
-			Message:      fmt.Sprintf("Azure API 调用失败: %v", err),
+			Message:      fmt.Sprintf("Azure API 调用失败败: %v", err),
 			ValidatedAt:  time.Now(),
 			ResponseTime: time.Since(startTime).Milliseconds(),
 		}, nil
@@ -44,12 +44,12 @@ func (v *AzureValidator) ValidateCredentials(ctx context.Context, account *domai
 	// 获取支持的地域
 	regions, err := v.GetSupportedRegions(ctx, account)
 	if err != nil {
-		regions = []string{account.Region}
+		regions = account.Regions // 降级处理，使用账号配置的区域
 	}
 
 	return &ValidationResult{
 		Valid:        true,
-		Message:      "Azure 凭证验证成功",
+		Message:      "Azure 凭证验证成功功",
 		Regions:      regions,
 		Permissions:  []string{"Microsoft.Compute/virtualMachines/read", "Microsoft.Sql/servers/read", "Microsoft.Storage/storageAccounts/read"},
 		AccountInfo:  fmt.Sprintf("ClientId: %s", maskAccessKey(account.AccessKeyID)),
@@ -125,7 +125,7 @@ func (v *AzureValidator) validateCredentialFormat(account *domain.CloudAccount) 
 
 // callAzureAPI 调用 Azure API 进行验证
 func (v *AzureValidator) callAzureAPI(ctx context.Context, account *domain.CloudAccount) error {
-	// TODO: 实际集成 Azure SDK
+	// TODO: 实际集成功 Azure SDK
 	// 可以调用 Azure Resource Manager API 来验证凭证
 
 	// 模拟 API 调用

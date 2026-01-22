@@ -1,4 +1,4 @@
-package aliyun
+﻿package aliyun
 
 import (
 	"context"
@@ -17,7 +17,7 @@ type Adapter struct {
 	rateLimiter *aliyuncommon.RateLimiter
 }
 
-// NewAdapter 创建阿里云IAM适配器实例
+// NewAdapter 创建阿里云IAM适配器实例例
 func NewAdapter(logger *elog.Component) *Adapter {
 	return &Adapter{
 		logger:      logger,
@@ -36,7 +36,7 @@ func (a *Adapter) ValidateCredentials(ctx context.Context, account *domain.Cloud
 		return err
 	}
 
-	// 尝试列出用户来验证凭证（限制返回1个）
+	// 尝试列出用户组来验证凭证（限制返回1个）
 	request := ram.CreateListUsersRequest()
 	request.Scheme = "https"
 	request.MaxItems = "1"
@@ -55,7 +55,7 @@ func (a *Adapter) ValidateCredentials(ctx context.Context, account *domain.Cloud
 	return nil
 }
 
-// ListUsers 获取RAM用户列表
+// ListUsers 获取RAM用户组列表
 func (a *Adapter) ListUsers(ctx context.Context, account *domain.CloudAccount) ([]*domain.CloudUser, error) {
 	if err := a.rateLimiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limit wait failed: %w", err)
@@ -69,11 +69,11 @@ func (a *Adapter) ListUsers(ctx context.Context, account *domain.CloudAccount) (
 	var allUsers []*domain.CloudUser
 	marker := ""
 
-	// 分页获取所有用户
+	// 分页获取所有用�?
 	for {
 		request := ram.CreateListUsersRequest()
 		request.Scheme = "https"
-		request.MaxItems = "100" // 每页最多100个
+		request.MaxItems = "100" // 每页最�?00�?
 		if marker != "" {
 			request.Marker = marker
 		}
@@ -92,13 +92,13 @@ func (a *Adapter) ListUsers(ctx context.Context, account *domain.CloudAccount) (
 			return nil, fmt.Errorf("failed to list RAM users: %w", err)
 		}
 
-		// 转换用户数据
+		// 转换器用户组数据
 		for _, ramUser := range response.Users.User {
 			user := ConvertRAMUserToCloudUser(ramUser, account)
 			allUsers = append(allUsers, user)
 		}
 
-		// 检查是否还有更多数据
+		// 检查是否还有更多数�?
 		if !response.IsTruncated {
 			break
 		}
@@ -112,7 +112,7 @@ func (a *Adapter) ListUsers(ctx context.Context, account *domain.CloudAccount) (
 	return allUsers, nil
 }
 
-// GetUser 获取用户详情
+// GetUser 获取用户组详情
 func (a *Adapter) GetUser(ctx context.Context, account *domain.CloudAccount, userID string) (*domain.CloudUser, error) {
 	if err := a.rateLimiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limit wait failed: %w", err)
@@ -144,7 +144,7 @@ func (a *Adapter) GetUser(ctx context.Context, account *domain.CloudAccount, use
 
 	user := ConvertRAMUserToCloudUser(response.User, account)
 
-	// 获取用户的AccessKey信息
+	// 获取用户组的AccessKey信息
 	akRequest := ram.CreateListAccessKeysRequest()
 	akRequest.Scheme = "https"
 	akRequest.UserName = userID
@@ -167,7 +167,7 @@ func (a *Adapter) GetUser(ctx context.Context, account *domain.CloudAccount, use
 	return user, nil
 }
 
-// CreateUser 创建用户
+// CreateUser 创建用户组
 func (a *Adapter) CreateUser(ctx context.Context, account *domain.CloudAccount, req *CreateUserParams) (*domain.CloudUser, error) {
 	if err := a.rateLimiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limit wait failed: %w", err)
@@ -212,7 +212,7 @@ func (a *Adapter) CreateUser(ctx context.Context, account *domain.CloudAccount, 
 	return user, nil
 }
 
-// DeleteUser 删除用户
+// DeleteUser 删除用户组
 func (a *Adapter) DeleteUser(ctx context.Context, account *domain.CloudAccount, userID string) error {
 	if err := a.rateLimiter.Wait(ctx); err != nil {
 		return fmt.Errorf("rate limit wait failed: %w", err)
@@ -223,7 +223,7 @@ func (a *Adapter) DeleteUser(ctx context.Context, account *domain.CloudAccount, 
 		return err
 	}
 
-	// 先删除用户的所有AccessKey
+	// 先删除用户组的所有AccessKey
 	akRequest := ram.CreateListAccessKeysRequest()
 	akRequest.Scheme = "https"
 	akRequest.UserName = userID
@@ -249,7 +249,7 @@ func (a *Adapter) DeleteUser(ctx context.Context, account *domain.CloudAccount, 
 		}
 	}
 
-	// 删除用户
+	// 删除用户组
 	request := ram.CreateDeleteUserRequest()
 	request.Scheme = "https"
 	request.UserName = userID
@@ -274,7 +274,7 @@ func (a *Adapter) DeleteUser(ctx context.Context, account *domain.CloudAccount, 
 	return nil
 }
 
-// UpdateUserPermissions 更新用户权限
+// UpdateUserPermissions 更新用户组权限
 func (a *Adapter) UpdateUserPermissions(ctx context.Context, account *domain.CloudAccount, userID string, policies []domain.PermissionPolicy) error {
 	if err := a.rateLimiter.Wait(ctx); err != nil {
 		return fmt.Errorf("rate limit wait failed: %w", err)
@@ -285,7 +285,7 @@ func (a *Adapter) UpdateUserPermissions(ctx context.Context, account *domain.Clo
 		return err
 	}
 
-	// 获取用户当前的策略列表
+	// 获取用户组当前的策略列�?
 	listRequest := ram.CreateListPoliciesForUserRequest()
 	listRequest.Scheme = "https"
 	listRequest.UserName = userID
@@ -319,7 +319,7 @@ func (a *Adapter) UpdateUserPermissions(ctx context.Context, account *domain.Clo
 		}
 	}
 
-	// 分离需要附加和分离的策略
+	// 分离需要附加和分离的策�?
 	var toAttach []domain.PermissionPolicy
 	var toDetach []string
 
@@ -362,7 +362,7 @@ func (a *Adapter) UpdateUserPermissions(ctx context.Context, account *domain.Clo
 		}
 	}
 
-	// 附加新策略
+	// 附加新策�?
 	for _, policy := range toAttach {
 		attachRequest := ram.CreateAttachPolicyToUserRequest()
 		attachRequest.Scheme = "https"
@@ -408,11 +408,11 @@ func (a *Adapter) ListPolicies(ctx context.Context, account *domain.CloudAccount
 	var allPolicies []domain.PermissionPolicy
 	marker := ""
 
-	// 分页获取所有策略
+	// 分页获取所有策�?
 	for {
 		request := ram.CreateListPoliciesRequest()
 		request.Scheme = "https"
-		request.MaxItems = "100" // 每页最多100个
+		request.MaxItems = "100" // 每页最�?00�?
 		if marker != "" {
 			request.Marker = marker
 		}
@@ -431,7 +431,7 @@ func (a *Adapter) ListPolicies(ctx context.Context, account *domain.CloudAccount
 			return nil, fmt.Errorf("failed to list policies: %w", err)
 		}
 
-		// 转换策略数据
+		// 转换器策略数据
 		for _, ramPolicy := range response.Policies.Policy {
 			policy := domain.PermissionPolicy{
 				PolicyID:       ramPolicy.PolicyName,
@@ -443,7 +443,7 @@ func (a *Adapter) ListPolicies(ctx context.Context, account *domain.CloudAccount
 			allPolicies = append(allPolicies, policy)
 		}
 
-		// 检查是否还有更多数据
+		// 检查是否还有更多数�?
 		if !response.IsTruncated {
 			break
 		}
@@ -457,7 +457,7 @@ func (a *Adapter) ListPolicies(ctx context.Context, account *domain.CloudAccount
 	return allPolicies, nil
 }
 
-// retryWithBackoff 使用指数退避策略重试
+// retryWithBackoff 使用指数退避策略重�?
 func (a *Adapter) retryWithBackoff(ctx context.Context, operation func() error) error {
 	return retry.WithBackoff(ctx, 3, operation, func(err error) bool {
 		if aliyuncommon.IsThrottlingError(err) {
@@ -466,4 +466,127 @@ func (a *Adapter) retryWithBackoff(ctx context.Context, operation func() error) 
 		}
 		return false
 	})
+}
+
+// GetUserPolicies 获取用户的个人权限策略
+func (a *Adapter) GetUserPolicies(ctx context.Context, account *domain.CloudAccount, userID string) ([]domain.PermissionPolicy, error) {
+	if err := a.rateLimiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limit wait failed: %w", err)
+	}
+
+	client, err := aliyuncommon.CreateRAMClient(account)
+	if err != nil {
+		return nil, err
+	}
+
+	request := ram.CreateListPoliciesForUserRequest()
+	request.Scheme = "https"
+	request.UserName = userID
+
+	var response *ram.ListPoliciesForUserResponse
+	err = a.retryWithBackoff(ctx, func() error {
+		var e error
+		response, e = client.ListPoliciesForUser(request)
+		return e
+	})
+
+	if err != nil {
+		a.logger.Error("get user policies failed",
+			elog.String("account_id", fmt.Sprintf("%d", account.ID)),
+			elog.String("user_id", userID),
+			elog.FieldErr(err))
+		return nil, fmt.Errorf("failed to get user policies: %w", err)
+	}
+
+	policies := make([]domain.PermissionPolicy, 0, len(response.Policies.Policy))
+	for _, policy := range response.Policies.Policy {
+		policies = append(policies, domain.PermissionPolicy{
+			PolicyID:       policy.PolicyName,
+			PolicyName:     policy.PolicyName,
+			PolicyDocument: policy.Description,
+			Provider:       domain.CloudProviderAliyun,
+			PolicyType:     ConvertPolicyType(policy.PolicyType),
+		})
+	}
+
+	a.logger.Info("get user policies success",
+		elog.String("account_id", fmt.Sprintf("%d", account.ID)),
+		elog.String("user_id", userID),
+		elog.Int("count", len(policies)))
+
+	return policies, nil
+}
+
+// GetPolicy 获取策略详情
+func (a *Adapter) GetPolicy(ctx context.Context, account *domain.CloudAccount, policyID string) (*domain.PermissionPolicy, error) {
+	if err := a.rateLimiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limit wait failed: %w", err)
+	}
+
+	client, err := aliyuncommon.CreateRAMClient(account)
+	if err != nil {
+		return nil, err
+	}
+
+	request := ram.CreateGetPolicyRequest()
+	request.Scheme = "https"
+	request.PolicyName = policyID
+	request.PolicyType = "System" // 先尝试系统策�?
+
+	var response *ram.GetPolicyResponse
+	err = a.retryWithBackoff(ctx, func() error {
+		var e error
+		response, e = client.GetPolicy(request)
+		return e
+	})
+
+	if err != nil {
+		// 如果系统策略不存在，尝试自定义策�?
+		request.PolicyType = "Custom"
+		err = a.retryWithBackoff(ctx, func() error {
+			var e error
+			response, e = client.GetPolicy(request)
+			return e
+		})
+
+		if err != nil {
+			a.logger.Error("get aliyun policy failed",
+				elog.String("account_id", fmt.Sprintf("%d", account.ID)),
+				elog.String("policy_id", policyID),
+				elog.FieldErr(err))
+			return nil, fmt.Errorf("failed to get policy: %w", err)
+		}
+	}
+
+	policy := &domain.PermissionPolicy{
+		PolicyID:       response.Policy.PolicyName,
+		PolicyName:     response.Policy.PolicyName,
+		PolicyDocument: response.Policy.Description,
+		Provider:       domain.CloudProviderAliyun,
+		PolicyType:     ConvertPolicyType(response.Policy.PolicyType),
+	}
+
+	// 获取策略版本详情（包含策略文档）
+	versionRequest := ram.CreateGetPolicyVersionRequest()
+	versionRequest.Scheme = "https"
+	versionRequest.PolicyName = policyID
+	versionRequest.PolicyType = response.Policy.PolicyType
+	versionRequest.VersionId = response.Policy.DefaultVersion
+
+	var versionResponse *ram.GetPolicyVersionResponse
+	err = a.retryWithBackoff(ctx, func() error {
+		var e error
+		versionResponse, e = client.GetPolicyVersion(versionRequest)
+		return e
+	})
+
+	if err == nil && versionResponse != nil {
+		policy.PolicyDocument = versionResponse.PolicyVersion.PolicyDocument
+	}
+
+	a.logger.Info("get aliyun policy success",
+		elog.String("account_id", fmt.Sprintf("%d", account.ID)),
+		elog.String("policy_id", policyID))
+
+	return policy, nil
 }

@@ -1,9 +1,10 @@
-package web
+﻿package web
 
 import (
 	"strconv"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/service"
+	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
@@ -26,10 +27,13 @@ func NewTemplateHandler(templateService service.PolicyTemplateService, logger *e
 // @Tags 策略模板管理
 // @Accept json
 // @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
 // @Param body body CreateTemplateVO true "创建策略模板请求"
 // @Success 200 {object} Result
 // @Router /api/v1/cam/iam/templates [post]
 func (h *TemplateHandler) CreateTemplate(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+
 	var req CreateTemplateVO
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, Error(err))
@@ -42,11 +46,11 @@ func (h *TemplateHandler) CreateTemplate(c *gin.Context) {
 		Category:       req.Category,
 		Policies:       req.Policies,
 		CloudPlatforms: req.CloudPlatforms,
-		TenantID:       req.TenantID,
+		TenantID:       tenantID,
 	})
 
 	if err != nil {
-		h.logger.Error("创建策略模板失败", elog.FieldErr(err))
+		h.logger.Error("创建策略模板失败", elog.String("tenant_id", tenantID), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -58,10 +62,13 @@ func (h *TemplateHandler) CreateTemplate(c *gin.Context) {
 // @Summary 获取策略模板详情
 // @Tags 策略模板管理
 // @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
 // @Param id path int true "模板ID"
 // @Success 200 {object} Result
 // @Router /api/v1/cam/iam/templates/{id} [get]
 func (h *TemplateHandler) GetTemplate(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -71,7 +78,7 @@ func (h *TemplateHandler) GetTemplate(c *gin.Context) {
 
 	template, err := h.templateService.GetTemplate(c.Request.Context(), id)
 	if err != nil {
-		h.logger.Error("获取策略模板失败", elog.Int64("template_id", id), elog.FieldErr(err))
+		h.logger.Error("获取策略模板失败", elog.String("tenant_id", tenantID), elog.Int64("template_id", id), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -83,15 +90,17 @@ func (h *TemplateHandler) GetTemplate(c *gin.Context) {
 // @Summary 查询策略模板列表
 // @Tags 策略模板管理
 // @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
 // @Param category query string false "模板分类"
 // @Param is_built_in query bool false "是否内置"
-// @Param tenant_id query string false "租户ID"
 // @Param keyword query string false "关键词"
 // @Param page query int false "页码"
 // @Param size query int false "每页数量"
 // @Success 200 {object} PageResult
 // @Router /api/v1/cam/iam/templates [get]
 func (h *TemplateHandler) ListTemplates(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+
 	var req ListTemplatesVO
 	if err := c.ShouldBindQuery(&req); err != nil {
 		c.JSON(400, Error(err))
@@ -110,14 +119,14 @@ func (h *TemplateHandler) ListTemplates(c *gin.Context) {
 	templates, total, err := h.templateService.ListTemplates(c.Request.Context(), domain.TemplateFilter{
 		Category:  req.Category,
 		IsBuiltIn: req.IsBuiltIn,
-		TenantID:  req.TenantID,
+		TenantID:  tenantID,
 		Keyword:   req.Keyword,
 		Offset:    offset,
 		Limit:     req.Size,
 	})
 
 	if err != nil {
-		h.logger.Error("查询策略模板列表失败", elog.FieldErr(err))
+		h.logger.Error("查询策略模板列表失败", elog.String("tenant_id", tenantID), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -130,11 +139,14 @@ func (h *TemplateHandler) ListTemplates(c *gin.Context) {
 // @Tags 策略模板管理
 // @Accept json
 // @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
 // @Param id path int true "模板ID"
 // @Param body body UpdateTemplateVO true "更新策略模板请求"
 // @Success 200 {object} Result
 // @Router /api/v1/cam/iam/templates/{id} [put]
 func (h *TemplateHandler) UpdateTemplate(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -156,7 +168,7 @@ func (h *TemplateHandler) UpdateTemplate(c *gin.Context) {
 	})
 
 	if err != nil {
-		h.logger.Error("更新策略模板失败", elog.Int64("template_id", id), elog.FieldErr(err))
+		h.logger.Error("更新策略模板失败", elog.String("tenant_id", tenantID), elog.Int64("template_id", id), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -168,10 +180,13 @@ func (h *TemplateHandler) UpdateTemplate(c *gin.Context) {
 // @Summary 删除策略模板
 // @Tags 策略模板管理
 // @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
 // @Param id path int true "模板ID"
 // @Success 200 {object} Result
 // @Router /api/v1/cam/iam/templates/{id} [delete]
 func (h *TemplateHandler) DeleteTemplate(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -181,7 +196,7 @@ func (h *TemplateHandler) DeleteTemplate(c *gin.Context) {
 
 	err = h.templateService.DeleteTemplate(c.Request.Context(), id)
 	if err != nil {
-		h.logger.Error("删除策略模板失败", elog.Int64("template_id", id), elog.FieldErr(err))
+		h.logger.Error("删除策略模板失败", elog.String("tenant_id", tenantID), elog.Int64("template_id", id), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -189,15 +204,18 @@ func (h *TemplateHandler) DeleteTemplate(c *gin.Context) {
 	c.JSON(200, SuccessWithMsg("删除成功", nil))
 }
 
-// CreateFromGroup 从权限组创建模板
-// @Summary 从权限组创建策略模板
+// CreateFromGroup 从用户组创建模板
+// @Summary 从用户组创建策略模板
 // @Tags 策略模板管理
 // @Accept json
 // @Produce json
-// @Param body body CreateFromGroupVO true "从权限组创建模板请求"
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param body body CreateFromGroupVO true "从用户组创建模板请求"
 // @Success 200 {object} Result
 // @Router /api/v1/cam/iam/templates/from-group [post]
 func (h *TemplateHandler) CreateFromGroup(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+
 	var req CreateFromGroupVO
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, Error(err))
@@ -206,7 +224,7 @@ func (h *TemplateHandler) CreateFromGroup(c *gin.Context) {
 
 	template, err := h.templateService.CreateFromGroup(c.Request.Context(), req.GroupID, req.Name, req.Description)
 	if err != nil {
-		h.logger.Error("从权限组创建模板失败", elog.Int64("group_id", req.GroupID), elog.FieldErr(err))
+		h.logger.Error("从用户组创建模板失败", elog.String("tenant_id", tenantID), elog.Int64("group_id", req.GroupID), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}

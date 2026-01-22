@@ -1,9 +1,10 @@
-package web
+﻿package web
 
 import (
 	"strconv"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/service"
+	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
@@ -36,18 +37,21 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
+	// 从上下文获取租户ID
+	tenantID := middleware.GetTenantID(c)
+
 	user, err := h.userService.CreateUser(c.Request.Context(), &domain.CreateCloudUserRequest{
-		Username:         req.Username,
-		UserType:         req.UserType,
-		CloudAccountID:   req.CloudAccountID,
-		DisplayName:      req.DisplayName,
-		Email:            req.Email,
-		PermissionGroups: req.PermissionGroups,
-		TenantID:         req.TenantID,
+		Username:       req.Username,
+		UserType:       req.UserType,
+		CloudAccountID: req.CloudAccountID,
+		DisplayName:    req.DisplayName,
+		Email:          req.Email,
+		UserGroups:     req.UserGroups,
+		TenantID:       tenantID, // 使用中间件提取的租户ID
 	})
 
 	if err != nil {
-		h.logger.Error("创建用户失败", elog.FieldErr(err))
+		h.logger.Error("创建用户失败", elog.String("tenant_id", tenantID), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -59,10 +63,13 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 // @Summary 获取用户详情
 // @Tags 用户管理
 // @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
 // @Param id path int true "用户ID"
 // @Success 200 {object} Result
 // @Router /api/v1/cam/iam/users/{id} [get]
 func (h *UserHandler) GetUser(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -72,7 +79,7 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 
 	user, err := h.userService.GetUser(c.Request.Context(), id)
 	if err != nil {
-		h.logger.Error("获取用户失败", elog.Int64("user_id", id), elog.FieldErr(err))
+		h.logger.Error("获取用户失败", elog.String("tenant_id", tenantID), elog.Int64("user_id", id), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -84,6 +91,7 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 // @Summary 查询用户列表
 // @Tags 用户管理
 // @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
 // @Param provider query string false "云厂商"
 // @Param user_type query string false "用户类型"
 // @Param status query string false "状态"
@@ -92,6 +100,8 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 // @Success 200 {object} PageResult
 // @Router /api/v1/cam/iam/users [get]
 func (h *UserHandler) ListUsers(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+
 	var req ListUsersVO
 	if err := c.ShouldBindQuery(&req); err != nil {
 		c.JSON(400, Error(err))
@@ -112,14 +122,14 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 		UserType:       req.UserType,
 		Status:         req.Status,
 		CloudAccountID: req.CloudAccountID,
-		TenantID:       req.TenantID,
+		TenantID:       tenantID, // 使用中间件提取的租户ID
 		Keyword:        req.Keyword,
 		Offset:         offset,
 		Limit:          req.Size,
 	})
 
 	if err != nil {
-		h.logger.Error("查询用户列表失败", elog.FieldErr(err))
+		h.logger.Error("查询用户列表失败", elog.String("tenant_id", tenantID), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -132,11 +142,14 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 // @Tags 用户管理
 // @Accept json
 // @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
 // @Param id path int true "用户ID"
 // @Param body body UpdateUserVO true "更新用户请求"
 // @Success 200 {object} Result
 // @Router /api/v1/cam/iam/users/{id} [put]
 func (h *UserHandler) UpdateUser(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -151,14 +164,14 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 	}
 
 	err = h.userService.UpdateUser(c.Request.Context(), id, &domain.UpdateCloudUserRequest{
-		DisplayName:      req.DisplayName,
-		Email:            req.Email,
-		PermissionGroups: req.PermissionGroups,
-		Status:           req.Status,
+		DisplayName: req.DisplayName,
+		Email:       req.Email,
+		UserGroups:  req.UserGroups,
+		Status:      req.Status,
 	})
 
 	if err != nil {
-		h.logger.Error("更新用户失败", elog.Int64("user_id", id), elog.FieldErr(err))
+		h.logger.Error("更新用户失败", elog.String("tenant_id", tenantID), elog.Int64("user_id", id), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -170,10 +183,13 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 // @Summary 删除用户
 // @Tags 用户管理
 // @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
 // @Param id path int true "用户ID"
 // @Success 200 {object} Result
 // @Router /api/v1/cam/iam/users/{id} [delete]
 func (h *UserHandler) DeleteUser(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -183,7 +199,7 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 
 	err = h.userService.DeleteUser(c.Request.Context(), id)
 	if err != nil {
-		h.logger.Error("删除用户失败", elog.Int64("user_id", id), elog.FieldErr(err))
+		h.logger.Error("删除用户失败", elog.String("tenant_id", tenantID), elog.Int64("user_id", id), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -192,13 +208,17 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 }
 
 // SyncUsers 同步用户
-// @Summary 同步云平台用户
+// @Summary 同步云平台用户（异步）
+// @Description 创建异步同步任务，立即返回任务ID，可通过任务ID查询同步进度
 // @Tags 用户管理
 // @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
 // @Param cloud_account_id query int true "云账号ID"
-// @Success 200 {object} Result
+// @Success 200 {object} Result{data=domain.SyncTask}
 // @Router /api/v1/cam/iam/users/sync [post]
 func (h *UserHandler) SyncUsers(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+
 	cloudAccountIDStr := c.Query("cloud_account_id")
 	cloudAccountID, err := strconv.ParseInt(cloudAccountIDStr, 10, 64)
 	if err != nil {
@@ -206,26 +226,30 @@ func (h *UserHandler) SyncUsers(c *gin.Context) {
 		return
 	}
 
-	result, err := h.userService.SyncUsers(c.Request.Context(), cloudAccountID)
+	// 使用异步同步方法
+	task, err := h.userService.SyncUsersAsync(c.Request.Context(), cloudAccountID)
 	if err != nil {
-		h.logger.Error("同步用户失败", elog.Int64("cloud_account_id", cloudAccountID), elog.FieldErr(err))
+		h.logger.Error("创建同步任务失败", elog.String("tenant_id", tenantID), elog.Int64("cloud_account_id", cloudAccountID), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
 
-	c.JSON(200, Success(result))
+	c.JSON(200, SuccessWithMsg("同步任务已创建，请通过任务ID查询进度", task))
 }
 
-// AssignPermissionGroups 批量分配权限组
-// @Summary 批量分配权限组
+// AssignPermissionGroups 批量分配用户组
+// @Summary 批量分配用户组
 // @Tags 用户管理
 // @Accept json
 // @Produce json
-// @Param body body AssignPermissionGroupsVO true "批量分配权限组请求"
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param body body AssignUserGroupsVO true "批量分配用户组请求"
 // @Success 200 {object} Result
 // @Router /api/v1/cam/iam/users/batch-assign [post]
 func (h *UserHandler) AssignPermissionGroups(c *gin.Context) {
-	var req AssignPermissionGroupsVO
+	tenantID := middleware.GetTenantID(c)
+
+	var req AssignUserGroupsVO
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, Error(err))
 		return
@@ -233,7 +257,7 @@ func (h *UserHandler) AssignPermissionGroups(c *gin.Context) {
 
 	err := h.userService.AssignPermissionGroups(c.Request.Context(), req.UserIDs, req.GroupIDs)
 	if err != nil {
-		h.logger.Error("批量分配权限组失败", elog.FieldErr(err))
+		h.logger.Error("批量分配用户组失败", elog.String("tenant_id", tenantID), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}

@@ -61,6 +61,7 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 		AuditHandler:      auditHandler,
 		TemplateHandler:   templateHandler,
 		TenantHandler:     tenantHandler,
+		Logger:            component,
 	}
 	return module, nil
 }
@@ -137,5 +138,10 @@ var ProviderSet = wire.NewSet(
 
 // ProvideLogger 提供默认logger
 func ProvideLogger() *elog.Component {
-	return elog.DefaultLogger
+	logger := elog.DefaultLogger
+	if logger == nil {
+
+		logger = elog.Load("default").Build()
+	}
+	return logger
 }

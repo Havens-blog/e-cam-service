@@ -1,4 +1,4 @@
-package dao
+﻿package dao
 
 import (
 	"context"
@@ -42,22 +42,23 @@ type CloudUserMetadata struct {
 
 // CloudUser DAO层云用户模型
 type CloudUser struct {
-	ID               int64             `bson:"id"`
-	Username         string            `bson:"username"`
-	UserType         CloudUserType     `bson:"user_type"`
-	CloudAccountID   int64             `bson:"cloud_account_id"`
-	Provider         CloudProvider     `bson:"provider"`
-	CloudUserID      string            `bson:"cloud_user_id"`
-	DisplayName      string            `bson:"display_name"`
-	Email            string            `bson:"email"`
-	PermissionGroups []int64           `bson:"permission_groups"`
-	Metadata         CloudUserMetadata `bson:"metadata"`
-	Status           CloudUserStatus   `bson:"status"`
-	TenantID         string            `bson:"tenant_id"`
-	CreateTime       time.Time         `bson:"create_time"`
-	UpdateTime       time.Time         `bson:"update_time"`
-	CTime            int64             `bson:"ctime"`
-	UTime            int64             `bson:"utime"`
+	ID               int64              `bson:"id"`
+	Username         string             `bson:"username"`
+	UserType         CloudUserType      `bson:"user_type"`
+	CloudAccountID   int64              `bson:"cloud_account_id"`
+	Provider         CloudProvider      `bson:"provider"`
+	CloudUserID      string             `bson:"cloud_user_id"`
+	DisplayName      string             `bson:"display_name"`
+	Email            string             `bson:"email"`
+	PermissionGroups []int64            `bson:"permission_groups"` // 用户所属的用户组ID列表
+	Policies         []PermissionPolicy `bson:"policies"`          // 用户的个人权限策略列表
+	Metadata         CloudUserMetadata  `bson:"metadata"`
+	Status           CloudUserStatus    `bson:"status"`
+	TenantID         string             `bson:"tenant_id"`
+	CreateTime       time.Time          `bson:"create_time"`
+	UpdateTime       time.Time          `bson:"update_time"`
+	CTime            int64              `bson:"ctime"`
+	UTime            int64              `bson:"utime"`
 }
 
 // CloudUserFilter DAO层过滤条件
@@ -78,6 +79,7 @@ type CloudUserDAO interface {
 	Update(ctx context.Context, user CloudUser) error
 	GetByID(ctx context.Context, id int64) (CloudUser, error)
 	GetByCloudUserID(ctx context.Context, cloudUserID string, provider CloudProvider) (CloudUser, error)
+	GetByGroupID(ctx context.Context, groupID int64, tenantID string) ([]CloudUser, error)
 	List(ctx context.Context, filter CloudUserFilter) ([]CloudUser, error)
 	Count(ctx context.Context, filter CloudUserFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
@@ -166,6 +168,29 @@ func (dao *cloudUserDAO) GetByCloudUserID(ctx context.Context, cloudUserID strin
 
 	err := dao.db.Collection(CloudIAMUsersCollection).FindOne(ctx, filter).Decode(&user)
 	return user, err
+}
+
+// GetByGroupID 根据用户组ID获取所有成员
+func (dao *cloudUserDAO) GetByGroupID(ctx context.Context, groupID int64, tenantID string) ([]CloudUser, error) {
+	var users []CloudUser
+
+	// 查询 permission_groups 数组中包含该 groupID 的所有用户
+	filter := bson.M{
+		"permission_groups": groupID,
+		"tenant_id":         tenantID,
+	}
+
+	// 按创建时间倒序排列
+	opts := options.Find().SetSort(bson.M{"ctime": -1})
+
+	cursor, err := dao.db.Collection(CloudIAMUsersCollection).Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	err = cursor.All(ctx, &users)
+	return users, err
 }
 
 // List 获取云用户列表

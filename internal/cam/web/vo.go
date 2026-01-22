@@ -1,4 +1,4 @@
-package web
+﻿package web
 
 import "time"
 
@@ -145,7 +145,7 @@ type CloudAccount struct {
 	Environment     string               `json:"environment"`
 	AccessKeyID     string               `json:"access_key_id"`
 	AccessKeySecret string               `json:"access_key_secret,omitempty"` // 敏感信息，通常不返回
-	Region          string               `json:"region"`
+	Regions         []string             `json:"regions"`
 	Description     string               `json:"description"`
 	Status          string               `json:"status"`
 	Config          CloudAccountConfigVO `json:"config"`
@@ -176,7 +176,7 @@ type CreateCloudAccountReq struct {
 	Environment     string               `json:"environment" binding:"required"`
 	AccessKeyID     string               `json:"access_key_id" binding:"required,min=16,max=128"`
 	AccessKeySecret string               `json:"access_key_secret" binding:"required,min=16,max=256"`
-	Region          string               `json:"region" binding:"required"`
+	Regions         []string             `json:"regions" binding:"required,min=1"`
 	Description     string               `json:"description" binding:"max=500"`
 	Config          CloudAccountConfigVO `json:"config"`
 	TenantID        string               `json:"tenant_id" binding:"required"`
@@ -184,9 +184,14 @@ type CreateCloudAccountReq struct {
 
 // UpdateCloudAccountReq 更新云账号请求
 type UpdateCloudAccountReq struct {
-	Name        *string               `json:"name,omitempty"`
-	Description *string               `json:"description,omitempty"`
-	Config      *CloudAccountConfigVO `json:"config,omitempty"`
+	Name            *string               `json:"name,omitempty"`
+	Environment     *string               `json:"environment,omitempty"`
+	AccessKeyID     *string               `json:"access_key_id,omitempty"`
+	AccessKeySecret *string               `json:"access_key_secret,omitempty"`
+	Regions         []string              `json:"regions,omitempty"`
+	Description     *string               `json:"description,omitempty"`
+	Config          *CloudAccountConfigVO `json:"config,omitempty"`
+	TenantID        *string               `json:"tenant_id,omitempty"`
 }
 
 // ListCloudAccountsReq 获取云账号列表请求（已废弃，改用 query 参数）

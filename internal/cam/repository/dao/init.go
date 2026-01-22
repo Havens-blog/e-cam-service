@@ -1,4 +1,4 @@
-package dao
+﻿package dao
 
 import (
 	"context"
@@ -40,7 +40,125 @@ func InitIndexes(db *mongox.Mongo) error {
 		return err
 	}
 
+	// 初始化实例集合索引
+	if err := initInstanceIndexes(ctx, db); err != nil {
+		return err
+	}
+
+	// 初始化实例关系集合索引
+	if err := initInstanceRelationIndexes(ctx, db); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// initInstanceIndexes 初始化实例集合索引
+func initInstanceIndexes(ctx context.Context, db *mongox.Mongo) error {
+	collection := db.Collection(InstanceCollection)
+
+	indexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "id", Value: 1},
+			},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			// 唯一索引：租户 + 模型 + 资产ID
+			Keys: bson.D{
+				{Key: "tenant_id", Value: 1},
+				{Key: "model_uid", Value: 1},
+				{Key: "asset_id", Value: 1},
+			},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			Keys: bson.D{
+				{Key: "model_uid", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "tenant_id", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "account_id", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "asset_name", Value: "text"},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "ctime", Value: -1},
+			},
+		},
+		// 常用属性索引
+		{
+			Keys: bson.D{
+				{Key: "attributes.status", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "attributes.region", Value: 1},
+			},
+		},
+	}
+
+	_, err := collection.Indexes().CreateMany(ctx, indexes)
+	return err
+}
+
+// initInstanceRelationIndexes 初始化实例关系集合索引
+func initInstanceRelationIndexes(ctx context.Context, db *mongox.Mongo) error {
+	collection := db.Collection(InstanceRelationCollection)
+
+	indexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "id", Value: 1},
+			},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			// 唯一索引：源实例 + 目标实例 + 关系类型
+			Keys: bson.D{
+				{Key: "source_instance_id", Value: 1},
+				{Key: "target_instance_id", Value: 1},
+				{Key: "relation_type_uid", Value: 1},
+			},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			Keys: bson.D{
+				{Key: "source_instance_id", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "target_instance_id", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "relation_type_uid", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "tenant_id", Value: 1},
+			},
+		},
+	}
+
+	_, err := collection.Indexes().CreateMany(ctx, indexes)
+	return err
 }
 
 // initAssetIndexes 初始化资产集合索引
@@ -195,11 +313,18 @@ func initFieldIndexes(ctx context.Context, db *mongox.Mongo) error {
 	collection := db.Collection(FieldCollection)
 
 	indexes := []mongo.IndexModel{
+		// {
+		// 	// field_uid 在模型内唯一，不同模型可以有相同的 field_uid（如 auth_type）
+		// 	Keys: bson.D{
+		// 		{Key: "model_uid", Value: 1},
+		// 		{Key: "field_uid", Value: 1},
+		// 	},
+		// 	Options: options.Index().SetUnique(true),
+		// },
 		{
 			Keys: bson.D{
 				{Key: "field_uid", Value: 1},
 			},
-			Options: options.Index().SetUnique(true),
 		},
 		{
 			Keys: bson.D{
