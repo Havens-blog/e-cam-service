@@ -1,214 +1,221 @@
-# CloudX - 多云厂商验证器
+# CloudX - 多云适配器架构
 
-CloudX 是一个统一的多云厂商凭证验证组件，支持阿里云、AWS、Azure、腾讯云、华为云等主流云厂商的 AK/SK 验证。
+## 目录结构
 
-## 特性
+```
+internal/shared/cloudx/
+├── types/                      # 共享类型定义
+│   └── iam.go                  # IAM相关通用类型
+│
+├── common/                     # 通用组件
+│   ├── retry/
+│   │   └── backoff.go          # 指数退避重试逻辑
+│   └── aliyun/
+│       ├── client.go           # 阿里云客户端创建
+│       ├── ratelimit.go        # 阿里云限流器
+│       └── error.go            # 阿里云错误处理
+│
+├── iam/                        # IAM产品适配器
+│   ├── adapter.go              # IAM适配器接口定义
+│   ├── factory.go              # IAM适配器工厂
+│   └── aliyun/                 # 阿里云IAM适配器实现
+│       ├── adapter.go          # 核心适配器实现
+│       ├── converter.go        # 数据转换工具
+│       ├── types.go            # 阿里云特定类型
+│       └── wrapper.go          # 接口包装器
+│
+└── (未来扩展)
+    ├── compute/                # 计算资源适配器 (ECS/EC2/CVM)
+    ├── storage/                # 存储适配器 (OSS/S3)
+    └── database/               # 数据库适配器 (RDS)
+```
 
-- **统一接口**: 所有云厂商使用相同的验证接口
-- **格式验证**: 验证凭证格式是否符合各云厂商规范
-- **真实验证**: 调用云厂商 API 进行真实的凭证验证
-- **超时控制**: 支持 context 超时控制
-- **错误处理**: 详细的错误分类和友好的错误信息
-- **地域获取**: 获取云厂商支持的地域列表
-- **权限检测**: 检测账号的基本权限范围
+## 设计原则
 
-## 支持的云厂商
+### 1. 按产品维度组织
 
-| 云厂商 | 状态 | 验证方式 |
-|--------|------|----------|
-| 阿里云 | ✅ 已实现 | ECS DescribeRegions API |
-| AWS | 🚧 开发中 | STS GetCallerIdentity API |
-| Azure | 🚧 开发中 | Resource Manager API |
-| 腾讯云 | 🚧 开发中 | CVM DescribeRegions API |
-| 华为云 | 🚧 开发中 | ECS ListServers API |
+- 每个云产品（IAM、计算、存储等）有独立的目录
+- 每个产品定义自己的适配器接口和工厂
+- 便于不同团队独立开发和维护
 
-## 快速开始
+### 2. 按云厂商隔离实现
 
-### 1. 创建验证器
+- 每个云厂商的实现在独立的子目录中
+- 避免不同云厂商代码相互影响
+- 新增云厂商只需添加新的子目录
+
+### 3. 通用逻辑复用
+
+- `types/` 包含跨云厂商的共享类型
+- `common/` 包含可复用的通用组件
+- 每个云厂商的 `common/` 子目录包含该厂商特定的通用逻辑
+
+### 4. 避免循环依赖
+
+- 使用 `types` 包存放共享类型，避免包之间的循环导入
+- 使用 wrapper 模式实现接口，隔离内部实现和外部接口
+
+## IAM 适配器架构
+
+### 接口定义 (`iam/adapter.go`)
 
 ```go
-import (
-    "github.com/Havens-blog/e-cam-service/internal/cloudx"
-    "github.com/Havens-blog/e-cam-service/internal/domain"
-)
-
-// 创建验证器工厂
-factory := cloudx.NewCloudValidatorFactory()
-
-// 创建阿里云验证器
-validator, err := factory.CreateValidator(domain.CloudProviderAliyun)
-if err != nil {
-    log.Fatalf("创建验证器失败: %v", err)
+type CloudIAMAdapter interface {
+    ValidateCredentials(ctx, account) error
+    ListUsers(ctx, account) ([]*CloudUser, error)
+    GetUser(ctx, account, userID) (*CloudUser, error)
+    CreateUser(ctx, account, req) (*CloudUser, error)
+    UpdateUserPermissions(ctx, account, userID, policies) error
+    DeleteUser(ctx, account, userID) error
+    ListPolicies(ctx, account) ([]PermissionPolicy, error)
 }
 ```
 
-### 2. 验证凭证
+### 阿里云实现层次
+
+1. **Adapter** (`aliyun/adapter.go`)
+
+   - 核心业务逻辑实现
+   - 调用阿里云 RAM SDK
+   - 使用内部类型 `CreateUserParams`
+
+2. **Converter** (`aliyun/converter.go`)
+
+   - RAM SDK 类型 → 领域模型转换
+   - 数据格式化和解析
+
+3. **Wrapper** (`aliyun/wrapper.go`)
+   - 实现 `CloudIAMAdapter` 接口
+   - 类型转换：`types.CreateUserRequest` → `CreateUserParams`
+   - 对外暴露统一接口
+
+### 通用组件
+
+#### 限流器 (`common/aliyun/ratelimit.go`)
 
 ```go
-// 准备账号信息
-account := &domain.CloudAccount{
-    Provider:        domain.CloudProviderAliyun,
-    AccessKeyID:     "LTAI5tYourAccessKeyId123",
-    AccessKeySecret: "YourAccessKeySecretHere123456",
-    Region:          "cn-hangzhou",
+rateLimiter := aliyun.NewRateLimiter(20) // 20 QPS
+err := rateLimiter.Wait(ctx)
+```
+
+#### 错误处理 (`common/aliyun/error.go`)
+
+```go
+if aliyun.IsThrottlingError(err) {
+    // 处理限流错误
 }
+```
 
-// 创建 context
-ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-defer cancel()
+#### 重试逻辑 (`common/retry/backoff.go`)
 
+```go
+err := retry.WithBackoff(ctx, 3, operation, isRetryable)
+```
+
+## 使用示例
+
+### 创建适配器
+
+```go
+factory := iam.NewCloudIAMAdapterFactory(logger)
+adapter, err := factory.CreateAdapter(domain.CloudProviderAliyun)
+```
+
+### 调用适配器方法
+
+```go
 // 验证凭证
-result, err := validator.ValidateCredentials(ctx, account)
-if err != nil {
-    log.Fatalf("验证失败: %v", err)
-}
+err := adapter.ValidateCredentials(ctx, account)
 
-if result.Valid {
-    fmt.Println("凭证验证成功!")
-    fmt.Printf("支持的地域: %v\n", result.Regions)
-    fmt.Printf("检测到的权限: %v\n", result.Permissions)
-} else {
-    fmt.Printf("凭证验证失败: %s\n", result.Message)
+// 列出用户
+users, err := adapter.ListUsers(ctx, account)
+
+// 创建用户
+req := &types.CreateUserRequest{
+    Username:    "test-user",
+    DisplayName: "Test User",
+    Email:       "test@example.com",
 }
+user, err := adapter.CreateUser(ctx, account, req)
 ```
 
-### 3. 获取地域列表
+## 扩展指南
+
+### 添加新的云厂商（如 AWS）
+
+1. 创建目录 `iam/aws/`
+2. 实现核心适配器 `aws/adapter.go`
+3. 实现数据转换 `aws/converter.go`
+4. 实现接口包装器 `aws/wrapper.go`
+5. 在 `factory.go` 中添加创建逻辑
 
 ```go
-regions, err := validator.GetSupportedRegions(ctx, account)
-if err != nil {
-    log.Printf("获取地域列表失败: %v", err)
-} else {
-    fmt.Printf("支持 %d 个地域: %v\n", len(regions), regions)
-}
+case domain.CloudProviderAWS:
+    adapter := aws.NewAdapter(f.logger)
+    return aws.NewAdapterWrapper(adapter), nil
 ```
 
-### 4. 测试连接
+### 添加新的产品（如计算资源）
 
-```go
-err := validator.TestConnection(ctx, account)
-if err != nil {
-    fmt.Printf("连接测试失败: %v\n", err)
-} else {
-    fmt.Println("连接测试成功!")
-}
-```
+1. 创建目录 `compute/`
+2. 定义接口 `compute/adapter.go`
+3. 实现工厂 `compute/factory.go`
+4. 为每个云厂商创建子目录：
+   - `compute/aliyun/`
+   - `compute/aws/`
+   - `compute/huawei/`
 
-## 阿里云凭证格式要求
+## 最佳实践
 
-- **AccessKeyId**: 24位字符，以 "LTAI" 开头
-- **AccessKeySecret**: 30位字符
-- **Region**: 有效的阿里云地域标识，如 "cn-hangzhou"
+### 1. 类型定义
 
-## 错误处理
+- 共享类型放在 `types/` 包
+- 云厂商特定类型放在各自的 `types.go`
+- 使用清晰的命名避免混淆
 
-验证器会返回以下类型的错误：
+### 2. 错误处理
 
-- `ErrInvalidCredentials`: 凭证无效（AccessKeyId 或 AccessKeySecret 错误）
-- `ErrPermissionDenied`: 权限不足
-- `ErrConnectionTimeout`: 连接超时
-- `ErrUnsupportedProvider`: 不支持的云厂商
-- `ErrRegionNotSupported`: 地域不支持
+- 使用 `fmt.Errorf` 包装错误，保留错误链
+- 记录详细的日志信息
+- 区分可重试和不可重试的错误
 
-## 集成到服务中
+### 3. 限流和重试
 
-在 CAM 服务中的使用示例：
+- 所有 API 调用前检查限流
+- 使用指数退避重试策略
+- 设置合理的超时时间
 
-```go
-// 在 account service 中集成
-func (s *cloudAccountService) TestConnection(ctx context.Context, id int64) (*domain.ConnectionTestResult, error) {
-    // 获取账号信息
-    account, err := s.repo.GetByID(ctx, id)
-    if err != nil {
-        return nil, errs.AccountNotFound
-    }
+### 4. 数据转换
 
-    // 创建验证器
-    validator, err := s.validatorFactory.CreateValidator(account.Provider)
-    if err != nil {
-        return nil, fmt.Errorf("不支持的云厂商: %s", account.Provider)
-    }
+- 集中在 `converter.go` 中处理
+- 处理时区和时间格式
+- 验证必填字段
 
-    // 执行验证
-    result, err := validator.ValidateCredentials(ctx, account)
-    if err != nil {
-        return nil, err
-    }
+### 5. 测试
 
-    // 返回测试结果
-    return &domain.ConnectionTestResult{
-        Status:   map[bool]string{true: "success", false: "failed"}[result.Valid],
-        Message:  result.Message,
-        Regions:  result.Regions,
-        TestTime: result.ValidatedAt,
-    }, nil
-}
-```
-
-## 性能优化
-
-1. **并发安全**: 验证器是无状态的，可以安全地并发使用
-2. **超时控制**: 使用 context 控制 API 调用超时
-3. **降级处理**: 当 API 调用失败时，返回默认地域列表
-4. **错误缓存**: 可以考虑缓存验证结果，避免频繁的 API 调用
-
-## 扩展新的云厂商
-
-要添加新的云厂商支持，需要：
-
-1. 实现 `CloudValidator` 接口
-2. 在 `CloudValidatorFactory` 中添加对应的创建逻辑
-3. 添加相应的错误处理
-4. 编写单元测试
-
-示例：
-
-```go
-type NewCloudValidator struct{}
-
-func (v *NewCloudValidator) ValidateCredentials(ctx context.Context, account *domain.CloudAccount) (*ValidationResult, error) {
-    // 实现验证逻辑
-}
-
-func (v *NewCloudValidator) GetSupportedRegions(ctx context.Context, account *domain.CloudAccount) ([]string, error) {
-    // 实现地域获取逻辑
-}
-
-func (v *NewCloudValidator) TestConnection(ctx context.Context, account *domain.CloudAccount) error {
-    // 实现连接测试逻辑
-}
-```
-
-## 测试
-
-运行测试：
-
-```bash
-# 运行所有测试
-go test ./internal/cloudx -v
-
-# 运行特定测试
-go test ./internal/cloudx -run TestAliyunValidator -v
-
-# 运行格式验证测试
-go test ./internal/cloudx -run TestAliyunValidator_ValidateCredentialFormat -v
-```
+- 为每个适配器编写单元测试
+- 使用 Mock 隔离外部依赖
+- 编写集成测试验证完整流程
 
 ## 注意事项
 
-1. **安全性**: 
-   - 凭证信息会在内存中传递，确保在生产环境中妥善处理
-   - 日志中不要输出完整的凭证信息
-   - 使用 `MaskSensitiveData()` 方法脱敏显示
+1. **避免循环导入**
 
-2. **网络环境**:
-   - 确保服务器能够访问对应云厂商的 API 端点
-   - 考虑网络代理和防火墙配置
+   - 不要在子包中导入父包
+   - 使用 `types` 包共享类型
 
-3. **API 限制**:
-   - 注意各云厂商的 API 调用频率限制
-   - 考虑实现验证结果缓存机制
+2. **保持接口稳定**
 
-4. **错误处理**:
-   - 区分网络错误、认证错误和权限错误
-   - 提供友好的错误信息给用户
+   - 接口变更影响所有实现
+   - 使用可选参数扩展功能
+
+3. **日志规范**
+
+   - 记录关键操作和错误
+   - 包含足够的上下文信息
+   - 避免记录敏感信息
+
+4. **性能考虑**
+   - 使用连接池复用客户端
+   - 实现批量操作接口
+   - 合理设置并发数

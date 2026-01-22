@@ -1,4 +1,4 @@
-package domain
+﻿package domain
 
 import (
 	"fmt"
@@ -11,8 +11,10 @@ type CloudUserType string
 const (
 	CloudUserTypeAPIKey    CloudUserType = "api_key"
 	CloudUserTypeAccessKey CloudUserType = "access_key"
-	CloudUserTypeRAMUser   CloudUserType = "ram_user"
-	CloudUserTypeIAMUser   CloudUserType = "iam_user"
+	CloudUserTypeRAMUser   CloudUserType = "ram_user"  // 阿里云 RAM 用户
+	CloudUserTypeIAMUser   CloudUserType = "iam_user"  // AWS/华为云 IAM 用户
+	CloudUserTypeCAMUser   CloudUserType = "cam_user"  // 腾讯云 CAM 用户
+	CloudUserTypeVolcUser  CloudUserType = "volc_user" // 火山云用户
 )
 
 // CloudUserStatus 用户状态
@@ -36,24 +38,24 @@ type CloudUserMetadata struct {
 
 // CloudUser 云平台用户领域模型
 type CloudUser struct {
-	ID               int64             `json:"id" bson:"id"`
-	Username         string            `json:"username" bson:"username"`
-	UserType         CloudUserType     `json:"user_type" bson:"user_type"`
-	CloudAccountID   int64             `json:"cloud_account_id" bson:"cloud_account_id"`
-	Provider         CloudProvider     `json:"provider" bson:"provider"`
-	CloudUserID      string            `json:"cloud_user_id" bson:"cloud_user_id"`
-	DisplayName      string            `json:"display_name" bson:"display_name"`
-	Email            string            `json:"email" bson:"email"`
-	PermissionGroups []int64           `json:"permission_groups" bson:"permission_groups"`
-	Metadata         CloudUserMetadata `json:"metadata" bson:"metadata"`
-	Status           CloudUserStatus   `json:"status" bson:"status"`
-	TenantID         string            `json:"tenant_id" bson:"tenant_id"`
-	CreateTime       time.Time         `json:"create_time" bson:"create_time"`
-	UpdateTime       time.Time         `json:"update_time" bson:"update_time"`
-	CTime            int64             `json:"ctime" bson:"ctime"`
-	UTime            int64             `json:"utime" bson:"utime"`
+	ID             int64              `json:"id" bson:"id"`
+	Username       string             `json:"username" bson:"username"`
+	UserType       CloudUserType      `json:"user_type" bson:"user_type"`
+	CloudAccountID int64              `json:"cloud_account_id" bson:"cloud_account_id"`
+	Provider       CloudProvider      `json:"provider" bson:"provider"`
+	CloudUserID    string             `json:"cloud_user_id" bson:"cloud_user_id"`
+	DisplayName    string             `json:"display_name" bson:"display_name"`
+	Email          string             `json:"email" bson:"email"`
+	UserGroups     []int64            `json:"user_groups" bson:"permission_groups"` // 用户所属的用户组ID列表
+	Policies       []PermissionPolicy `json:"policies" bson:"policies"`             // 用户的个人权限策略列表
+	Metadata       CloudUserMetadata  `json:"metadata" bson:"metadata"`
+	Status         CloudUserStatus    `json:"status" bson:"status"`
+	TenantID       string             `json:"tenant_id" bson:"tenant_id"`
+	CreateTime     time.Time          `json:"create_time" bson:"create_time"`
+	UpdateTime     time.Time          `json:"update_time" bson:"update_time"`
+	CTime          int64              `json:"ctime" bson:"ctime"`
+	UTime          int64              `json:"utime" bson:"utime"`
 }
-
 
 // CloudUserFilter 云用户查询过滤器
 type CloudUserFilter struct {
@@ -69,21 +71,21 @@ type CloudUserFilter struct {
 
 // CreateCloudUserRequest 创建云用户请求
 type CreateCloudUserRequest struct {
-	Username         string            `json:"username" binding:"required,min=1,max=100"`
-	UserType         CloudUserType     `json:"user_type" binding:"required"`
-	CloudAccountID   int64             `json:"cloud_account_id" binding:"required"`
-	DisplayName      string            `json:"display_name" binding:"max=200"`
-	Email            string            `json:"email" binding:"omitempty,email"`
-	PermissionGroups []int64           `json:"permission_groups"`
-	TenantID         string            `json:"tenant_id" binding:"required"`
+	Username       string        `json:"username" binding:"required,min=1,max=100"`
+	UserType       CloudUserType `json:"user_type" binding:"required"`
+	CloudAccountID int64         `json:"cloud_account_id" binding:"required"`
+	DisplayName    string        `json:"display_name" binding:"max=200"`
+	Email          string        `json:"email" binding:"omitempty,email"`
+	UserGroups     []int64       `json:"user_groups"` // 用户组ID列表
+	TenantID       string        `json:"tenant_id" binding:"required"`
 }
 
 // UpdateCloudUserRequest 更新云用户请求
 type UpdateCloudUserRequest struct {
-	DisplayName      *string `json:"display_name,omitempty"`
-	Email            *string `json:"email,omitempty"`
-	PermissionGroups []int64 `json:"permission_groups,omitempty"`
-	Status           *CloudUserStatus `json:"status,omitempty"`
+	DisplayName *string          `json:"display_name,omitempty"`
+	Email       *string          `json:"email,omitempty"`
+	UserGroups  []int64          `json:"user_groups,omitempty"` // 用户组ID列表
+	Status      *CloudUserStatus `json:"status,omitempty"`
 }
 
 // 领域方法

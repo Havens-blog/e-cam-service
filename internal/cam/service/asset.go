@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -226,6 +226,12 @@ func (s *service) DiscoverAssets(ctx context.Context, provider, region string, a
 
 	account := accounts[0]
 
+	// 获取默认区域（使用第一个区域）
+	defaultRegion := ""
+	if len(account.Regions) > 0 {
+		defaultRegion = account.Regions[0]
+	}
+
 	// 转换为同步域的账号格式
 	syncAccount := &syncdomain.CloudAccount{
 		ID:              account.ID,
@@ -233,7 +239,7 @@ func (s *service) DiscoverAssets(ctx context.Context, provider, region string, a
 		Provider:        syncdomain.CloudProvider(account.Provider),
 		AccessKeyID:     account.AccessKeyID,
 		AccessKeySecret: account.AccessKeySecret,
-		DefaultRegion:   account.Region,
+		DefaultRegion:   defaultRegion,
 		Enabled:         account.Status == shareddomain.CloudAccountStatusActive,
 	}
 
@@ -344,6 +350,12 @@ func (s *service) syncAccountAssets(ctx context.Context, account *shareddomain.C
 		elog.String("account", account.Name),
 		elog.Any("asset_types", assetTypes))
 
+	// 获取默认区域（使用第一个区域）
+	defaultRegion := ""
+	if len(account.Regions) > 0 {
+		defaultRegion = account.Regions[0]
+	}
+
 	// 转换为同步域的账号格式
 	syncAccount := &syncdomain.CloudAccount{
 		ID:              account.ID,
@@ -351,7 +363,7 @@ func (s *service) syncAccountAssets(ctx context.Context, account *shareddomain.C
 		Provider:        syncdomain.CloudProvider(account.Provider),
 		AccessKeyID:     account.AccessKeyID,
 		AccessKeySecret: account.AccessKeySecret,
-		DefaultRegion:   account.Region,
+		DefaultRegion:   defaultRegion,
 		Enabled:         account.Status == shareddomain.CloudAccountStatusActive,
 	}
 

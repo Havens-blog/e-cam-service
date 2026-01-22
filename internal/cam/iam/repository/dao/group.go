@@ -1,4 +1,4 @@
-package dao
+﻿package dao
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const CloudPermissionGroupsCollection = "cloud_permission_groups"
+const CloudPermissionGroupsCollection = "c_cloud_user_groups"
 
 // PolicyType 策略类型
 type PolicyType string
@@ -28,8 +28,8 @@ type PermissionPolicy struct {
 	PolicyType     PolicyType    `bson:"policy_type"`
 }
 
-// PermissionGroup DAO层权限组模型
-type PermissionGroup struct {
+// UserGroup DAO层用户组模型
+type UserGroup struct {
 	ID             int64              `bson:"id"`
 	Name           string             `bson:"name"`
 	Description    string             `bson:"description"`
@@ -43,40 +43,40 @@ type PermissionGroup struct {
 	UTime          int64              `bson:"utime"`
 }
 
-// PermissionGroupFilter DAO层过滤条件
-type PermissionGroupFilter struct {
+// UserGroupFilter DAO层过滤条件
+type UserGroupFilter struct {
 	TenantID string
 	Keyword  string
 	Offset   int64
 	Limit    int64
 }
 
-// PermissionGroupDAO 权限组数据访问接口
-type PermissionGroupDAO interface {
-	Create(ctx context.Context, group PermissionGroup) (int64, error)
-	Update(ctx context.Context, group PermissionGroup) error
-	GetByID(ctx context.Context, id int64) (PermissionGroup, error)
-	GetByName(ctx context.Context, name, tenantID string) (PermissionGroup, error)
-	List(ctx context.Context, filter PermissionGroupFilter) ([]PermissionGroup, error)
-	Count(ctx context.Context, filter PermissionGroupFilter) (int64, error)
+// UserGroupDAO 用户组数据访问接口
+type UserGroupDAO interface {
+	Create(ctx context.Context, group UserGroup) (int64, error)
+	Update(ctx context.Context, group UserGroup) error
+	GetByID(ctx context.Context, id int64) (UserGroup, error)
+	GetByName(ctx context.Context, name, tenantID string) (UserGroup, error)
+	List(ctx context.Context, filter UserGroupFilter) ([]UserGroup, error)
+	Count(ctx context.Context, filter UserGroupFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	UpdatePolicies(ctx context.Context, id int64, policies []PermissionPolicy) error
 	IncrementUserCount(ctx context.Context, id int64, delta int) error
 }
 
-type permissionGroupDAO struct {
+type userGroupDAO struct {
 	db *mongox.Mongo
 }
 
-// NewPermissionGroupDAO 创建权限组DAO
-func NewPermissionGroupDAO(db *mongox.Mongo) PermissionGroupDAO {
-	return &permissionGroupDAO{
+// NewUserGroupDAO 创建用户组DAO
+func NewUserGroupDAO(db *mongox.Mongo) UserGroupDAO {
+	return &userGroupDAO{
 		db: db,
 	}
 }
 
-// Create 创建权限组
-func (dao *permissionGroupDAO) Create(ctx context.Context, group PermissionGroup) (int64, error) {
+// Create 创建用户组
+func (dao *userGroupDAO) Create(ctx context.Context, group UserGroup) (int64, error) {
 	now := time.Now()
 	nowUnix := now.Unix()
 
@@ -112,8 +112,8 @@ func (dao *permissionGroupDAO) Create(ctx context.Context, group PermissionGroup
 	return group.ID, nil
 }
 
-// Update 更新权限组
-func (dao *permissionGroupDAO) Update(ctx context.Context, group PermissionGroup) error {
+// Update 更新用户组
+func (dao *userGroupDAO) Update(ctx context.Context, group UserGroup) error {
 	group.UpdateTime = time.Now()
 	group.UTime = group.UpdateTime.Unix()
 
@@ -124,18 +124,18 @@ func (dao *permissionGroupDAO) Update(ctx context.Context, group PermissionGroup
 	return err
 }
 
-// GetByID 根据ID获取权限组
-func (dao *permissionGroupDAO) GetByID(ctx context.Context, id int64) (PermissionGroup, error) {
-	var group PermissionGroup
+// GetByID 根据ID获取用户组
+func (dao *userGroupDAO) GetByID(ctx context.Context, id int64) (UserGroup, error) {
+	var group UserGroup
 	filter := bson.M{"id": id}
 
 	err := dao.db.Collection(CloudPermissionGroupsCollection).FindOne(ctx, filter).Decode(&group)
 	return group, err
 }
 
-// GetByName 根据名称和租户ID获取权限组
-func (dao *permissionGroupDAO) GetByName(ctx context.Context, name, tenantID string) (PermissionGroup, error) {
-	var group PermissionGroup
+// GetByName 根据名称和租户ID获取用户组
+func (dao *userGroupDAO) GetByName(ctx context.Context, name, tenantID string) (UserGroup, error) {
+	var group UserGroup
 	filter := bson.M{
 		"name":      name,
 		"tenant_id": tenantID,
@@ -145,9 +145,9 @@ func (dao *permissionGroupDAO) GetByName(ctx context.Context, name, tenantID str
 	return group, err
 }
 
-// List 获取权限组列表
-func (dao *permissionGroupDAO) List(ctx context.Context, filter PermissionGroupFilter) ([]PermissionGroup, error) {
-	var groups []PermissionGroup
+// List 获取用户组列表
+func (dao *userGroupDAO) List(ctx context.Context, filter UserGroupFilter) ([]UserGroup, error) {
+	var groups []UserGroup
 
 	// 构建查询条件
 	query := bson.M{}
@@ -181,8 +181,8 @@ func (dao *permissionGroupDAO) List(ctx context.Context, filter PermissionGroupF
 	return groups, err
 }
 
-// Count 统计权限组数量
-func (dao *permissionGroupDAO) Count(ctx context.Context, filter PermissionGroupFilter) (int64, error) {
+// Count 统计用户组数量
+func (dao *userGroupDAO) Count(ctx context.Context, filter UserGroupFilter) (int64, error) {
 	// 构建查询条件
 	query := bson.M{}
 	if filter.TenantID != "" {
@@ -198,15 +198,15 @@ func (dao *permissionGroupDAO) Count(ctx context.Context, filter PermissionGroup
 	return dao.db.Collection(CloudPermissionGroupsCollection).CountDocuments(ctx, query)
 }
 
-// Delete 删除权限组
-func (dao *permissionGroupDAO) Delete(ctx context.Context, id int64) error {
+// Delete 删除用户组
+func (dao *userGroupDAO) Delete(ctx context.Context, id int64) error {
 	filter := bson.M{"id": id}
 	_, err := dao.db.Collection(CloudPermissionGroupsCollection).DeleteOne(ctx, filter)
 	return err
 }
 
 // UpdatePolicies 更新权限策略
-func (dao *permissionGroupDAO) UpdatePolicies(ctx context.Context, id int64, policies []PermissionPolicy) error {
+func (dao *userGroupDAO) UpdatePolicies(ctx context.Context, id int64, policies []PermissionPolicy) error {
 	filter := bson.M{"id": id}
 	update := bson.M{
 		"$set": bson.M{
@@ -221,7 +221,7 @@ func (dao *permissionGroupDAO) UpdatePolicies(ctx context.Context, id int64, pol
 }
 
 // IncrementUserCount 增加或减少用户数量
-func (dao *permissionGroupDAO) IncrementUserCount(ctx context.Context, id int64, delta int) error {
+func (dao *userGroupDAO) IncrementUserCount(ctx context.Context, id int64, delta int) error {
 	filter := bson.M{"id": id}
 	update := bson.M{
 		"$inc": bson.M{

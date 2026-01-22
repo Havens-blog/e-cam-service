@@ -1,4 +1,4 @@
-package domain
+﻿package domain
 
 // ModelGroup 模型分组
 type ModelGroup struct {

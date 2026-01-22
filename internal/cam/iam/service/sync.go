@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -27,7 +27,7 @@ type SyncService interface {
 type syncService struct {
 	syncTaskRepo   iamrepo.SyncTaskRepository
 	userRepo       iamrepo.CloudUserRepository
-	groupRepo      iamrepo.PermissionGroupRepository
+	groupRepo      iamrepo.UserGroupRepository
 	accountRepo    repository.CloudAccountRepository
 	adapterFactory iam.CloudIAMAdapterFactory
 	logger         *elog.Component
@@ -45,7 +45,7 @@ type CreateSyncTaskRequest struct {
 func NewSyncService(
 	syncTaskRepo iamrepo.SyncTaskRepository,
 	userRepo iamrepo.CloudUserRepository,
-	groupRepo iamrepo.PermissionGroupRepository,
+	groupRepo iamrepo.UserGroupRepository,
 	accountRepo repository.CloudAccountRepository,
 	adapterFactory iam.CloudIAMAdapterFactory,
 	logger *elog.Component,
@@ -216,14 +216,16 @@ func (s *syncService) validateCreateSyncTaskRequest(req *CreateSyncTaskRequest) 
 	validTaskTypes := map[domain.SyncTaskType]bool{
 		domain.SyncTaskTypeUserSync:       true,
 		domain.SyncTaskTypePermissionSync: true,
+		domain.SyncTaskTypeBatchUserSync:  true,
 	}
 	if !validTaskTypes[req.TaskType] {
 		return fmt.Errorf("无效的任务类型")
 	}
 
 	validTargetTypes := map[domain.SyncTargetType]bool{
-		domain.SyncTargetTypeUser:  true,
-		domain.SyncTargetTypeGroup: true,
+		domain.SyncTargetTypeUser:    true,
+		domain.SyncTargetTypeGroup:   true,
+		domain.SyncTargetTypeAccount: true,
 	}
 	if !validTargetTypes[req.TargetType] {
 		return fmt.Errorf("无效的目标类型")
@@ -394,7 +396,7 @@ func (s *syncService) executePermissionSync(ctx context.Context, task *domain.Sy
 	}
 
 	var allPolicies []domain.PermissionPolicy
-	for _, groupID := range user.PermissionGroups {
+	for _, groupID := range user.UserGroups {
 		group, err := s.groupRepo.GetByID(ctx, groupID)
 		if err != nil {
 			s.logger.Warn("获取权限组失败",
@@ -459,7 +461,7 @@ func (s *syncService) SyncPermissionChanges(ctx context.Context, groupID int64, 
 		}
 
 		hasGroup := false
-		for _, gid := range user.PermissionGroups {
+		for _, gid := range user.UserGroups {
 			if gid == groupID {
 				hasGroup = true
 				break

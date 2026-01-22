@@ -8,6 +8,7 @@ package ioc
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cam"
+	"github.com/Havens-blog/e-cam-service/internal/cmdb"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
 	"github.com/google/wire"
 )
@@ -28,19 +29,20 @@ func InitApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	handler := module.Hdl
+	v2 := module.Hdl
 	camModule, err := cam.InitModuleWithIAM(mongo)
 	if err != nil {
 		return nil, err
 	}
-	engine := InitWebServer(provider, v, handler, camModule)
+	cmdbModule := cmdb.InitModule(mongo)
+	engine := InitWebServer(provider, v, v2, camModule, cmdbModule)
 	server := InitGrpcServer()
-	v2 := InitJobs()
+	v3 := InitJobs()
 	app := &App{
 		Logger:    logger,
 		Web:       engine,
 		Grpc:      server,
-		Jobs:      v2,
+		Jobs:      v3,
 		EndModule: module,
 		CamModule: camModule,
 	}
@@ -57,5 +59,5 @@ var BaseSet = wire.NewSet(
 	InitSessionProvider,
 	InitGinMiddlewares,
 	InitWebServer,
-	InitJobs, endpoint.InitModule, cam.InitModuleWithIAM, wire.FieldsOf(new(*endpoint.Module), "Hdl"), wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
+	InitJobs, endpoint.InitModule, cam.InitModuleWithIAM, cmdb.InitModule, wire.FieldsOf(new(*endpoint.Module), "Hdl"), wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
 )

@@ -1,4 +1,4 @@
-package cloudx
+﻿package cloudx
 
 import (
 	"context"
@@ -35,7 +35,7 @@ func (v *AWSValidator) ValidateCredentials(ctx context.Context, account *domain.
 	if err := v.callAWSAPI(ctx, account); err != nil {
 		return &ValidationResult{
 			Valid:        false,
-			Message:      fmt.Sprintf("AWS API 调用失败: %v", err),
+			Message:      fmt.Sprintf("AWS API 调用失败败: %v", err),
 			ValidatedAt:  time.Now(),
 			ResponseTime: time.Since(startTime).Milliseconds(),
 		}, nil
@@ -44,12 +44,12 @@ func (v *AWSValidator) ValidateCredentials(ctx context.Context, account *domain.
 	// 获取支持的地域
 	regions, err := v.GetSupportedRegions(ctx, account)
 	if err != nil {
-		regions = []string{account.Region}
+		regions = account.Regions // 降级处理，使用账号配置的区域
 	}
 
 	return &ValidationResult{
 		Valid:        true,
-		Message:      "AWS 凭证验证成功",
+		Message:      "AWS 凭证验证成功功",
 		Regions:      regions,
 		Permissions:  []string{"ec2:DescribeInstances", "rds:DescribeDBInstances", "s3:ListBuckets"},
 		AccountInfo:  fmt.Sprintf("AccessKeyId: %s", maskAccessKey(account.AccessKeyID)),
@@ -106,7 +106,7 @@ func (v *AWSValidator) validateCredentialFormat(account *domain.CloudAccount) er
 
 // callAWSAPI 调用 AWS API 进行验证
 func (v *AWSValidator) callAWSAPI(ctx context.Context, account *domain.CloudAccount) error {
-	// TODO: 实际集成 AWS SDK
+	// TODO: 实际集成功 AWS SDK
 	// 可以调用 STS GetCallerIdentity 接口来验证凭证
 
 	// 模拟 API 调用

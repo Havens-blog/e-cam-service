@@ -1,4 +1,4 @@
-package adapters
+﻿package adapters
 
 import (
 	"fmt"
@@ -14,6 +14,14 @@ type AdapterFactory struct {
 
 // NewAdapterFactory 创建适配器工厂
 func NewAdapterFactory(logger *elog.Component) *AdapterFactory {
+	// 如果 logger 为 nil，创建一个默认的
+	if logger == nil {
+		logger = elog.DefaultLogger
+		if logger == nil {
+			// 创建一个 noop logger
+			logger = elog.EgoLogger
+		}
+	}
 	return &AdapterFactory{
 		logger: logger,
 	}
@@ -48,6 +56,10 @@ func (f *AdapterFactory) CreateAdapter(account *domain.CloudAccount) (domain.Clo
 		return nil, fmt.Errorf("AWS适配器尚未实现")
 	case domain.ProviderAzure:
 		return nil, fmt.Errorf("Azure适配器尚未实现")
+	case domain.ProviderHuawei:
+		return nil, fmt.Errorf("Huawei适配器尚未实现")
+	case domain.ProvicerQcloud:
+		return nil, fmt.Errorf("Qcloud适配器尚未实现")
 	default:
 		return nil, fmt.Errorf("不支持的云厂商: %s", account.Provider)
 	}

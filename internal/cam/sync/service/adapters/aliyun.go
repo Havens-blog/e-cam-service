@@ -1,4 +1,4 @@
-package adapters
+﻿package adapters
 
 import (
 	"context"
@@ -148,7 +148,7 @@ func (a *AliyunAdapter) GetECSInstances(ctx context.Context, region string) ([]d
 
 // getClient 获取或创建指定地域的客户端
 func (a *AliyunAdapter) getClient(region string) (*ecs.Client, error) {
-	// 检查缓存
+	// 检查缓存存
 	if client, ok := a.clients[region]; ok {
 		return client, nil
 	}
@@ -166,7 +166,7 @@ func (a *AliyunAdapter) getClient(region string) (*ecs.Client, error) {
 		return nil, fmt.Errorf("创建ECS客户端失败: %w", err)
 	}
 
-	// 缓存客户端
+	// 缓存存客户端
 	a.clients[region] = client
 
 	return client, nil

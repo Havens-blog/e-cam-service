@@ -1,4 +1,4 @@
-package dao
+﻿package dao
 
 import (
 	"context"
@@ -18,14 +18,16 @@ const (
 	SyncTaskTypeUserSync       SyncTaskType = "user_sync"
 	SyncTaskTypePermissionSync SyncTaskType = "permission_sync"
 	SyncTaskTypeGroupSync      SyncTaskType = "group_sync"
+	SyncTaskTypeBatchUserSync  SyncTaskType = "batch_user_sync" // 批量用户同步（从云平台拉取所有用户）
 )
 
 // SyncTargetType 同步目标类型
 type SyncTargetType string
 
 const (
-	SyncTargetTypeUser  SyncTargetType = "user"
-	SyncTargetTypeGroup SyncTargetType = "group"
+	SyncTargetTypeUser    SyncTargetType = "user"
+	SyncTargetTypeGroup   SyncTargetType = "group"
+	SyncTargetTypeAccount SyncTargetType = "account" // 云账号级别同步
 )
 
 // SyncTaskStatus 同步任务状态

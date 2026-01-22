@@ -48,7 +48,17 @@
 - **字段分组**：组织和管理模型字段
 - **模型关系**：定义模型之间的关联关系
 
-### 5. 端点服务 (Endpoint)
+### 5. IAM 身份与访问管理
+
+- **用户管理**：云平台用户的统一管理和同步
+- **用户组管理**：用户组的创建、更新、删除和权限配置
+- **用户组成员同步**：🆕 自动同步云平台用户组及其成员关系
+- **权限策略管理**：统一管理多云平台的权限策略
+- **策略模板**：预定义权限策略模板，快速分配权限
+- **审计日志**：记录所有 IAM 操作的审计日志
+- **多租户支持**：基于租户的数据隔离和权限管理
+
+### 6. 端点服务 (Endpoint)
 
 - **服务端点管理**：管理各类服务端点配置
 - **健康检查**：监控端点服务状态
@@ -65,6 +75,15 @@ e-cam-service/
 │   └── logger.toml               # 日志配置
 ├── internal/                     # 内部包（不对外暴露）
 │   ├── cam/                      # 🔥 云资产管理核心模块
+│   │   ├── iam/                  # 🔥 IAM 身份与访问管理模块
+│   │   │   ├── service/          # IAM 服务层
+│   │   │   │   ├── user.go       # 用户服务
+│   │   │   │   ├── group.go      # 用户组服务（含成员同步）
+│   │   │   │   ├── template.go   # 策略模板服务
+│   │   │   │   └── tenant.go     # 租户服务
+│   │   │   ├── repository/       # IAM 仓储层
+│   │   │   ├── web/              # IAM API 处理器
+│   │   │   └── wire.go           # 依赖注入
 │   │   ├── domain/               # 领域模型
 │   │   │   ├── account.go        # 云账号模型
 │   │   │   ├── asset.go          # 资产模型
@@ -101,6 +120,11 @@ e-cam-service/
 │   │   └── web/                  # 端点API
 │   └── shared/                   # 共享组件
 │       ├── cloudx/               # 🔥 云厂商工具包
+│       │   ├── iam/              # 🔥 IAM 云平台适配器
+│       │   │   ├── adapter.go    # 适配器接口
+│       │   │   ├── aliyun/       # 阿里云 RAM 适配器
+│       │   │   ├── tencent/      # 腾讯云 CAM 适配器
+│       │   │   └── factory.go    # 适配器工厂
 │       │   ├── validator.go      # 凭证验证器
 │       │   ├── aliyun_validator.go
 │       │   ├── aws_validator.go
@@ -129,6 +153,7 @@ e-cam-service/
 ├── scripts/                      # 工具脚本
 │   ├── test_async_task.go        # 异步任务测试
 │   ├── test_ecs_sync.go          # ECS 同步测试
+│   ├── test_group_member_sync.go # 🆕 用户组成员同步测试
 │   └── init_models.go            # 模型初始化
 ├── deploy/                       # 部署配置
 ├── main.go                       # 程序入口
@@ -457,7 +482,47 @@ curl -X POST http://localhost:8001/api/v1/cam/tasks/sync-assets \
 curl -X GET http://localhost:8001/api/v1/cam/tasks/{task_id}
 ```
 
-#### 4. 统计分析
+#### 4. IAM 用户组管理
+
+**同步用户组及成员** 🆕
+
+```bash
+# 同步云平台用户组及其所有成员
+curl -X POST "http://localhost:8001/api/v1/cam/iam/groups/sync?cloud_account_id=123" \
+  -H "X-Tenant-ID: tenant-001" \
+  -H "Content-Type: application/json"
+
+# 响应示例
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "total_groups": 5,
+    "created_groups": 2,
+    "updated_groups": 3,
+    "failed_groups": 0,
+    "total_members": 15,
+    "synced_members": 14,
+    "failed_members": 1
+  }
+}
+```
+
+**查询用户组列表**
+
+```bash
+curl -X GET "http://localhost:8001/api/v1/cam/iam/groups?page=1&size=20" \
+  -H "X-Tenant-ID: tenant-001"
+```
+
+**查询用户列表**
+
+```bash
+curl -X GET "http://localhost:8001/api/v1/cam/iam/users?page=1&size=20" \
+  -H "X-Tenant-ID: tenant-001"
+```
+
+#### 5. 统计分析
 
 **获取资产统计**
 
@@ -478,8 +543,23 @@ curl -X GET "http://localhost:8001/api/v1/cam/assets/cost-analysis?start_date=20
 或查看文档目录：
 
 - [API 文档](docs/API-DOCUMENTATION.md)
+- [Swagger 文档更新说明](docs/SWAGGER_UPDATED.md) 🆕
+- [用户权限查询 API](docs/USER_PERMISSIONS_API.md) 🆕
 - [异步任务框架](docs/async-task-framework.md)
 - [ECS 同步指南](docs/ecs-sync-guide.md)
+- [用户组成员同步功能](docs/USER_GROUP_MEMBER_SYNC.md) 🆕
+- [用户组成员查询 API](docs/GROUP_MEMBERS_API.md) 🆕
+- [用户组同步示例](docs/examples/sync_user_groups_example.md) 🆕
+- [用户组同步问题修复](docs/GROUP_SYNC_FIXES.md) 🆕
+- [用户组成员查询修复](docs/GROUP_MEMBERS_QUERY_FIX.md) 🆕
+- [用户组成员数据修复指南](docs/GROUP_MEMBERS_DATA_FIX.md) 🆕
+- [用户个人权限同步功能](docs/USER_PERSONAL_POLICIES_SYNC.md) 🆕
+- [用户个人权限实现总结](docs/USER_POLICIES_IMPLEMENTATION_SUMMARY.md) 🆕
+- [用户个人权限同步完整实现](docs/USER_POLICIES_SYNC_COMPLETE.md) 🆕
+- [用户数量统计修复](docs/USER_COUNT_FIX.md) 🆕
+- [用户组成员数量统计修复](docs/GROUP_MEMBER_COUNT_FIX.md) 🆕
+- [Tenant ID 问题排查](docs/TROUBLESHOOTING_TENANT_ID.md) 🆕
+- [云账号 Tenant ID 更新修复](docs/CLOUD_ACCOUNT_TENANT_ID_FIX.md) 🆕
 
 ## 🔧 开发指南
 

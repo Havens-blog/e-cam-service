@@ -1,4 +1,4 @@
-//go:build wireinject
+﻿//go:build wireinject
 
 package endpoint
 

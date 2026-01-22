@@ -1,4 +1,4 @@
-package domain
+﻿package domain
 
 import (
 	"fmt"
@@ -24,6 +24,7 @@ const (
 	CloudProviderAzure   CloudProvider = "azure"   // Microsoft Azure
 	CloudProviderTencent CloudProvider = "tencent" // 腾讯云
 	CloudProviderHuawei  CloudProvider = "huawei"  // 华为云
+	CloudProviderVolcano CloudProvider = "volcano" // 火山云
 )
 
 // Environment 环境枚举
@@ -54,7 +55,7 @@ type CloudAccount struct {
 	Environment     Environment        `json:"environment" bson:"environment"`             // 环境
 	AccessKeyID     string             `json:"access_key_id" bson:"access_key_id"`         // 访问密钥ID
 	AccessKeySecret string             `json:"access_key_secret" bson:"access_key_secret"` // 访问密钥Secret (加密存储)
-	Region          string             `json:"region" bson:"region"`                       // 默认地域
+	Regions         []string           `json:"regions" bson:"regions"`                     // 支持的地域列表
 	Description     string             `json:"description" bson:"description"`             // 描述信息
 	Status          CloudAccountStatus `json:"status" bson:"status"`                       // 账号状态
 	Config          CloudAccountConfig `json:"config" bson:"config"`                       // 配置信息
@@ -86,7 +87,7 @@ type CreateCloudAccountRequest struct {
 	Environment     Environment        `json:"environment" binding:"required"`
 	AccessKeyID     string             `json:"access_key_id" binding:"required,min=16,max=128"`
 	AccessKeySecret string             `json:"access_key_secret" binding:"required,min=16,max=256"`
-	Region          string             `json:"region" binding:"required"`
+	Regions         []string           `json:"regions" binding:"required,min=1"`
 	Description     string             `json:"description" binding:"max=500"`
 	Config          CloudAccountConfig `json:"config"`
 	TenantID        string             `json:"tenant_id" binding:"required"`
@@ -94,9 +95,14 @@ type CreateCloudAccountRequest struct {
 
 // UpdateCloudAccountRequest 更新云账号请求
 type UpdateCloudAccountRequest struct {
-	Name        *string             `json:"name,omitempty"`
-	Description *string             `json:"description,omitempty"`
-	Config      *CloudAccountConfig `json:"config,omitempty"`
+	Name            *string             `json:"name,omitempty"`
+	Environment     *Environment        `json:"environment,omitempty"`
+	AccessKeyID     *string             `json:"access_key_id,omitempty"`
+	AccessKeySecret *string             `json:"access_key_secret,omitempty"`
+	Regions         []string            `json:"regions,omitempty"`
+	Description     *string             `json:"description,omitempty"`
+	Config          *CloudAccountConfig `json:"config,omitempty"`
+	TenantID        *string             `json:"tenant_id,omitempty"`
 }
 
 // ConnectionTestResult 连接测试结果

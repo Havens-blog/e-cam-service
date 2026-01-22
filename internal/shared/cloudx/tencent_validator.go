@@ -1,4 +1,4 @@
-package cloudx
+﻿package cloudx
 
 import (
 	"context"
@@ -35,7 +35,7 @@ func (v *TencentValidator) ValidateCredentials(ctx context.Context, account *dom
 	if err := v.callTencentAPI(ctx, account); err != nil {
 		return &ValidationResult{
 			Valid:        false,
-			Message:      fmt.Sprintf("腾讯云 API 调用失败: %v", err),
+			Message:      fmt.Sprintf("腾讯云 API 调用失败败: %v", err),
 			ValidatedAt:  time.Now(),
 			ResponseTime: time.Since(startTime).Milliseconds(),
 		}, nil
@@ -44,12 +44,12 @@ func (v *TencentValidator) ValidateCredentials(ctx context.Context, account *dom
 	// 获取支持的地域
 	regions, err := v.GetSupportedRegions(ctx, account)
 	if err != nil {
-		regions = []string{account.Region}
+		regions = account.Regions // 降级处理，使用账号配置的区域
 	}
 
 	return &ValidationResult{
 		Valid:        true,
-		Message:      "腾讯云凭证验证成功",
+		Message:      "腾讯云凭证验证成功功",
 		Regions:      regions,
 		Permissions:  []string{"cvm:DescribeInstances", "cdb:DescribeDBInstances", "cos:GetBucket"},
 		AccountInfo:  fmt.Sprintf("SecretId: %s", maskAccessKey(account.AccessKeyID)),
@@ -68,7 +68,7 @@ func (v *TencentValidator) GetSupportedRegions(ctx context.Context, account *dom
 		"ap-shenzhen-fsi",  // 华南地区（深圳金融）
 		"ap-shanghai-fsi",  // 华东地区（上海金融）
 		"ap-beijing-fsi",   // 华北地区（北京金融）
-		"ap-chengdu",       // 西南地区（成都）
+		"ap-chengdu",       // 西南地区（成功都）
 		"ap-chongqing",     // 西南地区（重庆）
 		"ap-hongkong",      // 港澳台地区（中国香港）
 		"ap-singapore",     // 亚太东南（新加坡）
@@ -110,7 +110,7 @@ func (v *TencentValidator) validateCredentialFormat(account *domain.CloudAccount
 
 // callTencentAPI 调用腾讯云 API 进行验证
 func (v *TencentValidator) callTencentAPI(ctx context.Context, account *domain.CloudAccount) error {
-	// TODO: 实际集成腾讯云 SDK
+	// TODO: 实际集成功腾讯云 SDK
 	// 可以调用 CVM DescribeRegions 接口来验证凭证
 
 	// 模拟 API 调用

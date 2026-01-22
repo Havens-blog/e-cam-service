@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -48,11 +48,23 @@ type cloudAccountService struct {
 	validatorFactory cloudx.CloudValidatorFactory
 }
 
+// ensureLogger 确保 logger 不为 nil
+func (s *cloudAccountService) ensureLogger() *elog.Component {
+	if s.logger == nil {
+		s.logger = elog.Load("default").Build()
+	}
+	return s.logger
+}
+
 // NewCloudAccountService 创建云账号服务
 func NewCloudAccountService(repo repository.CloudAccountRepository, logger *elog.Component) CloudAccountService {
+	if logger == nil {
+		// 如果logger为nil，使用 ego 的 Load 方法创建
+		logger = elog.Load("default").Build()
+	}
 	return &cloudAccountService{
 		repo:             repo,
-		logger:           elog.DefaultLogger,
+		logger:           logger,
 		validatorFactory: cloudx.NewCloudValidatorFactory(),
 	}
 }
@@ -73,7 +85,7 @@ func (s *cloudAccountService) CreateAccount(ctx context.Context, req *domain.Cre
 		Environment:     req.Environment,
 		AccessKeyID:     req.AccessKeyID,
 		AccessKeySecret: req.AccessKeySecret, // TODO: 需要加密存储
-		Region:          req.Region,
+		Regions:         req.Regions,
 		Description:     req.Description,
 		Status:          domain.CloudAccountStatusActive,
 		Config:          req.Config,
@@ -158,11 +170,27 @@ func (s *cloudAccountService) UpdateAccount(ctx context.Context, id int64, req *
 	if req.Name != nil {
 		account.Name = *req.Name
 	}
+	if req.Environment != nil {
+		account.Environment = *req.Environment
+	}
+	if req.AccessKeyID != nil {
+		account.AccessKeyID = *req.AccessKeyID
+	}
+	if req.AccessKeySecret != nil {
+		account.AccessKeySecret = *req.AccessKeySecret // TODO: 需要加密存储
+	}
+	if req.Regions != nil && len(req.Regions) > 0 {
+		account.Regions = req.Regions
+	}
 	if req.Description != nil {
 		account.Description = *req.Description
 	}
 	if req.Config != nil {
 		account.Config = *req.Config
+	}
+
+	if req.TenantID != nil {
+		account.TenantID = *req.TenantID
 	}
 
 	// 更新时间戳

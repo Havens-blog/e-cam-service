@@ -1,4 +1,4 @@
-package aliyun
+﻿package aliyun
 
 import (
 	"time"
@@ -7,7 +7,7 @@ import (
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/ram"
 )
 
-// ConvertRAMUserToCloudUser 转换RAM用户为CloudUser领域模型
+// ConvertRAMUserToCloudUser 转换器RAM用户组为CloudUser领域模型型
 func ConvertRAMUserToCloudUser(ramUser ram.User, account *domain.CloudAccount) *domain.CloudUser {
 	now := time.Now()
 
@@ -19,7 +19,7 @@ func ConvertRAMUserToCloudUser(ramUser ram.User, account *domain.CloudAccount) *
 		}
 	}
 
-	// 解析最后登录时间
+	// 解析最后登录时�?
 	var lastLoginTime *time.Time
 	if ramUser.LastLoginDate != "" {
 		if t, err := time.Parse(time.RFC3339, ramUser.LastLoginDate); err == nil {
@@ -51,7 +51,7 @@ func ConvertRAMUserToCloudUser(ramUser ram.User, account *domain.CloudAccount) *
 	return user
 }
 
-// ConvertPolicyType 转换策略类型
+// ConvertPolicyType 转换器策略类型
 func ConvertPolicyType(ramPolicyType string) domain.PolicyType {
 	switch ramPolicyType {
 	case "System":
@@ -61,4 +61,35 @@ func ConvertPolicyType(ramPolicyType string) domain.PolicyType {
 	default:
 		return domain.PolicyTypeCustom
 	}
+}
+
+// ConvertRAMGroupToUserGroup 转换器RAM用户组组为PermissionGroup领域模型型
+func ConvertRAMGroupToUserGroup(ramGroup ram.Group, account *domain.CloudAccount) *domain.UserGroup {
+	now := time.Now()
+
+	// 解析创建时间
+	createTime := now
+	if ramGroup.CreateDate != "" {
+		if t, err := time.Parse(time.RFC3339, ramGroup.CreateDate); err == nil {
+			createTime = t
+		}
+	}
+
+	group := &domain.UserGroup{
+		GroupName:      ramGroup.GroupName,
+		DisplayName:    ramGroup.GroupName, // 阿里云RAM没有单独的DisplayName字段
+		Description:    ramGroup.Comments,
+		CloudAccountID: account.ID,
+		Provider:       domain.CloudProviderAliyun,
+		CloudGroupID:   ramGroup.GroupName, // 阿里云使用GroupName作为唯一标识
+		TenantID:       account.TenantID,
+		CreateTime:     createTime,
+		UpdateTime:     now,
+		CTime:          createTime.Unix(),
+		UTime:          now.Unix(),
+		Policies:       []domain.PermissionPolicy{}, // 需要单独查�?
+		MemberCount:    0,                            // 需要单独查�?
+	}
+
+	return group
 }

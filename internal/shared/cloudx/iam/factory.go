@@ -1,4 +1,4 @@
-package iam
+﻿package iam
 
 import (
 	"fmt"
@@ -6,6 +6,9 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam/aliyun"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam/aws"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam/huawei"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam/tencent"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam/volcano"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -16,7 +19,7 @@ type adapterFactory struct {
 	logger   *elog.Component
 }
 
-func NewCloudIAMAdapterFactory(logger *elog.Component) CloudIAMAdapterFactory {
+func New(logger *elog.Component) CloudIAMAdapterFactory {
 	return &adapterFactory{
 		adapters: make(map[domain.CloudProvider]CloudIAMAdapter),
 		logger:   logger,
@@ -53,16 +56,16 @@ func (f *adapterFactory) CreateAdapter(provider domain.CloudProvider) (CloudIAMA
 	case domain.CloudProviderVolcano:
 		adapter, err = f.createVolcanoAdapter()
 	default:
-		return nil, fmt.Errorf("不支持的云厂商: %s", provider)
+		return nil, fmt.Errorf("不支持的云厂�? %s", provider)
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("创建适配器失败: %w", err)
+		return nil, fmt.Errorf("创建适配器失败败: %w", err)
 	}
 
 	f.adapters[provider] = adapter
 
-	f.logger.Info("创建云平台适配器成功",
+	f.logger.Info("创建云平台适配器成功功",
 		elog.String("provider", string(provider)))
 
 	return adapter, nil
@@ -79,22 +82,25 @@ func (f *adapterFactory) createAWSAdapter() (CloudIAMAdapter, error) {
 }
 
 func (f *adapterFactory) createHuaweiAdapter() (CloudIAMAdapter, error) {
-	return nil, fmt.Errorf("华为云适配器尚未实现")
+	adapter := huawei.NewAdapter(f.logger)
+	return huawei.NewAdapterWrapper(adapter), nil
 }
 
 func (f *adapterFactory) createTencentAdapter() (CloudIAMAdapter, error) {
-	return nil, fmt.Errorf("腾讯云适配器尚未实现")
+	adapter := tencent.NewAdapter(f.logger)
+	return tencent.NewAdapterWrapper(adapter), nil
 }
 
 func (f *adapterFactory) createVolcanoAdapter() (CloudIAMAdapter, error) {
-	return nil, fmt.Errorf("火山云适配器尚未实现 - 需要确认 SDK API 结构")
+	adapter := volcano.NewAdapter(f.logger)
+	return volcano.NewAdapterWrapper(adapter), nil
 }
 
 func (f *adapterFactory) ClearCache() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.adapters = make(map[domain.CloudProvider]CloudIAMAdapter)
-	f.logger.Info("清空适配器缓存")
+	f.logger.Info("清空适配器缓存存")
 }
 
 func (f *adapterFactory) GetCachedAdapter(provider domain.CloudProvider) (CloudIAMAdapter, bool) {

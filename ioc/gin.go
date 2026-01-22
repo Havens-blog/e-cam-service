@@ -5,6 +5,7 @@ import (
 
 	_ "github.com/Havens-blog/e-cam-service/docs" // 导入生成的文档
 	"github.com/Havens-blog/e-cam-service/internal/cam"
+	"github.com/Havens-blog/e-cam-service/internal/cmdb"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-contrib/cors"
@@ -14,7 +15,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, endpointHdl *endpoint.Handler, camModule *cam.Module) *gin.Engine {
+func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, endpointHdl *endpoint.Handler, camModule *cam.Module, cmdbModule *cmdb.Module) *gin.Engine {
 	logger := elog.DefaultLogger
 	logger.Info("开始初始化Web服务器")
 	session.SetDefaultProvider(sp)
@@ -47,6 +48,12 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, endpointHdl *end
 	} else {
 		logger.Warn("IAM模块未初始化，跳过IAM路由注册")
 	}
+
+	// 注册CMDB路由
+	logger.Info("注册CMDB路由")
+	cmdbGroup := server.Group("/api/v1")
+	cmdbModule.RegisterRoutes(cmdbGroup)
+	logger.Info("CMDB路由注册完成")
 
 	// 注册 Swagger 文档路由
 	logger.Info("注册 Swagger 文档路由")

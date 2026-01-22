@@ -15,6 +15,9 @@ var Cmd = &cobra.Command{
 	Short: "ecmdb API服务",
 	Long:  "启动服务，对外暴露接口",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// 初始化自定义日志格式 (可读时间 + 调用者信息)
+		ioc.InitCustomLogger()
+
 		logger := elog.DefaultLogger
 		logger.Info("开始启动ECMDB服务")
 

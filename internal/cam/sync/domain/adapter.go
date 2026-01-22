@@ -1,4 +1,4 @@
-package domain
+﻿package domain
 
 import "context"
 
@@ -9,6 +9,9 @@ const (
 	ProviderAliyun CloudProvider = "aliyun"
 	ProviderAWS    CloudProvider = "aws"
 	ProviderAzure  CloudProvider = "azure"
+	ProviderHuawei CloudProvider = "huawei"
+	ProviderVolces CloudProvider = "volces"
+	ProvicerQcloud CloudProvider = "qcloud"
 )
 
 // CloudAdapter 云厂商适配器接口

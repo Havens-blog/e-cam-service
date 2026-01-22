@@ -1,4 +1,4 @@
-package queue
+﻿package queue
 
 import (
 	"context"
@@ -27,7 +27,7 @@ type TaskQueue struct {
 // Config 任务队列配置
 type Config struct {
 	WorkerNum  int // worker 数量
-	BufferSize int // 队列缓冲大小
+	BufferSize int // 队列缓存冲大小
 }
 
 // NewTaskQueue 创建任务队列
@@ -41,7 +41,7 @@ func NewTaskQueue(
 	}
 
 	if config.BufferSize <= 0 {
-		config.BufferSize = 100 // 默认缓冲100个任务
+		config.BufferSize = 100 // 默认缓存冲100个任务
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -212,7 +212,11 @@ func (q *TaskQueue) executeTask(workerID int, task *domain.Task) {
 
 // GetTaskStatus 获取任务状态
 func (q *TaskQueue) GetTaskStatus(taskID string) (*domain.Task, error) {
-	return q.repo.GetByID(context.Background(), taskID)
+	task, err := q.repo.GetByID(context.Background(), taskID)
+	if err != nil {
+		return nil, err
+	}
+	return &task, nil
 }
 
 // ListTasks 获取任务列表

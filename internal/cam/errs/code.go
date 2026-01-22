@@ -1,4 +1,4 @@
-package errs
+﻿package errs
 
 import "errors"
 
@@ -90,4 +90,52 @@ var (
 	ErrInvalidGroupName     = errors.New("invalid group name")
 	ErrCircularReference    = errors.New("circular reference detected")
 	ErrInvalidRelation      = errors.New("invalid relation")
+)
+
+// IAM用户相关错误码 (404xxx, 409xxx, 400xxx, 500xxx)
+var (
+	UserNotFound      = ErrorCode{Code: 404010, Msg: "user not found"}
+	UserAlreadyExists = ErrorCode{Code: 409008, Msg: "user already exists"}
+	UserInvalidType   = ErrorCode{Code: 400008, Msg: "invalid user type"}
+	UserSyncFailed    = ErrorCode{Code: 500005, Msg: "user sync failed"}
+)
+
+// IAM权限组相关错误码 (404xxx, 409xxx, 400xxx)
+var (
+	PermissionGroupNotFound     = ErrorCode{Code: 404011, Msg: "permission group not found"}
+	PermissionGroupAlreadyExist = ErrorCode{Code: 409009, Msg: "permission group already exists"}
+	PermissionGroupHasUsers     = ErrorCode{Code: 400009, Msg: "permission group has users, cannot delete"}
+	PermissionGroupPolicyInvalid = ErrorCode{Code: 400010, Msg: "permission policy invalid"}
+)
+
+// IAM同步任务相关错误码 (404xxx, 409xxx, 500xxx)
+var (
+	SyncTaskNotFound   = ErrorCode{Code: 404012, Msg: "sync task not found"}
+	SyncTaskRunning    = ErrorCode{Code: 409010, Msg: "sync task is already running"}
+	SyncTaskFailed     = ErrorCode{Code: 500006, Msg: "sync task execution failed"}
+	SyncTaskTimeout    = ErrorCode{Code: 500007, Msg: "sync task timeout"}
+	SyncTaskMaxRetries = ErrorCode{Code: 500008, Msg: "sync task reached max retries"}
+)
+
+// IAM模板相关错误码 (404xxx, 409xxx, 400xxx)
+var (
+	TemplateNotFound = ErrorCode{Code: 404013, Msg: "policy template not found"}
+	TemplateBuiltIn  = ErrorCode{Code: 400011, Msg: "built-in template cannot be modified"}
+	TemplateInUse    = ErrorCode{Code: 400012, Msg: "template is in use, cannot delete"}
+)
+
+// IAM云平台适配器错误码 (400xxx, 401xxx, 429xxx, 500xxx)
+var (
+	AdapterNotSupported = ErrorCode{Code: 400013, Msg: "cloud platform not supported"}
+	AdapterAuthFailed   = ErrorCode{Code: 401002, Msg: "cloud platform authentication failed"}
+	AdapterAPIError     = ErrorCode{Code: 500009, Msg: "cloud platform API error"}
+	AdapterRateLimited  = ErrorCode{Code: 429002, Msg: "cloud platform API rate limited"}
+)
+
+// IAM标准错误
+var (
+	ErrInvalidUserType       = errors.New("invalid user type")
+	ErrInvalidPermissionPolicy = errors.New("invalid permission policy")
+	ErrSyncTaskNotRetryable  = errors.New("sync task not retryable")
+	ErrTemplateNotEditable   = errors.New("template not editable")
 )

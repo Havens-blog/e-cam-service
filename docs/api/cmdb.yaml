@@ -1,0 +1,1750 @@
+openapi: 3.0.3
+info:
+  title: CMDB API
+  description: 配置管理数据库 API - 提供资源模型和实例的统一管理接口
+  version: 1.0.0
+  contact:
+    name: API Support
+
+servers:
+  - url: /api/v1
+    description: API Server
+
+tags:
+  - name: Model
+    description: 资源模型管理
+  - name: ModelGroup
+    description: 模型分组管理
+  - name: Attribute
+    description: 模型属性管理
+  - name: AttributeGroup
+    description: 属性分组管理
+  - name: Instance
+    description: 资源实例管理
+  - name: ModelRelation
+    description: 模型关系类型管理
+  - name: InstanceRelation
+    description: 实例关系管理
+  - name: Topology
+    description: 拓扑视图
+
+paths:
+  # ==================== 模型管理 ====================
+  /cmdb/models:
+    post:
+      tags:
+        - Model
+      summary: 创建模型
+      operationId: createModel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateModelReq'
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateModelResp'
+
+    get:
+      tags:
+        - Model
+      summary: 获取模型列表
+      operationId: listModels
+      parameters:
+        - name: provider
+          in: query
+          description: 云厂商标识
+          schema:
+            type: string
+        - name: category
+          in: query
+          description: 资源类别
+          schema:
+            type: string
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelListResp'
+
+  /cmdb/models/{uid}:
+    get:
+      tags:
+        - Model
+      summary: 获取模型详情
+      operationId: getModelByUID
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelResp'
+
+    put:
+      tags:
+        - Model
+      summary: 更新模型
+      operationId: updateModel
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateModelReq'
+      responses:
+        '200':
+          description: 更新成功
+
+    delete:
+      tags:
+        - Model
+      summary: 删除模型
+      operationId: deleteModel
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 删除成功
+
+
+  # ==================== 模型分组管理 ====================
+  /cmdb/model-groups:
+    post:
+      tags:
+        - ModelGroup
+      summary: 创建模型分组
+      operationId: createModelGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateModelGroupReq'
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateIDResp'
+
+    get:
+      tags:
+        - ModelGroup
+      summary: 获取模型分组列表
+      operationId: listModelGroups
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelGroupListResp'
+
+  /cmdb/model-groups/with-models:
+    get:
+      tags:
+        - ModelGroup
+      summary: 获取分组及其模型列表
+      operationId: listModelGroupsWithModels
+      responses:
+        '200':
+          description: 成功
+
+  /cmdb/model-groups/{uid}:
+    get:
+      tags:
+        - ModelGroup
+      summary: 获取模型分组详情
+      operationId: getModelGroup
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+
+    put:
+      tags:
+        - ModelGroup
+      summary: 更新模型分组
+      operationId: updateModelGroup
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateModelGroupReq'
+      responses:
+        '200':
+          description: 更新成功
+
+    delete:
+      tags:
+        - ModelGroup
+      summary: 删除模型分组
+      operationId: deleteModelGroup
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 删除成功
+
+
+  # ==================== 字段类型 ====================
+  /cmdb/field-types:
+    get:
+      tags:
+        - Attribute
+      summary: 获取字段类型列表
+      operationId: getFieldTypes
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FieldTypesResp'
+
+  # ==================== 模型属性管理 ====================
+  /cmdb/models/{uid}/attributes:
+    post:
+      tags:
+        - Attribute
+      summary: 创建模型属性
+      operationId: createAttribute
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          description: 模型UID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAttributeReq'
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateIDResp'
+
+    get:
+      tags:
+        - Attribute
+      summary: 获取模型属性列表
+      operationId: listAttributes
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          description: 模型UID
+          schema:
+            type: string
+        - name: group_id
+          in: query
+          description: 属性分组ID
+          schema:
+            type: integer
+            format: int64
+        - name: field_type
+          in: query
+          description: 字段类型 (string/int/float/bool/enum/datetime/date/array/json/link/text)
+          schema:
+            type: string
+        - name: offset
+          in: query
+          description: 偏移量，默认0
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          description: 每页数量，默认100
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttributeListResp'
+
+  /cmdb/models/{uid}/attributes/grouped:
+    get:
+      tags:
+        - Attribute
+      summary: 获取分组后的属性列表
+      operationId: listAttributesWithGroups
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          description: 模型UID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttributeGroupWithAttrsListResp'
+
+  /cmdb/models/{uid}/attributes/{id}:
+    get:
+      tags:
+        - Attribute
+      summary: 获取属性详情
+      operationId: getAttribute
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttributeResp'
+
+    put:
+      tags:
+        - Attribute
+      summary: 更新属性
+      operationId: updateAttribute
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAttributeReq'
+      responses:
+        '200':
+          description: 更新成功
+
+    delete:
+      tags:
+        - Attribute
+      summary: 删除属性
+      operationId: deleteAttribute
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 删除成功
+
+
+  # ==================== 属性分组管理 ====================
+  /cmdb/models/{uid}/attribute-groups:
+    post:
+      tags:
+        - AttributeGroup
+      summary: 创建属性分组
+      operationId: createAttributeGroup
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          description: 模型UID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAttributeGroupReq'
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateIDResp'
+
+    get:
+      tags:
+        - AttributeGroup
+      summary: 获取属性分组列表
+      operationId: listAttributeGroups
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          description: 模型UID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttributeGroupListResp'
+
+  /cmdb/models/{uid}/attribute-groups/{id}:
+    get:
+      tags:
+        - AttributeGroup
+      summary: 获取属性分组详情
+      operationId: getAttributeGroup
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttributeGroupResp'
+
+    put:
+      tags:
+        - AttributeGroup
+      summary: 更新属性分组
+      operationId: updateAttributeGroup
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAttributeGroupReq'
+      responses:
+        '200':
+          description: 更新成功
+
+    delete:
+      tags:
+        - AttributeGroup
+      summary: 删除属性分组
+      operationId: deleteAttributeGroup
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 删除成功
+
+
+  # ==================== 实例管理 ====================
+  /cmdb/instances:
+    post:
+      tags:
+        - Instance
+      summary: 创建实例
+      operationId: createInstance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInstanceReq'
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateIDResp'
+
+    get:
+      tags:
+        - Instance
+      summary: 获取实例列表
+      operationId: listInstances
+      parameters:
+        - name: model_uid
+          in: query
+          description: 模型UID
+          schema:
+            type: string
+        - name: tenant_id
+          in: query
+          description: 租户ID
+          schema:
+            type: string
+        - name: account_id
+          in: query
+          description: 云账号ID
+          schema:
+            type: integer
+            format: int64
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceListResp'
+
+  /cmdb/instances/batch:
+    post:
+      tags:
+        - Instance
+      summary: 批量创建实例
+      operationId: createInstanceBatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBatchInstanceReq'
+      responses:
+        '200':
+          description: 创建成功
+
+  /cmdb/instances/upsert:
+    post:
+      tags:
+        - Instance
+      summary: 更新或插入实例
+      operationId: upsertInstance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertInstanceReq'
+      responses:
+        '200':
+          description: 操作成功
+
+  /cmdb/instances/{id}:
+    get:
+      tags:
+        - Instance
+      summary: 获取实例详情
+      operationId: getInstanceByID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceResp'
+
+    put:
+      tags:
+        - Instance
+      summary: 更新实例
+      operationId: updateInstance
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInstanceReq'
+      responses:
+        '200':
+          description: 更新成功
+
+    delete:
+      tags:
+        - Instance
+      summary: 删除实例
+      operationId: deleteInstance
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 删除成功
+
+
+  # ==================== 模型关系管理 ====================
+  /cmdb/model-relations:
+    post:
+      tags:
+        - ModelRelation
+      summary: 创建模型关系类型
+      operationId: createModelRelation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateModelRelationReq'
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateIDResp'
+
+    get:
+      tags:
+        - ModelRelation
+      summary: 获取模型关系类型列表
+      operationId: listModelRelations
+      parameters:
+        - name: source_model_uid
+          in: query
+          schema:
+            type: string
+        - name: target_model_uid
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelRelationListResp'
+
+  /cmdb/model-relations/{uid}:
+    get:
+      tags:
+        - ModelRelation
+      summary: 获取模型关系类型详情
+      operationId: getModelRelation
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+
+    put:
+      tags:
+        - ModelRelation
+      summary: 更新模型关系类型
+      operationId: updateModelRelation
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateModelRelationReq'
+      responses:
+        '200':
+          description: 更新成功
+
+    delete:
+      tags:
+        - ModelRelation
+      summary: 删除模型关系类型
+      operationId: deleteModelRelation
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 删除成功
+
+  # ==================== 实例关系管理 ====================
+  /cmdb/instance-relations:
+    post:
+      tags:
+        - InstanceRelation
+      summary: 创建实例关系
+      operationId: createInstanceRelation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInstanceRelationReq'
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateIDResp'
+
+    get:
+      tags:
+        - InstanceRelation
+      summary: 获取实例关系列表
+      operationId: listInstanceRelations
+      parameters:
+        - name: source_instance_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: target_instance_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceRelationListResp'
+
+  /cmdb/instance-relations/{id}:
+    delete:
+      tags:
+        - InstanceRelation
+      summary: 删除实例关系
+      operationId: deleteInstanceRelation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 删除成功
+
+  # ==================== 拓扑视图 ====================
+  /cmdb/topology/instance/{id}:
+    get:
+      tags:
+        - Topology
+      summary: 获取实例拓扑图
+      operationId: getInstanceTopology
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopologyGraphResp'
+
+  /cmdb/topology/model:
+    get:
+      tags:
+        - Topology
+      summary: 获取模型拓扑图
+      operationId: getModelTopology
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelTopologyGraphResp'
+
+
+components:
+  schemas:
+    # ==================== 通用响应 ====================
+    SuccessResp:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        msg:
+          type: string
+          example: success
+        data:
+          type: object
+
+    CreateIDResp:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        msg:
+          type: string
+          example: success
+        data:
+          type: object
+          properties:
+            id:
+              type: integer
+              format: int64
+
+    # ==================== 模型相关 ====================
+    CreateModelReq:
+      type: object
+      required:
+        - uid
+        - name
+        - category
+      properties:
+        uid:
+          type: string
+          description: 模型唯一标识
+          example: ecs
+        name:
+          type: string
+          description: 模型名称
+          example: 云服务器
+        model_group_id:
+          type: integer
+          format: int64
+        category:
+          type: string
+          example: compute
+        provider:
+          type: string
+          example: all
+        description:
+          type: string
+
+    UpdateModelReq:
+      type: object
+      properties:
+        name:
+          type: string
+        model_group_id:
+          type: integer
+          format: int64
+        icon:
+          type: string
+        description:
+          type: string
+
+    ModelVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        uid:
+          type: string
+        name:
+          type: string
+        model_group_id:
+          type: integer
+          format: int64
+        category:
+          type: string
+        provider:
+          type: string
+        description:
+          type: string
+        create_time:
+          type: integer
+          format: int64
+        update_time:
+          type: integer
+          format: int64
+
+    CreateModelResp:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        msg:
+          type: string
+        data:
+          type: object
+          properties:
+            id:
+              type: integer
+              format: int64
+
+    ModelResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          $ref: '#/components/schemas/ModelVO'
+
+    ModelListResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          type: object
+          properties:
+            models:
+              type: array
+              items:
+                $ref: '#/components/schemas/ModelVO'
+            total:
+              type: integer
+              format: int64
+
+
+    # ==================== 模型分组相关 ====================
+    CreateModelGroupReq:
+      type: object
+      required:
+        - uid
+        - name
+      properties:
+        uid:
+          type: string
+        name:
+          type: string
+        icon:
+          type: string
+        sort_order:
+          type: integer
+        description:
+          type: string
+
+    UpdateModelGroupReq:
+      type: object
+      properties:
+        name:
+          type: string
+        icon:
+          type: string
+        sort_order:
+          type: integer
+        description:
+          type: string
+
+    ModelGroupVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        uid:
+          type: string
+        name:
+          type: string
+        icon:
+          type: string
+        sort_order:
+          type: integer
+        is_builtin:
+          type: boolean
+        description:
+          type: string
+        create_time:
+          type: integer
+          format: int64
+        update_time:
+          type: integer
+          format: int64
+
+    ModelGroupListResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          type: object
+          properties:
+            groups:
+              type: array
+              items:
+                $ref: '#/components/schemas/ModelGroupVO'
+            total:
+              type: integer
+              format: int64
+
+    # ==================== 属性相关 ====================
+    FieldTypesResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              value:
+                type: string
+                example: string
+              label:
+                type: string
+                example: 短文本
+
+    CreateAttributeReq:
+      type: object
+      required:
+        - field_uid
+        - field_name
+        - field_type
+      properties:
+        field_uid:
+          type: string
+          example: instance_id
+        field_name:
+          type: string
+          example: 实例ID
+        field_type:
+          type: string
+          enum: [string, text, int, float, bool, enum, datetime, date, array, json, link]
+        group_id:
+          type: integer
+          format: int64
+        display:
+          type: boolean
+          default: true
+        index:
+          type: integer
+        required:
+          type: boolean
+        editable:
+          type: boolean
+        searchable:
+          type: boolean
+        unique:
+          type: boolean
+        secure:
+          type: boolean
+        link:
+          type: boolean
+        link_model:
+          type: string
+        option:
+          type: string
+          description: JSON格式的选项值
+        default:
+          type: string
+        placeholder:
+          type: string
+        description:
+          type: string
+
+    UpdateAttributeReq:
+      type: object
+      properties:
+        field_name:
+          type: string
+        field_type:
+          type: string
+        group_id:
+          type: integer
+          format: int64
+        display:
+          type: boolean
+        index:
+          type: integer
+        required:
+          type: boolean
+        editable:
+          type: boolean
+        searchable:
+          type: boolean
+        unique:
+          type: boolean
+        secure:
+          type: boolean
+        link:
+          type: boolean
+        link_model:
+          type: string
+        option:
+          type: string
+        default:
+          type: string
+        placeholder:
+          type: string
+        description:
+          type: string
+
+    AttributeVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        field_uid:
+          type: string
+        field_name:
+          type: string
+        field_type:
+          type: string
+        model_uid:
+          type: string
+        group_id:
+          type: integer
+          format: int64
+        display:
+          type: boolean
+        index:
+          type: integer
+        required:
+          type: boolean
+        editable:
+          type: boolean
+        searchable:
+          type: boolean
+        unique:
+          type: boolean
+        secure:
+          type: boolean
+        link:
+          type: boolean
+        link_model:
+          type: string
+        option:
+          type: string
+        default:
+          type: string
+        placeholder:
+          type: string
+        description:
+          type: string
+        create_time:
+          type: integer
+          format: int64
+        update_time:
+          type: integer
+          format: int64
+
+    AttributeResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          $ref: '#/components/schemas/AttributeVO'
+
+    AttributeListResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          type: object
+          properties:
+            attributes:
+              type: array
+              items:
+                $ref: '#/components/schemas/AttributeVO'
+            total:
+              type: integer
+              format: int64
+
+
+    # ==================== 属性分组相关 ====================
+    CreateAttributeGroupReq:
+      type: object
+      required:
+        - uid
+        - name
+      properties:
+        uid:
+          type: string
+          example: basic
+        name:
+          type: string
+          example: 基本信息
+        index:
+          type: integer
+        description:
+          type: string
+
+    UpdateAttributeGroupReq:
+      type: object
+      properties:
+        name:
+          type: string
+        index:
+          type: integer
+        description:
+          type: string
+
+    AttributeGroupVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        uid:
+          type: string
+        name:
+          type: string
+        model_uid:
+          type: string
+        index:
+          type: integer
+        is_builtin:
+          type: boolean
+        description:
+          type: string
+        create_time:
+          type: integer
+          format: int64
+        update_time:
+          type: integer
+          format: int64
+
+    AttributeGroupResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          $ref: '#/components/schemas/AttributeGroupVO'
+
+    AttributeGroupListResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttributeGroupVO'
+
+    AttributeGroupWithAttrsVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        uid:
+          type: string
+        name:
+          type: string
+        model_uid:
+          type: string
+        index:
+          type: integer
+        is_builtin:
+          type: boolean
+        description:
+          type: string
+        attributes:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttributeVO'
+
+    AttributeGroupWithAttrsListResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttributeGroupWithAttrsVO'
+
+    # ==================== 实例相关 ====================
+    CreateInstanceReq:
+      type: object
+      required:
+        - model_uid
+        - asset_id
+        - tenant_id
+      properties:
+        model_uid:
+          type: string
+          example: ecs
+        asset_id:
+          type: string
+          example: i-bp1234567890
+        asset_name:
+          type: string
+        tenant_id:
+          type: string
+        account_id:
+          type: integer
+          format: int64
+        attributes:
+          type: object
+          additionalProperties: true
+
+    CreateBatchInstanceReq:
+      type: object
+      properties:
+        instances:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateInstanceReq'
+
+    UpsertInstanceReq:
+      type: object
+      required:
+        - model_uid
+        - asset_id
+        - tenant_id
+      properties:
+        model_uid:
+          type: string
+        asset_id:
+          type: string
+        asset_name:
+          type: string
+        tenant_id:
+          type: string
+        account_id:
+          type: integer
+          format: int64
+        attributes:
+          type: object
+          additionalProperties: true
+
+    UpdateInstanceReq:
+      type: object
+      properties:
+        asset_name:
+          type: string
+        attributes:
+          type: object
+          additionalProperties: true
+
+    InstanceVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        model_uid:
+          type: string
+        asset_id:
+          type: string
+        asset_name:
+          type: string
+        tenant_id:
+          type: string
+        account_id:
+          type: integer
+          format: int64
+        attributes:
+          type: object
+          additionalProperties: true
+        create_time:
+          type: integer
+          format: int64
+        update_time:
+          type: integer
+          format: int64
+
+    InstanceResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          $ref: '#/components/schemas/InstanceVO'
+
+    InstanceListResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          type: object
+          properties:
+            instances:
+              type: array
+              items:
+                $ref: '#/components/schemas/InstanceVO'
+            total:
+              type: integer
+              format: int64
+
+
+    # ==================== 模型关系相关 ====================
+    CreateModelRelationReq:
+      type: object
+      required:
+        - uid
+        - name
+        - source_model_uid
+        - target_model_uid
+        - relation_type
+      properties:
+        uid:
+          type: string
+          example: ecs_vpc
+        name:
+          type: string
+          example: 云服务器所属VPC
+        source_model_uid:
+          type: string
+          example: ecs
+        target_model_uid:
+          type: string
+          example: vpc
+        relation_type:
+          type: string
+          enum: [belongs_to, contains, bindto, connects, depends_on]
+        direction:
+          type: string
+          enum: [one_to_one, one_to_many, many_to_many]
+        description:
+          type: string
+
+    UpdateModelRelationReq:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    ModelRelationVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        uid:
+          type: string
+        name:
+          type: string
+        source_model_uid:
+          type: string
+        target_model_uid:
+          type: string
+        relation_type:
+          type: string
+        direction:
+          type: string
+        description:
+          type: string
+        create_time:
+          type: integer
+          format: int64
+        update_time:
+          type: integer
+          format: int64
+
+    ModelRelationListResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          type: object
+          properties:
+            relations:
+              type: array
+              items:
+                $ref: '#/components/schemas/ModelRelationVO'
+            total:
+              type: integer
+              format: int64
+
+    # ==================== 实例关系相关 ====================
+    CreateInstanceRelationReq:
+      type: object
+      required:
+        - source_instance_id
+        - target_instance_id
+        - relation_type_uid
+        - tenant_id
+      properties:
+        source_instance_id:
+          type: integer
+          format: int64
+        target_instance_id:
+          type: integer
+          format: int64
+        relation_type_uid:
+          type: string
+        tenant_id:
+          type: string
+
+    InstanceRelationVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        source_instance_id:
+          type: integer
+          format: int64
+        target_instance_id:
+          type: integer
+          format: int64
+        relation_type_uid:
+          type: string
+        tenant_id:
+          type: string
+        create_time:
+          type: integer
+          format: int64
+
+    InstanceRelationListResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          type: object
+          properties:
+            relations:
+              type: array
+              items:
+                $ref: '#/components/schemas/InstanceRelationVO'
+            total:
+              type: integer
+              format: int64
+
+    # ==================== 拓扑相关 ====================
+    TopologyNode:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        model_uid:
+          type: string
+        asset_id:
+          type: string
+        asset_name:
+          type: string
+        attributes:
+          type: object
+          additionalProperties: true
+
+    TopologyEdge:
+      type: object
+      properties:
+        source_id:
+          type: integer
+          format: int64
+        target_id:
+          type: integer
+          format: int64
+        relation_type_uid:
+          type: string
+        relation_name:
+          type: string
+
+    TopologyGraphResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          type: object
+          properties:
+            nodes:
+              type: array
+              items:
+                $ref: '#/components/schemas/TopologyNode'
+            edges:
+              type: array
+              items:
+                $ref: '#/components/schemas/TopologyEdge'
+
+    ModelTopologyGraphResp:
+      type: object
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          type: object
+          properties:
+            nodes:
+              type: array
+              items:
+                type: object
+                properties:
+                  uid:
+                    type: string
+                  name:
+                    type: string
+                  category:
+                    type: string
+            edges:
+              type: array
+              items:
+                type: object
+                properties:
+                  source_model_uid:
+                    type: string
+                  target_model_uid:
+                    type: string
+                  relation_type:
+                    type: string
