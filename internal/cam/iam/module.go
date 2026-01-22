@@ -1,4 +1,4 @@
-﻿package iam
+package iam
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/web"
