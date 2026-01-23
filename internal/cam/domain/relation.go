@@ -1,4 +1,4 @@
-﻿package domain
+package domain
 
 const (
 	MappingOneToOne   = "1:1" // 一对一关系

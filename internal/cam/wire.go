@@ -1,4 +1,4 @@
-﻿//go:build wireinject
+//go:build wireinject
 
 package cam
 
@@ -8,11 +8,18 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
-	"github.com/Havens-blog/e-cam-service/internal/cam/sync/service/adapters"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task"
 	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
 	taskweb "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
+
+	// 注册各云厂商适配器
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aliyun"
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/tencent"
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/volcano"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/google/wire"
@@ -103,8 +110,8 @@ var ProviderSet = wire.NewSet(
 	// Task Repository
 	InitTaskRepository,
 
-	// Sync层
-	adapters.NewAdapterFactory,
+	// 统一适配器工厂
+	cloudx.NewAdapterFactory,
 
 	// Service层
 	service.NewService,

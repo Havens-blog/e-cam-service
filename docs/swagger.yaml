@@ -38,50 +38,6 @@ definitions:
     - CloudUserTypeIAMUser
     - CloudUserTypeCAMUser
     - CloudUserTypeVolcUser
-  domain.Model:
-    properties:
-      category:
-        description: 资源类别
-        type: string
-      createTime:
-        description: 创建时间
-        type: string
-      description:
-        description: 描述
-        type: string
-      extensible:
-        description: 是否可扩展
-        type: boolean
-      icon:
-        description: 图标
-        type: string
-      id:
-        description: 业务ID
-        format: int64
-        type: integer
-      level:
-        description: 层级（1=主资源，2=子资源）
-        type: integer
-      modelGroupID:
-        description: 模型分组ID
-        format: int64
-        type: integer
-      name:
-        description: 模型名称
-        type: string
-      parentUID:
-        description: 父模型UID（用于层级关系）
-        type: string
-      provider:
-        description: 云厂商（all表示通用）
-        type: string
-      uid:
-        description: 模型唯一标识
-        type: string
-      updateTime:
-        description: 更新时间
-        type: string
-    type: object
   domain.ModelField:
     properties:
       createTime:
@@ -182,20 +138,37 @@ definitions:
     enum:
     - user
     - group
+    - account
     type: string
+    x-enum-comments:
+      SyncTargetTypeAccount: 云账号级别同步
+    x-enum-descriptions:
+    - ""
+    - ""
+    - 云账号级别同步
     x-enum-varnames:
     - SyncTargetTypeUser
     - SyncTargetTypeGroup
+    - SyncTargetTypeAccount
   domain.SyncTaskType:
     enum:
     - user_sync
     - permission_sync
     - group_sync
+    - batch_user_sync
     type: string
+    x-enum-comments:
+      SyncTaskTypeBatchUserSync: 批量用户同步（从云平台拉取所有用户）
+    x-enum-descriptions:
+    - ""
+    - ""
+    - ""
+    - 批量用户同步（从云平台拉取所有用户）
     x-enum-varnames:
     - SyncTaskTypeUserSync
     - SyncTaskTypePermissionSync
     - SyncTaskTypeGroupSync
+    - SyncTaskTypeBatchUserSync
   domain.TemplateCategory:
     enum:
     - read_only
@@ -266,6 +239,194 @@ definitions:
     - TenantStatusInactive
     - TenantStatusSuspended
     - TenantStatusDeleted
+  github_com_Havens-blog_e-cam-service_internal_cam_domain.Model:
+    properties:
+      category:
+        description: 资源类别
+        type: string
+      createTime:
+        description: 创建时间
+        type: string
+      description:
+        description: 描述
+        type: string
+      extensible:
+        description: 是否可扩展
+        type: boolean
+      icon:
+        description: 图标
+        type: string
+      id:
+        description: 业务ID
+        format: int64
+        type: integer
+      level:
+        description: 层级（1=主资源，2=子资源）
+        type: integer
+      modelGroupID:
+        description: 模型分组ID
+        format: int64
+        type: integer
+      name:
+        description: 模型名称
+        type: string
+      parentUID:
+        description: 父模型UID（用于层级关系）
+        type: string
+      provider:
+        description: 云厂商（all表示通用）
+        type: string
+      uid:
+        description: 模型唯一标识
+        type: string
+      updateTime:
+        description: 更新时间
+        type: string
+    type: object
+  github_com_Havens-blog_e-cam-service_internal_cam_web.CreateBatchInstanceReq:
+    properties:
+      instances:
+        items:
+          $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.CreateInstanceReq'
+        type: array
+    required:
+    - instances
+    type: object
+  github_com_Havens-blog_e-cam-service_internal_cam_web.CreateInstanceReq:
+    properties:
+      account_id:
+        type: integer
+      asset_id:
+        type: string
+      asset_name:
+        type: string
+      attributes:
+        additionalProperties: true
+        type: object
+      model_uid:
+        type: string
+      tenant_id:
+        type: string
+    required:
+    - asset_id
+    - model_uid
+    - tenant_id
+    type: object
+  github_com_Havens-blog_e-cam-service_internal_cam_web.CreateModelReq:
+    properties:
+      category:
+        type: string
+      description:
+        type: string
+      extensible:
+        type: boolean
+      icon:
+        type: string
+      level:
+        minimum: 1
+        type: integer
+      model_group_id:
+        type: integer
+      name:
+        maxLength: 100
+        minLength: 1
+        type: string
+      parent_uid:
+        type: string
+      provider:
+        type: string
+      uid:
+        maxLength: 100
+        minLength: 1
+        type: string
+    required:
+    - category
+    - level
+    - name
+    - provider
+    - uid
+    type: object
+  github_com_Havens-blog_e-cam-service_internal_cam_web.InstanceListResp:
+    properties:
+      instances:
+        items:
+          $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.InstanceVO'
+        type: array
+      total:
+        type: integer
+    type: object
+  github_com_Havens-blog_e-cam-service_internal_cam_web.InstanceVO:
+    properties:
+      account_id:
+        type: integer
+      asset_id:
+        type: string
+      asset_name:
+        type: string
+      attributes:
+        additionalProperties: true
+        type: object
+      create_time:
+        type: integer
+      id:
+        type: integer
+      model_uid:
+        type: string
+      tenant_id:
+        type: string
+      update_time:
+        type: integer
+    type: object
+  github_com_Havens-blog_e-cam-service_internal_cam_web.UpdateInstanceReq:
+    properties:
+      asset_name:
+        type: string
+      attributes:
+        additionalProperties: true
+        type: object
+    type: object
+  github_com_Havens-blog_e-cam-service_internal_cam_web.UpdateModelReq:
+    properties:
+      description:
+        type: string
+      extensible:
+        type: boolean
+      icon:
+        type: string
+      model_group_id:
+        type: integer
+      name:
+        type: string
+    type: object
+  github_com_Havens-blog_e-cam-service_internal_cam_web.UpsertBatchInstanceReq:
+    properties:
+      instances:
+        items:
+          $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.UpsertInstanceReq'
+        type: array
+    required:
+    - instances
+    type: object
+  github_com_Havens-blog_e-cam-service_internal_cam_web.UpsertInstanceReq:
+    properties:
+      account_id:
+        type: integer
+      asset_id:
+        type: string
+      asset_name:
+        type: string
+      attributes:
+        additionalProperties: true
+        type: object
+      model_uid:
+        type: string
+      tenant_id:
+        type: string
+    required:
+    - asset_id
+    - model_uid
+    - tenant_id
+    type: object
   github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudAccount:
     properties:
       access_key_id:
@@ -430,6 +591,57 @@ definitions:
     - EnvironmentProduction
     - EnvironmentStaging
     - EnvironmentDevelopment
+  github_com_Havens-blog_e-cam-service_internal_shared_domain.SyncTask:
+    properties:
+      cloud_account_id:
+        type: integer
+      create_time:
+        type: string
+      ctime:
+        type: integer
+      end_time:
+        type: string
+      error_message:
+        type: string
+      id:
+        type: integer
+      max_retries:
+        type: integer
+      progress:
+        type: integer
+      provider:
+        $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider'
+      retry_count:
+        type: integer
+      start_time:
+        type: string
+      status:
+        $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.SyncTaskStatus'
+      target_id:
+        type: integer
+      target_type:
+        $ref: '#/definitions/domain.SyncTargetType'
+      task_type:
+        $ref: '#/definitions/domain.SyncTaskType'
+      update_time:
+        type: string
+      utime:
+        type: integer
+    type: object
+  github_com_Havens-blog_e-cam-service_internal_shared_domain.SyncTaskStatus:
+    enum:
+    - pending
+    - running
+    - success
+    - failed
+    - retrying
+    type: string
+    x-enum-varnames:
+    - SyncTaskStatusPending
+    - SyncTaskStatusRunning
+    - SyncTaskStatusSuccess
+    - SyncTaskStatusFailed
+    - SyncTaskStatusRetrying
   github_com_Havens-blog_e-cam-service_pkg_ginx.Result:
     properties:
       code:
@@ -713,40 +925,6 @@ definitions:
     - group_id
     - name
     type: object
-  web.CreateModelReq:
-    properties:
-      category:
-        type: string
-      description:
-        type: string
-      extensible:
-        type: boolean
-      icon:
-        type: string
-      level:
-        minimum: 1
-        type: integer
-      model_group_id:
-        type: integer
-      name:
-        maxLength: 100
-        minLength: 1
-        type: string
-      parent_uid:
-        type: string
-      provider:
-        type: string
-      uid:
-        maxLength: 100
-        minLength: 1
-        type: string
-    required:
-    - category
-    - level
-    - name
-    - provider
-    - uid
-    type: object
   web.CreateMultiAssetsReq:
     properties:
       assets:
@@ -986,27 +1164,58 @@ definitions:
         type: string
     type: object
   web.SyncAccountReq:
+    description: 同步云账号资产的请求参数
     properties:
       asset_types:
+        description: |-
+          要同步的资源类型列表，支持: ecs, rds, oss, vpc 等
+          为空则默认只同步 ecs
+        example:
+        - ecs
+        - rds
         items:
           type: string
         type: array
       regions:
+        description: 要同步的地域列表，为空则同步账号配置的所有地域
+        example:
+        - cn-hangzhou
+        - cn-shanghai
         items:
           type: string
         type: array
     type: object
   web.SyncAssetsReq:
     properties:
+      account_id:
+        description: 云账号ID
+        type: integer
       asset_types:
         description: 要同步的资源类型，为空则同步所有支持的类型
         items:
           type: string
         type: array
-      provider:
-        type: string
     required:
-    - provider
+    - account_id
+    type: object
+  web.SyncResult:
+    description: 云资产同步操作的结果
+    properties:
+      message:
+        description: 同步结果消息
+        example: 同步完成，共同步 10 个资产
+        type: string
+      start_time:
+        description: 同步开始时间
+        type: string
+      status:
+        description: '同步状态: running, success, failed'
+        example: success
+        type: string
+      sync_id:
+        description: '同步任务ID，格式: sync_{account_id}_{timestamp}'
+        example: sync_1_1706000000
+        type: string
     type: object
   web.Tag:
     properties:
@@ -1126,19 +1335,6 @@ definitions:
         type: boolean
       secure:
         type: boolean
-    type: object
-  web.UpdateModelReq:
-    properties:
-      description:
-        type: string
-      extensible:
-        type: boolean
-      icon:
-        type: string
-      model_group_id:
-        type: integer
-      name:
-        type: string
     type: object
   web.UpdatePoliciesVO:
     properties:
@@ -2186,6 +2382,7 @@ paths:
       - 用户管理
   /api/v1/cam/iam/users/sync:
     post:
+      description: 创建异步同步任务，立即返回任务ID，可通过任务ID查询同步进度
       parameters:
       - description: 租户ID
         in: header
@@ -2203,8 +2400,13 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/web.Result'
-      summary: 同步云平台用户
+            allOf:
+            - $ref: '#/definitions/web.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.SyncTask'
+              type: object
+      summary: 同步云平台用户（异步）
       tags:
       - 用户管理
   /api/v1/cam/menus:
@@ -2579,7 +2781,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: 同步指定云厂商的资产状态和信息
+      deprecated: true
+      description: 同步指定云账号的资产状态和信息。此接口已废弃，请使用 POST /api/v1/cam/cloud-accounts/{id}/sync
       parameters:
       - description: 同步资产请求
         in: body
@@ -2598,11 +2801,15 @@ paths:
           description: 请求参数错误
           schema:
             $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
+        "404":
+          description: 云账号不存在
+          schema:
+            $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
         "500":
           description: 服务器错误
           schema:
             $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
-      summary: 同步云资产
+      summary: 同步云资产（已废弃）
       tags:
       - 资产发现
   /cam/cloud-accounts:
@@ -2886,7 +3093,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: 同步指定云账号下的所有资产
+      description: |-
+        同步指定云账号下的云资产到本地数据库。这是同步云资产的主要接口，支持按资源类型和地域过滤同步范围。
+        同步过程会自动获取云账号配置的所有地域，并逐个地域同步指定类型的资产。
+        如果不指定 asset_types，默认只同步 ECS 实例。
       parameters:
       - description: 云账号ID
         in: path
@@ -2903,9 +3113,14 @@ paths:
       - application/json
       responses:
         "200":
-          description: 成功
+          description: 同步成功
           schema:
-            $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
+            allOf:
+            - $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/web.SyncResult'
+              type: object
         "400":
           description: 请求参数错误
           schema:
@@ -2914,11 +3129,15 @@ paths:
           description: 云账号不存在
           schema:
             $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
+        "409":
+          description: 云账号已禁用
+          schema:
+            $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
         "500":
           description: 服务器错误
           schema:
             $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
-      summary: 同步云账号资产
+      summary: 同步云账号资产（推荐）
       tags:
       - 云账号操作
   /cam/cloud-accounts/{id}/test-connection:
@@ -3093,6 +3312,230 @@ paths:
       summary: 更新模型字段
       tags:
       - 字段管理
+  /cam/instances:
+    get:
+      consumes:
+      - application/json
+      description: 获取资产实例列表，支持按模型、租户、云账号等条件过滤
+      parameters:
+      - description: 模型UID
+        in: query
+        name: model_uid
+        type: string
+      - description: 租户ID
+        in: query
+        name: tenant_id
+        type: string
+      - description: 云账号ID
+        in: query
+        name: account_id
+        type: integer
+      - description: 资产名称(模糊搜索)
+        in: query
+        name: asset_name
+        type: string
+      - description: 状态
+        in: query
+        name: status
+        type: string
+      - description: 地域
+        in: query
+        name: region
+        type: string
+      - default: 0
+        description: 偏移量
+        in: query
+        name: offset
+        type: integer
+      - default: 20
+        description: 限制数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.InstanceListResp'
+              type: object
+      summary: 获取资产实例列表
+      tags:
+      - 资产实例
+    post:
+      consumes:
+      - application/json
+      description: 创建新的资产实例
+      parameters:
+      - description: 实例信息
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.CreateInstanceReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
+            - properties:
+                data:
+                  type: object
+              type: object
+      summary: 创建资产实例
+      tags:
+      - 资产实例
+  /cam/instances/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定ID的资产实例
+      parameters:
+      - description: 实例ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
+      summary: 删除资产实例
+      tags:
+      - 资产实例
+    get:
+      consumes:
+      - application/json
+      description: 根据ID获取资产实例详细信息
+      parameters:
+      - description: 实例ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.InstanceVO'
+              type: object
+      summary: 获取资产实例详情
+      tags:
+      - 资产实例
+    put:
+      consumes:
+      - application/json
+      description: 更新指定ID的资产实例信息
+      parameters:
+      - description: 实例ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新信息
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.UpdateInstanceReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
+      summary: 更新资产实例
+      tags:
+      - 资产实例
+  /cam/instances/batch:
+    post:
+      consumes:
+      - application/json
+      description: 批量创建多个资产实例
+      parameters:
+      - description: 实例列表
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.CreateBatchInstanceReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
+            - properties:
+                data:
+                  type: object
+              type: object
+      summary: 批量创建资产实例
+      tags:
+      - 资产实例
+  /cam/instances/upsert:
+    post:
+      consumes:
+      - application/json
+      description: 根据 tenant_id + model_uid + asset_id 更新或插入实例
+      parameters:
+      - description: 实例信息
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.UpsertInstanceReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
+      summary: 更新或插入资产实例
+      tags:
+      - 资产实例
+  /cam/instances/upsert-batch:
+    post:
+      consumes:
+      - application/json
+      description: 批量根据 tenant_id + model_uid + asset_id 更新或插入实例
+      parameters:
+      - description: 实例列表
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.UpsertBatchInstanceReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
+      summary: 批量更新或插入资产实例
+      tags:
+      - 资产实例
   /cam/menus:
     get:
       consumes:
@@ -3162,7 +3605,7 @@ paths:
             - properties:
                 data:
                   items:
-                    $ref: '#/definitions/domain.Model'
+                    $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_domain.Model'
                   type: array
               type: object
         "500":
@@ -3182,7 +3625,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/web.CreateModelReq'
+          $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.CreateModelReq'
       produces:
       - application/json
       responses:
@@ -3193,7 +3636,7 @@ paths:
             - $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
             - properties:
                 data:
-                  $ref: '#/definitions/domain.Model'
+                  $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_domain.Model'
               type: object
         "400":
           description: 请求参数错误
@@ -3255,7 +3698,7 @@ paths:
             - $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
             - properties:
                 data:
-                  $ref: '#/definitions/domain.Model'
+                  $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_domain.Model'
               type: object
         "404":
           description: 模型不存在
@@ -3283,7 +3726,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/web.UpdateModelReq'
+          $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.UpdateModelReq'
       produces:
       - application/json
       responses:
@@ -3294,7 +3737,7 @@ paths:
             - $ref: '#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result'
             - properties:
                 data:
-                  $ref: '#/definitions/domain.Model'
+                  $ref: '#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_domain.Model'
               type: object
         "400":
           description: 请求参数错误

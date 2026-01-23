@@ -1,13 +1,16 @@
-﻿package service
+package service
 
 import (
 	"context"
 	"fmt"
 	"time"
 
+	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -44,6 +47,8 @@ type CloudAccountService interface {
 
 type cloudAccountService struct {
 	repo             repository.CloudAccountRepository
+	instanceRepo     repository.InstanceRepository
+	adapterFactory   *asset.AdapterFactory
 	logger           *elog.Component
 	validatorFactory cloudx.CloudValidatorFactory
 }
@@ -57,13 +62,19 @@ func (s *cloudAccountService) ensureLogger() *elog.Component {
 }
 
 // NewCloudAccountService 创建云账号服务
-func NewCloudAccountService(repo repository.CloudAccountRepository, logger *elog.Component) CloudAccountService {
+func NewCloudAccountService(
+	repo repository.CloudAccountRepository,
+	instanceRepo repository.InstanceRepository,
+	adapterFactory *asset.AdapterFactory,
+	logger *elog.Component,
+) CloudAccountService {
 	if logger == nil {
-		// 如果logger为nil，使用 ego 的 Load 方法创建
 		logger = elog.Load("default").Build()
 	}
 	return &cloudAccountService{
 		repo:             repo,
+		instanceRepo:     instanceRepo,
+		adapterFactory:   adapterFactory,
 		logger:           logger,
 		validatorFactory: cloudx.NewCloudValidatorFactory(),
 	}
@@ -350,13 +361,6 @@ func (s *cloudAccountService) SyncAccount(ctx context.Context, id int64, req *do
 		return nil, errs.AccountDisabled
 	}
 
-	// 检查是否只读账号
-	//if account.IsReadOnly() {
-	//	return nil, errs.ReadOnlyAccount
-	//}
-
-	// TODO: 实现具体的同步逻辑
-	// 这里暂时返回模拟结果
 	syncTime := time.Now()
 	result := &domain.SyncResult{
 		SyncID:    fmt.Sprintf("sync_%d_%d", id, syncTime.Unix()),
@@ -364,13 +368,223 @@ func (s *cloudAccountService) SyncAccount(ctx context.Context, id int64, req *do
 		StartTime: syncTime,
 	}
 
-	// 更新同步时间
-	if err := s.repo.UpdateSyncTime(ctx, id, syncTime, 0); err != nil {
-		s.logger.Error("failed to update sync time", elog.FieldErr(err), elog.Int64("id", id))
+	s.logger.Info("开始同步云账号资产",
+		elog.Int64("account_id", id),
+		elog.String("account_name", account.Name),
+		elog.String("sync_id", result.SyncID))
+
+	// 获取要同步的资源类型
+	assetTypes := req.AssetTypes
+	if len(assetTypes) == 0 {
+		assetTypes = []string{"ecs"} // 默认只同步 ECS
 	}
 
-	s.logger.Info("cloud account sync started", elog.Int64("id", id), elog.String("sync_id", result.SyncID))
+	// 执行同步
+	synced, err := s.syncAccountAssets(ctx, &account, assetTypes)
+	if err != nil {
+		s.logger.Error("同步云账号资产失败",
+			elog.Int64("account_id", id),
+			elog.FieldErr(err))
+		result.Status = "failed"
+		result.Message = err.Error()
+		return result, nil
+	}
+
+	// 更新同步时间和资产数量
+	if err := s.repo.UpdateSyncTime(ctx, id, syncTime, int64(synced)); err != nil {
+		s.logger.Warn("更新同步时间失败", elog.FieldErr(err))
+	}
+
+	result.Status = "success"
+	result.Message = fmt.Sprintf("同步完成，共同步 %d 个资产", synced)
+
+	s.logger.Info("云账号资产同步完成",
+		elog.Int64("account_id", id),
+		elog.String("sync_id", result.SyncID),
+		elog.Int("synced", synced))
+
 	return result, nil
+}
+
+// syncAccountAssets 同步单个账号的资产
+func (s *cloudAccountService) syncAccountAssets(ctx context.Context, account *domain.CloudAccount, assetTypes []string) (int, error) {
+	s.logger.Info("同步账号资产",
+		elog.String("account", account.Name),
+		elog.Any("asset_types", assetTypes))
+
+	// 使用资产适配器工厂创建适配器
+	assetAdapter, err := s.adapterFactory.CreateAdapterFromDomain(account)
+	if err != nil {
+		return 0, fmt.Errorf("创建适配器失败: %w", err)
+	}
+
+	// 获取所有地域
+	regions, err := assetAdapter.GetRegions(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("获取地域列表失败: %w", err)
+	}
+
+	// 如果账号配置了支持的地域，则只同步这些地域
+	supportedRegions := account.Config.SupportedRegions
+	if len(supportedRegions) > 0 {
+		regionMap := make(map[string]bool)
+		for _, r := range supportedRegions {
+			regionMap[r] = true
+		}
+
+		filteredRegions := make([]types.Region, 0)
+		for _, r := range regions {
+			if regionMap[r.ID] {
+				filteredRegions = append(filteredRegions, r)
+			}
+		}
+		regions = filteredRegions
+	}
+
+	// 同步每个地域的资产
+	totalSynced := 0
+	for _, region := range regions {
+		synced, err := s.syncRegionAssets(ctx, assetAdapter, account, region.ID, assetTypes)
+		if err != nil {
+			s.logger.Error("同步地域资产失败",
+				elog.String("region", region.ID),
+				elog.FieldErr(err))
+			continue
+		}
+		totalSynced += synced
+	}
+
+	return totalSynced, nil
+}
+
+// syncRegionAssets 同步单个地域的资产
+func (s *cloudAccountService) syncRegionAssets(
+	ctx context.Context,
+	assetAdapter asset.CloudAssetAdapter,
+	account *domain.CloudAccount,
+	region string,
+	assetTypes []string,
+) (int, error) {
+	totalSynced := 0
+
+	for _, assetType := range assetTypes {
+		switch assetType {
+		case "ecs":
+			synced, err := s.syncRegionECSInstances(ctx, assetAdapter, account, region)
+			if err != nil {
+				s.logger.Error("同步地域ECS实例失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		default:
+			s.logger.Warn("不支持的资源类型",
+				elog.String("asset_type", assetType),
+				elog.String("region", region))
+		}
+	}
+
+	return totalSynced, nil
+}
+
+// syncRegionECSInstances 同步单个地域的 ECS 实例到 c_instance 表
+func (s *cloudAccountService) syncRegionECSInstances(
+	ctx context.Context,
+	assetAdapter asset.CloudAssetAdapter,
+	account *domain.CloudAccount,
+	region string,
+) (int, error) {
+	// 获取 ECS 实例
+	instances, err := assetAdapter.GetECSInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取ECS实例失败: %w", err)
+	}
+
+	if len(instances) == 0 {
+		return 0, nil
+	}
+
+	// 转换并保存到 c_instance 表
+	synced := 0
+	for _, inst := range instances {
+		instance := s.convertECSToInstance(inst, account)
+
+		// 使用 Upsert 方法，根据 tenant_id + model_uid + asset_id 更新或插入
+		err := s.instanceRepo.Upsert(ctx, instance)
+		if err != nil {
+			s.logger.Error("保存实例失败",
+				elog.String("asset_id", inst.InstanceID),
+				elog.FieldErr(err))
+			continue
+		}
+		synced++
+	}
+
+	return synced, nil
+}
+
+// convertECSToInstance 将 ECS 实例转换为 Instance 领域模型
+func (s *cloudAccountService) convertECSToInstance(inst types.ECSInstance, account *domain.CloudAccount) camdomain.Instance {
+	// 构建模型 UID，格式: {provider}_ecs
+	modelUID := fmt.Sprintf("%s_ecs", inst.Provider)
+
+	// 构建动态属性
+	attributes := map[string]interface{}{
+		// 基本信息
+		"status":        inst.Status,
+		"region":        inst.Region,
+		"zone":          inst.Zone,
+		"provider":      inst.Provider,
+		"description":   inst.Description,
+		"host_name":     inst.HostName,
+		"key_pair_name": inst.KeyPairName,
+
+		// 配置信息
+		"instance_type":        inst.InstanceType,
+		"instance_type_family": inst.InstanceTypeFamily,
+		"cpu":                  inst.CPU,
+		"memory":               inst.Memory,
+		"os_type":              inst.OSType,
+		"os_name":              inst.OSName,
+		"image_id":             inst.ImageID,
+
+		// 网络信息
+		"public_ip":                  inst.PublicIP,
+		"private_ip":                 inst.PrivateIP,
+		"vpc_id":                     inst.VPCID,
+		"vswitch_id":                 inst.VSwitchID,
+		"security_groups":            inst.SecurityGroups,
+		"internet_max_bandwidth_in":  inst.InternetMaxBandwidthIn,
+		"internet_max_bandwidth_out": inst.InternetMaxBandwidthOut,
+		"network_type":               inst.NetworkType,
+		"instance_network_type":      inst.InstanceNetworkType,
+
+		// 存储信息
+		"system_disk_category": inst.SystemDiskCategory,
+		"system_disk_size":     inst.SystemDiskSize,
+		"data_disks":           inst.DataDisks,
+		"io_optimized":         inst.IoOptimized,
+
+		// 计费信息
+		"charge_type":       inst.ChargeType,
+		"creation_time":     inst.CreationTime,
+		"expired_time":      inst.ExpiredTime,
+		"auto_renew":        inst.AutoRenew,
+		"auto_renew_period": inst.AutoRenewPeriod,
+
+		// 标签
+		"tags": inst.Tags,
+	}
+
+	return camdomain.Instance{
+		ModelUID:   modelUID,
+		AssetID:    inst.InstanceID,
+		AssetName:  inst.InstanceName,
+		TenantID:   account.TenantID,
+		AccountID:  account.ID,
+		Attributes: attributes,
+	}
 }
 
 // validateCloudCredentials 验证云厂商凭证

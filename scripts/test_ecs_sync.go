@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
@@ -21,7 +24,7 @@ import (
 )
 
 func main() {
-	// 初始化日志
+	// 初始化日�?
 	logger := elog.DefaultLogger
 
 	// 连接 MongoDB
@@ -38,38 +41,38 @@ func main() {
 	}
 	defer client.Disconnect(ctx)
 
-	// 创建 MongoDB 包装器
+	// 创建 MongoDB 包装�?
 	db := &mongox.Mongo{
 		Database: client.Database("ecam"),
 	}
 
-	// 初始化 DAO
+	// 初始�?DAO
 	assetDAO := dao.NewAssetDAO(db)
 	accountDAO := dao.NewCloudAccountDAO(db)
 
-	// 初始化 Repository
+	// 初始�?Repository
 	assetRepo := repository.NewAssetRepository(assetDAO)
 	accountRepo := repository.NewCloudAccountRepository(accountDAO)
 
-	// 初始化适配器工厂
+	// 初始化适配器工�?
 	adapterFactory := adapters.NewAdapterFactory(logger)
 
-	// 初始化服务
+	// 初始化服�?
 	svc := service.NewService(assetRepo, accountRepo, adapterFactory, logger)
 
 	// 测试场景
-	fmt.Println("=== 测试阿里云 ECS 同步功能 ===\n")
+	fmt.Println("=== 测试阿里�?ECS 同步功能 ===\n")
 
-	// 1. 创建测试云账号
-	fmt.Println("1. 创建测试云账号...")
+	// 1. 创建测试云账�?
+	fmt.Println("1. 创建测试云账�?..")
 	testAccount := shareddomain.CloudAccount{
-		Name:            "测试阿里云账号",
+		Name:            "测试阿里云账�?,
 		Provider:        shareddomain.CloudProviderAliyun,
 		Environment:     shareddomain.EnvironmentDevelopment,
 		AccessKeyID:     os.Getenv("ALIYUN_ACCESS_KEY_ID"),
 		AccessKeySecret: os.Getenv("ALIYUN_ACCESS_KEY_SECRET"),
 		Region:          "cn-shenzhen",
-		Description:     "用于测试ECS同步的账号",
+		Description:     "用于测试ECS同步的账�?,
 		Status:          shareddomain.CloudAccountStatusActive,
 		Config: shareddomain.CloudAccountConfig{
 			EnableAutoSync:      true,
@@ -84,30 +87,30 @@ func main() {
 
 	accountID, err := accountRepo.Create(ctx, testAccount)
 	if err != nil {
-		log.Printf("创建云账号失败: %v (可能已存在)\n", err)
+		log.Printf("创建云账号失�? %v (可能已存�?\n", err)
 		// 尝试获取已存在的账号
 		existingAccount, err := accountRepo.GetByName(ctx, testAccount.Name, testAccount.TenantID)
 		if err != nil {
-			log.Fatal("获取已存在账号失败:", err)
+			log.Fatal("获取已存在账号失�?", err)
 		}
 		accountID = existingAccount.ID
 		fmt.Printf("使用已存在的账号 ID: %d\n\n", accountID)
 	} else {
-		fmt.Printf("✓ 云账号创建成功，ID: %d\n\n", accountID)
+		fmt.Printf("�?云账号创建成功，ID: %d\n\n", accountID)
 	}
 
-	// 2. 测试发现资产（不保存）
-	fmt.Println("2. 测试发现资产（不保存到数据库）...")
+	// 2. 测试发现资产（不保存�?
+	fmt.Println("2. 测试发现资产（不保存到数据库�?..")
 	region := "cn-shenzhen"
 	assetTypes := []string{"ecs"} // 指定要发现的资源类型
 	assets, err := svc.DiscoverAssets(ctx, "aliyun", region, assetTypes)
 	if err != nil {
 		log.Fatal("发现资产失败:", err)
 	}
-	fmt.Printf("✓ 发现 %d 个资产（类型: %v）\n", len(assets), assetTypes)
+	fmt.Printf("�?发现 %d 个资产（类型: %v）\n", len(assets), assetTypes)
 
 	if len(assets) > 0 {
-		fmt.Println("\n前3个实例示例:")
+		fmt.Println("\n�?个实例示�?")
 		for i, asset := range assets {
 			if i >= 3 {
 				break
@@ -115,11 +118,11 @@ func main() {
 			fmt.Printf("  - 实例 %d:\n", i+1)
 			fmt.Printf("    ID: %s\n", asset.AssetId)
 			fmt.Printf("    名称: %s\n", asset.AssetName)
-			fmt.Printf("    状态: %s\n", asset.Status)
+			fmt.Printf("    状�? %s\n", asset.Status)
 			fmt.Printf("    地域: %s\n", asset.Region)
-			fmt.Printf("    可用区: %s\n", asset.Zone)
+			fmt.Printf("    可用�? %s\n", asset.Zone)
 
-			// 解析元数据显示更多信息
+			// 解析元数据显示更多信�?
 			var metadata map[string]interface{}
 			if err := json.Unmarshal([]byte(asset.Metadata), &metadata); err == nil {
 				if instanceType, ok := metadata["instance_type"].(string); ok {
@@ -138,13 +141,13 @@ func main() {
 
 	// 3. 测试同步资产（保存到数据库）
 	fmt.Println("\n3. 测试同步资产到数据库...")
-	// 可以指定要同步的资源类型，或传 nil/空数组同步所有支持的类型
+	// 可以指定要同步的资源类型，或�?nil/空数组同步所有支持的类型
 	syncAssetTypes := []string{"ecs"}
 	err = svc.SyncAssets(ctx, "aliyun", syncAssetTypes)
 	if err != nil {
 		log.Fatal("同步资产失败:", err)
 	}
-	fmt.Printf("✓ 资产同步完成（类型: %v）\n", syncAssetTypes)
+	fmt.Printf("�?资产同步完成（类�? %v）\n", syncAssetTypes)
 
 	// 4. 查询已同步的资产
 	fmt.Println("\n4. 查询已同步的资产...")
@@ -160,7 +163,7 @@ func main() {
 		log.Fatal("查询资产失败:", err)
 	}
 
-	fmt.Printf("✓ 查询到 %d 个已同步的 ECS 实例（总共 %d 个）\n", len(syncedAssets), total)
+	fmt.Printf("�?查询�?%d 个已同步�?ECS 实例（总共 %d 个）\n", len(syncedAssets), total)
 
 	if len(syncedAssets) > 0 {
 		fmt.Println("\n已同步的实例:")
@@ -183,12 +186,12 @@ func main() {
 		log.Fatal("获取统计失败:", err)
 	}
 
-	fmt.Printf("✓ 资产统计:\n")
+	fmt.Printf("�?资产统计:\n")
 	fmt.Printf("  总资产数: %d\n", stats.TotalAssets)
 	fmt.Printf("  按云厂商统计: %v\n", stats.ProviderStats)
-	fmt.Printf("  按资产类型统计: %v\n", stats.AssetTypeStats)
-	fmt.Printf("  按地域统计: %v\n", stats.RegionStats)
-	fmt.Printf("  按状态统计: %v\n", stats.StatusStats)
+	fmt.Printf("  按资产类型统�? %v\n", stats.AssetTypeStats)
+	fmt.Printf("  按地域统�? %v\n", stats.RegionStats)
+	fmt.Printf("  按状态统�? %v\n", stats.StatusStats)
 
 	fmt.Println("\n=== 测试完成 ===")
 }

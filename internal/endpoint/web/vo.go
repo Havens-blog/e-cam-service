@@ -1,4 +1,4 @@
-﻿package web
+package web
 
 type RegisterEndpointReq struct {
 	Path         string `bson:"path"`

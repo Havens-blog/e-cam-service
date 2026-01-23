@@ -1,4 +1,4 @@
-﻿package endpoint
+package endpoint
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/endpoint/domain"

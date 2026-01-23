@@ -1,4 +1,4 @@
-﻿package huawei
+package huawei
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"

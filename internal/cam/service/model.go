@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -308,7 +308,7 @@ func (s *modelService) AddField(ctx context.Context, field *domain.ModelField) (
 			return nil, fmt.Errorf("check link model exists failed: %w", err)
 		}
 		if !linkExists {
-			return nil, fmt.Errorf("link model %s not found", field.Link)
+			return nil, fmt.Errorf("link model %s not found", field.LinkModel)
 		}
 	}
 

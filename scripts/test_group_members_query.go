@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
@@ -11,26 +14,26 @@ import (
 )
 
 func main() {
-	// 连接数据库
+	// 连接数据�?
 	db, err := mongox.NewMongo(&mongox.Config{
 		DSN:      "mongodb://admin:Aa123456@localhost:27017",
 		Database: "e-cam-service",
 	})
 	if err != nil {
-		log.Fatalf("连接数据库失败: %v", err)
+		log.Fatalf("连接数据库失�? %v", err)
 	}
 
 	ctx := context.Background()
 
-	// 测试查询用户组成员
+	// 测试查询用户组成�?
 	groupID := int64(1) // 替换为实际的用户组ID
 	tenantID := "tenant-001"
 
-	fmt.Printf("查询用户组 %d 的成员 (tenant_id: %s)\n", groupID, tenantID)
+	fmt.Printf("查询用户�?%d 的成�?(tenant_id: %s)\n", groupID, tenantID)
 	fmt.Println("=" + string(make([]byte, 60)))
 
-	// 方法1: 原来的错误方法 - 查询所有用户再筛选
-	fmt.Println("\n方法1: 查询所有用户再筛选 (错误方法)")
+	// 方法1: 原来的错误方�?- 查询所有用户再筛�?
+	fmt.Println("\n方法1: 查询所有用户再筛�?(错误方法)")
 	filter1 := bson.M{"tenant_id": tenantID}
 	cursor1, err := db.Collection(dao.CloudIAMUsersCollection).Find(ctx, filter1)
 	if err != nil {
@@ -53,14 +56,14 @@ func main() {
 		}
 	}
 
-	fmt.Printf("查询到所有用户: %d 个\n", len(allUsers))
+	fmt.Printf("查询到所有用�? %d 个\n", len(allUsers))
 	fmt.Printf("筛选后成员: %d 个\n", len(members1))
 	for i, member := range members1 {
 		fmt.Printf("  %d. %s (ID: %d, Groups: %v)\n", i+1, member.Username, member.ID, member.PermissionGroups)
 	}
 
-	// 方法2: 正确方法 - 直接查询包含该用户组的用户
-	fmt.Println("\n方法2: 直接查询包含该用户组的用户 (正确方法)")
+	// 方法2: 正确方法 - 直接查询包含该用户组的用�?
+	fmt.Println("\n方法2: 直接查询包含该用户组的用�?(正确方法)")
 	filter2 := bson.M{
 		"permission_groups": groupID,
 		"tenant_id":         tenantID,
@@ -76,21 +79,21 @@ func main() {
 		log.Fatalf("解析失败: %v", err)
 	}
 
-	fmt.Printf("直接查询到成员: %d 个\n", len(members2))
+	fmt.Printf("直接查询到成�? %d 个\n", len(members2))
 	for i, member := range members2 {
 		fmt.Printf("  %d. %s (ID: %d, Groups: %v)\n", i+1, member.Username, member.ID, member.PermissionGroups)
 	}
 
-	// 验证两种方法结果是否一致
+	// 验证两种方法结果是否一�?
 	fmt.Println("\n结果对比:")
 	if len(members1) == len(members2) {
-		fmt.Printf("✅ 两种方法查询到的成员数量一致: %d 个\n", len(members1))
+		fmt.Printf("�?两种方法查询到的成员数量一�? %d 个\n", len(members1))
 	} else {
-		fmt.Printf("❌ 两种方法查询到的成员数量不一致: 方法1=%d, 方法2=%d\n", len(members1), len(members2))
+		fmt.Printf("�?两种方法查询到的成员数量不一�? 方法1=%d, 方法2=%d\n", len(members1), len(members2))
 	}
 
 	// 检查数据库索引
-	fmt.Println("\n检查索引:")
+	fmt.Println("\n检查索�?")
 	indexes := db.Collection(dao.CloudIAMUsersCollection).Indexes()
 	cursor3, err := indexes.List(ctx)
 	if err != nil {
@@ -106,12 +109,12 @@ func main() {
 				if key, ok := index["key"].(bson.M); ok {
 					if _, exists := key["permission_groups"]; exists {
 						hasGroupIndex = true
-						fmt.Printf("✅ 找到 permission_groups 索引: %v\n", index["name"])
+						fmt.Printf("�?找到 permission_groups 索引: %v\n", index["name"])
 					}
 				}
 			}
 			if !hasGroupIndex {
-				fmt.Println("⚠️  未找到 permission_groups 索引，建议创建以提升查询性能")
+				fmt.Println("⚠️  未找�?permission_groups 索引，建议创建以提升查询性能")
 				fmt.Println("   创建索引命令: db.cloud_iam_users.createIndex({\"permission_groups\": 1, \"tenant_id\": 1})")
 			}
 		}

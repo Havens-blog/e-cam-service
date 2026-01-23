@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
@@ -35,7 +38,7 @@ func main() {
 		ID:          fmt.Sprintf("test_tenant_%d", time.Now().Unix()),
 		Name:        fmt.Sprintf("测试租户_%d", time.Now().Unix()),
 		DisplayName: "测试租户显示名称",
-		Description: "这是一个测试租户",
+		Description: "这是一个测试租�?,
 		Settings: map[string]interface{}{
 			"max_cloud_accounts": 10,
 			"max_users":          100,
@@ -55,57 +58,57 @@ func main() {
 
 	tenantID, err := createTenant(tenant)
 	if err != nil {
-		fmt.Printf("❌ 创建租户失败: %v\n", err)
+		fmt.Printf("�?创建租户失败: %v\n", err)
 		return
 	}
-	fmt.Printf("✅ 创建租户成功，ID: %s\n\n", tenantID)
+	fmt.Printf("�?创建租户成功，ID: %s\n\n", tenantID)
 
 	// 2. 获取租户详情
 	fmt.Println("2. 测试获取租户详情...")
 	err = getTenant(tenantID)
 	if err != nil {
-		fmt.Printf("❌ 获取租户详情失败: %v\n", err)
+		fmt.Printf("�?获取租户详情失败: %v\n", err)
 		return
 	}
-	fmt.Println("✅ 获取租户详情成功\n")
+	fmt.Println("�?获取租户详情成功\n")
 
 	// 3. 查询租户列表
 	fmt.Println("3. 测试查询租户列表...")
 	err = listTenants()
 	if err != nil {
-		fmt.Printf("❌ 查询租户列表失败: %v\n", err)
+		fmt.Printf("�?查询租户列表失败: %v\n", err)
 		return
 	}
-	fmt.Println("✅ 查询租户列表成功\n")
+	fmt.Println("�?查询租户列表成功\n")
 
 	// 4. 更新租户
 	fmt.Println("4. 测试更新租户...")
 	err = updateTenant(tenantID)
 	if err != nil {
-		fmt.Printf("❌ 更新租户失败: %v\n", err)
+		fmt.Printf("�?更新租户失败: %v\n", err)
 		return
 	}
-	fmt.Println("✅ 更新租户成功\n")
+	fmt.Println("�?更新租户成功\n")
 
 	// 5. 获取租户统计
 	fmt.Println("5. 测试获取租户统计...")
 	err = getTenantStats(tenantID)
 	if err != nil {
-		fmt.Printf("❌ 获取租户统计失败: %v\n", err)
+		fmt.Printf("�?获取租户统计失败: %v\n", err)
 		return
 	}
-	fmt.Println("✅ 获取租户统计成功\n")
+	fmt.Println("�?获取租户统计成功\n")
 
 	// 6. 删除租户
 	fmt.Println("6. 测试删除租户...")
 	err = deleteTenant(tenantID)
 	if err != nil {
-		fmt.Printf("❌ 删除租户失败: %v\n", err)
+		fmt.Printf("�?删除租户失败: %v\n", err)
 		return
 	}
-	fmt.Println("✅ 删除租户成功\n")
+	fmt.Println("�?删除租户成功\n")
 
-	fmt.Println("=== 所有测试通过 ✅ ===")
+	fmt.Println("=== 所有测试通过 �?===")
 }
 
 func createTenant(req CreateTenantRequest) (string, error) {
@@ -164,7 +167,7 @@ func listTenants() error {
 		return fmt.Errorf("API返回错误: %s", result.Msg)
 	}
 
-	fmt.Printf("   查询到 %v 个租户\n", result.Data["total"])
+	fmt.Printf("   查询�?%v 个租户\n", result.Data["total"])
 	return nil
 }
 

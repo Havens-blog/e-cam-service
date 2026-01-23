@@ -1,4 +1,4 @@
-﻿package domain
+package domain
 
 type Endpoint struct {
 	Id           int64

@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
@@ -15,7 +18,7 @@ func main() {
 	uri := "mongodb://ecmdb:123456@118.145.73.93:27017/ecmdb?authSource=admin"
 	dbName := "ecmdb"
 
-	fmt.Printf("🔌 连接到 MongoDB: %s, 数据库: %s\n", uri, dbName)
+	fmt.Printf("🔌 连接�?MongoDB: %s, 数据�? %s\n", uri, dbName)
 
 	clientOptions := options.Client().ApplyURI(uri)
 	client, err := mongo.Connect(context.Background(), clientOptions)
@@ -41,7 +44,7 @@ func main() {
 		fmt.Printf("处理集合: %s\n", collName)
 		collection := db.Collection(collName)
 
-		// 列出所有索引
+		// 列出所有索�?
 		cursor, err := collection.Indexes().List(ctx)
 		if err != nil {
 			log.Printf("列出索引失败 %s: %v\n", collName, err)
@@ -54,7 +57,7 @@ func main() {
 			continue
 		}
 
-		// 删除除了 _id_ 之外的所有索引
+		// 删除除了 _id_ 之外的所有索�?
 		for _, index := range indexes {
 			indexName := index["name"].(string)
 			if indexName != "_id_" {
@@ -67,5 +70,5 @@ func main() {
 		}
 	}
 
-	fmt.Println("\n索引清理完成！现在可以重新启动服务来创建新索引。")
+	fmt.Println("\n索引清理完成！现在可以重新启动服务来创建新索引�?)
 }

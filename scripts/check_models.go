@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 // +build ignore
 
 package main
@@ -20,7 +23,7 @@ func main() {
 	clientOptions := options.Client().ApplyURI(mongoURI)
 	client, err := mongo.Connect(context.Background(), clientOptions)
 	if err != nil {
-		fmt.Printf("❌ 连接数据库失败: %v\n", err)
+		fmt.Printf("�?连接数据库失�? %v\n", err)
 		os.Exit(1)
 	}
 	defer client.Disconnect(context.Background())
@@ -28,19 +31,19 @@ func main() {
 	db := mongox.NewMongo(client, mongoDatabase)
 	ctx := context.Background()
 
-	// 检查所有集合
+	// 检查所有集�?
 	collections := []string{"c_model", "c_attribute", "c_attribute_group"}
 	
 	for _, collName := range collections {
 		fmt.Printf("\n📊 集合: %s\n", collName)
 		count, err := db.Collection(collName).CountDocuments(ctx, bson.M{})
 		if err != nil {
-			fmt.Printf("  ❌ 查询失败: %v\n", err)
+			fmt.Printf("  �?查询失败: %v\n", err)
 			continue
 		}
 		fmt.Printf("  文档数量: %d\n", count)
 		
-		// 查询所有不同的 model_uid 或 uid
+		// 查询所有不同的 model_uid �?uid
 		var pipeline mongo.Pipeline
 		if collName == "c_model" {
 			pipeline = mongo.Pipeline{

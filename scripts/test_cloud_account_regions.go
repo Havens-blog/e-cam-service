@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
@@ -9,7 +12,7 @@ import (
 	"time"
 )
 
-// CreateCloudAccountReq 创建云账号请求
+// CreateCloudAccountReq 创建云账号请�?
 type CreateCloudAccountReq struct {
 	Name            string               `json:"name"`
 	Provider        string               `json:"provider"`
@@ -22,7 +25,7 @@ type CreateCloudAccountReq struct {
 	TenantID        string               `json:"tenant_id"`
 }
 
-// CloudAccountConfigVO 云账号配置
+// CloudAccountConfigVO 云账号配�?
 type CloudAccountConfigVO struct {
 	EnableAutoSync       bool     `json:"enable_auto_sync"`
 	SyncInterval         int64    `json:"sync_interval"`
@@ -33,7 +36,7 @@ type CloudAccountConfigVO struct {
 	SupportedAssetTypes  []string `json:"supported_asset_types"`
 }
 
-// CloudAccount 云账号响应
+// CloudAccount 云账号响�?
 type CloudAccount struct {
 	ID              int64                `json:"id"`
 	Name            string               `json:"name"`
@@ -65,7 +68,7 @@ func main() {
 	// 测试1: 创建支持多个区域的云账号
 	fmt.Println("=== 测试1: 创建支持多个区域的云账号 ===")
 	createReq := CreateCloudAccountReq{
-		Name:            "测试多区域账号",
+		Name:            "测试多区域账�?,
 		Provider:        "aliyun",
 		Environment:     "development",
 		AccessKeyID:     "LTAI5tTestAccessKey123456",
@@ -86,27 +89,27 @@ func main() {
 
 	accountID, err := createCloudAccount(baseURL, createReq)
 	if err != nil {
-		fmt.Printf("创建云账号失败: %v\n", err)
+		fmt.Printf("创建云账号失�? %v\n", err)
 		return
 	}
-	fmt.Printf("✓ 创建成功，账号ID: %d\n\n", accountID)
+	fmt.Printf("�?创建成功，账号ID: %d\n\n", accountID)
 
 	// 测试2: 获取云账号详情，验证 regions 字段
-	fmt.Println("=== 测试2: 获取云账号详情 ===")
+	fmt.Println("=== 测试2: 获取云账号详�?===")
 	account, err := getCloudAccount(baseURL, accountID)
 	if err != nil {
-		fmt.Printf("获取云账号失败: %v\n", err)
+		fmt.Printf("获取云账号失�? %v\n", err)
 		return
 	}
-	fmt.Printf("✓ 账号名称: %s\n", account.Name)
-	fmt.Printf("✓ 云厂商: %s\n", account.Provider)
-	fmt.Printf("✓ 支持的区域: %v\n", account.Regions)
-	fmt.Printf("✓ 区域数量: %d\n\n", len(account.Regions))
+	fmt.Printf("�?账号名称: %s\n", account.Name)
+	fmt.Printf("�?云厂�? %s\n", account.Provider)
+	fmt.Printf("�?支持的区�? %v\n", account.Regions)
+	fmt.Printf("�?区域数量: %d\n\n", len(account.Regions))
 
 	// 测试3: 创建单个区域的云账号
 	fmt.Println("=== 测试3: 创建单个区域的云账号 ===")
 	singleRegionReq := CreateCloudAccountReq{
-		Name:            "测试单区域账号",
+		Name:            "测试单区域账�?,
 		Provider:        "aws",
 		Environment:     "production",
 		AccessKeyID:     "AKIAIOSFODNN7EXAMPLE",
@@ -127,24 +130,24 @@ func main() {
 
 	accountID2, err := createCloudAccount(baseURL, singleRegionReq)
 	if err != nil {
-		fmt.Printf("创建云账号失败: %v\n", err)
+		fmt.Printf("创建云账号失�? %v\n", err)
 		return
 	}
-	fmt.Printf("✓ 创建成功，账号ID: %d\n\n", accountID2)
+	fmt.Printf("�?创建成功，账号ID: %d\n\n", accountID2)
 
 	// 测试4: 列出所有云账号
 	fmt.Println("=== 测试4: 列出所有云账号 ===")
 	accounts, err := listCloudAccounts(baseURL)
 	if err != nil {
-		fmt.Printf("列出云账号失败: %v\n", err)
+		fmt.Printf("列出云账号失�? %v\n", err)
 		return
 	}
-	fmt.Printf("✓ 共找到 %d 个云账号\n", len(accounts))
+	fmt.Printf("�?共找�?%d 个云账号\n", len(accounts))
 	for i, acc := range accounts {
 		fmt.Printf("  %d. %s (%s) - 区域: %v\n", i+1, acc.Name, acc.Provider, acc.Regions)
 	}
 
-	fmt.Println("\n=== 所有测试完成 ===")
+	fmt.Println("\n=== 所有测试完�?===")
 }
 
 func createCloudAccount(baseURL string, req CreateCloudAccountReq) (int64, error) {

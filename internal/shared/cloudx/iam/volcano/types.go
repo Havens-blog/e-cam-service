@@ -1,4 +1,4 @@
-﻿package volcano
+package volcano
 
 // CreateUserParams 火山云创建用户组参�?
 type CreateUserParams struct {
