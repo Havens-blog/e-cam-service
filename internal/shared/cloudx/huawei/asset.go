@@ -34,27 +34,30 @@ func NewAssetAdapter(account *domain.CloudAccount, defaultRegion string, logger 
 
 // getClient 获取ECS客户端
 func (a *AssetAdapter) getClient(region string) (*ecs.EcsClient, error) {
-	auth := basic.NewCredentialsBuilder().
+	auth, err := basic.NewCredentialsBuilder().
 		WithAk(a.account.AccessKeyID).
 		WithSk(a.account.AccessKeySecret).
-		Build()
+		SafeBuild()
+	if err != nil {
+		return nil, fmt.Errorf("创建华为云凭证失败: %w", err)
+	}
 
 	// 获取地域对象
 	regionObj, err := ecsregion.SafeValueOf(region)
 	if err != nil {
-		// 如果地域不在预定义列表中，使用默认地域
-		regionObj, err = ecsregion.SafeValueOf(a.defaultRegion)
-		if err != nil {
-			return nil, fmt.Errorf("无效的华为云地域: %s", region)
-		}
+		// 如果地域不在预定义列表中，跳过该地域
+		return nil, fmt.Errorf("不支持的华为云地域: %s", region)
 	}
 
-	client := ecs.NewEcsClient(
-		ecs.EcsClientBuilder().
-			WithRegion(regionObj).
-			WithCredential(auth).
-			Build())
+	hcClient, err := ecs.EcsClientBuilder().
+		WithRegion(regionObj).
+		WithCredential(auth).
+		SafeBuild()
+	if err != nil {
+		return nil, fmt.Errorf("创建华为云ECS客户端失败: %w", err)
+	}
 
+	client := ecs.NewEcsClient(hcClient)
 	return client, nil
 }
 
