@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
@@ -10,19 +13,19 @@ import (
 )
 
 func main() {
-	// 连接数据库
+	// 连接数据�?
 	db, err := mongox.NewMongo(&mongox.Config{
 		DSN:      "mongodb://admin:Aa123456@localhost:27017",
 		Database: "e-cam-service",
 	})
 	if err != nil {
-		log.Fatalf("连接数据库失败: %v", err)
+		log.Fatalf("连接数据库失�? %v", err)
 	}
 
 	ctx := context.Background()
 
 	fmt.Println("========================================")
-	fmt.Println("同步用户-用户组关系")
+	fmt.Println("同步用户-用户组关�?)
 	fmt.Println("========================================")
 	fmt.Println()
 
@@ -32,19 +35,19 @@ func main() {
 	
 	cursor, err := db.Collection("cloud_iam_groups").Find(ctx, bson.M{})
 	if err != nil {
-		log.Fatalf("查询用户组失败: %v", err)
+		log.Fatalf("查询用户组失�? %v", err)
 	}
 	defer cursor.Close(ctx)
 
 	var groups []bson.M
 	if err := cursor.All(ctx, &groups); err != nil {
-		log.Fatalf("解析用户组失败: %v", err)
+		log.Fatalf("解析用户组失�? %v", err)
 	}
 
 	fmt.Printf("找到 %d 个用户组\n\n", len(groups))
 
 	if len(groups) == 0 {
-		fmt.Println("⚠️  没有找到用户组，请先同步用户组")
+		fmt.Println("⚠️  没有找到用户组，请先同步用户�?)
 		fmt.Println()
 		fmt.Println("同步命令:")
 		fmt.Println("  curl -X POST \"http://localhost:8080/api/v1/cam/iam/groups/sync?cloud_account_id=1\" \\")
@@ -78,20 +81,20 @@ func main() {
 		}
 		
 		if cloudGroupID != "" {
-			fmt.Printf("  %d. ✅ 用户组 %s (ID: %d) 有云平台ID: %s\n", i+1, groupName, groupID, cloudGroupID)
+			fmt.Printf("  %d. �?用户�?%s (ID: %d) 有云平台ID: %s\n", i+1, groupName, groupID, cloudGroupID)
 			groupsWithCloudID++
 		} else {
-			fmt.Printf("  %d. ⚠️  用户组 %s (ID: %d) 没有云平台ID\n", i+1, groupName, groupID)
+			fmt.Printf("  %d. ⚠️  用户�?%s (ID: %d) 没有云平台ID\n", i+1, groupName, groupID)
 			groupsWithoutCloudID++
 		}
 	}
 	
 	fmt.Println()
-	fmt.Printf("统计: 有云平台ID的用户组 %d 个, 无云平台ID的用户组 %d 个\n\n", groupsWithCloudID, groupsWithoutCloudID)
+	fmt.Printf("统计: 有云平台ID的用户组 %d �? 无云平台ID的用户组 %d 个\n\n", groupsWithCloudID, groupsWithoutCloudID)
 
 	if groupsWithoutCloudID > 0 {
 		fmt.Println("⚠️  注意: 没有云平台ID的用户组无法自动同步成员关系")
-		fmt.Println("   这些用户组可能是手动创建的，需要手动分配成员")
+		fmt.Println("   这些用户组可能是手动创建的，需要手动分配成�?)
 		fmt.Println()
 	}
 
@@ -134,9 +137,9 @@ func main() {
 		}
 	}
 	
-	fmt.Printf("有用户组的用户: %d 个\n", usersWithGroups)
-	fmt.Printf("无用户组的用户: %d 个\n", usersWithoutGroups)
-	fmt.Printf("需要初始化的用户: %d 个\n\n", usersNeedInit)
+	fmt.Printf("有用户组的用�? %d 个\n", usersWithGroups)
+	fmt.Printf("无用户组的用�? %d 个\n", usersWithoutGroups)
+	fmt.Printf("需要初始化的用�? %d 个\n\n", usersNeedInit)
 
 	// 4. 初始化缺失的 permission_groups 字段
 	if usersNeedInit > 0 {
@@ -159,9 +162,9 @@ func main() {
 		)
 		
 		if err != nil {
-			fmt.Printf("❌ 初始化失败: %v\n", err)
+			fmt.Printf("�?初始化失�? %v\n", err)
 		} else {
-			fmt.Printf("✅ 成功初始化 %d 个用户的 permission_groups 字段\n", result.ModifiedCount)
+			fmt.Printf("�?成功初始�?%d 个用户的 permission_groups 字段\n", result.ModifiedCount)
 		}
 		fmt.Println()
 	}
@@ -170,13 +173,13 @@ func main() {
 	fmt.Println("5. 建议操作")
 	fmt.Println("----------------------------------------")
 	fmt.Println()
-	fmt.Println("✅ 数据已初始化，现在需要重新同步用户组以建立成员关系:")
+	fmt.Println("�?数据已初始化，现在需要重新同步用户组以建立成员关�?")
 	fmt.Println()
 	fmt.Println("方法 1: 通过 API 同步（推荐）")
 	fmt.Println("  curl -X POST \"http://localhost:8080/api/v1/cam/iam/groups/sync?cloud_account_id=1\" \\")
 	fmt.Println("    -H \"X-Tenant-ID: tenant-001\"")
 	fmt.Println()
-	fmt.Println("方法 2: 如果用户组是手动创建的，需要手动分配成员")
+	fmt.Println("方法 2: 如果用户组是手动创建的，需要手动分配成�?)
 	fmt.Println("  curl -X POST \"http://localhost:8080/api/v1/cam/iam/users/assign-groups\" \\")
 	fmt.Println("    -H \"X-Tenant-ID: tenant-001\" \\")
 	fmt.Println("    -H \"Content-Type: application/json\" \\")

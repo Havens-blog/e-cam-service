@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
-	syncdomain "github.com/Havens-blog/e-cam-service/internal/cam/sync/domain"
-	"github.com/Havens-blog/e-cam-service/internal/cam/sync/service/adapters"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	shareddomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -27,7 +27,7 @@ type Service interface {
 
 	// 资产发现
 	DiscoverAssets(ctx context.Context, provider, region string, assetTypes []string) ([]domain.CloudAsset, error)
-	SyncAssets(ctx context.Context, provider string, assetTypes []string) error
+	SyncAssets(ctx context.Context, accountID int64, assetTypes []string) (int, error)
 
 	// 统计分析
 	GetAssetStatistics(ctx context.Context) (AssetStatistics, error)
@@ -71,7 +71,7 @@ type AssetCost struct {
 type service struct {
 	repo           repository.AssetRepository
 	accountRepo    repository.CloudAccountRepository
-	adapterFactory *adapters.AdapterFactory
+	adapterFactory *asset.AdapterFactory
 	logger         *elog.Component
 }
 
@@ -79,7 +79,7 @@ type service struct {
 func NewService(
 	repo repository.AssetRepository,
 	accountRepo repository.CloudAccountRepository,
-	adapterFactory *adapters.AdapterFactory,
+	adapterFactory *asset.AdapterFactory,
 	logger *elog.Component,
 ) Service {
 	return &service{
@@ -226,25 +226,8 @@ func (s *service) DiscoverAssets(ctx context.Context, provider, region string, a
 
 	account := accounts[0]
 
-	// 获取默认区域（使用第一个区域）
-	defaultRegion := ""
-	if len(account.Regions) > 0 {
-		defaultRegion = account.Regions[0]
-	}
-
-	// 转换为同步域的账号格式
-	syncAccount := &syncdomain.CloudAccount{
-		ID:              account.ID,
-		Name:            account.Name,
-		Provider:        syncdomain.CloudProvider(account.Provider),
-		AccessKeyID:     account.AccessKeyID,
-		AccessKeySecret: account.AccessKeySecret,
-		DefaultRegion:   defaultRegion,
-		Enabled:         account.Status == shareddomain.CloudAccountStatusActive,
-	}
-
 	// 创建适配器
-	adapter, err := s.adapterFactory.CreateAdapter(syncAccount)
+	adapter, err := s.adapterFactory.CreateAdapterFromDomain(&account)
 	if err != nil {
 		return nil, fmt.Errorf("创建适配器失败: %w", err)
 	}
@@ -266,14 +249,14 @@ func (s *service) DiscoverAssets(ctx context.Context, provider, region string, a
 
 			// 转换为资产格式
 			for _, inst := range instances {
-				asset, err := s.convertECSToAsset(inst)
+				cloudAsset, err := s.convertECSToAsset(inst)
 				if err != nil {
 					s.logger.Warn("转换ECS实例失败",
 						elog.String("instance_id", inst.InstanceID),
 						elog.FieldErr(err))
 					continue
 				}
-				allAssets = append(allAssets, asset)
+				allAssets = append(allAssets, cloudAsset)
 			}
 
 		// TODO: 添加其他资源类型的支持
@@ -295,53 +278,45 @@ func (s *service) DiscoverAssets(ctx context.Context, provider, region string, a
 	return allAssets, nil
 }
 
-// SyncAssets 同步资产到数据库
+// SyncAssets 同步指定账号的资产到数据库
+// accountID: 云账号ID
 // assetTypes: 要同步的资源类型列表，为空则同步所有支持的类型
-func (s *service) SyncAssets(ctx context.Context, provider string, assetTypes []string) error {
+func (s *service) SyncAssets(ctx context.Context, accountID int64, assetTypes []string) (int, error) {
 	// 如果未指定资源类型，默认同步所有支持的类型
 	if len(assetTypes) == 0 {
 		assetTypes = []string{"ecs"} // 默认只同步 ECS，后续可扩展
 	}
 
 	s.logger.Info("开始同步云资产",
-		elog.String("provider", provider),
+		elog.Int64("account_id", accountID),
 		elog.Any("asset_types", assetTypes))
 
-	// 获取该云厂商的所有可用账号
-	filter := shareddomain.CloudAccountFilter{
-		Provider: shareddomain.CloudProvider(provider),
-		Status:   shareddomain.CloudAccountStatusActive,
-		Limit:    100,
-	}
-
-	accounts, _, err := s.accountRepo.List(ctx, filter)
+	// 获取指定的云账号
+	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
-		return fmt.Errorf("获取云账号失败: %w", err)
+		return 0, fmt.Errorf("获取云账号失败: %w", err)
 	}
 
-	if len(accounts) == 0 {
-		return fmt.Errorf("未找到可用的%s云账号", provider)
+	if account.Status != shareddomain.CloudAccountStatusActive {
+		return 0, fmt.Errorf("云账号 %s 未启用", account.Name)
 	}
 
-	// 同步每个账号的资产
-	totalSynced := 0
-	for i := range accounts {
-		synced, err := s.syncAccountAssets(ctx, &accounts[i], assetTypes)
-		if err != nil {
-			s.logger.Error("同步账号资产失败",
-				elog.String("account", accounts[i].Name),
-				elog.FieldErr(err))
-			continue
-		}
-		totalSynced += synced
+	// 同步该账号的资产
+	synced, err := s.syncAccountAssets(ctx, &account, assetTypes)
+	if err != nil {
+		s.logger.Error("同步账号资产失败",
+			elog.String("account", account.Name),
+			elog.FieldErr(err))
+		return 0, err
 	}
 
 	s.logger.Info("云资产同步完成",
-		elog.String("provider", provider),
+		elog.Int64("account_id", accountID),
+		elog.String("account_name", account.Name),
 		elog.Any("asset_types", assetTypes),
-		elog.Int("total_synced", totalSynced))
+		elog.Int("total_synced", synced))
 
-	return nil
+	return synced, nil
 }
 
 // syncAccountAssets 同步单个账号的资产
@@ -350,25 +325,8 @@ func (s *service) syncAccountAssets(ctx context.Context, account *shareddomain.C
 		elog.String("account", account.Name),
 		elog.Any("asset_types", assetTypes))
 
-	// 获取默认区域（使用第一个区域）
-	defaultRegion := ""
-	if len(account.Regions) > 0 {
-		defaultRegion = account.Regions[0]
-	}
-
-	// 转换为同步域的账号格式
-	syncAccount := &syncdomain.CloudAccount{
-		ID:              account.ID,
-		Name:            account.Name,
-		Provider:        syncdomain.CloudProvider(account.Provider),
-		AccessKeyID:     account.AccessKeyID,
-		AccessKeySecret: account.AccessKeySecret,
-		DefaultRegion:   defaultRegion,
-		Enabled:         account.Status == shareddomain.CloudAccountStatusActive,
-	}
-
 	// 创建适配器
-	adapter, err := s.adapterFactory.CreateAdapter(syncAccount)
+	adapter, err := s.adapterFactory.CreateAdapterFromDomain(account)
 	if err != nil {
 		return 0, fmt.Errorf("创建适配器失败: %w", err)
 	}
@@ -387,7 +345,7 @@ func (s *service) syncAccountAssets(ctx context.Context, account *shareddomain.C
 			regionMap[r] = true
 		}
 
-		filteredRegions := make([]syncdomain.Region, 0)
+		filteredRegions := make([]types.Region, 0)
 		for _, r := range regions {
 			if regionMap[r.ID] {
 				filteredRegions = append(filteredRegions, r)
@@ -422,7 +380,7 @@ func (s *service) syncAccountAssets(ctx context.Context, account *shareddomain.C
 // syncRegionAssets 同步单个地域的资产
 func (s *service) syncRegionAssets(
 	ctx context.Context,
-	adapter syncdomain.CloudAdapter,
+	adapter asset.CloudAssetAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
 	assetTypes []string,
@@ -473,7 +431,7 @@ func (s *service) syncRegionAssets(
 // syncRegionECSInstances 同步单个地域的 ECS 实例
 func (s *service) syncRegionECSInstances(
 	ctx context.Context,
-	adapter syncdomain.CloudAdapter,
+	adapter asset.CloudAssetAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
 ) (int, error) {
@@ -544,7 +502,7 @@ func (s *service) syncRegionECSInstances(
 }
 
 // convertECSToAsset 将 ECS 实例转换为资产
-func (s *service) convertECSToAsset(inst syncdomain.ECSInstance) (domain.CloudAsset, error) {
+func (s *service) convertECSToAsset(inst types.ECSInstance) (domain.CloudAsset, error) {
 	// 转换标签
 	tags := make([]domain.Tag, 0, len(inst.Tags))
 	for k, v := range inst.Tags {

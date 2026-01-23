@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
@@ -21,24 +24,24 @@ func main() {
 	if err != nil {
 		log.Fatal("提交任务失败:", err)
 	}
-	fmt.Printf("✓ 任务已提交，任务ID: %s\n\n", taskID)
+	fmt.Printf("�?任务已提交，任务ID: %s\n\n", taskID)
 
-	// 2. 轮询任务状态
-	fmt.Println("2. 轮询任务状态...")
+	// 2. 轮询任务状�?
+	fmt.Println("2. 轮询任务状�?..")
 	for i := 0; i < 30; i++ {
 		task, err := getTaskStatus(taskID)
 		if err != nil {
-			log.Printf("获取任务状态失败: %v\n", err)
+			log.Printf("获取任务状态失�? %v\n", err)
 			time.Sleep(2 * time.Second)
 			continue
 		}
 
-		fmt.Printf("   状态: %s, 进度: %d%%, 消息: %s\n",
+		fmt.Printf("   状�? %s, 进度: %d%%, 消息: %s\n",
 			task["status"], int(task["progress"].(float64)), task["message"])
 
 		status := task["status"].(string)
 		if status == "completed" {
-			fmt.Println("\n✓ 任务执行完成！")
+			fmt.Println("\n�?任务执行完成�?)
 			fmt.Println("\n任务结果:")
 			if result, ok := task["result"].(map[string]interface{}); ok {
 				resultJSON, _ := json.MarshalIndent(result, "  ", "  ")
@@ -46,7 +49,7 @@ func main() {
 			}
 			break
 		} else if status == "failed" {
-			fmt.Printf("\n✗ 任务执行失败: %s\n", task["error"])
+			fmt.Printf("\n�?任务执行失败: %s\n", task["error"])
 			break
 		}
 
@@ -59,12 +62,12 @@ func main() {
 	if err != nil {
 		log.Printf("获取任务列表失败: %v\n", err)
 	} else {
-		fmt.Printf("✓ 找到 %d 个任务\n", len(tasks))
+		fmt.Printf("�?找到 %d 个任务\n", len(tasks))
 		for i, t := range tasks {
 			if i >= 5 {
 				break
 			}
-			fmt.Printf("  %d. ID: %s, 类型: %s, 状态: %s\n",
+			fmt.Printf("  %d. ID: %s, 类型: %s, 状�? %s\n",
 				i+1, t["id"], t["type"], t["status"])
 		}
 	}

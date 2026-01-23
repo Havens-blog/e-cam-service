@@ -1,4 +1,4 @@
-﻿package tencent
+package tencent
 
 // CreateUserParams 腾讯云创建用户组参�?
 type CreateUserParams struct {

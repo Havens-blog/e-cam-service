@@ -1,4 +1,4 @@
-﻿package domain
+package domain
 
 import (
 	"fmt"
@@ -122,7 +122,8 @@ type SyncAccountRequest struct {
 // SyncResult 同步结果
 type SyncResult struct {
 	SyncID    string    `json:"sync_id"`    // 同步任务ID
-	Status    string    `json:"status"`     // running, success, failed
+	Status    string    `json:"status"`     // running, success, failed, pending
+	Message   string    `json:"message"`    // 提示信息
 	StartTime time.Time `json:"start_time"` // 开始时间
 }
 

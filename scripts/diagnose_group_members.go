@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
@@ -10,19 +13,19 @@ import (
 )
 
 func main() {
-	// 连接数据库
+	// 连接数据�?
 	db, err := mongox.NewMongo(&mongox.Config{
 		DSN:      "mongodb://admin:Aa123456@localhost:27017",
 		Database: "e-cam-service",
 	})
 	if err != nil {
-		log.Fatalf("连接数据库失败: %v", err)
+		log.Fatalf("连接数据库失�? %v", err)
 	}
 
 	ctx := context.Background()
 
 	fmt.Println("========================================")
-	fmt.Println("用户组成员诊断")
+	fmt.Println("用户组成员诊�?)
 	fmt.Println("========================================")
 	fmt.Println()
 
@@ -32,19 +35,19 @@ func main() {
 	
 	cursor, err := db.Collection("cloud_iam_groups").Find(ctx, bson.M{})
 	if err != nil {
-		log.Fatalf("查询用户组失败: %v", err)
+		log.Fatalf("查询用户组失�? %v", err)
 	}
 	defer cursor.Close(ctx)
 
 	var groups []bson.M
 	if err := cursor.All(ctx, &groups); err != nil {
-		log.Fatalf("解析用户组失败: %v", err)
+		log.Fatalf("解析用户组失�? %v", err)
 	}
 
 	fmt.Printf("找到 %d 个用户组\n\n", len(groups))
 
-	// 2. 查询所有用户
-	fmt.Println("2. 查询所有用户")
+	// 2. 查询所有用�?
+	fmt.Println("2. 查询所有用�?)
 	fmt.Println("----------------------------------------")
 	
 	cursor2, err := db.Collection("cloud_iam_users").Find(ctx, bson.M{})
@@ -83,12 +86,12 @@ func main() {
 		permissionGroups, hasField := user["permission_groups"]
 		
 		if !hasField {
-			fmt.Printf("  %d. ❌ 用户 %s (ID: %d) 没有 permission_groups 字段\n", i+1, username, userID)
+			fmt.Printf("  %d. �?用户 %s (ID: %d) 没有 permission_groups 字段\n", i+1, username, userID)
 			usersWithoutGroups++
 		} else {
 			if groups, ok := permissionGroups.(bson.A); ok {
 				if len(groups) > 0 {
-					fmt.Printf("  %d. ✅ 用户 %s (ID: %d) 有 %d 个用户组: %v\n", i+1, username, userID, len(groups), groups)
+					fmt.Printf("  %d. �?用户 %s (ID: %d) �?%d 个用户组: %v\n", i+1, username, userID, len(groups), groups)
 					usersWithGroups++
 				} else {
 					fmt.Printf("  %d. ⚠️  用户 %s (ID: %d) permission_groups 为空数组\n", i+1, username, userID)
@@ -102,7 +105,7 @@ func main() {
 	}
 	
 	fmt.Println()
-	fmt.Printf("统计: 有用户组的用户 %d 个, 无用户组的用户 %d 个\n\n", usersWithGroups, usersWithoutGroups)
+	fmt.Printf("统计: 有用户组的用�?%d �? 无用户组的用�?%d 个\n\n", usersWithGroups, usersWithoutGroups)
 
 	// 4. 对每个用户组，查询其成员
 	fmt.Println("4. 查询每个用户组的成员")
@@ -128,30 +131,30 @@ func main() {
 			userCount = int(count)
 		}
 		
-		// 查询包含该用户组的用户
+		// 查询包含该用户组的用�?
 		filter := bson.M{
 			"permission_groups": groupID,
 		}
 		
 		cursor3, err := db.Collection("cloud_iam_users").Find(ctx, filter)
 		if err != nil {
-			fmt.Printf("  %d. ❌ 用户组 %s (ID: %d) 查询失败: %v\n", i+1, groupName, groupID, err)
+			fmt.Printf("  %d. �?用户�?%s (ID: %d) 查询失败: %v\n", i+1, groupName, groupID, err)
 			continue
 		}
 		
 		var members []bson.M
 		if err := cursor3.All(ctx, &members); err != nil {
-			fmt.Printf("  %d. ❌ 用户组 %s (ID: %d) 解析失败: %v\n", i+1, groupName, groupID, err)
+			fmt.Printf("  %d. �?用户�?%s (ID: %d) 解析失败: %v\n", i+1, groupName, groupID, err)
 			cursor3.Close(ctx)
 			continue
 		}
 		cursor3.Close(ctx)
 		
 		if len(members) != userCount {
-			fmt.Printf("  %d. ⚠️  用户组 %s (ID: %d) user_count=%d, 实际查询到 %d 个成员\n", 
+			fmt.Printf("  %d. ⚠️  用户�?%s (ID: %d) user_count=%d, 实际查询�?%d 个成员\n", 
 				i+1, groupName, groupID, userCount, len(members))
 		} else {
-			fmt.Printf("  %d. ✅ 用户组 %s (ID: %d) user_count=%d, 查询到 %d 个成员\n", 
+			fmt.Printf("  %d. �?用户�?%s (ID: %d) user_count=%d, 查询�?%d 个成员\n", 
 				i+1, groupName, groupID, userCount, len(members))
 		}
 		
@@ -174,19 +177,19 @@ func main() {
 	fmt.Println("----------------------------------------")
 	
 	if usersWithoutGroups > 0 {
-		fmt.Println("❌ 发现问题：有用户的 permission_groups 字段为空或不存在")
+		fmt.Println("�?发现问题：有用户�?permission_groups 字段为空或不存在")
 		fmt.Println()
-		fmt.Println("可能原因：")
-		fmt.Println("  1. 用户同步时没有正确设置 permission_groups")
+		fmt.Println("可能原因�?)
+		fmt.Println("  1. 用户同步时没有正确设�?permission_groups")
 		fmt.Println("  2. 用户是手动创建的，没有分配用户组")
-		fmt.Println("  3. 数据迁移时字段丢失")
+		fmt.Println("  3. 数据迁移时字段丢�?)
 		fmt.Println()
-		fmt.Println("解决方案：")
+		fmt.Println("解决方案�?)
 		fmt.Println("  1. 重新同步用户组（会自动同步成员关系）")
 		fmt.Println("  2. 手动为用户分配用户组")
 		fmt.Println("  3. 运行数据修复脚本")
 	} else {
-		fmt.Println("✅ 所有用户都有 permission_groups 字段")
+		fmt.Println("�?所有用户都�?permission_groups 字段")
 	}
 	
 	fmt.Println()

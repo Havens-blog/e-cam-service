@@ -7,20 +7,19 @@
 package cam
 
 import (
-	"sync"
-
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
-	"github.com/Havens-blog/e-cam-service/internal/cam/sync/service/adapters"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task"
 	service2 "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
 	web2 "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/google/wire"
 	"github.com/gotomicro/ego/core/elog"
+	"sync"
 )
 
 // Injectors from wire.go:
@@ -32,9 +31,11 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	cloudAccountDAO := InitCloudAccountDAO(db)
 	cloudAccountRepository := repository.NewCloudAccountRepository(cloudAccountDAO)
 	component := ProvideLogger()
-	adapterFactory := adapters.NewAdapterFactory(component)
+	adapterFactory := asset.NewAdapterFactory(component)
 	serviceService := service.NewService(assetRepository, cloudAccountRepository, adapterFactory, component)
-	cloudAccountService := service.NewCloudAccountService(cloudAccountRepository, component)
+	instanceDAO := InitInstanceDAO(db)
+	instanceRepository := repository.NewInstanceRepository(instanceDAO)
+	cloudAccountService := service.NewCloudAccountService(cloudAccountRepository, instanceRepository, adapterFactory, component)
 	modelDAO := InitModelDAO(db)
 	modelRepository := repository.NewModelRepository(modelDAO)
 	modelFieldDAO := InitModelFieldDAO(db)
@@ -42,9 +43,7 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	modelFieldGroupDAO := InitModelFieldGroupDAO(db)
 	modelFieldGroupRepository := repository.NewModelFieldGroupRepository(modelFieldGroupDAO)
 	modelService := service.NewModelService(modelRepository, modelFieldRepository, modelFieldGroupRepository)
-	v := web.NewHandler(serviceService, cloudAccountService, modelService)
-	instanceDAO := InitInstanceDAO(db)
-	instanceRepository := repository.NewInstanceRepository(instanceDAO)
+	handler := web.NewHandler(serviceService, cloudAccountService, modelService)
 	instanceService := service.NewInstanceService(instanceRepository)
 	instanceHandler := web.NewInstanceHandler(instanceService)
 	module, err := task.InitModule(db, serviceService, component)
@@ -56,7 +55,7 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	taskService := service2.NewTaskService(queue, taskRepository, component)
 	taskHandler := web2.NewTaskHandler(taskService)
 	camModule := &Module{
-		Hdl:         v,
+		Hdl:         handler,
 		InstanceHdl: instanceHandler,
 		Svc:         serviceService,
 		AccountSvc:  cloudAccountService,
@@ -141,16 +140,16 @@ var ProviderSet = wire.NewSet(
 	InitModelFieldDAO,
 	InitModelFieldGroupDAO,
 	InitInstanceDAO,
-	InitInstanceRelationDAO, repository.NewAssetRepository, repository.NewCloudAccountRepository, repository.NewModelRepository, repository.NewModelFieldRepository, repository.NewModelFieldGroupRepository, repository.NewInstanceRepository, repository.NewInstanceRelationRepository, InitTaskRepository, adapters.NewAdapterFactory, service.NewService, service.NewCloudAccountService, service.NewModelService, service.NewInstanceService, task.InitModule, wire.FieldsOf(new(*task.Module), "Queue"), service2.NewTaskService, web2.NewTaskHandler, ProvideLogger, web.NewHandler, web.NewInstanceHandler, wire.Struct(new(Module), "Hdl", "InstanceHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "TaskModule", "TaskSvc", "TaskHdl"),
+	InitInstanceRelationDAO, repository.NewAssetRepository, repository.NewCloudAccountRepository, repository.NewModelRepository, repository.NewModelFieldRepository, repository.NewModelFieldGroupRepository, repository.NewInstanceRepository, repository.NewInstanceRelationRepository, InitTaskRepository, asset.NewAdapterFactory, service.NewService, service.NewCloudAccountService, service.NewModelService, service.NewInstanceService, task.InitModule, wire.FieldsOf(new(*task.Module), "Queue"), service2.NewTaskService, web2.NewTaskHandler, ProvideLogger, web.NewHandler, web.NewInstanceHandler, wire.Struct(new(Module), "Hdl", "InstanceHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "TaskModule", "TaskSvc", "TaskHdl"),
 )
 
 // ProvideLogger 提供默认logger
 // 使用可读的时间格式和调用者信息
 func ProvideLogger() *elog.Component {
-	// 优先使用已初始化的 DefaultLogger
+
 	if elog.DefaultLogger != nil {
 		return elog.DefaultLogger
 	}
-	// 使用 ego 的 Load 方法创建，配置名为 "logger.default"
+
 	return elog.Load("logger.default").Build()
 }

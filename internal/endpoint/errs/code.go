@@ -1,4 +1,4 @@
-﻿package errs
+package errs
 
 var (
 	SystemError = ErrorCode{Code: 503001, Msg: "系统错误"}

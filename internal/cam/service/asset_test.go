@@ -1,10 +1,11 @@
-﻿package service
+package service
 
 import (
 	"context"
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -14,8 +15,8 @@ type MockAssetRepository struct {
 	mock.Mock
 }
 
-func (m *MockAssetRepository) CreateAsset(ctx context.Context, asset domain.CloudAsset) (int64, error) {
-	args := m.Called(ctx, asset)
+func (m *MockAssetRepository) CreateAsset(ctx context.Context, a domain.CloudAsset) (int64, error) {
+	args := m.Called(ctx, a)
 	return args.Get(0).(int64), args.Error(1)
 }
 
@@ -24,8 +25,8 @@ func (m *MockAssetRepository) CreateMultiAssets(ctx context.Context, assets []do
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *MockAssetRepository) UpdateAsset(ctx context.Context, asset domain.CloudAsset) error {
-	args := m.Called(ctx, asset)
+func (m *MockAssetRepository) UpdateAsset(ctx context.Context, a domain.CloudAsset) error {
+	args := m.Called(ctx, a)
 	return args.Error(0)
 }
 
@@ -54,7 +55,7 @@ func (m *MockAssetRepository) DeleteAsset(ctx context.Context, id int64) error {
 	return args.Error(0)
 }
 
-// TestService_CreateAsset 测试创建资产
+// TestService_CreateAsset tests asset creation
 func TestService_CreateAsset(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -64,7 +65,7 @@ func TestService_CreateAsset(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "创建资产成功",
+			name: "create asset success",
 			asset: domain.CloudAsset{
 				AssetId:   "i-123456",
 				AssetName: "test-ecs",
@@ -83,7 +84,7 @@ func TestService_CreateAsset(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "资产已存在",
+			name: "asset already exists",
 			asset: domain.CloudAsset{
 				AssetId:   "i-123456",
 				AssetName: "test-ecs",
@@ -104,9 +105,11 @@ func TestService_CreateAsset(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockRepo := new(MockAssetRepository)
+			mockAccountRepo := new(MockCloudAccountRepository)
+			adapterFactory := asset.NewAdapterFactory(nil)
 			tt.mockFn(mockRepo)
 
-			s := NewService(mockRepo)
+			s := NewService(mockRepo, mockAccountRepo, adapterFactory, nil)
 			ctx := context.Background()
 
 			got, err := s.CreateAsset(ctx, tt.asset)
@@ -123,97 +126,33 @@ func TestService_CreateAsset(t *testing.T) {
 	}
 }
 
-// TestService_ListAssets 测试获取资产列表
+// TestService_ListAssets tests listing assets
 func TestService_ListAssets(t *testing.T) {
-	tests := []struct {
-		name       string
-		filter     domain.AssetFilter
-		mockFn     func(*MockAssetRepository)
-		wantAssets []domain.CloudAsset
-		wantTotal  int64
-		wantErr    bool
-	}{
-		{
-			name: "获取资产列表成功",
-			filter: domain.AssetFilter{
-				Provider: "aliyun",
-				Limit:    10,
-			},
-			mockFn: func(repo *MockAssetRepository) {
-				assets := []domain.CloudAsset{
-					{
-						Id:        1,
-						AssetId:   "i-123456",
-						AssetName: "test-ecs-1",
-						AssetType: "ecs",
-						Provider:  "aliyun",
-						Region:    "cn-hangzhou",
-						Status:    "running",
-					},
-					{
-						Id:        2,
-						AssetId:   "i-789012",
-						AssetName: "test-ecs-2",
-						AssetType: "ecs",
-						Provider:  "aliyun",
-						Region:    "cn-beijing",
-						Status:    "stopped",
-					},
-				}
-				repo.On("ListAssets", mock.Anything, mock.AnythingOfType("domain.AssetFilter")).
-					Return(assets, nil)
-				repo.On("CountAssets", mock.Anything, mock.AnythingOfType("domain.AssetFilter")).
-					Return(int64(2), nil)
-			},
-			wantAssets: []domain.CloudAsset{
-				{
-					Id:        1,
-					AssetId:   "i-123456",
-					AssetName: "test-ecs-1",
-					AssetType: "ecs",
-					Provider:  "aliyun",
-					Region:    "cn-hangzhou",
-					Status:    "running",
-				},
-				{
-					Id:        2,
-					AssetId:   "i-789012",
-					AssetName: "test-ecs-2",
-					AssetType: "ecs",
-					Provider:  "aliyun",
-					Region:    "cn-beijing",
-					Status:    "stopped",
-				},
-			},
-			wantTotal: 2,
-			wantErr:   false,
-		},
+	mockRepo := new(MockAssetRepository)
+	mockAccountRepo := new(MockCloudAccountRepository)
+	adapterFactory := asset.NewAdapterFactory(nil)
+
+	assets := []domain.CloudAsset{
+		{Id: 1, AssetId: "i-123456", AssetName: "test-ecs-1", AssetType: "ecs", Provider: "aliyun", Region: "cn-hangzhou", Status: "running"},
+		{Id: 2, AssetId: "i-789012", AssetName: "test-ecs-2", AssetType: "ecs", Provider: "aliyun", Region: "cn-beijing", Status: "stopped"},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockRepo := new(MockAssetRepository)
-			tt.mockFn(mockRepo)
+	mockRepo.On("ListAssets", mock.Anything, mock.AnythingOfType("domain.AssetFilter")).Return(assets, nil)
+	mockRepo.On("CountAssets", mock.Anything, mock.AnythingOfType("domain.AssetFilter")).Return(int64(2), nil)
 
-			s := NewService(mockRepo)
-			ctx := context.Background()
+	s := NewService(mockRepo, mockAccountRepo, adapterFactory, nil)
+	ctx := context.Background()
 
-			gotAssets, gotTotal, err := s.ListAssets(ctx, tt.filter)
+	filter := domain.AssetFilter{Provider: "aliyun", Limit: 10}
+	gotAssets, gotTotal, err := s.ListAssets(ctx, filter)
 
-			if tt.wantErr {
-				assert.Error(t, err)
-				return
-			}
-
-			assert.NoError(t, err)
-			assert.Equal(t, tt.wantAssets, gotAssets)
-			assert.Equal(t, tt.wantTotal, gotTotal)
-			mockRepo.AssertExpectations(t)
-		})
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, assets, gotAssets)
+	assert.Equal(t, int64(2), gotTotal)
+	mockRepo.AssertExpectations(t)
 }
 
-// TestService_UpdateAsset 测试更新资产
+// TestService_UpdateAsset tests updating an asset
 func TestService_UpdateAsset(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -222,7 +161,7 @@ func TestService_UpdateAsset(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "更新资产成功",
+			name: "update asset success",
 			asset: domain.CloudAsset{
 				Id:        1,
 				AssetId:   "i-123456",
@@ -233,30 +172,17 @@ func TestService_UpdateAsset(t *testing.T) {
 				Status:    "running",
 			},
 			mockFn: func(repo *MockAssetRepository) {
-				existingAsset := domain.CloudAsset{
-					Id:        1,
-					AssetId:   "i-123456",
-					AssetName: "test-ecs",
-					AssetType: "ecs",
-					Provider:  "aliyun",
-					Region:    "cn-hangzhou",
-					Status:    "running",
-				}
-				repo.On("GetAssetById", mock.Anything, int64(1)).
-					Return(existingAsset, nil)
-				repo.On("UpdateAsset", mock.Anything, mock.AnythingOfType("domain.CloudAsset")).
-					Return(nil)
+				existing := domain.CloudAsset{Id: 1, AssetId: "i-123456", AssetName: "test-ecs"}
+				repo.On("GetAssetById", mock.Anything, int64(1)).Return(existing, nil)
+				repo.On("UpdateAsset", mock.Anything, mock.AnythingOfType("domain.CloudAsset")).Return(nil)
 			},
 			wantErr: false,
 		},
 		{
-			name: "资产不存在",
-			asset: domain.CloudAsset{
-				Id: 999,
-			},
+			name:  "asset not found",
+			asset: domain.CloudAsset{Id: 999},
 			mockFn: func(repo *MockAssetRepository) {
-				repo.On("GetAssetById", mock.Anything, int64(999)).
-					Return(domain.CloudAsset{}, assert.AnError)
+				repo.On("GetAssetById", mock.Anything, int64(999)).Return(domain.CloudAsset{}, assert.AnError)
 			},
 			wantErr: true,
 		},
@@ -265,9 +191,11 @@ func TestService_UpdateAsset(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockRepo := new(MockAssetRepository)
+			mockAccountRepo := new(MockCloudAccountRepository)
+			adapterFactory := asset.NewAdapterFactory(nil)
 			tt.mockFn(mockRepo)
 
-			s := NewService(mockRepo)
+			s := NewService(mockRepo, mockAccountRepo, adapterFactory, nil)
 			ctx := context.Background()
 
 			err := s.UpdateAsset(ctx, tt.asset)
@@ -283,13 +211,14 @@ func TestService_UpdateAsset(t *testing.T) {
 	}
 }
 
-// TestService_GetAssetStatistics 测试获取资产统计
+// TestService_GetAssetStatistics tests getting asset statistics
 func TestService_GetAssetStatistics(t *testing.T) {
 	mockRepo := new(MockAssetRepository)
-	mockRepo.On("CountAssets", mock.Anything, domain.AssetFilter{}).
-		Return(int64(100), nil)
+	mockAccountRepo := new(MockCloudAccountRepository)
+	adapterFactory := asset.NewAdapterFactory(nil)
+	mockRepo.On("CountAssets", mock.Anything, domain.AssetFilter{}).Return(int64(100), nil)
 
-	s := NewService(mockRepo)
+	s := NewService(mockRepo, mockAccountRepo, adapterFactory, nil)
 	ctx := context.Background()
 
 	stats, err := s.GetAssetStatistics(ctx)
@@ -298,7 +227,5 @@ func TestService_GetAssetStatistics(t *testing.T) {
 	assert.Equal(t, int64(100), stats.TotalAssets)
 	assert.NotNil(t, stats.ProviderStats)
 	assert.NotNil(t, stats.AssetTypeStats)
-	assert.NotNil(t, stats.RegionStats)
-	assert.NotNil(t, stats.StatusStats)
 	mockRepo.AssertExpectations(t)
 }

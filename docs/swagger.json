@@ -1382,13 +1382,14 @@
         },
         "/api/v1/cam/iam/users/sync": {
             "post": {
+                "description": "创建异步同步任务，立即返回任务ID，可通过任务ID查询同步进度",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "用户管理"
                 ],
-                "summary": "同步云平台用户",
+                "summary": "同步云平台用户（异步）",
                 "parameters": [
                     {
                         "type": "string",
@@ -1409,7 +1410,19 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.SyncTask"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -1939,7 +1952,7 @@
         },
         "/cam/assets/sync": {
             "post": {
-                "description": "同步指定云厂商的资产状态和信息",
+                "description": "同步指定云账号的资产状态和信息。此接口已废弃，请使用 POST /api/v1/cam/cloud-accounts/{id}/sync",
                 "consumes": [
                     "application/json"
                 ],
@@ -1949,7 +1962,8 @@
                 "tags": [
                     "资产发现"
                 ],
-                "summary": "同步云资产",
+                "summary": "同步云资产（已废弃）",
+                "deprecated": true,
                 "parameters": [
                     {
                         "description": "同步资产请求",
@@ -1970,6 +1984,12 @@
                     },
                     "400": {
                         "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                        }
+                    },
+                    "404": {
+                        "description": "云账号不存在",
                         "schema": {
                             "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
                         }
@@ -2597,7 +2617,7 @@
         },
         "/cam/cloud-accounts/{id}/sync": {
             "post": {
-                "description": "同步指定云账号下的所有资产",
+                "description": "同步指定云账号下的云资产到本地数据库。这是同步云资产的主要接口，支持按资源类型和地域过滤同步范围。\n同步过程会自动获取云账号配置的所有地域，并逐个地域同步指定类型的资产。\n如果不指定 asset_types，默认只同步 ECS 实例。",
                 "consumes": [
                     "application/json"
                 ],
@@ -2607,7 +2627,7 @@
                 "tags": [
                     "云账号操作"
                 ],
-                "summary": "同步云账号资产",
+                "summary": "同步云账号资产（推荐）",
                 "parameters": [
                     {
                         "type": "integer",
@@ -2628,9 +2648,21 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "成功",
+                        "description": "同步成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/web.SyncResult"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "400": {
@@ -2641,6 +2673,12 @@
                     },
                     "404": {
                         "description": "云账号不存在",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                        }
+                    },
+                    "409": {
+                        "description": "云账号已禁用",
                         "schema": {
                             "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
                         }
@@ -2918,6 +2956,364 @@
                 }
             }
         },
+        "/cam/instances": {
+            "get": {
+                "description": "获取资产实例列表，支持按模型、租户、云账号等条件过滤",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产实例"
+                ],
+                "summary": "获取资产实例列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "模型UID",
+                        "name": "model_uid",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "tenant_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产名称(模糊搜索)",
+                        "name": "asset_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.InstanceListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "创建新的资产实例",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产实例"
+                ],
+                "summary": "创建资产实例",
+                "parameters": [
+                    {
+                        "description": "实例信息",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.CreateInstanceReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/instances/batch": {
+            "post": {
+                "description": "批量创建多个资产实例",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产实例"
+                ],
+                "summary": "批量创建资产实例",
+                "parameters": [
+                    {
+                        "description": "实例列表",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.CreateBatchInstanceReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/instances/upsert": {
+            "post": {
+                "description": "根据 tenant_id + model_uid + asset_id 更新或插入实例",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产实例"
+                ],
+                "summary": "更新或插入资产实例",
+                "parameters": [
+                    {
+                        "description": "实例信息",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.UpsertInstanceReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/instances/upsert-batch": {
+            "post": {
+                "description": "批量根据 tenant_id + model_uid + asset_id 更新或插入实例",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产实例"
+                ],
+                "summary": "批量更新或插入资产实例",
+                "parameters": [
+                    {
+                        "description": "实例列表",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.UpsertBatchInstanceReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/instances/{id}": {
+            "get": {
+                "description": "根据ID获取资产实例详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产实例"
+                ],
+                "summary": "获取资产实例详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "实例ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.InstanceVO"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新指定ID的资产实例信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产实例"
+                ],
+                "summary": "更新资产实例",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "实例ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新信息",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.UpdateInstanceReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除指定ID的资产实例",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产实例"
+                ],
+                "summary": "删除资产实例",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "实例ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/cam/menus": {
             "get": {
                 "description": "获取系统导航菜单的层级结构",
@@ -3028,7 +3424,7 @@
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/domain.Model"
+                                                "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_domain.Model"
                                             }
                                         }
                                     }
@@ -3063,7 +3459,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.CreateModelReq"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.CreateModelReq"
                         }
                     }
                 ],
@@ -3079,7 +3475,7 @@
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/domain.Model"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_domain.Model"
                                         }
                                     }
                                 }
@@ -3135,7 +3531,7 @@
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/domain.Model"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_domain.Model"
                                         }
                                     }
                                 }
@@ -3182,7 +3578,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.UpdateModelReq"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.UpdateModelReq"
                         }
                     }
                 ],
@@ -3198,7 +3594,7 @@
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/domain.Model"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_domain.Model"
                                         }
                                     }
                                 }
@@ -3904,65 +4300,6 @@
                 "CloudUserTypeVolcUser"
             ]
         },
-        "domain.Model": {
-            "type": "object",
-            "properties": {
-                "category": {
-                    "description": "资源类别",
-                    "type": "string"
-                },
-                "createTime": {
-                    "description": "创建时间",
-                    "type": "string"
-                },
-                "description": {
-                    "description": "描述",
-                    "type": "string"
-                },
-                "extensible": {
-                    "description": "是否可扩展",
-                    "type": "boolean"
-                },
-                "icon": {
-                    "description": "图标",
-                    "type": "string"
-                },
-                "id": {
-                    "description": "业务ID",
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "level": {
-                    "description": "层级（1=主资源，2=子资源）",
-                    "type": "integer"
-                },
-                "modelGroupID": {
-                    "description": "模型分组ID",
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "name": {
-                    "description": "模型名称",
-                    "type": "string"
-                },
-                "parentUID": {
-                    "description": "父模型UID（用于层级关系）",
-                    "type": "string"
-                },
-                "provider": {
-                    "description": "云厂商（all表示通用）",
-                    "type": "string"
-                },
-                "uid": {
-                    "description": "模型唯一标识",
-                    "type": "string"
-                },
-                "updateTime": {
-                    "description": "更新时间",
-                    "type": "string"
-                }
-            }
-        },
         "domain.ModelField": {
             "type": "object",
             "properties": {
@@ -4099,11 +4436,21 @@
             "type": "string",
             "enum": [
                 "user",
-                "group"
+                "group",
+                "account"
+            ],
+            "x-enum-comments": {
+                "SyncTargetTypeAccount": "云账号级别同步"
+            },
+            "x-enum-descriptions": [
+                "",
+                "",
+                "云账号级别同步"
             ],
             "x-enum-varnames": [
                 "SyncTargetTypeUser",
-                "SyncTargetTypeGroup"
+                "SyncTargetTypeGroup",
+                "SyncTargetTypeAccount"
             ]
         },
         "domain.SyncTaskType": {
@@ -4111,12 +4458,23 @@
             "enum": [
                 "user_sync",
                 "permission_sync",
-                "group_sync"
+                "group_sync",
+                "batch_user_sync"
+            ],
+            "x-enum-comments": {
+                "SyncTaskTypeBatchUserSync": "批量用户同步（从云平台拉取所有用户）"
+            },
+            "x-enum-descriptions": [
+                "",
+                "",
+                "",
+                "批量用户同步（从云平台拉取所有用户）"
             ],
             "x-enum-varnames": [
                 "SyncTaskTypeUserSync",
                 "SyncTaskTypePermissionSync",
-                "SyncTaskTypeGroupSync"
+                "SyncTaskTypeGroupSync",
+                "SyncTaskTypeBatchUserSync"
             ]
         },
         "domain.TemplateCategory": {
@@ -4218,6 +4576,277 @@
                 "TenantStatusSuspended",
                 "TenantStatusDeleted"
             ]
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_domain.Model": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "description": "资源类别",
+                    "type": "string"
+                },
+                "createTime": {
+                    "description": "创建时间",
+                    "type": "string"
+                },
+                "description": {
+                    "description": "描述",
+                    "type": "string"
+                },
+                "extensible": {
+                    "description": "是否可扩展",
+                    "type": "boolean"
+                },
+                "icon": {
+                    "description": "图标",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "业务ID",
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "level": {
+                    "description": "层级（1=主资源，2=子资源）",
+                    "type": "integer"
+                },
+                "modelGroupID": {
+                    "description": "模型分组ID",
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "name": {
+                    "description": "模型名称",
+                    "type": "string"
+                },
+                "parentUID": {
+                    "description": "父模型UID（用于层级关系）",
+                    "type": "string"
+                },
+                "provider": {
+                    "description": "云厂商（all表示通用）",
+                    "type": "string"
+                },
+                "uid": {
+                    "description": "模型唯一标识",
+                    "type": "string"
+                },
+                "updateTime": {
+                    "description": "更新时间",
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_web.CreateBatchInstanceReq": {
+            "type": "object",
+            "required": [
+                "instances"
+            ],
+            "properties": {
+                "instances": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.CreateInstanceReq"
+                    }
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_web.CreateInstanceReq": {
+            "type": "object",
+            "required": [
+                "asset_id",
+                "model_uid",
+                "tenant_id"
+            ],
+            "properties": {
+                "account_id": {
+                    "type": "integer"
+                },
+                "asset_id": {
+                    "type": "string"
+                },
+                "asset_name": {
+                    "type": "string"
+                },
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "model_uid": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_web.CreateModelReq": {
+            "type": "object",
+            "required": [
+                "category",
+                "level",
+                "name",
+                "provider",
+                "uid"
+            ],
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "extensible": {
+                    "type": "boolean"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "level": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "model_group_id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                },
+                "parent_uid": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "uid": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_web.InstanceListResp": {
+            "type": "object",
+            "properties": {
+                "instances": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.InstanceVO"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_web.InstanceVO": {
+            "type": "object",
+            "properties": {
+                "account_id": {
+                    "type": "integer"
+                },
+                "asset_id": {
+                    "type": "string"
+                },
+                "asset_name": {
+                    "type": "string"
+                },
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "create_time": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "model_uid": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
+                },
+                "update_time": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_web.UpdateInstanceReq": {
+            "type": "object",
+            "properties": {
+                "asset_name": {
+                    "type": "string"
+                },
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_web.UpdateModelReq": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "extensible": {
+                    "type": "boolean"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "model_group_id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_web.UpsertBatchInstanceReq": {
+            "type": "object",
+            "required": [
+                "instances"
+            ],
+            "properties": {
+                "instances": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_web.UpsertInstanceReq"
+                    }
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_web.UpsertInstanceReq": {
+            "type": "object",
+            "required": [
+                "asset_id",
+                "model_uid",
+                "tenant_id"
+            ],
+            "properties": {
+                "account_id": {
+                    "type": "integer"
+                },
+                "asset_id": {
+                    "type": "string"
+                },
+                "asset_name": {
+                    "type": "string"
+                },
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "model_uid": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
+                }
+            }
         },
         "github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudAccount": {
             "type": "object",
@@ -4441,6 +5070,79 @@
                 "EnvironmentProduction",
                 "EnvironmentStaging",
                 "EnvironmentDevelopment"
+            ]
+        },
+        "github_com_Havens-blog_e-cam-service_internal_shared_domain.SyncTask": {
+            "type": "object",
+            "properties": {
+                "cloud_account_id": {
+                    "type": "integer"
+                },
+                "create_time": {
+                    "type": "string"
+                },
+                "ctime": {
+                    "type": "integer"
+                },
+                "end_time": {
+                    "type": "string"
+                },
+                "error_message": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "max_retries": {
+                    "type": "integer"
+                },
+                "progress": {
+                    "type": "integer"
+                },
+                "provider": {
+                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
+                },
+                "retry_count": {
+                    "type": "integer"
+                },
+                "start_time": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.SyncTaskStatus"
+                },
+                "target_id": {
+                    "type": "integer"
+                },
+                "target_type": {
+                    "$ref": "#/definitions/domain.SyncTargetType"
+                },
+                "task_type": {
+                    "$ref": "#/definitions/domain.SyncTaskType"
+                },
+                "update_time": {
+                    "type": "string"
+                },
+                "utime": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_shared_domain.SyncTaskStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "running",
+                "success",
+                "failed",
+                "retrying"
+            ],
+            "x-enum-varnames": [
+                "SyncTaskStatusPending",
+                "SyncTaskStatusRunning",
+                "SyncTaskStatusSuccess",
+                "SyncTaskStatusFailed",
+                "SyncTaskStatusRetrying"
             ]
         },
         "github_com_Havens-blog_e-cam-service_pkg_ginx.Result": {
@@ -4852,53 +5554,6 @@
                 }
             }
         },
-        "web.CreateModelReq": {
-            "type": "object",
-            "required": [
-                "category",
-                "level",
-                "name",
-                "provider",
-                "uid"
-            ],
-            "properties": {
-                "category": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "extensible": {
-                    "type": "boolean"
-                },
-                "icon": {
-                    "type": "string"
-                },
-                "level": {
-                    "type": "integer",
-                    "minimum": 1
-                },
-                "model_group_id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string",
-                    "maxLength": 100,
-                    "minLength": 1
-                },
-                "parent_uid": {
-                    "type": "string"
-                },
-                "provider": {
-                    "type": "string"
-                },
-                "uid": {
-                    "type": "string",
-                    "maxLength": 100,
-                    "minLength": 1
-                }
-            }
-        },
         "web.CreateMultiAssetsReq": {
             "type": "object",
             "required": [
@@ -5246,15 +5901,45 @@
             }
         },
         "web.SyncAccountReq": {
+            "description": "同步云账号资产的请求参数",
             "type": "object",
             "properties": {
                 "asset_types": {
+                    "description": "要同步的资源类型列表，支持: ecs, rds, oss, vpc 等\n为空则默认只同步 ecs",
                     "type": "array",
                     "items": {
                         "type": "string"
-                    }
+                    },
+                    "example": [
+                        "ecs",
+                        "rds"
+                    ]
                 },
                 "regions": {
+                    "description": "要同步的地域列表，为空则同步账号配置的所有地域",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "cn-hangzhou",
+                        "cn-shanghai"
+                    ]
+                }
+            }
+        },
+        "web.SyncAssetsReq": {
+            "type": "object",
+            "required": [
+                "account_id"
+            ],
+            "properties": {
+                "account_id": {
+                    "description": "云账号ID",
+                    "type": "integer"
+                },
+                "asset_types": {
+                    "description": "要同步的资源类型，为空则同步所有支持的类型",
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -5262,21 +5947,28 @@
                 }
             }
         },
-        "web.SyncAssetsReq": {
+        "web.SyncResult": {
+            "description": "云资产同步操作的结果",
             "type": "object",
-            "required": [
-                "provider"
-            ],
             "properties": {
-                "asset_types": {
-                    "description": "要同步的资源类型，为空则同步所有支持的类型",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
+                "message": {
+                    "description": "同步结果消息",
+                    "type": "string",
+                    "example": "同步完成，共同步 10 个资产"
                 },
-                "provider": {
+                "start_time": {
+                    "description": "同步开始时间",
                     "type": "string"
+                },
+                "status": {
+                    "description": "同步状态: running, success, failed",
+                    "type": "string",
+                    "example": "success"
+                },
+                "sync_id": {
+                    "description": "同步任务ID，格式: sync_{account_id}_{timestamp}",
+                    "type": "string",
+                    "example": "sync_1_1706000000"
                 }
             }
         },
@@ -5457,26 +6149,6 @@
                 },
                 "secure": {
                     "type": "boolean"
-                }
-            }
-        },
-        "web.UpdateModelReq": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "extensible": {
-                    "type": "boolean"
-                },
-                "icon": {
-                    "type": "string"
-                },
-                "model_group_id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
                 }
             }
         },

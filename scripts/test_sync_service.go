@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 // +build ignore
 
 package main
@@ -21,23 +24,23 @@ func main() {
 	accessKeySecret := os.Getenv("ALIYUN_ACCESS_KEY_SECRET")
 
 	if accessKeyID == "" || accessKeySecret == "" {
-		fmt.Println("❌ 请设置环境变量 ALIYUN_ACCESS_KEY_ID 和 ALIYUN_ACCESS_KEY_SECRET")
+		fmt.Println("�?请设置环境变�?ALIYUN_ACCESS_KEY_ID �?ALIYUN_ACCESS_KEY_SECRET")
 		os.Exit(1)
 	}
 
-	fmt.Println("🔌 测试云主机同步服务")
+	fmt.Println("🔌 测试云主机同步服�?)
 	fmt.Println("=====================================")
 
-	// 创建适配器工厂
+	// 创建适配器工�?
 	factory := adapters.NewAdapterFactory(logger)
 
 	// 创建同步服务
 	syncService := service.NewSyncService(factory, logger)
 
-	// 创建云账号配置
+	// 创建云账号配�?
 	account := &domain.CloudAccount{
 		ID:              1,
-		Name:            "测试阿里云账号",
+		Name:            "测试阿里云账�?,
 		Provider:        domain.ProviderAliyun,
 		AccessKeyID:     accessKeyID,
 		AccessKeySecret: accessKeySecret,
@@ -49,21 +52,21 @@ func main() {
 	ctx := context.Background()
 
 	// 测试1: 同步指定地域的云主机
-	fmt.Println("\n【测试1: 同步指定地域的云主机】")
+	fmt.Println("\n【测�?: 同步指定地域的云主机�?)
 	testRegions := []string{"cn-hangzhou"}
 	
 	result, err := syncService.SyncECSInstances(ctx, account, testRegions)
 	if err != nil {
-		fmt.Printf("❌ 同步失败: %v\n", err)
+		fmt.Printf("�?同步失败: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("✅ 同步完成")
+	fmt.Println("�?同步完成")
 	fmt.Printf("  总数:       %d\n", result.TotalCount)
 	fmt.Printf("  新增:       %d\n", result.AddedCount)
 	fmt.Printf("  更新:       %d\n", result.UpdatedCount)
 	fmt.Printf("  删除:       %d\n", result.DeletedCount)
-	fmt.Printf("  未变化:     %d\n", result.UnchangedCount)
+	fmt.Printf("  未变�?     %d\n", result.UnchangedCount)
 	fmt.Printf("  错误:       %d\n", result.ErrorCount)
 	fmt.Printf("  耗时:       %v\n", result.Duration)
 	fmt.Printf("  成功:       %v\n", result.Success)
@@ -79,27 +82,27 @@ func main() {
 		}
 	}
 
-	// 测试2: 同步所有地域（注释掉，避免耗时太长）
+	// 测试2: 同步所有地域（注释掉，避免耗时太长�?
 	/*
-	fmt.Println("\n【测试2: 同步所有地域的云主机】")
+	fmt.Println("\n【测�?: 同步所有地域的云主机�?)
 	result2, err := syncService.SyncECSInstances(ctx, account, nil)
 	if err != nil {
-		fmt.Printf("❌ 同步失败: %v\n", err)
+		fmt.Printf("�?同步失败: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("✅ 同步完成")
+	fmt.Println("�?同步完成")
 	fmt.Printf("  总数:       %d\n", result2.TotalCount)
 	fmt.Printf("  新增:       %d\n", result2.AddedCount)
 	fmt.Printf("  更新:       %d\n", result2.UpdatedCount)
 	fmt.Printf("  删除:       %d\n", result2.DeletedCount)
-	fmt.Printf("  未变化:     %d\n", result2.UnchangedCount)
+	fmt.Printf("  未变�?     %d\n", result2.UnchangedCount)
 	fmt.Printf("  错误:       %d\n", result2.ErrorCount)
 	fmt.Printf("  耗时:       %v\n", result2.Duration)
 	*/
 
-	// 测试3: 检测实例变化
-	fmt.Println("\n【测试3: 检测实例变化】")
+	// 测试3: 检测实例变�?
+	fmt.Println("\n【测�?: 检测实例变化�?)
 	
 	// 模拟已存在的实例
 	existingInstances := make(map[string]*domain.ECSInstance)
@@ -121,13 +124,13 @@ func main() {
 		{
 			InstanceID:   "i-test-1",
 			InstanceName: "test-instance-1",
-			Status:       "Stopped", // 状态变化
+			Status:       "Stopped", // 状态变�?
 			PublicIP:     "1.2.3.4",
 		},
 		{
 			InstanceID:   "i-test-2",
 			InstanceName: "test-instance-2",
-			Status:       "Running", // 无变化
+			Status:       "Running", // 无变�?
 			PublicIP:     "1.2.3.5",
 		},
 		{
@@ -146,7 +149,7 @@ func main() {
 
 	added, updated, deleted, unchanged := syncService.DetectInstanceChanges(existingInstances, newInstances)
 
-	fmt.Printf("✅ 变化检测完成\n")
+	fmt.Printf("�?变化检测完成\n")
 	fmt.Printf("  新增:       %d\n", len(added))
 	if len(added) > 0 {
 		for _, inst := range added {
@@ -168,10 +171,10 @@ func main() {
 		}
 	}
 	
-	fmt.Printf("  未变化:     %d\n", len(unchanged))
+	fmt.Printf("  未变�?     %d\n", len(unchanged))
 
 	// 测试4: 创建同步任务
-	fmt.Println("\n【测试4: 同步任务生命周期】")
+	fmt.Println("\n【测�?: 同步任务生命周期�?)
 	task := &domain.SyncTask{
 		ID:           1,
 		AccountID:    account.ID,
@@ -181,11 +184,11 @@ func main() {
 		Status:       domain.TaskStatusPending,
 	}
 
-	fmt.Printf("初始状态: %s\n", task.Status)
+	fmt.Printf("初始状�? %s\n", task.Status)
 	
-	// 开始任务
+	// 开始任�?
 	task.Start()
-	fmt.Printf("开始任务: %s (开始时间: %d)\n", task.Status, task.StartTime)
+	fmt.Printf("开始任�? %s (开始时�? %d)\n", task.Status, task.StartTime)
 	
 	// 完成任务
 	task.Complete(result)
@@ -194,11 +197,11 @@ func main() {
 	fmt.Printf("  新增:       %d\n", task.AddedCount)
 	fmt.Printf("  更新:       %d\n", task.UpdatedCount)
 	fmt.Printf("  删除:       %d\n", task.DeletedCount)
-	fmt.Printf("  未变化:     %d\n", task.UnchangedCount)
+	fmt.Printf("  未变�?     %d\n", task.UnchangedCount)
 	fmt.Printf("  错误:       %d\n", task.ErrorCount)
 	fmt.Printf("  耗时:       %d 秒\n", task.Duration)
-	fmt.Printf("  成功率:     %.2f%%\n", task.GetSuccessRate())
+	fmt.Printf("  成功�?     %.2f%%\n", task.GetSuccessRate())
 
 	fmt.Println("\n=====================================")
-	fmt.Println("🎉 同步服务测试完成！")
+	fmt.Println("🎉 同步服务测试完成�?)
 }

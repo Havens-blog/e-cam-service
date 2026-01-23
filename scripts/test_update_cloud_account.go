@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
@@ -8,7 +11,7 @@ import (
 	"net/http"
 )
 
-// UpdateCloudAccountReq 更新云账号请求
+// UpdateCloudAccountReq 更新云账号请�?
 type UpdateCloudAccountReq struct {
 	Name            *string               `json:"name,omitempty"`
 	Environment     *string               `json:"environment,omitempty"`
@@ -19,7 +22,7 @@ type UpdateCloudAccountReq struct {
 	Config          *CloudAccountConfigVO `json:"config,omitempty"`
 }
 
-// CloudAccountConfigVO 云账号配置
+// CloudAccountConfigVO 云账号配�?
 type CloudAccountConfigVO struct {
 	EnableAutoSync       bool     `json:"enable_auto_sync"`
 	SyncInterval         int64    `json:"sync_interval"`
@@ -40,8 +43,8 @@ func main() {
 	baseURL := "http://localhost:8080"
 	accountID := int64(1) // 替换为实际的账号ID
 
-	// 测试1: 更新账号名称和描述
-	fmt.Println("=== 测试1: 更新账号名称和描述 ===")
+	// 测试1: 更新账号名称和描�?
+	fmt.Println("=== 测试1: 更新账号名称和描�?===")
 	name := "更新后的账号名称"
 	desc := "更新后的描述信息"
 	req1 := UpdateCloudAccountReq{
@@ -49,9 +52,9 @@ func main() {
 		Description: &desc,
 	}
 	if err := updateCloudAccount(baseURL, accountID, req1); err != nil {
-		fmt.Printf("❌ 更新失败: %v\n", err)
+		fmt.Printf("�?更新失败: %v\n", err)
 	} else {
-		fmt.Printf("✓ 更新成功\n")
+		fmt.Printf("�?更新成功\n")
 	}
 	fmt.Println()
 
@@ -61,9 +64,9 @@ func main() {
 		Regions: []string{"cn-hangzhou", "cn-beijing", "cn-shanghai", "cn-shenzhen"},
 	}
 	if err := updateCloudAccount(baseURL, accountID, req2); err != nil {
-		fmt.Printf("❌ 更新失败: %v\n", err)
+		fmt.Printf("�?更新失败: %v\n", err)
 	} else {
-		fmt.Printf("✓ 更新成功\n")
+		fmt.Printf("�?更新成功\n")
 	}
 	fmt.Println()
 
@@ -74,9 +77,9 @@ func main() {
 		Environment: &env,
 	}
 	if err := updateCloudAccount(baseURL, accountID, req3); err != nil {
-		fmt.Printf("❌ 更新失败: %v\n", err)
+		fmt.Printf("�?更新失败: %v\n", err)
 	} else {
-		fmt.Printf("✓ 更新成功\n")
+		fmt.Printf("�?更新成功\n")
 	}
 	fmt.Println()
 
@@ -89,9 +92,9 @@ func main() {
 		AccessKeySecret: &newAccessKeySecret,
 	}
 	if err := updateCloudAccount(baseURL, accountID, req4); err != nil {
-		fmt.Printf("❌ 更新失败: %v\n", err)
+		fmt.Printf("�?更新失败: %v\n", err)
 	} else {
-		fmt.Printf("✓ 更新成功\n")
+		fmt.Printf("�?更新成功\n")
 	}
 	fmt.Println()
 
@@ -109,17 +112,17 @@ func main() {
 		},
 	}
 	if err := updateCloudAccount(baseURL, accountID, req5); err != nil {
-		fmt.Printf("❌ 更新失败: %v\n", err)
+		fmt.Printf("�?更新失败: %v\n", err)
 	} else {
-		fmt.Printf("✓ 更新成功\n")
+		fmt.Printf("�?更新成功\n")
 	}
 	fmt.Println()
 
 	// 测试6: 批量更新多个字段
 	fmt.Println("=== 测试6: 批量更新多个字段 ===")
-	batchName := "集团-阿里云"
+	batchName := "集团-阿里�?
 	batchEnv := "production"
-	batchDesc := "集团-阿里云账号"
+	batchDesc := "集团-阿里云账�?
 	req6 := UpdateCloudAccountReq{
 		Name:        &batchName,
 		Environment: &batchEnv,
@@ -134,12 +137,12 @@ func main() {
 		},
 	}
 	if err := updateCloudAccount(baseURL, accountID, req6); err != nil {
-		fmt.Printf("❌ 更新失败: %v\n", err)
+		fmt.Printf("�?更新失败: %v\n", err)
 	} else {
-		fmt.Printf("✓ 更新成功\n")
+		fmt.Printf("�?更新成功\n")
 	}
 
-	fmt.Println("\n=== 所有测试完成 ===")
+	fmt.Println("\n=== 所有测试完�?===")
 }
 
 func updateCloudAccount(baseURL string, id int64, req UpdateCloudAccountReq) error {

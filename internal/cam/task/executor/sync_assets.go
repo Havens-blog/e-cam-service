@@ -1,4 +1,4 @@
-﻿package executor
+package executor
 
 import (
 	"context"
@@ -57,20 +57,20 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 	}
 
 	e.logger.Info("任务参数",
-		elog.String("provider", params.Provider),
+		elog.Int64("account_id", params.AccountID),
 		elog.Any("asset_types", params.AssetTypes))
 
 	// 更新进度: 开始同步
 	e.taskRepo.UpdateProgress(ctx, t.ID, 10, "开始同步资产")
 
 	// 执行同步
-	err = e.assetService.SyncAssets(ctx, params.Provider, params.AssetTypes)
+	synced, err := e.assetService.SyncAssets(ctx, params.AccountID, params.AssetTypes)
 	if err != nil {
 		return fmt.Errorf("同步资产失败: %w", err)
 	}
 
 	// 更新进度: 同步完成
-	e.taskRepo.UpdateProgress(ctx, t.ID, 90, "资产同步完成")
+	e.taskRepo.UpdateProgress(ctx, t.ID, 90, fmt.Sprintf("资产同步完成，同步 %d 个资产", synced))
 
 	// 获取统计信息
 	stats, err := e.assetService.GetAssetStatistics(ctx)

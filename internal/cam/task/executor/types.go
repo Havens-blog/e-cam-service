@@ -1,4 +1,4 @@
-﻿package executor
+package executor
 
 // SyncAssetsParams 同步资产任务参数
 type SyncAssetsParams struct {

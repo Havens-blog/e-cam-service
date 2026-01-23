@@ -1,4 +1,4 @@
-﻿package types
+package types
 
 // CreateUserRequest 创建用户请求（所有云厂商IAM适配器通用）
 type CreateUserRequest struct {

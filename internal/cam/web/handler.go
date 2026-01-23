@@ -1,4 +1,4 @@
-﻿package web
+package web
 
 import (
 	"strconv"
@@ -338,24 +338,29 @@ func (h *Handler) DiscoverAssets(ctx *gin.Context, req DiscoverAssetsReq) (ginx.
 }
 
 // SyncAssets 同步资产
-// @Summary 同步云资产
-// @Description 同步指定云厂商的资产状态和信息
+// @Summary 同步云资产（已废弃）
+// @Description 同步指定云账号的资产状态和信息。此接口已废弃，请使用 POST /api/v1/cam/cloud-accounts/{id}/sync
 // @Tags 资产发现
 // @Accept json
 // @Produce json
 // @Param request body SyncAssetsReq true "同步资产请求"
 // @Success 200 {object} ginx.Result "成功"
 // @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 404 {object} ginx.Result "云账号不存在"
 // @Failure 500 {object} ginx.Result "服务器错误"
+// @Deprecated
 // @Router /cam/assets/sync [post]
 func (h *Handler) SyncAssets(ctx *gin.Context, req SyncAssetsReq) (ginx.Result, error) {
-	err := h.svc.SyncAssets(ctx.Request.Context(), req.Provider, req.AssetTypes)
+	synced, err := h.svc.SyncAssets(ctx.Request.Context(), req.AccountID, req.AssetTypes)
 	if err != nil {
 		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
 	}
 
 	return Result(map[string]any{
+		"account_id":  req.AccountID,
 		"asset_types": req.AssetTypes,
+		"synced":      synced,
+		"message":     "此接口已废弃，请使用 POST /api/v1/cam/cloud-accounts/{id}/sync",
 	}), nil
 }
 
@@ -785,16 +790,19 @@ func (h *Handler) DisableCloudAccount(ctx *gin.Context) {
 }
 
 // SyncCloudAccount 同步云账号资产
-// @Summary 同步云账号资产
-// @Description 同步指定云账号下的所有资产
+// @Summary 同步云账号资产（推荐）
+// @Description 同步指定云账号下的云资产到本地数据库。这是同步云资产的主要接口，支持按资源类型和地域过滤同步范围。
+// @Description 同步过程会自动获取云账号配置的所有地域，并逐个地域同步指定类型的资产。
+// @Description 如果不指定 asset_types，默认只同步 ECS 实例。
 // @Tags 云账号操作
 // @Accept json
 // @Produce json
 // @Param id path int true "云账号ID"
 // @Param request body SyncAccountReq true "同步请求参数"
-// @Success 200 {object} ginx.Result "成功"
+// @Success 200 {object} ginx.Result{data=SyncResult} "同步成功"
 // @Failure 400 {object} ginx.Result "请求参数错误"
 // @Failure 404 {object} ginx.Result "云账号不存在"
+// @Failure 409 {object} ginx.Result "云账号已禁用"
 // @Failure 500 {object} ginx.Result "服务器错误"
 // @Router /cam/cloud-accounts/{id}/sync [post]
 func (h *Handler) SyncCloudAccount(ctx *gin.Context, req SyncAccountReq) (ginx.Result, error) {
@@ -817,6 +825,7 @@ func (h *Handler) SyncCloudAccount(ctx *gin.Context, req SyncAccountReq) (ginx.R
 	resp := SyncResult{
 		SyncID:    result.SyncID,
 		Status:    result.Status,
+		Message:   result.Message,
 		StartTime: result.StartTime,
 	}
 

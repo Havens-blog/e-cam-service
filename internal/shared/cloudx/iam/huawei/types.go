@@ -1,4 +1,4 @@
-﻿package huawei
+package huawei
 
 // CreateUserParams 华为云创建用户组参�?
 type CreateUserParams struct {

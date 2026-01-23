@@ -1,4 +1,4 @@
-﻿package web
+package web
 
 import "time"
 
@@ -89,9 +89,10 @@ type DiscoverAssetsReq struct {
 }
 
 // SyncAssetsReq 同步资产请求
+// Deprecated: 请使用 POST /api/v1/cam/cloud-accounts/{id}/sync 接口
 type SyncAssetsReq struct {
-	Provider   string   `json:"provider" binding:"required"`
-	AssetTypes []string `json:"asset_types"` // 要同步的资源类型，为空则同步所有支持的类型
+	AccountID  int64    `json:"account_id" binding:"required"` // 云账号ID
+	AssetTypes []string `json:"asset_types"`                   // 要同步的资源类型，为空则同步所有支持的类型
 }
 
 // AssetStatisticsResp 资产统计响应
@@ -218,16 +219,26 @@ type ConnectionTestResult struct {
 	TestTime time.Time `json:"test_time"`
 }
 
-// SyncAccountReq 同步账号请求
+// SyncAccountReq 同步账号资产请求
+// @Description 同步云账号资产的请求参数
 type SyncAccountReq struct {
-	AssetTypes []string `json:"asset_types"`
-	Regions    []string `json:"regions"`
+	// 要同步的资源类型列表，支持: ecs, rds, oss, vpc 等
+	// 为空则默认只同步 ecs
+	AssetTypes []string `json:"asset_types" example:"ecs,rds"`
+	// 要同步的地域列表，为空则同步账号配置的所有地域
+	Regions []string `json:"regions" example:"cn-hangzhou,cn-shanghai"`
 }
 
 // SyncResult 同步结果VO
+// @Description 云资产同步操作的结果
 type SyncResult struct {
-	SyncID    string    `json:"sync_id"`
-	Status    string    `json:"status"`
+	// 同步任务ID，格式: sync_{account_id}_{timestamp}
+	SyncID string `json:"sync_id" example:"sync_1_1706000000"`
+	// 同步状态: running, success, failed
+	Status string `json:"status" example:"success"`
+	// 同步结果消息
+	Message string `json:"message,omitempty" example:"同步完成，共同步 10 个资产"`
+	// 同步开始时间
 	StartTime time.Time `json:"start_time"`
 }
 

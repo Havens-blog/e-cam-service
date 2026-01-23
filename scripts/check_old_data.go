@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 // +build ignore
 
 package main
@@ -17,12 +20,12 @@ func main() {
 	mongoURI := "mongodb://ecmdb:123456@118.145.73.93:27017/ecmdb?authSource=admin"
 	mongoDatabase := "ecmdb"
 
-	fmt.Printf("🔌 连接到 MongoDB 数据库: %s\n", mongoDatabase)
+	fmt.Printf("🔌 连接�?MongoDB 数据�? %s\n", mongoDatabase)
 
 	clientOptions := options.Client().ApplyURI(mongoURI)
 	client, err := mongo.Connect(context.Background(), clientOptions)
 	if err != nil {
-		fmt.Printf("❌ 连接数据库失败: %v\n", err)
+		fmt.Printf("�?连接数据库失�? %v\n", err)
 		os.Exit(1)
 	}
 	defer client.Disconnect(context.Background())
@@ -30,22 +33,22 @@ func main() {
 	db := mongox.NewMongo(client, mongoDatabase)
 	ctx := context.Background()
 
-	// 查询所有模型
+	// 查询所有模�?
 	fmt.Println("\n📊 查询现有模型...")
 	cursor, err := db.Collection("c_model").Find(ctx, bson.M{})
 	if err != nil {
-		fmt.Printf("❌ 查询失败: %v\n", err)
+		fmt.Printf("�?查询失败: %v\n", err)
 		return
 	}
 	defer cursor.Close(ctx)
 
 	var models []bson.M
 	if err = cursor.All(ctx, &models); err != nil {
-		fmt.Printf("❌ 解码失败: %v\n", err)
+		fmt.Printf("�?解码失败: %v\n", err)
 		return
 	}
 
-	fmt.Printf("\n找到 %d 个模型:\n", len(models))
+	fmt.Printf("\n找到 %d 个模�?\n", len(models))
 	for _, model := range models {
 		fmt.Printf("\n模型: %v\n", model["uid"])
 		fmt.Printf("  名称: %v\n", model["name"])
@@ -69,7 +72,7 @@ func main() {
 		
 		fmt.Printf("  字段数量: %d\n", len(fields))
 		if len(fields) > 0 {
-			fmt.Println("  前3个字段:")
+			fmt.Println("  �?个字�?")
 			for i, field := range fields {
 				if i >= 3 {
 					break
