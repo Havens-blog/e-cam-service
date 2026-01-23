@@ -2,11 +2,14 @@ package tencent
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
+	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
+	cvm "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm/v20170312"
 )
 
 // AssetAdapter 腾讯云资产适配器
@@ -28,22 +31,45 @@ func NewAssetAdapter(account *domain.CloudAccount, defaultRegion string, logger 
 	}
 }
 
+// getClient 获取CVM客户端
+func (a *AssetAdapter) getClient(region string) (*cvm.Client, error) {
+	credential := common.NewCredential(
+		a.account.AccessKeyID,
+		a.account.AccessKeySecret,
+	)
+	cpf := profile.NewClientProfile()
+	cpf.HttpProfile.Endpoint = "cvm.tencentcloudapi.com"
+
+	client, err := cvm.NewClient(credential, region, cpf)
+	if err != nil {
+		return nil, fmt.Errorf("创建腾讯云CVM客户端失败: %w", err)
+	}
+	return client, nil
+}
+
 // GetRegions 获取支持的地域列表
 func (a *AssetAdapter) GetRegions(ctx context.Context) ([]types.Region, error) {
-	// 腾讯云常用地域列表（静态返回，后续可改为动态获取）
-	regions := []types.Region{
-		{ID: "ap-guangzhou", Name: "ap-guangzhou", LocalName: "华南地区(广州)", Description: "South China (Guangzhou)"},
-		{ID: "ap-shanghai", Name: "ap-shanghai", LocalName: "华东地区(上海)", Description: "East China (Shanghai)"},
-		{ID: "ap-beijing", Name: "ap-beijing", LocalName: "华北地区(北京)", Description: "North China (Beijing)"},
-		{ID: "ap-chengdu", Name: "ap-chengdu", LocalName: "西南地区(成都)", Description: "Southwest China (Chengdu)"},
-		{ID: "ap-chongqing", Name: "ap-chongqing", LocalName: "西南地区(重庆)", Description: "Southwest China (Chongqing)"},
-		{ID: "ap-nanjing", Name: "ap-nanjing", LocalName: "华东地区(南京)", Description: "East China (Nanjing)"},
-		{ID: "ap-hongkong", Name: "ap-hongkong", LocalName: "港澳台地区(香港)", Description: "Hong Kong, Macao and Taiwan (Hong Kong)"},
-		{ID: "ap-singapore", Name: "ap-singapore", LocalName: "亚太东南(新加坡)", Description: "Southeast Asia (Singapore)"},
-		{ID: "ap-tokyo", Name: "ap-tokyo", LocalName: "亚太东北(东京)", Description: "Northeast Asia (Tokyo)"},
-		{ID: "ap-seoul", Name: "ap-seoul", LocalName: "亚太东北(首尔)", Description: "Northeast Asia (Seoul)"},
-		{ID: "na-siliconvalley", Name: "na-siliconvalley", LocalName: "美国西部(硅谷)", Description: "Western US (Silicon Valley)"},
-		{ID: "eu-frankfurt", Name: "eu-frankfurt", LocalName: "欧洲地区(法兰克福)", Description: "Europe (Frankfurt)"},
+	client, err := a.getClient(a.defaultRegion)
+	if err != nil {
+		return nil, err
+	}
+
+	request := cvm.NewDescribeRegionsRequest()
+	response, err := client.DescribeRegions(request)
+	if err != nil {
+		return nil, fmt.Errorf("获取腾讯云地域列表失败: %w", err)
+	}
+
+	regions := make([]types.Region, 0, len(response.Response.RegionSet))
+	for _, r := range response.Response.RegionSet {
+		if *r.RegionState == "AVAILABLE" {
+			regions = append(regions, types.Region{
+				ID:          *r.Region,
+				Name:        *r.Region,
+				LocalName:   *r.RegionName,
+				Description: *r.RegionName,
+			})
+		}
 	}
 
 	a.logger.Info("获取腾讯云地域列表成功", elog.Int("count", len(regions)))
@@ -51,7 +77,161 @@ func (a *AssetAdapter) GetRegions(ctx context.Context) ([]types.Region, error) {
 }
 
 // GetECSInstances 获取CVM实例列表
-// TODO: 实现腾讯云CVM实例获取
 func (a *AssetAdapter) GetECSInstances(ctx context.Context, region string) ([]types.ECSInstance, error) {
-	return nil, cloudx.ErrNotImplemented
+	client, err := a.getClient(region)
+	if err != nil {
+		return nil, err
+	}
+
+	var allInstances []types.ECSInstance
+	offset := int64(0)
+	limit := int64(100)
+
+	for {
+		request := cvm.NewDescribeInstancesRequest()
+		request.Offset = &offset
+		request.Limit = &limit
+
+		response, err := client.DescribeInstances(request)
+		if err != nil {
+			return nil, fmt.Errorf("获取CVM实例列表失败: %w", err)
+		}
+
+		for _, inst := range response.Response.InstanceSet {
+			instance := a.convertInstance(inst, region)
+			allInstances = append(allInstances, instance)
+		}
+
+		if len(response.Response.InstanceSet) < int(limit) {
+			break
+		}
+		offset += limit
+	}
+
+	a.logger.Info("获取腾讯云CVM实例列表成功",
+		elog.String("region", region),
+		elog.Int("count", len(allInstances)))
+
+	return allInstances, nil
+}
+
+// convertInstance 转换腾讯云实例为通用格式
+func (a *AssetAdapter) convertInstance(inst *cvm.Instance, region string) types.ECSInstance {
+	// 获取公网IP
+	publicIP := ""
+	if len(inst.PublicIpAddresses) > 0 {
+		publicIP = *inst.PublicIpAddresses[0]
+	}
+
+	// 获取私网IP
+	privateIP := ""
+	if len(inst.PrivateIpAddresses) > 0 {
+		privateIP = *inst.PrivateIpAddresses[0]
+	}
+
+	// 获取安全组
+	securityGroups := make([]string, 0, len(inst.SecurityGroupIds))
+	for _, sg := range inst.SecurityGroupIds {
+		securityGroups = append(securityGroups, *sg)
+	}
+
+	// 获取标签
+	tags := make(map[string]string)
+	for _, tag := range inst.Tags {
+		tags[*tag.Key] = *tag.Value
+	}
+
+	// 获取实例类型族
+	instanceType := *inst.InstanceType
+	instanceTypeFamily := ""
+	// 从实例类型中提取类型族，如 S5.LARGE8 -> S5
+	if len(instanceType) > 0 {
+		for i, c := range instanceType {
+			if c == '.' {
+				instanceTypeFamily = instanceType[:i]
+				break
+			}
+		}
+	}
+
+	// 获取CPU和内存
+	cpu := 0
+	memory := 0
+	if inst.CPU != nil {
+		cpu = int(*inst.CPU)
+	}
+	if inst.Memory != nil {
+		memory = int(*inst.Memory) * 1024 // 转换为MB
+	}
+
+	// 获取计费类型
+	chargeType := "PostPaid"
+	if inst.InstanceChargeType != nil {
+		switch *inst.InstanceChargeType {
+		case "PREPAID":
+			chargeType = "PrePaid"
+		case "POSTPAID_BY_HOUR":
+			chargeType = "PostPaid"
+		case "SPOTPAID":
+			chargeType = "Spot"
+		}
+	}
+
+	// 获取系统盘信息
+	systemDiskCategory := ""
+	systemDiskSize := 0
+	if inst.SystemDisk != nil {
+		if inst.SystemDisk.DiskType != nil {
+			systemDiskCategory = *inst.SystemDisk.DiskType
+		}
+		if inst.SystemDisk.DiskSize != nil {
+			systemDiskSize = int(*inst.SystemDisk.DiskSize)
+		}
+	}
+
+	return types.ECSInstance{
+		InstanceID:         *inst.InstanceId,
+		InstanceName:       *inst.InstanceName,
+		Status:             *inst.InstanceState,
+		Region:             region,
+		Zone:               *inst.Placement.Zone,
+		InstanceType:       instanceType,
+		InstanceTypeFamily: instanceTypeFamily,
+		CPU:                cpu,
+		Memory:             memory,
+		OSType:             *inst.OsName,
+		OSName:             *inst.OsName,
+		ImageID:            *inst.ImageId,
+		PublicIP:           publicIP,
+		PrivateIP:          privateIP,
+		VPCID:              *inst.VirtualPrivateCloud.VpcId,
+		VSwitchID:          *inst.VirtualPrivateCloud.SubnetId,
+		SecurityGroups:     securityGroups,
+		ChargeType:         chargeType,
+		CreationTime:       *inst.CreatedTime,
+		ExpiredTime:        safeString(inst.ExpiredTime),
+		SystemDiskCategory: systemDiskCategory,
+		SystemDiskSize:     systemDiskSize,
+		NetworkType:        "vpc",
+		Tags:               tags,
+		Description:        "",
+		Provider:           string(types.ProviderTencent),
+		KeyPairName:        safeStringSlice(inst.LoginSettings.KeyIds),
+	}
+}
+
+// safeString 安全获取字符串指针的值
+func safeString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// safeStringSlice 安全获取字符串切片的第一个值
+func safeStringSlice(s []*string) string {
+	if len(s) == 0 || s[0] == nil {
+		return ""
+	}
+	return *s[0]
 }

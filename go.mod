@@ -4,10 +4,11 @@ go 1.24.1
 
 require (
 	github.com/aliyun/alibaba-cloud-sdk-go v1.63.107
-	github.com/aws/aws-sdk-go-v2 v1.39.6
+	github.com/aws/aws-sdk-go-v2 v1.41.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.24
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.281.0
 	github.com/aws/aws-sdk-go-v2/service/iam v1.50.2
-	github.com/aws/smithy-go v1.23.2
+	github.com/aws/smithy-go v1.24.0
 	github.com/ecodeclub/ekit v0.0.10
 	github.com/ecodeclub/ginx v0.0.2
 	github.com/fatih/color v1.18.0
@@ -28,8 +29,9 @@ require (
 	github.com/swaggo/gin-swagger v1.3.0
 	github.com/swaggo/swag v1.16.6
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cam v1.1.48
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.2.1
-	github.com/volcengine/volcengine-go-sdk v1.1.47
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.30
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.3.30
+	github.com/volcengine/volcengine-go-sdk v1.2.9
 	go.etcd.io/etcd/client/v3 v3.5.10
 	go.mongodb.org/mongo-driver v1.17.4
 	go.uber.org/zap v1.21.0
@@ -40,8 +42,10 @@ require (
 
 require (
 	github.com/KyleBanks/depth v1.2.1 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.13 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.13 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.17 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.17 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.17 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boj/redistore v1.4.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect

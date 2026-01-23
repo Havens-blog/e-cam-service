@@ -20,8 +20,8 @@ func init() {
 type Adapter struct {
 	account *domain.CloudAccount
 	logger  *elog.Component
-	asset   *AssetAdapter
-	iam     *IAMAdapter
+	asset   cloudx.AssetAdapter
+	iam     cloudx.IAMAdapter
 }
 
 // NewAdapter 创建华为云适配器
