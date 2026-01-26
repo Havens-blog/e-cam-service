@@ -47,6 +47,8 @@ type InstanceDAO interface {
 	Count(ctx context.Context, filter InstanceFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByAccountID(ctx context.Context, accountID int64) error
+	DeleteByAssetIDs(ctx context.Context, tenantID, modelUID string, assetIDs []string) (int64, error)
+	ListAssetIDsByRegion(ctx context.Context, tenantID, modelUID string, accountID int64, region string) ([]string, error)
 	Upsert(ctx context.Context, instance Instance) error
 }
 
@@ -240,4 +242,57 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 	}
 
 	return query
+}
+
+// DeleteByAssetIDs 根据 AssetID 列表批量删除实例
+func (d *instanceDAO) DeleteByAssetIDs(ctx context.Context, tenantID, modelUID string, assetIDs []string) (int64, error) {
+	if len(assetIDs) == 0 {
+		return 0, nil
+	}
+
+	filter := bson.M{
+		"tenant_id": tenantID,
+		"model_uid": modelUID,
+		"asset_id":  bson.M{"$in": assetIDs},
+	}
+
+	result, err := d.db.Collection(InstanceCollection).DeleteMany(ctx, filter)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.DeletedCount, nil
+}
+
+// ListAssetIDsByRegion 获取指定地域的所有 AssetID 列表
+func (d *instanceDAO) ListAssetIDsByRegion(ctx context.Context, tenantID, modelUID string, accountID int64, region string) ([]string, error) {
+	filter := bson.M{
+		"tenant_id":         tenantID,
+		"model_uid":         modelUID,
+		"account_id":        accountID,
+		"attributes.region": region,
+	}
+
+	// 只查询 asset_id 字段
+	opts := options.Find().SetProjection(bson.M{"asset_id": 1})
+
+	cursor, err := d.db.Collection(InstanceCollection).Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []struct {
+		AssetID string `bson:"asset_id"`
+	}
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+
+	assetIDs := make([]string, len(results))
+	for i, r := range results {
+		assetIDs[i] = r.AssetID
+	}
+
+	return assetIDs, nil
 }

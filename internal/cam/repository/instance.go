@@ -20,6 +20,8 @@ type InstanceRepository interface {
 	Count(ctx context.Context, filter domain.InstanceFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByAccountID(ctx context.Context, accountID int64) error
+	DeleteByAssetIDs(ctx context.Context, tenantID, modelUID string, assetIDs []string) (int64, error)
+	ListAssetIDsByRegion(ctx context.Context, tenantID, modelUID string, accountID int64, region string) ([]string, error)
 	Upsert(ctx context.Context, instance domain.Instance) error
 }
 
@@ -107,6 +109,16 @@ func (r *instanceRepository) DeleteByAccountID(ctx context.Context, accountID in
 // Upsert 更新或插入实例
 func (r *instanceRepository) Upsert(ctx context.Context, instance domain.Instance) error {
 	return r.dao.Upsert(ctx, r.toDAO(instance))
+}
+
+// DeleteByAssetIDs 根据 AssetID 列表批量删除实例
+func (r *instanceRepository) DeleteByAssetIDs(ctx context.Context, tenantID, modelUID string, assetIDs []string) (int64, error) {
+	return r.dao.DeleteByAssetIDs(ctx, tenantID, modelUID, assetIDs)
+}
+
+// ListAssetIDsByRegion 获取指定地域的所有 AssetID 列表
+func (r *instanceRepository) ListAssetIDsByRegion(ctx context.Context, tenantID, modelUID string, accountID int64, region string) ([]string, error) {
+	return r.dao.ListAssetIDsByRegion(ctx, tenantID, modelUID, accountID, region)
 }
 
 // toDAO 领域模型转DAO模型

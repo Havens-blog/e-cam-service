@@ -489,28 +489,65 @@ func (s *cloudAccountService) syncRegionAssets(
 }
 
 // syncRegionECSInstances 同步单个地域的 ECS 实例到 c_instance 表
+// 实现完整的增删改同步逻辑
 func (s *cloudAccountService) syncRegionECSInstances(
 	ctx context.Context,
 	assetAdapter asset.CloudAssetAdapter,
 	account *domain.CloudAccount,
 	region string,
 ) (int, error) {
-	// 获取 ECS 实例
-	instances, err := assetAdapter.GetECSInstances(ctx, region)
+	// 构建模型 UID
+	modelUID := fmt.Sprintf("%s_ecs", account.Provider)
+
+	// 1. 获取云端 ECS 实例
+	cloudInstances, err := assetAdapter.GetECSInstances(ctx, region)
 	if err != nil {
 		return 0, fmt.Errorf("获取ECS实例失败: %w", err)
 	}
 
-	if len(instances) == 0 {
-		return 0, nil
+	// 2. 获取本地数据库中该地域的所有 AssetID
+	localAssetIDs, err := s.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	if err != nil {
+		s.logger.Warn("获取本地实例列表失败",
+			elog.String("region", region),
+			elog.FieldErr(err))
+		localAssetIDs = []string{}
 	}
 
-	// 转换并保存到 c_instance 表
+	// 3. 构建云端 AssetID 集合
+	cloudAssetIDSet := make(map[string]bool)
+	for _, inst := range cloudInstances {
+		cloudAssetIDSet[inst.InstanceID] = true
+	}
+
+	// 4. 找出需要删除的实例（本地有但云端没有）
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	// 5. 删除已不存在的实例
+	if len(toDelete) > 0 {
+		deleted, err := s.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
+		if err != nil {
+			s.logger.Error("删除过期实例失败",
+				elog.String("region", region),
+				elog.FieldErr(err))
+		} else {
+			s.logger.Info("删除过期实例",
+				elog.String("region", region),
+				elog.Int64("deleted", deleted))
+		}
+	}
+
+	// 6. 新增或更新云端实例
 	synced := 0
-	for _, inst := range instances {
+	for _, inst := range cloudInstances {
 		instance := s.convertECSToInstance(inst, account)
 
-		// 使用 Upsert 方法，根据 tenant_id + model_uid + asset_id 更新或插入
+		// Upsert 会根据 tenant_id + model_uid + asset_id 判断是新增还是更新
 		err := s.instanceRepo.Upsert(ctx, instance)
 		if err != nil {
 			s.logger.Error("保存实例失败",
@@ -520,6 +557,11 @@ func (s *cloudAccountService) syncRegionECSInstances(
 		}
 		synced++
 	}
+
+	s.logger.Info("同步地域ECS实例完成",
+		elog.String("region", region),
+		elog.Int("synced", synced),
+		elog.Int("deleted", len(toDelete)))
 
 	return synced, nil
 }
