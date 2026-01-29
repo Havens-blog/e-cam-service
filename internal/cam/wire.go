@@ -15,6 +15,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 
 	// 注册各云厂商适配器
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aliyun"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
@@ -113,6 +114,7 @@ var ProviderSet = wire.NewSet(
 
 	// 统一适配器工厂
 	asset.NewAdapterFactory,
+	cloudx.NewAdapterFactory,
 
 	// Task层 (需要在 Service 之前初始化，因为 Service 依赖 Queue)
 	task.InitModule,
@@ -137,9 +139,11 @@ var ProviderSet = wire.NewSet(
 	// Web层
 	web.NewHandler,
 	web.NewInstanceHandler,
+	web.NewDatabaseHandler,
+	web.NewAssetHandler,
 
 	// Module (排除 IAMModule，手动初始化)
-	wire.Struct(new(Module), "Hdl", "InstanceHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "TaskModule", "TaskSvc", "TaskHdl", "AutoScheduler"),
+	wire.Struct(new(Module), "Hdl", "InstanceHdl", "DatabaseHdl", "AssetHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "TaskModule", "TaskSvc", "TaskHdl", "AutoScheduler"),
 )
 
 // InitModule 初始化CAM模块

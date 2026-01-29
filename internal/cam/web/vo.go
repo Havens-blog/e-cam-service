@@ -388,3 +388,99 @@ type FieldGroupListResp struct {
 	Groups []*ModelFieldGroupVO `json:"groups"`
 	Total  int64                `json:"total"`
 }
+
+// ==================== 数据库资源相关 VO ====================
+
+// RDSInstanceVO RDS实例VO
+type RDSInstanceVO struct {
+	InstanceID       string            `json:"instance_id"`
+	InstanceName     string            `json:"instance_name"`
+	Engine           string            `json:"engine"`
+	EngineVersion    string            `json:"engine_version"`
+	InstanceClass    string            `json:"instance_class"`
+	InstanceStatus   string            `json:"instance_status"`
+	ConnectionString string            `json:"connection_string"`
+	Port             int               `json:"port"`
+	VPCID            string            `json:"vpc_id"`
+	VSwitchID        string            `json:"vswitch_id"`
+	ZoneID           string            `json:"zone_id"`
+	RegionID         string            `json:"region_id"`
+	StorageType      string            `json:"storage_type"`
+	StorageSize      int               `json:"storage_size"`
+	MaxConnections   int               `json:"max_connections"`
+	MaxIOPS          int               `json:"max_iops"`
+	CreateTime       string            `json:"create_time"`
+	ExpireTime       string            `json:"expire_time"`
+	PayType          string            `json:"pay_type"`
+	Tags             map[string]string `json:"tags"`
+}
+
+// RDSInstanceListResp RDS实例列表响应
+type RDSInstanceListResp struct {
+	Instances []RDSInstanceVO `json:"instances"`
+	Total     int64           `json:"total"`
+}
+
+// RedisInstanceVO Redis实例VO
+type RedisInstanceVO struct {
+	InstanceID       string            `json:"instance_id"`
+	InstanceName     string            `json:"instance_name"`
+	InstanceClass    string            `json:"instance_class"`
+	InstanceStatus   string            `json:"instance_status"`
+	EngineVersion    string            `json:"engine_version"`
+	Architecture     string            `json:"architecture"`
+	NodeType         string            `json:"node_type"`
+	ShardCount       int               `json:"shard_count"`
+	ConnectionDomain string            `json:"connection_domain"`
+	Port             int               `json:"port"`
+	VPCID            string            `json:"vpc_id"`
+	VSwitchID        string            `json:"vswitch_id"`
+	ZoneID           string            `json:"zone_id"`
+	RegionID         string            `json:"region_id"`
+	Capacity         int64             `json:"capacity"`
+	Bandwidth        int64             `json:"bandwidth"`
+	Connections      int64             `json:"connections"`
+	QPS              int64             `json:"qps"`
+	CreateTime       string            `json:"create_time"`
+	ExpireTime       string            `json:"expire_time"`
+	PayType          string            `json:"pay_type"`
+	Tags             map[string]string `json:"tags"`
+}
+
+// RedisInstanceListResp Redis实例列表响应
+type RedisInstanceListResp struct {
+	Instances []RedisInstanceVO `json:"instances"`
+	Total     int64             `json:"total"`
+}
+
+// MongoDBInstanceVO MongoDB实例VO
+type MongoDBInstanceVO struct {
+	InstanceID       string            `json:"instance_id"`
+	InstanceName     string            `json:"instance_name"`
+	DBType           string            `json:"db_type"`
+	EngineVersion    string            `json:"engine_version"`
+	InstanceClass    string            `json:"instance_class"`
+	InstanceStatus   string            `json:"instance_status"`
+	StorageEngine    string            `json:"storage_engine"`
+	ReplicaSetName   string            `json:"replica_set_name"`
+	ConnectionString string            `json:"connection_string"`
+	Port             int               `json:"port"`
+	VPCID            string            `json:"vpc_id"`
+	VSwitchID        string            `json:"vswitch_id"`
+	ZoneID           string            `json:"zone_id"`
+	RegionID         string            `json:"region_id"`
+	StorageType      string            `json:"storage_type"`
+	StorageSize      int               `json:"storage_size"`
+	MaxConnections   int               `json:"max_connections"`
+	MaxIOPS          int               `json:"max_iops"`
+	CreateTime       string            `json:"create_time"`
+	ExpireTime       string            `json:"expire_time"`
+	PayType          string            `json:"pay_type"`
+	Tags             map[string]string `json:"tags"`
+}
+
+// MongoDBInstanceListResp MongoDB实例列表响应
+type MongoDBInstanceListResp struct {
+	Instances []MongoDBInstanceVO `json:"instances"`
+	Total     int64               `json:"total"`
+}

@@ -21,6 +21,10 @@ type Adapter struct {
 	account *domain.CloudAccount
 	logger  *elog.Component
 	asset   *AssetAdapter
+	ecs     *ECSAdapter
+	rds     *RDSAdapter
+	redis   *RedisAdapter
+	mongodb *MongoDBAdapter
 	iam     *IAMAdapter
 }
 
@@ -46,8 +50,40 @@ func NewAdapter(account *domain.CloudAccount) (*Adapter, error) {
 		logger:  logger,
 	}
 
-	// 创建资产适配器
+	// 创建资产适配器 (已废弃，保留兼容)
 	adapter.asset = NewAssetAdapter(
+		account.AccessKeyID,
+		account.AccessKeySecret,
+		defaultRegion,
+		logger,
+	)
+
+	// 创建ECS适配器 (推荐使用)
+	adapter.ecs = NewECSAdapter(
+		account.AccessKeyID,
+		account.AccessKeySecret,
+		defaultRegion,
+		logger,
+	)
+
+	// 创建RDS适配器
+	adapter.rds = NewRDSAdapter(
+		account.AccessKeyID,
+		account.AccessKeySecret,
+		defaultRegion,
+		logger,
+	)
+
+	// 创建Redis适配器
+	adapter.redis = NewRedisAdapter(
+		account.AccessKeyID,
+		account.AccessKeySecret,
+		defaultRegion,
+		logger,
+	)
+
+	// 创建MongoDB适配器
+	adapter.mongodb = NewMongoDBAdapter(
 		account.AccessKeyID,
 		account.AccessKeySecret,
 		defaultRegion,
@@ -66,8 +102,29 @@ func (a *Adapter) GetProvider() domain.CloudProvider {
 }
 
 // Asset 获取资产适配器
+// Deprecated: 请使用 ECS() 获取云虚拟机适配器
 func (a *Adapter) Asset() cloudx.AssetAdapter {
 	return a.asset
+}
+
+// ECS 获取ECS适配器
+func (a *Adapter) ECS() cloudx.ECSAdapter {
+	return a.ecs
+}
+
+// RDS 获取RDS适配器
+func (a *Adapter) RDS() cloudx.RDSAdapter {
+	return a.rds
+}
+
+// Redis 获取Redis适配器
+func (a *Adapter) Redis() cloudx.RedisAdapter {
+	return a.redis
+}
+
+// MongoDB 获取MongoDB适配器
+func (a *Adapter) MongoDB() cloudx.MongoDBAdapter {
+	return a.mongodb
 }
 
 // IAM 获取IAM适配器
@@ -77,8 +134,8 @@ func (a *Adapter) IAM() cloudx.IAMAdapter {
 
 // ValidateCredentials 验证凭证
 func (a *Adapter) ValidateCredentials(ctx context.Context) error {
-	// 使用资产适配器验证凭证（获取地域列表）
-	_, err := a.asset.GetRegions(ctx)
+	// 使用ECS适配器验证凭证（获取地域列表）
+	_, err := a.ecs.GetRegions(ctx)
 	if err != nil {
 		return fmt.Errorf("阿里云凭证验证失败: %w", err)
 	}

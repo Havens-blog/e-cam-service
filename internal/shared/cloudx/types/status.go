@@ -99,3 +99,287 @@ func IsRunningStatus(status string) bool {
 func IsStoppedStatus(status string) bool {
 	return NormalizeStatus(status) == StatusStopped
 }
+
+// ============================================================================
+// RDS 状态标准化
+// ============================================================================
+
+// RDS 标准化状态
+const (
+	RDSStatusRunning     = "running"     // 运行中
+	RDSStatusStopped     = "stopped"     // 已停止
+	RDSStatusCreating    = "creating"    // 创建中
+	RDSStatusDeleting    = "deleting"    // 删除中
+	RDSStatusRestarting  = "restarting"  // 重启中
+	RDSStatusMaintaining = "maintaining" // 维护中
+	RDSStatusUpgrading   = "upgrading"   // 升级中
+	RDSStatusBackingUp   = "backing_up"  // 备份中
+	RDSStatusRestoring   = "restoring"   // 恢复中
+	RDSStatusSwitching   = "switching"   // 切换中
+	RDSStatusError       = "error"       // 异常
+	RDSStatusUnknown     = "unknown"     // 未知
+)
+
+// RDS 状态映射表
+var rdsStatusMapping = map[string]string{
+	// 阿里云
+	"Running":                   RDSStatusRunning,
+	"Creating":                  RDSStatusCreating,
+	"Deleting":                  RDSStatusDeleting,
+	"Rebooting":                 RDSStatusRestarting,
+	"DBInstanceDeleting":        RDSStatusDeleting,
+	"Restoring":                 RDSStatusRestoring,
+	"Importing":                 RDSStatusRestoring,
+	"EngineUpgrading":           RDSStatusUpgrading,
+	"ClassChanging":             RDSStatusUpgrading,
+	"NetAddressCreating":        RDSStatusMaintaining,
+	"NetAddressDeleting":        RDSStatusMaintaining,
+	"DBInstanceClassChanging":   RDSStatusUpgrading,
+	"DBInstanceNetTypeChanging": RDSStatusMaintaining,
+	"GuardSwitching":            RDSStatusSwitching,
+	"LockMode":                  RDSStatusError,
+
+	// AWS
+	"available":                           RDSStatusRunning,
+	"backing-up":                          RDSStatusBackingUp,
+	"configuring-enhanced-monitoring":     RDSStatusMaintaining,
+	"configuring-iam-database-auth":       RDSStatusMaintaining,
+	"configuring-log-exports":             RDSStatusMaintaining,
+	"converting-to-vpc":                   RDSStatusMaintaining,
+	"creating":                            RDSStatusCreating,
+	"deleting":                            RDSStatusDeleting,
+	"failed":                              RDSStatusError,
+	"inaccessible-encryption-credentials": RDSStatusError,
+	"incompatible-network":                RDSStatusError,
+	"incompatible-option-group":           RDSStatusError,
+	"incompatible-parameters":             RDSStatusError,
+	"incompatible-restore":                RDSStatusError,
+	"maintenance":                         RDSStatusMaintaining,
+	"modifying":                           RDSStatusMaintaining,
+	"moving-to-vpc":                       RDSStatusMaintaining,
+	"rebooting":                           RDSStatusRestarting,
+	"renaming":                            RDSStatusMaintaining,
+	"resetting-master-credentials":        RDSStatusMaintaining,
+	"restore-error":                       RDSStatusError,
+	"starting":                            RDSStatusCreating,
+	"stopped":                             RDSStatusStopped,
+	"stopping":                            RDSStatusDeleting,
+	"storage-full":                        RDSStatusError,
+	"storage-optimization":                RDSStatusMaintaining,
+	"upgrading":                           RDSStatusUpgrading,
+
+	// 华为云
+	"ACTIVE":                  RDSStatusRunning,
+	"BUILD":                   RDSStatusCreating,
+	"FAILED":                  RDSStatusError,
+	"FROZEN":                  RDSStatusStopped,
+	"MODIFYING":               RDSStatusMaintaining,
+	"REBOOTING":               RDSStatusRestarting,
+	"RESTORING":               RDSStatusRestoring,
+	"SWITCHOVER":              RDSStatusSwitching,
+	"MIGRATING":               RDSStatusMaintaining,
+	"BACKING UP":              RDSStatusBackingUp,
+	"MODIFYING INSTANCE TYPE": RDSStatusUpgrading,
+	"MODIFYING DATABASE PORT": RDSStatusMaintaining,
+
+	// 腾讯云
+	"0":  RDSStatusCreating,    // 创建中
+	"1":  RDSStatusRunning,     // 运行中
+	"4":  RDSStatusDeleting,    // 删除中
+	"5":  RDSStatusStopped,     // 隔离中
+	"6":  RDSStatusStopped,     // 已隔离
+	"7":  RDSStatusMaintaining, // 任务执行中
+	"8":  RDSStatusStopped,     // 已下线
+	"9":  RDSStatusUpgrading,   // 实例扩容中
+	"10": RDSStatusMaintaining, // 实例迁移中
+	"12": RDSStatusMaintaining, // 灾备实例同步中
+	"14": RDSStatusMaintaining, // 版本升级中
+}
+
+// NormalizeRDSStatus 标准化RDS实例状态
+func NormalizeRDSStatus(status string) string {
+	if normalized, ok := rdsStatusMapping[status]; ok {
+		return normalized
+	}
+	if normalized, ok := rdsStatusMapping[strings.ToUpper(status)]; ok {
+		return normalized
+	}
+	lower := strings.ToLower(status)
+	if lower == "" {
+		return RDSStatusUnknown
+	}
+	return lower
+}
+
+// ============================================================================
+// Redis 状态标准化
+// ============================================================================
+
+// Redis 标准化状态
+const (
+	RedisStatusRunning     = "running"     // 运行中
+	RedisStatusCreating    = "creating"    // 创建中
+	RedisStatusDeleting    = "deleting"    // 删除中
+	RedisStatusChanging    = "changing"    // 变配中
+	RedisStatusMaintaining = "maintaining" // 维护中
+	RedisStatusError       = "error"       // 异常
+	RedisStatusUnknown     = "unknown"     // 未知
+)
+
+// Redis 状态映射表
+var redisStatusMapping = map[string]string{
+	// 阿里云
+	"Normal":                RedisStatusRunning,
+	"Creating":              RedisStatusCreating,
+	"Changing":              RedisStatusChanging,
+	"Inactive":              RedisStatusError,
+	"Flushing":              RedisStatusMaintaining,
+	"Released":              RedisStatusDeleting,
+	"Transforming":          RedisStatusChanging,
+	"Unavailable":           RedisStatusError,
+	"Error":                 RedisStatusError,
+	"Migrating":             RedisStatusMaintaining,
+	"BackupRecovering":      RedisStatusMaintaining,
+	"MinorVersionUpgrading": RedisStatusMaintaining,
+	"NetworkModifying":      RedisStatusMaintaining,
+	"SSLModifying":          RedisStatusMaintaining,
+	"MajorVersionUpgrading": RedisStatusMaintaining,
+
+	// AWS ElastiCache
+	"available":               RedisStatusRunning,
+	"creating":                RedisStatusCreating,
+	"deleted":                 RedisStatusDeleting,
+	"deleting":                RedisStatusDeleting,
+	"incompatible-network":    RedisStatusError,
+	"modifying":               RedisStatusChanging,
+	"rebooting cluster nodes": RedisStatusMaintaining,
+	"restore-failed":          RedisStatusError,
+	"snapshotting":            RedisStatusMaintaining,
+
+	// 华为云 DCS
+	"RUNNING":      RedisStatusRunning,
+	"CREATING":     RedisStatusCreating,
+	"CREATEFAILED": RedisStatusError,
+	"ERROR":        RedisStatusError,
+	"RESTARTING":   RedisStatusMaintaining,
+	"FROZEN":       RedisStatusError,
+	"EXTENDING":    RedisStatusChanging,
+	"RESTORING":    RedisStatusMaintaining,
+	"FLUSHING":     RedisStatusMaintaining,
+
+	// 腾讯云
+	"0":  RedisStatusCreating,    // 待初始化
+	"1":  RedisStatusMaintaining, // 流程中
+	"2":  RedisStatusRunning,     // 运行中
+	"-2": RedisStatusDeleting,    // 已隔离
+	"-3": RedisStatusDeleting,    // 待删除
+}
+
+// NormalizeRedisStatus 标准化Redis实例状态
+func NormalizeRedisStatus(status string) string {
+	if normalized, ok := redisStatusMapping[status]; ok {
+		return normalized
+	}
+	if normalized, ok := redisStatusMapping[strings.ToUpper(status)]; ok {
+		return normalized
+	}
+	lower := strings.ToLower(status)
+	if lower == "" {
+		return RedisStatusUnknown
+	}
+	return lower
+}
+
+// ============================================================================
+// MongoDB 状态标准化
+// ============================================================================
+
+// MongoDB 标准化状态
+const (
+	MongoDBStatusRunning     = "running"     // 运行中
+	MongoDBStatusCreating    = "creating"    // 创建中
+	MongoDBStatusDeleting    = "deleting"    // 删除中
+	MongoDBStatusRestarting  = "restarting"  // 重启中
+	MongoDBStatusMaintaining = "maintaining" // 维护中
+	MongoDBStatusUpgrading   = "upgrading"   // 升级中
+	MongoDBStatusError       = "error"       // 异常
+	MongoDBStatusUnknown     = "unknown"     // 未知
+)
+
+// MongoDB 状态映射表
+var mongoDBStatusMapping = map[string]string{
+	// 阿里云
+	"Running":               MongoDBStatusRunning,
+	"Creating":              MongoDBStatusCreating,
+	"Deleting":              MongoDBStatusDeleting,
+	"DBInstanceDeleting":    MongoDBStatusDeleting,
+	"Rebooting":             MongoDBStatusRestarting,
+	"Restoring":             MongoDBStatusMaintaining,
+	"Importing":             MongoDBStatusMaintaining,
+	"NodeCreating":          MongoDBStatusCreating,
+	"NodeDeleting":          MongoDBStatusDeleting,
+	"ClassChanging":         MongoDBStatusUpgrading,
+	"NetAddressCreating":    MongoDBStatusMaintaining,
+	"NetAddressDeleting":    MongoDBStatusMaintaining,
+	"MinorVersionUpgrading": MongoDBStatusUpgrading,
+	"MajorVersionUpgrading": MongoDBStatusUpgrading,
+	"GuardSwitching":        MongoDBStatusMaintaining,
+	"SSLModifying":          MongoDBStatusMaintaining,
+	"LockMode":              MongoDBStatusError,
+
+	// AWS DocumentDB
+	"available":   MongoDBStatusRunning,
+	"backing-up":  MongoDBStatusMaintaining,
+	"creating":    MongoDBStatusCreating,
+	"deleting":    MongoDBStatusDeleting,
+	"failed":      MongoDBStatusError,
+	"maintenance": MongoDBStatusMaintaining,
+	"modifying":   MongoDBStatusMaintaining,
+	"rebooting":   MongoDBStatusRestarting,
+	"renaming":    MongoDBStatusMaintaining,
+	"starting":    MongoDBStatusCreating,
+	"stopped":     MongoDBStatusError,
+	"stopping":    MongoDBStatusDeleting,
+	"upgrading":   MongoDBStatusUpgrading,
+
+	// 华为云 DDS
+	"normal":     MongoDBStatusRunning,
+	"ACTIVE":     MongoDBStatusRunning,
+	"BUILD":      MongoDBStatusCreating,
+	"FAILED":     MongoDBStatusError,
+	"FROZEN":     MongoDBStatusError,
+	"MODIFYING":  MongoDBStatusMaintaining,
+	"REBOOTING":  MongoDBStatusRestarting,
+	"RESTORING":  MongoDBStatusMaintaining,
+	"SWITCHOVER": MongoDBStatusMaintaining,
+	"MIGRATING":  MongoDBStatusMaintaining,
+	"BACKING UP": MongoDBStatusMaintaining,
+	"GROWING":    MongoDBStatusUpgrading,
+	"RESTARTING": MongoDBStatusRestarting,
+
+	// 腾讯云
+	"0":  MongoDBStatusCreating,    // 待初始化
+	"1":  MongoDBStatusMaintaining, // 流程执行中
+	"2":  MongoDBStatusRunning,     // 运行中
+	"-2": MongoDBStatusDeleting,    // 已过期
+
+	// 火山引擎 (Running/Creating/Deleting 与阿里云相同，已在上方定义)
+	"Restarting": MongoDBStatusRestarting,
+	"Upgrading":  MongoDBStatusUpgrading,
+	"Error":      MongoDBStatusError,
+}
+
+// NormalizeMongoDBStatus 标准化MongoDB实例状态
+func NormalizeMongoDBStatus(status string) string {
+	if normalized, ok := mongoDBStatusMapping[status]; ok {
+		return normalized
+	}
+	if normalized, ok := mongoDBStatusMapping[strings.ToUpper(status)]; ok {
+		return normalized
+	}
+	lower := strings.ToLower(status)
+	if lower == "" {
+		return MongoDBStatusUnknown
+	}
+	return lower
+}

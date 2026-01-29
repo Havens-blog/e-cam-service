@@ -238,7 +238,23 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 	query := bson.M{}
 
 	if filter.ModelUID != "" {
-		query["model_uid"] = filter.ModelUID
+		// 支持通用资产类型查询
+		// cloud_vm -> 匹配所有 *_ecs
+		// rds -> 匹配所有 *_rds
+		// redis -> 匹配所有 *_redis
+		// mongodb -> 匹配所有 *_mongodb
+		switch filter.ModelUID {
+		case "cloud_vm", "ecs":
+			query["model_uid"] = bson.M{"$regex": "_ecs$"}
+		case "rds":
+			query["model_uid"] = bson.M{"$regex": "_rds$"}
+		case "redis":
+			query["model_uid"] = bson.M{"$regex": "_redis$"}
+		case "mongodb":
+			query["model_uid"] = bson.M{"$regex": "_mongodb$"}
+		default:
+			query["model_uid"] = filter.ModelUID
+		}
 	}
 	if filter.TenantID != "" {
 		query["tenant_id"] = filter.TenantID

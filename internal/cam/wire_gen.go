@@ -15,6 +15,7 @@ import (
 	service2 "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
 	web2 "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
@@ -60,6 +61,8 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	v := web.NewHandler(serviceService, cloudAccountService, modelService)
 	instanceService := service.NewInstanceService(instanceRepository)
 	instanceHandler := web.NewInstanceHandler(instanceService)
+	databaseHandler := web.NewDatabaseHandler(instanceService)
+	assetHandler := web.NewAssetHandler(instanceService)
 	taskRepository := InitTaskRepository(db)
 	taskService := service2.NewTaskService(queue, taskRepository, component)
 	taskHandler := web2.NewTaskHandler(taskService)
@@ -67,6 +70,8 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	camModule := &Module{
 		Hdl:           v,
 		InstanceHdl:   instanceHandler,
+		DatabaseHdl:   databaseHandler,
+		AssetHdl:      assetHandler,
 		Svc:           serviceService,
 		AccountSvc:    cloudAccountService,
 		ModelSvc:      modelService,
@@ -151,7 +156,7 @@ var ProviderSet = wire.NewSet(
 	InitModelFieldDAO,
 	InitModelFieldGroupDAO,
 	InitInstanceDAO,
-	InitInstanceRelationDAO, repository.NewAssetRepository, repository.NewCloudAccountRepository, repository.NewModelRepository, repository.NewModelFieldRepository, repository.NewModelFieldGroupRepository, repository.NewInstanceRepository, repository.NewInstanceRelationRepository, InitTaskRepository, asset.NewAdapterFactory, task.InitModule, wire.FieldsOf(new(*task.Module), "Queue"), service.NewService, service.NewCloudAccountService, service.NewModelService, service.NewInstanceService, service2.NewTaskService, web2.NewTaskHandler, scheduler.NewAutoSyncScheduler, ProvideLogger, web.NewHandler, web.NewInstanceHandler, wire.Struct(new(Module), "Hdl", "InstanceHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "TaskModule", "TaskSvc", "TaskHdl", "AutoScheduler"),
+	InitInstanceRelationDAO, repository.NewAssetRepository, repository.NewCloudAccountRepository, repository.NewModelRepository, repository.NewModelFieldRepository, repository.NewModelFieldGroupRepository, repository.NewInstanceRepository, repository.NewInstanceRelationRepository, InitTaskRepository, asset.NewAdapterFactory, cloudx.NewAdapterFactory, task.InitModule, wire.FieldsOf(new(*task.Module), "Queue"), service.NewService, service.NewCloudAccountService, service.NewModelService, service.NewInstanceService, service2.NewTaskService, web2.NewTaskHandler, scheduler.NewAutoSyncScheduler, ProvideLogger, web.NewHandler, web.NewInstanceHandler, web.NewDatabaseHandler, web.NewAssetHandler, wire.Struct(new(Module), "Hdl", "InstanceHdl", "DatabaseHdl", "AssetHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "TaskModule", "TaskSvc", "TaskHdl", "AutoScheduler"),
 )
 
 // ProvideLogger 提供默认logger

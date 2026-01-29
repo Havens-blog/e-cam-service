@@ -6,8 +6,11 @@ require (
 	github.com/aliyun/alibaba-cloud-sdk-go v1.63.107
 	github.com/aws/aws-sdk-go-v2 v1.41.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.24
+	github.com/aws/aws-sdk-go-v2/service/docdb v1.48.9
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.281.0
+	github.com/aws/aws-sdk-go-v2/service/elasticache v1.51.9
 	github.com/aws/aws-sdk-go-v2/service/iam v1.50.2
+	github.com/aws/aws-sdk-go-v2/service/rds v1.114.0
 	github.com/aws/smithy-go v1.24.0
 	github.com/ecodeclub/ekit v0.0.10
 	github.com/ecodeclub/ginx v0.0.2
@@ -29,8 +32,11 @@ require (
 	github.com/swaggo/gin-swagger v1.3.0
 	github.com/swaggo/swag v1.16.6
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cam v1.1.48
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.30
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cdb v1.3.40
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.40
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.3.30
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/mongodb v1.3.40
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/redis v1.3.36
 	github.com/volcengine/volcengine-go-sdk v1.2.9
 	go.etcd.io/etcd/client/v3 v3.5.10
 	go.mongodb.org/mongo-driver v1.17.4

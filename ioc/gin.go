@@ -42,6 +42,18 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, endpointHdl *end
 		camModule.InstanceHdl.RegisterRoutes(camGroup)
 	}
 
+	// 注册数据库资源路由 (RDS, Redis, MongoDB) - 旧路由，保留兼容
+	if camModule.DatabaseHdl != nil {
+		logger.Info("注册数据库资源路由")
+		camModule.DatabaseHdl.RegisterRoutes(camGroup)
+	}
+
+	// 注册统一资产路由 (新RESTful风格)
+	if camModule.AssetHdl != nil {
+		logger.Info("注册统一资产路由")
+		camModule.AssetHdl.RegisterRoutes(camGroup)
+	}
+
 	// 注册任务路由
 	logger.Info("注册任务路由")
 	camModule.TaskHdl.RegisterRoutes(camGroup)

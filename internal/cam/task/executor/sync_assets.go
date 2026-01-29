@@ -8,6 +8,7 @@ import (
 
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
@@ -25,6 +26,7 @@ type SyncAssetsExecutor struct {
 	accountRepo    repository.CloudAccountRepository
 	instanceRepo   repository.InstanceRepository
 	adapterFactory *asset.AdapterFactory
+	cloudxFactory  *cloudx.AdapterFactory
 	taskRepo       taskx.TaskRepository
 	logger         *elog.Component
 }
@@ -41,6 +43,7 @@ func NewSyncAssetsExecutor(
 		accountRepo:    accountRepo,
 		instanceRepo:   instanceRepo,
 		adapterFactory: adapterFactory,
+		cloudxFactory:  cloudx.NewAdapterFactory(logger),
 		taskRepo:       taskRepo,
 		logger:         logger,
 	}
@@ -173,12 +176,73 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 ) (int, error) {
 	totalSynced := 0
 
+	// 获取 cloudx 适配器用于数据库资源同步
+	var cloudxAdapter cloudx.CloudAdapter
+	var cloudxErr error
+
 	for _, assetType := range assetTypes {
 		switch assetType {
 		case "ecs":
 			synced, err := e.syncRegionECS(ctx, adapter, account, region)
 			if err != nil {
 				e.logger.Error("同步ECS失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "rds":
+			// 懒加载 cloudx 适配器
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionRDS(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步RDS失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "redis":
+			// 懒加载 cloudx 适配器
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionRedis(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步Redis失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "mongodb":
+			// 懒加载 cloudx 适配器
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionMongoDB(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步MongoDB失败",
 					elog.String("region", region),
 					elog.FieldErr(err))
 				continue
@@ -327,6 +391,436 @@ func (e *SyncAssetsExecutor) convertECSToInstance(inst types.ECSInstance, accoun
 
 		// IO优化
 		"io_optimized": inst.IoOptimized,
+
+		// 标签
+		"tags": inst.Tags,
+	}
+
+	return camdomain.Instance{
+		ModelUID:   modelUID,
+		AssetID:    inst.InstanceID,
+		AssetName:  inst.InstanceName,
+		TenantID:   account.TenantID,
+		AccountID:  account.ID,
+		Attributes: attributes,
+	}
+}
+
+// syncRegionRDS 同步单个地域的 RDS 实例
+func (e *SyncAssetsExecutor) syncRegionRDS(
+	ctx context.Context,
+	adapter cloudx.CloudAdapter,
+	account *domain.CloudAccount,
+	region string,
+) (int, error) {
+	modelUID := fmt.Sprintf("%s_rds", account.Provider)
+
+	e.logger.Info("开始同步RDS实例",
+		elog.String("region", region),
+		elog.String("model_uid", modelUID),
+		elog.String("tenant_id", account.TenantID))
+
+	// 获取云端实例
+	rdsAdapter := adapter.RDS()
+	if rdsAdapter == nil {
+		return 0, fmt.Errorf("RDS适配器不可用")
+	}
+
+	cloudInstances, err := rdsAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取RDS实例失败: %w", err)
+	}
+
+	e.logger.Info("获取到云端RDS实例",
+		elog.String("region", region),
+		elog.Int("count", len(cloudInstances)))
+
+	// 获取本地实例 AssetID 列表
+	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	if err != nil {
+		localAssetIDs = []string{}
+	}
+
+	// 构建云端 AssetID 集合
+	cloudAssetIDSet := make(map[string]bool)
+	for _, inst := range cloudInstances {
+		cloudAssetIDSet[inst.InstanceID] = true
+	}
+
+	// 删除已不存在的实例
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
+		if err != nil {
+			e.logger.Error("删除过期RDS实例失败", elog.FieldErr(err))
+		} else {
+			e.logger.Info("删除过期RDS实例", elog.Int64("deleted", deleted))
+		}
+	}
+
+	// 新增或更新实例
+	synced := 0
+	for _, inst := range cloudInstances {
+		instance := e.convertRDSToInstance(inst, account)
+		e.logger.Info("准备保存RDS实例",
+			elog.String("asset_id", inst.InstanceID),
+			elog.String("asset_name", inst.InstanceName),
+			elog.String("model_uid", instance.ModelUID),
+			elog.String("tenant_id", instance.TenantID),
+			elog.Int64("account_id", instance.AccountID))
+		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
+			e.logger.Error("保存RDS实例失败", elog.String("asset_id", inst.InstanceID), elog.FieldErr(err))
+			continue
+		}
+		synced++
+	}
+
+	e.logger.Info("同步地域RDS完成",
+		elog.String("region", region),
+		elog.Int("synced", synced),
+		elog.Int("deleted", len(toDelete)))
+
+	return synced, nil
+}
+
+// syncRegionRedis 同步单个地域的 Redis 实例
+func (e *SyncAssetsExecutor) syncRegionRedis(
+	ctx context.Context,
+	adapter cloudx.CloudAdapter,
+	account *domain.CloudAccount,
+	region string,
+) (int, error) {
+	modelUID := fmt.Sprintf("%s_redis", account.Provider)
+
+	// 获取云端实例
+	redisAdapter := adapter.Redis()
+	if redisAdapter == nil {
+		return 0, fmt.Errorf("Redis适配器不可用")
+	}
+
+	cloudInstances, err := redisAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取Redis实例失败: %w", err)
+	}
+
+	// 获取本地实例 AssetID 列表
+	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	if err != nil {
+		localAssetIDs = []string{}
+	}
+
+	// 构建云端 AssetID 集合
+	cloudAssetIDSet := make(map[string]bool)
+	for _, inst := range cloudInstances {
+		cloudAssetIDSet[inst.InstanceID] = true
+	}
+
+	// 删除已不存在的实例
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
+		if err != nil {
+			e.logger.Error("删除过期Redis实例失败", elog.FieldErr(err))
+		} else {
+			e.logger.Info("删除过期Redis实例", elog.Int64("deleted", deleted))
+		}
+	}
+
+	// 新增或更新实例
+	synced := 0
+	for _, inst := range cloudInstances {
+		instance := e.convertRedisToInstance(inst, account)
+		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
+			e.logger.Error("保存Redis实例失败", elog.String("asset_id", inst.InstanceID), elog.FieldErr(err))
+			continue
+		}
+		synced++
+	}
+
+	e.logger.Info("同步地域Redis完成",
+		elog.String("region", region),
+		elog.Int("synced", synced),
+		elog.Int("deleted", len(toDelete)))
+
+	return synced, nil
+}
+
+// syncRegionMongoDB 同步单个地域的 MongoDB 实例
+func (e *SyncAssetsExecutor) syncRegionMongoDB(
+	ctx context.Context,
+	adapter cloudx.CloudAdapter,
+	account *domain.CloudAccount,
+	region string,
+) (int, error) {
+	modelUID := fmt.Sprintf("%s_mongodb", account.Provider)
+
+	// 获取云端实例
+	mongodbAdapter := adapter.MongoDB()
+	if mongodbAdapter == nil {
+		return 0, fmt.Errorf("MongoDB适配器不可用")
+	}
+
+	cloudInstances, err := mongodbAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取MongoDB实例失败: %w", err)
+	}
+
+	// 获取本地实例 AssetID 列表
+	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	if err != nil {
+		localAssetIDs = []string{}
+	}
+
+	// 构建云端 AssetID 集合
+	cloudAssetIDSet := make(map[string]bool)
+	for _, inst := range cloudInstances {
+		cloudAssetIDSet[inst.InstanceID] = true
+	}
+
+	// 删除已不存在的实例
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
+		if err != nil {
+			e.logger.Error("删除过期MongoDB实例失败", elog.FieldErr(err))
+		} else {
+			e.logger.Info("删除过期MongoDB实例", elog.Int64("deleted", deleted))
+		}
+	}
+
+	// 新增或更新实例
+	synced := 0
+	for _, inst := range cloudInstances {
+		instance := e.convertMongoDBToInstance(inst, account)
+		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
+			e.logger.Error("保存MongoDB实例失败", elog.String("asset_id", inst.InstanceID), elog.FieldErr(err))
+			continue
+		}
+		synced++
+	}
+
+	e.logger.Info("同步地域MongoDB完成",
+		elog.String("region", region),
+		elog.Int("synced", synced),
+		elog.Int("deleted", len(toDelete)))
+
+	return synced, nil
+}
+
+// convertRDSToInstance 将 RDS 实例转换为 Instance 领域模型
+func (e *SyncAssetsExecutor) convertRDSToInstance(inst types.RDSInstance, account *domain.CloudAccount) camdomain.Instance {
+	modelUID := fmt.Sprintf("%s_rds", account.Provider)
+
+	attributes := map[string]any{
+		// 基本信息
+		"status":      inst.Status,
+		"region":      inst.Region,
+		"zone":        inst.Zone,
+		"provider":    inst.Provider,
+		"description": inst.Description,
+
+		// 数据库信息
+		"engine":            inst.Engine,
+		"engine_version":    inst.EngineVersion,
+		"db_instance_class": inst.DBInstanceClass,
+
+		// 配置信息
+		"cpu":          inst.CPU,
+		"memory":       inst.Memory,
+		"storage":      inst.Storage,
+		"storage_type": inst.StorageType,
+		"max_iops":     inst.MaxIOPS,
+
+		// 网络信息
+		"connection_string": inst.ConnectionString,
+		"port":              inst.Port,
+		"vpc_id":            inst.VPCID,
+		"vswitch_id":        inst.VSwitchID,
+		"private_ip":        inst.PrivateIP,
+		"public_ip":         inst.PublicIP,
+
+		// 高可用信息
+		"category":           inst.Category,
+		"replication_mode":   inst.ReplicationMode,
+		"secondary_zone":     inst.SecondaryZone,
+		"read_replica_count": inst.ReadReplicaCount,
+
+		// 计费信息
+		"charge_type":   inst.ChargeType,
+		"creation_time": inst.CreationTime,
+		"expired_time":  inst.ExpiredTime,
+
+		// 安全信息
+		"security_ip_list": inst.SecurityIPList,
+		"ssl_enabled":      inst.SSLEnabled,
+
+		// 备份信息
+		"backup_retention_period": inst.BackupRetentionPeriod,
+		"preferred_backup_time":   inst.PreferredBackupTime,
+
+		// 项目/资源组信息
+		"project_id":   inst.ProjectID,
+		"project_name": inst.ProjectName,
+
+		// 云账号信息
+		"cloud_account_id":   account.ID,
+		"cloud_account_name": account.Name,
+
+		// 标签
+		"tags": inst.Tags,
+	}
+
+	return camdomain.Instance{
+		ModelUID:   modelUID,
+		AssetID:    inst.InstanceID,
+		AssetName:  inst.InstanceName,
+		TenantID:   account.TenantID,
+		AccountID:  account.ID,
+		Attributes: attributes,
+	}
+}
+
+// convertRedisToInstance 将 Redis 实例转换为 Instance 领域模型
+func (e *SyncAssetsExecutor) convertRedisToInstance(inst types.RedisInstance, account *domain.CloudAccount) camdomain.Instance {
+	modelUID := fmt.Sprintf("%s_redis", account.Provider)
+
+	attributes := map[string]any{
+		// 基本信息
+		"status":      inst.Status,
+		"region":      inst.Region,
+		"zone":        inst.Zone,
+		"provider":    inst.Provider,
+		"description": inst.Description,
+
+		// Redis信息
+		"engine_version": inst.EngineVersion,
+		"instance_class": inst.InstanceClass,
+		"architecture":   inst.Architecture,
+
+		// 配置信息
+		"capacity":    inst.Capacity,
+		"bandwidth":   inst.Bandwidth,
+		"connections": inst.Connections,
+		"qps":         inst.QPS,
+		"shard_count": inst.ShardCount,
+
+		// 网络信息
+		"connection_domain": inst.ConnectionDomain,
+		"port":              inst.Port,
+		"vpc_id":            inst.VPCID,
+		"vswitch_id":        inst.VSwitchID,
+		"private_ip":        inst.PrivateIP,
+
+		// 高可用信息
+		"node_type":      inst.NodeType,
+		"replica_count":  inst.ReplicaCount,
+		"secondary_zone": inst.SecondaryZone,
+
+		// 计费信息
+		"charge_type":   inst.ChargeType,
+		"creation_time": inst.CreationTime,
+		"expired_time":  inst.ExpiredTime,
+
+		// 安全信息
+		"security_ip_list": inst.SecurityIPList,
+		"ssl_enabled":      inst.SSLEnabled,
+		"password":         inst.Password,
+
+		// 项目/资源组信息
+		"project_id":   inst.ProjectID,
+		"project_name": inst.ProjectName,
+
+		// 云账号信息
+		"cloud_account_id":   account.ID,
+		"cloud_account_name": account.Name,
+
+		// 标签
+		"tags": inst.Tags,
+	}
+
+	return camdomain.Instance{
+		ModelUID:   modelUID,
+		AssetID:    inst.InstanceID,
+		AssetName:  inst.InstanceName,
+		TenantID:   account.TenantID,
+		AccountID:  account.ID,
+		Attributes: attributes,
+	}
+}
+
+// convertMongoDBToInstance 将 MongoDB 实例转换为 Instance 领域模型
+func (e *SyncAssetsExecutor) convertMongoDBToInstance(inst types.MongoDBInstance, account *domain.CloudAccount) camdomain.Instance {
+	modelUID := fmt.Sprintf("%s_mongodb", account.Provider)
+
+	attributes := map[string]any{
+		// 基本信息
+		"status":      inst.Status,
+		"region":      inst.Region,
+		"zone":        inst.Zone,
+		"provider":    inst.Provider,
+		"description": inst.Description,
+
+		// MongoDB信息
+		"engine_version":   inst.EngineVersion,
+		"instance_class":   inst.InstanceClass,
+		"db_instance_type": inst.DBInstanceType,
+
+		// 配置信息
+		"cpu":          inst.CPU,
+		"memory":       inst.Memory,
+		"storage":      inst.Storage,
+		"storage_type": inst.StorageType,
+
+		// 网络信息
+		"connection_string": inst.ConnectionString,
+		"port":              inst.Port,
+		"vpc_id":            inst.VPCID,
+		"vswitch_id":        inst.VSwitchID,
+
+		// 副本集/分片信息
+		"replica_set_name": inst.ReplicaSetName,
+		"shard_count":      inst.ShardCount,
+		"mongos_count":     inst.MongosCount,
+		"node_count":       inst.NodeCount,
+
+		// 计费信息
+		"charge_type":   inst.ChargeType,
+		"creation_time": inst.CreationTime,
+		"expired_time":  inst.ExpiredTime,
+
+		// 安全信息
+		"security_ip_list": inst.SecurityIPList,
+		"ssl_enabled":      inst.SSLEnabled,
+
+		// 备份信息
+		"backup_retention_period": inst.BackupRetentionPeriod,
+		"preferred_backup_time":   inst.PreferredBackupTime,
+
+		// 项目/资源组信息
+		"project_id":   inst.ProjectID,
+		"project_name": inst.ProjectName,
+
+		// 云账号信息
+		"cloud_account_id":   account.ID,
+		"cloud_account_name": account.Name,
 
 		// 标签
 		"tags": inst.Tags,

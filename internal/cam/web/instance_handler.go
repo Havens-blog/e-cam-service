@@ -270,7 +270,11 @@ func (h *InstanceHandler) GetByID(ctx *gin.Context) {
 // @Success 200 {object} ginx.Result{data=InstanceListResp} "成功"
 // @Router /cam/instances [get]
 func (h *InstanceHandler) List(ctx *gin.Context) {
+	// 支持 model_uid 和 uid 两种参数名
 	modelUID := ctx.Query("model_uid")
+	if modelUID == "" {
+		modelUID = ctx.Query("uid")
+	}
 	tenantID := ctx.Query("tenant_id")
 	accountIDStr := ctx.Query("account_id")
 	assetName := ctx.Query("asset_name")

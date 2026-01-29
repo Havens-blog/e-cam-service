@@ -15,6 +15,8 @@ import (
 type Module struct {
 	Hdl               *Handler
 	InstanceHdl       *web.InstanceHandler
+	DatabaseHdl       *web.DatabaseHandler // 数据库资源处理器 (旧路由，保留兼容)
+	AssetHdl          *web.AssetHandler    // 统一资产处理器 (新RESTful路由)
 	Svc               Service
 	AccountSvc        CloudAccountService
 	ModelSvc          ModelService
@@ -34,6 +36,16 @@ func (m *Module) RegisterRoutes(r *gin.Engine) {
 	// 注册实例路由
 	if m.InstanceHdl != nil {
 		m.InstanceHdl.RegisterRoutes(camGroup)
+	}
+
+	// 注册数据库资源路由 (RDS, Redis, MongoDB) - 旧路由，保留兼容
+	if m.DatabaseHdl != nil {
+		m.DatabaseHdl.RegisterRoutes(camGroup)
+	}
+
+	// 注册统一资产路由 (新RESTful风格)
+	if m.AssetHdl != nil {
+		m.AssetHdl.RegisterRoutes(camGroup)
 	}
 
 	// 注册IAM路由
