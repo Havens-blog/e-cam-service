@@ -166,6 +166,39 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 	return nil
 }
 
+// expandAssetTypes 展开资产类型，支持 database, network 等聚合类型
+func expandAssetTypes(assetTypes []string) []string {
+	expanded := make([]string, 0, len(assetTypes)*3)
+	seen := make(map[string]bool)
+
+	for _, t := range assetTypes {
+		switch t {
+		case "database", "db":
+			// database 展开为 rds, redis, mongodb
+			for _, dbType := range []string{"rds", "redis", "mongodb"} {
+				if !seen[dbType] {
+					expanded = append(expanded, dbType)
+					seen[dbType] = true
+				}
+			}
+		case "network", "net":
+			// network 展开为 vpc, eip
+			for _, netType := range []string{"vpc", "eip"} {
+				if !seen[netType] {
+					expanded = append(expanded, netType)
+					seen[netType] = true
+				}
+			}
+		default:
+			if !seen[t] {
+				expanded = append(expanded, t)
+				seen[t] = true
+			}
+		}
+	}
+	return expanded
+}
+
 // syncRegionAssets 同步单个地域的资产
 func (e *SyncAssetsExecutor) syncRegionAssets(
 	ctx context.Context,
@@ -176,11 +209,14 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 ) (int, error) {
 	totalSynced := 0
 
+	// 展开资产类型（支持 database -> rds, redis, mongodb）
+	expandedTypes := expandAssetTypes(assetTypes)
+
 	// 获取 cloudx 适配器用于数据库资源同步
 	var cloudxAdapter cloudx.CloudAdapter
 	var cloudxErr error
 
-	for _, assetType := range assetTypes {
+	for _, assetType := range expandedTypes {
 		switch assetType {
 		case "ecs":
 			synced, err := e.syncRegionECS(ctx, adapter, account, region)
@@ -243,6 +279,44 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 			synced, err := e.syncRegionMongoDB(ctx, cloudxAdapter, account, region)
 			if err != nil {
 				e.logger.Error("同步MongoDB失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "vpc":
+			// 懒加载 cloudx 适配器
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionVPC(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步VPC失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "eip":
+			// 懒加载 cloudx 适配器
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionEIP(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步EIP失败",
 					elog.String("region", region),
 					elog.FieldErr(err))
 				continue
@@ -830,6 +904,259 @@ func (e *SyncAssetsExecutor) convertMongoDBToInstance(inst types.MongoDBInstance
 		ModelUID:   modelUID,
 		AssetID:    inst.InstanceID,
 		AssetName:  inst.InstanceName,
+		TenantID:   account.TenantID,
+		AccountID:  account.ID,
+		Attributes: attributes,
+	}
+}
+
+// syncRegionVPC 同步单个地域的 VPC
+func (e *SyncAssetsExecutor) syncRegionVPC(
+	ctx context.Context,
+	adapter cloudx.CloudAdapter,
+	account *domain.CloudAccount,
+	region string,
+) (int, error) {
+	modelUID := fmt.Sprintf("%s_vpc", account.Provider)
+
+	// 获取云端实例
+	vpcAdapter := adapter.VPC()
+	if vpcAdapter == nil {
+		return 0, fmt.Errorf("VPC适配器不可用")
+	}
+
+	cloudInstances, err := vpcAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取VPC列表失败: %w", err)
+	}
+
+	// 获取本地实例 AssetID 列表
+	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	if err != nil {
+		localAssetIDs = []string{}
+	}
+
+	// 构建云端 AssetID 集合
+	cloudAssetIDSet := make(map[string]bool)
+	for _, inst := range cloudInstances {
+		cloudAssetIDSet[inst.VPCID] = true
+	}
+
+	// 删除已不存在的实例
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
+		if err != nil {
+			e.logger.Error("删除过期VPC失败", elog.FieldErr(err))
+		} else {
+			e.logger.Info("删除过期VPC", elog.Int64("deleted", deleted))
+		}
+	}
+
+	// 新增或更新实例
+	synced := 0
+	for _, inst := range cloudInstances {
+		instance := e.convertVPCToInstance(inst, account)
+		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
+			e.logger.Error("保存VPC失败", elog.String("asset_id", inst.VPCID), elog.FieldErr(err))
+			continue
+		}
+		synced++
+	}
+
+	e.logger.Info("同步地域VPC完成",
+		elog.String("region", region),
+		elog.Int("synced", synced),
+		elog.Int("deleted", len(toDelete)))
+
+	return synced, nil
+}
+
+// syncRegionEIP 同步单个地域的 EIP
+func (e *SyncAssetsExecutor) syncRegionEIP(
+	ctx context.Context,
+	adapter cloudx.CloudAdapter,
+	account *domain.CloudAccount,
+	region string,
+) (int, error) {
+	modelUID := fmt.Sprintf("%s_eip", account.Provider)
+
+	// 获取云端实例
+	eipAdapter := adapter.EIP()
+	if eipAdapter == nil {
+		return 0, fmt.Errorf("EIP适配器不可用")
+	}
+
+	cloudInstances, err := eipAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取EIP列表失败: %w", err)
+	}
+
+	// 获取本地实例 AssetID 列表
+	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	if err != nil {
+		localAssetIDs = []string{}
+	}
+
+	// 构建云端 AssetID 集合
+	cloudAssetIDSet := make(map[string]bool)
+	for _, inst := range cloudInstances {
+		cloudAssetIDSet[inst.AllocationID] = true
+	}
+
+	// 删除已不存在的实例
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
+		if err != nil {
+			e.logger.Error("删除过期EIP失败", elog.FieldErr(err))
+		} else {
+			e.logger.Info("删除过期EIP", elog.Int64("deleted", deleted))
+		}
+	}
+
+	// 新增或更新实例
+	synced := 0
+	for _, inst := range cloudInstances {
+		instance := e.convertEIPToInstance(inst, account)
+		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
+			e.logger.Error("保存EIP失败", elog.String("asset_id", inst.AllocationID), elog.FieldErr(err))
+			continue
+		}
+		synced++
+	}
+
+	e.logger.Info("同步地域EIP完成",
+		elog.String("region", region),
+		elog.Int("synced", synced),
+		elog.Int("deleted", len(toDelete)))
+
+	return synced, nil
+}
+
+// convertVPCToInstance 将 VPC 转换为 Instance 领域模型
+func (e *SyncAssetsExecutor) convertVPCToInstance(inst types.VPCInstance, account *domain.CloudAccount) camdomain.Instance {
+	modelUID := fmt.Sprintf("%s_vpc", account.Provider)
+
+	attributes := map[string]any{
+		// 基本信息
+		"status":      inst.Status,
+		"region":      inst.Region,
+		"provider":    inst.Provider,
+		"description": inst.Description,
+
+		// 网络配置
+		"cidr_block":         inst.CidrBlock,
+		"secondary_cidrs":    inst.SecondaryCidrs,
+		"ipv6_cidr_block":    inst.IPv6CidrBlock,
+		"enable_ipv6":        inst.EnableIPv6,
+		"is_default":         inst.IsDefault,
+		"dhcp_options_id":    inst.DhcpOptionsID,
+		"enable_dns_support": inst.EnableDnsSupport,
+
+		// 关联资源统计
+		"vswitch_count":        inst.VSwitchCount,
+		"route_table_count":    inst.RouteTableCount,
+		"nat_gateway_count":    inst.NatGatewayCount,
+		"security_group_count": inst.SecurityGroupCount,
+
+		// 计费信息
+		"creation_time": inst.CreationTime,
+
+		// 项目/资源组信息
+		"project_id":   inst.ProjectID,
+		"project_name": inst.ProjectName,
+
+		// 云账号信息
+		"cloud_account_id":   account.ID,
+		"cloud_account_name": account.Name,
+
+		// 标签
+		"tags": inst.Tags,
+	}
+
+	return camdomain.Instance{
+		ModelUID:   modelUID,
+		AssetID:    inst.VPCID,
+		AssetName:  inst.VPCName,
+		TenantID:   account.TenantID,
+		AccountID:  account.ID,
+		Attributes: attributes,
+	}
+}
+
+// convertEIPToInstance 将 EIP 转换为 Instance 领域模型
+func (e *SyncAssetsExecutor) convertEIPToInstance(inst types.EIPInstance, account *domain.CloudAccount) camdomain.Instance {
+	modelUID := fmt.Sprintf("%s_eip", account.Provider)
+
+	attributes := map[string]any{
+		// 基本信息
+		"status":      inst.Status,
+		"region":      inst.Region,
+		"zone":        inst.Zone,
+		"provider":    inst.Provider,
+		"description": inst.Description,
+
+		// IP信息
+		"ip_address":         inst.IPAddress,
+		"private_ip_address": inst.PrivateIPAddress,
+		"ip_version":         inst.IPVersion,
+
+		// 带宽信息
+		"bandwidth":              inst.Bandwidth,
+		"internet_charge_type":   inst.InternetChargeType,
+		"bandwidth_package_id":   inst.BandwidthPackageID,
+		"bandwidth_package_name": inst.BandwidthPackageName,
+
+		// 绑定资源信息
+		"instance_id":   inst.InstanceID,
+		"instance_type": inst.InstanceType,
+		"instance_name": inst.InstanceName,
+
+		// 网络信息
+		"vpc_id":            inst.VPCID,
+		"vswitch_id":        inst.VSwitchID,
+		"network_interface": inst.NetworkInterface,
+		"isp":               inst.ISP,
+		"netmode":           inst.Netmode,
+		"segment_id":        inst.SegmentID,
+		"public_ip_pool":    inst.PublicIPPool,
+		"resource_group_id": inst.ResourceGroupID,
+		"security_group_id": inst.SecurityGroupID,
+
+		// 计费信息
+		"charge_type":   inst.ChargeType,
+		"creation_time": inst.CreationTime,
+		"expired_time":  inst.ExpiredTime,
+
+		// 项目/资源组信息
+		"project_id":   inst.ProjectID,
+		"project_name": inst.ProjectName,
+
+		// 云账号信息
+		"cloud_account_id":   account.ID,
+		"cloud_account_name": account.Name,
+
+		// 标签
+		"tags": inst.Tags,
+	}
+
+	return camdomain.Instance{
+		ModelUID:   modelUID,
+		AssetID:    inst.AllocationID,
+		AssetName:  inst.Name,
 		TenantID:   account.TenantID,
 		AccountID:  account.ID,
 		Attributes: attributes,

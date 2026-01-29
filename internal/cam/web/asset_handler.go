@@ -41,6 +41,14 @@ func (h *AssetHandler) RegisterRoutes(rg *gin.RouterGroup) {
 		// MongoDB 文档数据库
 		assetsGroup.GET("/mongodb", h.ListMongoDB)
 		assetsGroup.GET("/mongodb/:asset_id", h.GetMongoDB)
+
+		// VPC 虚拟私有云
+		assetsGroup.GET("/vpc", h.ListVPC)
+		assetsGroup.GET("/vpc/:asset_id", h.GetVPC)
+
+		// EIP 弹性公网IP
+		assetsGroup.GET("/eip", h.ListEIP)
+		assetsGroup.GET("/eip/:asset_id", h.GetEIP)
 	}
 }
 
@@ -196,6 +204,83 @@ func (h *AssetHandler) GetMongoDB(ctx *gin.Context) {
 	h.getAsset(ctx, "mongodb")
 }
 
+// ==================== VPC 虚拟私有云 ====================
+
+// ListVPC 获取VPC列表
+// @Summary 获取VPC列表
+// @Description 从数据库获取已同步的VPC列表
+// @Tags 资产管理-VPC
+// @Accept json
+// @Produce json
+// @Param tenant_id query string false "租户ID"
+// @Param account_id query int false "云账号ID"
+// @Param provider query string false "云厂商" Enums(aliyun,aws,huawei,tencent,volcano)
+// @Param region query string false "地域"
+// @Param status query string false "状态"
+// @Param name query string false "VPC名称(模糊搜索)"
+// @Param offset query int false "偏移量" default(0)
+// @Param limit query int false "限制数量" default(20)
+// @Success 200 {object} ginx.Result{data=UnifiedAssetListResp} "成功"
+// @Router /cam/assets/vpc [get]
+func (h *AssetHandler) ListVPC(ctx *gin.Context) {
+	h.listAssets(ctx, "vpc")
+}
+
+// GetVPC 获取VPC详情
+// @Summary 获取VPC详情
+// @Description 从数据库获取指定VPC的详细信息
+// @Tags 资产管理-VPC
+// @Accept json
+// @Produce json
+// @Param asset_id path string true "资产ID(VPC ID)"
+// @Param tenant_id query string false "租户ID"
+// @Param provider query string false "云厂商" Enums(aliyun,aws,huawei,tencent,volcano)
+// @Success 200 {object} ginx.Result{data=UnifiedAssetVO} "成功"
+// @Failure 404 {object} ginx.Result "VPC不存在"
+// @Router /cam/assets/vpc/{asset_id} [get]
+func (h *AssetHandler) GetVPC(ctx *gin.Context) {
+	h.getAsset(ctx, "vpc")
+}
+
+// ==================== EIP 弹性公网IP ====================
+
+// ListEIP 获取EIP列表
+// @Summary 获取弹性公网IP列表
+// @Description 从数据库获取已同步的弹性公网IP列表
+// @Tags 资产管理-EIP
+// @Accept json
+// @Produce json
+// @Param tenant_id query string false "租户ID"
+// @Param account_id query int false "云账号ID"
+// @Param provider query string false "云厂商" Enums(aliyun,aws,huawei,tencent,volcano)
+// @Param region query string false "地域"
+// @Param status query string false "状态"
+// @Param name query string false "EIP名称(模糊搜索)"
+// @Param instance_id query string false "绑定的实例ID"
+// @Param offset query int false "偏移量" default(0)
+// @Param limit query int false "限制数量" default(20)
+// @Success 200 {object} ginx.Result{data=UnifiedAssetListResp} "成功"
+// @Router /cam/assets/eip [get]
+func (h *AssetHandler) ListEIP(ctx *gin.Context) {
+	h.listAssets(ctx, "eip")
+}
+
+// GetEIP 获取EIP详情
+// @Summary 获取弹性公网IP详情
+// @Description 从数据库获取指定弹性公网IP的详细信息
+// @Tags 资产管理-EIP
+// @Accept json
+// @Produce json
+// @Param asset_id path string true "资产ID(EIP Allocation ID)"
+// @Param tenant_id query string false "租户ID"
+// @Param provider query string false "云厂商" Enums(aliyun,aws,huawei,tencent,volcano)
+// @Success 200 {object} ginx.Result{data=UnifiedAssetVO} "成功"
+// @Failure 404 {object} ginx.Result "EIP不存在"
+// @Router /cam/assets/eip/{asset_id} [get]
+func (h *AssetHandler) GetEIP(ctx *gin.Context) {
+	h.getAsset(ctx, "eip")
+}
+
 // ==================== 通用方法 ====================
 
 // listAssets 通用的资产列表查询
@@ -314,6 +399,20 @@ func matchAssetType(modelUID, assetType string) bool {
 			modelUID == "huawei_mongodb" ||
 			modelUID == "tencent_mongodb" ||
 			modelUID == "volcano_mongodb"
+	case "vpc":
+		return modelUID == "vpc" ||
+			modelUID == "aliyun_vpc" ||
+			modelUID == "aws_vpc" ||
+			modelUID == "huawei_vpc" ||
+			modelUID == "tencent_vpc" ||
+			modelUID == "volcano_vpc"
+	case "eip":
+		return modelUID == "eip" ||
+			modelUID == "aliyun_eip" ||
+			modelUID == "aws_eip" ||
+			modelUID == "huawei_eip" ||
+			modelUID == "tencent_eip" ||
+			modelUID == "volcano_eip"
 	}
 	return false
 }
@@ -388,7 +487,7 @@ func (h *AssetHandler) toUnifiedAssetVO(inst domain.Instance) UnifiedAssetVO {
 func extractAssetType(modelUID string) string {
 	// aliyun_ecs -> ecs
 	// aws_rds -> rds
-	for _, suffix := range []string{"_ecs", "_rds", "_redis", "_mongodb"} {
+	for _, suffix := range []string{"_ecs", "_rds", "_redis", "_mongodb", "_vpc", "_eip"} {
 		if len(modelUID) > len(suffix) && modelUID[len(modelUID)-len(suffix):] == suffix {
 			return suffix[1:] // 去掉前缀下划线
 		}

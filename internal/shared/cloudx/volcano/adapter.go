@@ -27,6 +27,8 @@ type Adapter struct {
 	rds     *RDSAdapter
 	redis   *RedisAdapter
 	mongodb *MongoDBAdapter
+	vpc     *VPCAdapter
+	eip     *EIPAdapter
 	iam     cloudx.IAMAdapter
 }
 
@@ -67,6 +69,12 @@ func NewAdapter(account *domain.CloudAccount) (*Adapter, error) {
 	// 创建MongoDB适配器
 	adapter.mongodb = NewMongoDBAdapter(account, defaultRegion, logger)
 
+	// 创建VPC适配器
+	adapter.vpc = NewVPCAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建EIP适配器
+	adapter.eip = NewEIPAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
 	// 创建IAM适配器
 	adapter.iam = NewIAMAdapter(account, logger)
 
@@ -102,6 +110,16 @@ func (a *Adapter) Redis() cloudx.RedisAdapter {
 // MongoDB 获取MongoDB适配器
 func (a *Adapter) MongoDB() cloudx.MongoDBAdapter {
 	return a.mongodb
+}
+
+// VPC 获取VPC适配器
+func (a *Adapter) VPC() cloudx.VPCAdapter {
+	return a.vpc
+}
+
+// EIP 获取EIP适配器
+func (a *Adapter) EIP() cloudx.EIPAdapter {
+	return a.eip
 }
 
 // IAM 获取IAM适配器

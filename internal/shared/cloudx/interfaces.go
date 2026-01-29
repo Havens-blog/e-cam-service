@@ -29,6 +29,12 @@ type CloudAdapter interface {
 	// MongoDB 获取MongoDB适配器 (云MongoDB)
 	MongoDB() MongoDBAdapter
 
+	// VPC 获取VPC适配器 (虚拟私有云)
+	VPC() VPCAdapter
+
+	// EIP 获取EIP适配器 (弹性公网IP)
+	EIP() EIPAdapter
+
 	// IAM 获取IAM适配器
 	IAM() IAMAdapter
 
@@ -234,3 +240,47 @@ type IAMAdapter interface {
 
 // AdapterCreator 适配器创建函数类型
 type AdapterCreator func(account *domain.CloudAccount) (CloudAdapter, error)
+
+// ============================================================================
+// VPCAdapter - VPC适配器接口
+// ============================================================================
+
+// VPCAdapter VPC虚拟私有云适配器接口
+type VPCAdapter interface {
+	// ListInstances 获取VPC列表
+	ListInstances(ctx context.Context, region string) ([]types.VPCInstance, error)
+
+	// GetInstance 获取单个VPC详情
+	GetInstance(ctx context.Context, region, vpcID string) (*types.VPCInstance, error)
+
+	// ListInstancesByIDs 批量获取VPC
+	ListInstancesByIDs(ctx context.Context, region string, vpcIDs []string) ([]types.VPCInstance, error)
+
+	// GetInstanceStatus 获取VPC状态
+	GetInstanceStatus(ctx context.Context, region, vpcID string) (string, error)
+
+	// ListInstancesWithFilter 带过滤条件获取VPC列表
+	ListInstancesWithFilter(ctx context.Context, region string, filter *types.VPCInstanceFilter) ([]types.VPCInstance, error)
+}
+
+// ============================================================================
+// EIPAdapter - 弹性公网IP适配器接口
+// ============================================================================
+
+// EIPAdapter 弹性公网IP适配器接口
+type EIPAdapter interface {
+	// ListInstances 获取EIP列表
+	ListInstances(ctx context.Context, region string) ([]types.EIPInstance, error)
+
+	// GetInstance 获取单个EIP详情
+	GetInstance(ctx context.Context, region, allocationID string) (*types.EIPInstance, error)
+
+	// ListInstancesByIDs 批量获取EIP
+	ListInstancesByIDs(ctx context.Context, region string, allocationIDs []string) ([]types.EIPInstance, error)
+
+	// GetInstanceStatus 获取EIP状态
+	GetInstanceStatus(ctx context.Context, region, allocationID string) (string, error)
+
+	// ListInstancesWithFilter 带过滤条件获取EIP列表
+	ListInstancesWithFilter(ctx context.Context, region string, filter *types.EIPInstanceFilter) ([]types.EIPInstance, error)
+}
