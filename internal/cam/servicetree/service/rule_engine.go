@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
+	camrepo "github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	stdomain "github.com/Havens-blog/e-cam-service/internal/cam/servicetree/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository"
 	"github.com/gotomicro/ego/core/elog"
@@ -26,10 +28,11 @@ type RuleEngineService interface {
 }
 
 type ruleEngineService struct {
-	ruleRepo    repository.RuleRepository
-	bindingRepo repository.BindingRepository
-	nodeRepo    repository.NodeRepository
-	logger      *elog.Component
+	ruleRepo     repository.RuleRepository
+	bindingRepo  repository.BindingRepository
+	nodeRepo     repository.NodeRepository
+	instanceRepo camrepo.InstanceRepository
+	logger       *elog.Component
 }
 
 // NewRuleEngineService 创建规则引擎服务
@@ -37,13 +40,15 @@ func NewRuleEngineService(
 	ruleRepo repository.RuleRepository,
 	bindingRepo repository.BindingRepository,
 	nodeRepo repository.NodeRepository,
+	instanceRepo camrepo.InstanceRepository,
 	logger *elog.Component,
 ) RuleEngineService {
 	return &ruleEngineService{
-		ruleRepo:    ruleRepo,
-		bindingRepo: bindingRepo,
-		nodeRepo:    nodeRepo,
-		logger:      logger,
+		ruleRepo:     ruleRepo,
+		bindingRepo:  bindingRepo,
+		nodeRepo:     nodeRepo,
+		instanceRepo: instanceRepo,
+		logger:       logger,
 	}
 }
 
@@ -118,12 +123,96 @@ func (s *ruleEngineService) MatchInstance(ctx context.Context, tenantID string, 
 	}, nil
 }
 
-// ExecuteRules 执行所有规则，自动绑定资源 (预留接口，需要注入 InstanceRepository)
+// ExecuteRules 执行所有规则，自动绑定资源到规则指定的环境
 func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID string) (int64, error) {
-	// 此方法需要配合 InstanceRepository 使用
-	// 遍历所有未绑定的实例，匹配规则并自动绑定
-	s.logger.Info("执行规则匹配", elog.String("tenantID", tenantID))
-	return 0, nil
+	s.logger.Info("开始执行规则匹配", elog.String("tenantID", tenantID))
+
+	// 1. 获取所有启用的规则，按优先级排序
+	rules, err := s.ruleRepo.ListEnabled(ctx, tenantID)
+	if err != nil {
+		return 0, fmt.Errorf("获取规则列表失败: %w", err)
+	}
+	if len(rules) == 0 {
+		s.logger.Info("无启用的规则", elog.String("tenantID", tenantID))
+		return 0, nil
+	}
+
+	// 2. 获取所有实例
+	instances, err := s.instanceRepo.List(ctx, domain.InstanceFilter{
+		TenantID: tenantID,
+		Limit:    10000, // 分批处理大量数据时可优化
+	})
+	if err != nil {
+		return 0, fmt.Errorf("获取实例列表失败: %w", err)
+	}
+	if len(instances) == 0 {
+		s.logger.Info("无实例数据", elog.String("tenantID", tenantID))
+		return 0, nil
+	}
+
+	// 3. 获取已绑定的资源ID集合 (按环境分组)
+	existingBindings, err := s.bindingRepo.List(ctx, stdomain.BindingFilter{
+		TenantID:     tenantID,
+		ResourceType: stdomain.ResourceTypeInstance,
+		Limit:        100000,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("获取已绑定资源失败: %w", err)
+	}
+	// key: "envID-resourceID"
+	boundResources := make(map[string]bool)
+	for _, b := range existingBindings {
+		key := fmt.Sprintf("%d-%d", b.EnvID, b.ResourceID)
+		boundResources[key] = true
+	}
+
+	// 4. 遍历未绑定的实例，匹配规则
+	var newBindings []stdomain.ResourceBinding
+	for _, instance := range instances {
+		// 按优先级匹配规则
+		for _, rule := range rules {
+			// 检查该实例在该环境下是否已绑定
+			key := fmt.Sprintf("%d-%d", rule.EnvID, instance.ID)
+			if boundResources[key] {
+				continue
+			}
+
+			if s.matchRule(instance, rule) {
+				newBindings = append(newBindings, stdomain.ResourceBinding{
+					NodeID:       rule.NodeID,
+					EnvID:        rule.EnvID,
+					ResourceType: stdomain.ResourceTypeInstance,
+					ResourceID:   instance.ID,
+					TenantID:     tenantID,
+					BindType:     stdomain.BindTypeRule,
+					RuleID:       rule.ID,
+				})
+				// 标记为已绑定，避免同一实例在同一环境被多个规则绑定
+				boundResources[key] = true
+				break // 匹配到第一个规则后停止
+			}
+		}
+	}
+
+	if len(newBindings) == 0 {
+		s.logger.Info("无新的匹配绑定", elog.String("tenantID", tenantID))
+		return 0, nil
+	}
+
+	// 5. 批量创建绑定
+	count, err := s.bindingRepo.CreateBatch(ctx, newBindings)
+	if err != nil {
+		return 0, fmt.Errorf("批量创建绑定失败: %w", err)
+	}
+
+	s.logger.Info("规则匹配完成",
+		elog.String("tenantID", tenantID),
+		elog.Int("ruleCount", len(rules)),
+		elog.Int("instanceCount", len(instances)),
+		elog.Int64("newBindingCount", count),
+	)
+
+	return count, nil
 }
 
 // matchRule 检查实例是否匹配规则

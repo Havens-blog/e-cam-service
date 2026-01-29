@@ -3,6 +3,7 @@
 package servicetree
 
 import (
+	camrepo "github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/service"
@@ -38,7 +39,8 @@ var ProviderSet = wire.NewSet(
 )
 
 // InitModule 初始化服务树模块
-func InitModule(db *mongox.Mongo, logger *elog.Component) (*Module, error) {
+// instanceRepo 从 cam 模块注入，用于规则引擎查询实例
+func InitModule(db *mongox.Mongo, instanceRepo camrepo.InstanceRepository, logger *elog.Component) (*Module, error) {
 	wire.Build(
 		ProviderSet,
 		NewModule,

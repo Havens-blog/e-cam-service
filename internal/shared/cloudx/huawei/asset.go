@@ -164,9 +164,12 @@ func (a *AssetAdapter) convertInstance(inst ecsmodel.ServerDetail, region string
 	}
 
 	// 获取安全组
-	securityGroups := make([]string, 0)
+	securityGroups := make([]types.SecurityGroup, 0)
 	for _, sg := range inst.SecurityGroups {
-		securityGroups = append(securityGroups, sg.Id)
+		securityGroups = append(securityGroups, types.SecurityGroup{
+			ID:   sg.Id,
+			Name: sg.Name,
+		})
 	}
 
 	// 获取标签
@@ -210,11 +213,10 @@ func (a *AssetAdapter) convertInstance(inst ecsmodel.ServerDetail, region string
 	}
 
 	// 获取系统盘信息
-	systemDiskCategory := ""
-	systemDiskSize := 0
+	systemDisk := types.SystemDisk{}
 	for _, vol := range inst.OsExtendedVolumesvolumesAttached {
 		if vol.BootIndex != nil && *vol.BootIndex == "0" {
-			// 这是系统盘
+			systemDisk.DiskID = vol.Id
 			break
 		}
 	}
@@ -232,7 +234,7 @@ func (a *AssetAdapter) convertInstance(inst ecsmodel.ServerDetail, region string
 	zone := inst.OSEXTAZavailabilityZone
 
 	// 获取状态
-	status := inst.Status
+	status := types.NormalizeStatus(inst.Status)
 
 	// 获取创建时间
 	creationTime := ""
@@ -247,6 +249,12 @@ func (a *AssetAdapter) convertInstance(inst ecsmodel.ServerDetail, region string
 	imageID := ""
 	if inst.Image.Id != "" {
 		imageID = inst.Image.Id
+	}
+
+	// 获取企业项目ID
+	projectID := ""
+	if inst.EnterpriseProjectId != nil {
+		projectID = *inst.EnterpriseProjectId
 	}
 
 	return types.ECSInstance{
@@ -267,11 +275,11 @@ func (a *AssetAdapter) convertInstance(inst ecsmodel.ServerDetail, region string
 		VPCID:              vpcID,
 		VSwitchID:          subnetID,
 		SecurityGroups:     securityGroups,
+		SystemDisk:         systemDisk,
 		ChargeType:         chargeType,
 		CreationTime:       creationTime,
-		SystemDiskCategory: systemDiskCategory,
-		SystemDiskSize:     systemDiskSize,
 		NetworkType:        "vpc",
+		ProjectID:          projectID,
 		Tags:               tags,
 		Description:        safeStringPtr(inst.Description),
 		Provider:           string(types.ProviderHuawei),

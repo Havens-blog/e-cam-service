@@ -30,10 +30,21 @@ type InstanceFilter struct {
 	ModelUID   string
 	TenantID   string
 	AccountID  int64
+	AssetID    string
 	AssetName  string
+	Provider   string     // 按云平台过滤
+	TagFilter  *TagFilter // 标签过滤条件
 	Attributes map[string]interface{}
 	Offset     int64
 	Limit      int64
+}
+
+// TagFilter 标签过滤条件
+type TagFilter struct {
+	HasTags bool   // 过滤有标签的实例
+	NoTags  bool   // 过滤没有标签的实例
+	Key     string // 标签键
+	Value   string // 标签值
 }
 
 // InstanceDAO 资产实例数据访问接口
@@ -193,7 +204,6 @@ func (d *instanceDAO) DeleteByAccountID(ctx context.Context, accountID int64) er
 // Upsert 更新或插入实例 (根据 tenant_id + model_uid + asset_id 判断)
 func (d *instanceDAO) Upsert(ctx context.Context, instance Instance) error {
 	now := time.Now().UnixMilli()
-	instance.Utime = now
 
 	filter := bson.M{
 		"tenant_id": instance.TenantID,
@@ -201,6 +211,7 @@ func (d *instanceDAO) Upsert(ctx context.Context, instance Instance) error {
 		"asset_id":  instance.AssetID,
 	}
 
+	// 更新所有可变字段
 	update := bson.M{
 		"$set": bson.M{
 			"asset_name": instance.AssetName,
@@ -209,8 +220,11 @@ func (d *instanceDAO) Upsert(ctx context.Context, instance Instance) error {
 			"utime":      now,
 		},
 		"$setOnInsert": bson.M{
-			"id":    d.db.GetIdGenerator(InstanceCollection),
-			"ctime": now,
+			"id":        d.db.GetIdGenerator(InstanceCollection),
+			"tenant_id": instance.TenantID,
+			"model_uid": instance.ModelUID,
+			"asset_id":  instance.AssetID,
+			"ctime":     now,
 		},
 	}
 
@@ -232,8 +246,47 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 	if filter.AccountID > 0 {
 		query["account_id"] = filter.AccountID
 	}
+	if filter.AssetID != "" {
+		query["asset_id"] = filter.AssetID
+	}
 	if filter.AssetName != "" {
 		query["asset_name"] = bson.M{"$regex": filter.AssetName, "$options": "i"}
+	}
+	// 按云平台过滤 (查询 attributes.provider)
+	if filter.Provider != "" {
+		query["attributes.provider"] = filter.Provider
+	}
+
+	// 标签过滤
+	if filter.TagFilter != nil {
+		if filter.TagFilter.Key != "" {
+			// 按标签键过滤 (优先处理，因为更精确)
+			if filter.TagFilter.Value != "" {
+				// 按标签键值对过滤 (标签值支持模糊匹配)
+				query["attributes.tags."+filter.TagFilter.Key] = bson.M{
+					"$regex":   filter.TagFilter.Value,
+					"$options": "i",
+				}
+			} else {
+				// 只按标签键过滤 (存在此键)
+				query["attributes.tags."+filter.TagFilter.Key] = bson.M{"$exists": true}
+			}
+		} else if filter.TagFilter.NoTags {
+			// 没有标签: tags 不存在、为null、或为空对象
+			// 使用 $where 来检查空对象 (兼容性更好)
+			query["$or"] = []bson.M{
+				{"attributes.tags": bson.M{"$exists": false}},
+				{"attributes.tags": nil},
+				{"attributes.tags": bson.M{"$eq": bson.M{}}},
+			}
+		} else if filter.TagFilter.HasTags {
+			// 有标签: tags 存在、不为null、且不为空对象
+			// 使用 $ne 排除空对象
+			query["attributes.tags"] = bson.M{
+				"$exists": true,
+				"$nin":    []interface{}{nil, bson.M{}},
+			}
+		}
 	}
 
 	// 动态属性查询

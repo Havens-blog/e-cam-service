@@ -46,9 +46,7 @@ func (n *ServiceTreeNode) Validate() error {
 	if n.TenantID == "" {
 		return fmt.Errorf("租户ID不能为空")
 	}
-	if n.Level < 1 {
-		return fmt.Errorf("节点层级必须大于0")
-	}
+	// Level 由服务层根据 ParentID 自动计算，不在此处验证
 	return nil
 }
 

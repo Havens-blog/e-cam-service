@@ -2960,7 +2960,7 @@ const docTemplate = `{
         },
         "/cam/instances": {
             "get": {
-                "description": "获取资产实例列表，支持按模型、租户、云账号等条件过滤",
+                "description": "获取资产实例列表，支持按模型、租户、云账号等条件过滤，支持任意属性组合过滤",
                 "consumes": [
                     "application/json"
                 ],
@@ -2998,6 +2998,18 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
+                        "description": "资产ID(精确匹配)",
+                        "name": "asset_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "云平台(aliyun/aws/huawei/tencent/volcengine)",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "状态",
                         "name": "status",
                         "in": "query"
@@ -3006,6 +3018,66 @@ const docTemplate = `{
                         "type": "string",
                         "description": "地域",
                         "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "可用区",
+                        "name": "zone",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "VPC ID",
+                        "name": "vpc_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例规格",
+                        "name": "instance_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "操作系统类型",
+                        "name": "os_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "计费类型",
+                        "name": "charge_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "内网IP",
+                        "name": "private_ip",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "公网IP",
+                        "name": "public_ip",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "是否有标签(true/false)",
+                        "name": "has_tags",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "标签键(过滤包含此标签键的实例)",
+                        "name": "tag_key",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "标签值(需配合tag_key使用)",
+                        "name": "tag_value",
                         "in": "query"
                     },
                     {
@@ -4984,7 +5056,7 @@ const docTemplate = `{
                     }
                 },
                 "sync_interval": {
-                    "description": "同步间隔(秒)",
+                    "description": "同步间隔(分钟)",
                     "type": "integer"
                 }
             }
@@ -5024,7 +5096,8 @@ const docTemplate = `{
                 "azure",
                 "tencent",
                 "huawei",
-                "volcano"
+                "volcano",
+                "volcengine"
             ],
             "x-enum-comments": {
                 "CloudProviderAWS": "Amazon Web Services",
@@ -5032,7 +5105,8 @@ const docTemplate = `{
                 "CloudProviderAzure": "Microsoft Azure",
                 "CloudProviderHuawei": "华为云",
                 "CloudProviderTencent": "腾讯云",
-                "CloudProviderVolcano": "火山云"
+                "CloudProviderVolcano": "火山云 (别名)",
+                "CloudProviderVolcengine": "火山引擎"
             },
             "x-enum-descriptions": [
                 "阿里云",
@@ -5040,7 +5114,8 @@ const docTemplate = `{
                 "Microsoft Azure",
                 "腾讯云",
                 "华为云",
-                "火山云"
+                "火山云 (别名)",
+                "火山引擎"
             ],
             "x-enum-varnames": [
                 "CloudProviderAliyun",
@@ -5048,7 +5123,8 @@ const docTemplate = `{
                 "CloudProviderAzure",
                 "CloudProviderTencent",
                 "CloudProviderHuawei",
-                "CloudProviderVolcano"
+                "CloudProviderVolcano",
+                "CloudProviderVolcengine"
             ]
         },
         "github_com_Havens-blog_e-cam-service_internal_shared_domain.Environment": {

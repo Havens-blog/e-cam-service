@@ -10,10 +10,12 @@ import (
 )
 
 func init() {
-	// 注册火山云适配器创建函数
-	cloudx.RegisterAdapter(domain.CloudProviderVolcano, func(account *domain.CloudAccount) (cloudx.CloudAdapter, error) {
+	// 注册火山云适配器创建函数 (同时支持 volcano 和 volcengine 两个标识)
+	creator := func(account *domain.CloudAccount) (cloudx.CloudAdapter, error) {
 		return NewAdapter(account)
-	})
+	}
+	cloudx.RegisterAdapter(domain.CloudProviderVolcano, creator)
+	cloudx.RegisterAdapter(domain.CloudProviderVolcengine, creator)
 }
 
 // Adapter 火山云统一适配器

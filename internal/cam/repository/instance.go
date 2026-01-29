@@ -151,13 +151,27 @@ func (r *instanceRepository) toDomain(daoInstance dao.Instance) domain.Instance 
 
 // toDAOFilter 领域过滤条件转DAO过滤条件
 func (r *instanceRepository) toDAOFilter(filter domain.InstanceFilter) dao.InstanceFilter {
-	return dao.InstanceFilter{
+	daoFilter := dao.InstanceFilter{
 		ModelUID:   filter.ModelUID,
 		TenantID:   filter.TenantID,
 		AccountID:  filter.AccountID,
+		AssetID:    filter.AssetID,
 		AssetName:  filter.AssetName,
+		Provider:   filter.Provider,
 		Attributes: filter.Attributes,
 		Offset:     filter.Offset,
 		Limit:      filter.Limit,
 	}
+
+	// 转换标签过滤条件
+	if filter.TagFilter != nil {
+		daoFilter.TagFilter = &dao.TagFilter{
+			HasTags: filter.TagFilter.HasTags,
+			NoTags:  filter.TagFilter.NoTags,
+			Key:     filter.TagFilter.Key,
+			Value:   filter.TagFilter.Value,
+		}
+	}
+
+	return daoFilter
 }

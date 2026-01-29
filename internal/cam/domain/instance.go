@@ -24,10 +24,21 @@ type InstanceFilter struct {
 	ModelUID   string                 // 按模型过滤
 	TenantID   string                 // 按租户过滤
 	AccountID  int64                  // 按云账号过滤
+	AssetID    string                 // 按资产ID精确过滤
 	AssetName  string                 // 按名称模糊搜索
+	Provider   string                 // 按云平台过滤 (aliyun/aws/huawei/tencent/volcengine)
+	TagFilter  *TagFilter             // 标签过滤条件
 	Attributes map[string]interface{} // 按属性过滤
 	Offset     int64
 	Limit      int64
+}
+
+// TagFilter 标签过滤条件
+type TagFilter struct {
+	HasTags bool   // 过滤有标签的实例
+	NoTags  bool   // 过滤没有标签的实例
+	Key     string // 标签键
+	Value   string // 标签值 (需配合Key使用)
 }
 
 // Validate 验证实例数据

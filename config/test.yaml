@@ -1,3 +1,8 @@
+# 安全配置
+security:
+  # 云账号 AccessKeySecret 加密密钥 (必须是 16/24/32 字节)
+  encryption_key: "test-encryption-key-32bytes!!"
+
 crypto_aes_key: "1234567890"
 
 # 数据加密，根据模块划分

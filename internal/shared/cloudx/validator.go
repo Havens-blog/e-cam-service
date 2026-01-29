@@ -51,6 +51,8 @@ func (f *DefaultCloudValidatorFactory) CreateValidator(provider domain.CloudProv
 		return NewTencentValidator(), nil
 	case domain.CloudProviderHuawei:
 		return NewHuaweiValidator(), nil
+	case domain.CloudProviderVolcano, domain.CloudProviderVolcengine:
+		return NewVolcanoValidator(), nil
 	default:
 		return nil, ErrUnsupportedProvider
 	}

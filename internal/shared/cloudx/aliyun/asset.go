@@ -129,8 +129,13 @@ func (a *AssetAdapter) convertInstance(inst ecs.Instance, region string) types.E
 		privateIP = inst.VpcAttributes.PrivateIpAddress.IpAddress[0]
 	}
 
-	securityGroups := make([]string, 0, len(inst.SecurityGroupIds.SecurityGroupId))
-	securityGroups = append(securityGroups, inst.SecurityGroupIds.SecurityGroupId...)
+	// 安全组信息
+	securityGroups := make([]types.SecurityGroup, 0, len(inst.SecurityGroupIds.SecurityGroupId))
+	for _, sgID := range inst.SecurityGroupIds.SecurityGroupId {
+		securityGroups = append(securityGroups, types.SecurityGroup{
+			ID: sgID,
+		})
+	}
 
 	tags := make(map[string]string)
 	for _, tag := range inst.Tags.Tag {
@@ -153,10 +158,16 @@ func (a *AssetAdapter) convertInstance(inst ecs.Instance, region string) types.E
 		ioOptimized = "optimized"
 	}
 
+	// 系统盘信息 (阿里云 DescribeInstances 不直接返回系统盘详情，需要额外调用 DescribeDisks)
+	systemDisk := types.SystemDisk{}
+
+	// 数据盘信息
+	dataDisks := make([]types.DataDisk, 0)
+
 	return types.ECSInstance{
 		InstanceID:              inst.InstanceId,
 		InstanceName:            inst.InstanceName,
-		Status:                  inst.Status,
+		Status:                  types.NormalizeStatus(inst.Status),
 		Region:                  region,
 		Zone:                    inst.ZoneId,
 		InstanceType:            inst.InstanceType,
@@ -166,19 +177,26 @@ func (a *AssetAdapter) convertInstance(inst ecs.Instance, region string) types.E
 		OSType:                  inst.OSType,
 		OSName:                  inst.OSName,
 		ImageID:                 inst.ImageId,
+		ImageName:               "", // 需要额外查询
 		PublicIP:                publicIP,
 		PrivateIP:               privateIP,
 		VPCID:                   inst.VpcAttributes.VpcId,
+		VPCName:                 "", // 需要额外查询
 		VSwitchID:               inst.VpcAttributes.VSwitchId,
+		VSwitchName:             "", // 需要额外查询
 		SecurityGroups:          securityGroups,
 		InternetMaxBandwidthIn:  inst.InternetMaxBandwidthIn,
 		InternetMaxBandwidthOut: inst.InternetMaxBandwidthOut,
+		SystemDisk:              systemDisk,
+		DataDisks:               dataDisks,
 		ChargeType:              inst.InstanceChargeType,
 		CreationTime:            inst.CreationTime,
 		ExpiredTime:             inst.ExpiredTime,
 		IoOptimized:             ioOptimized,
 		NetworkType:             inst.NetworkType,
 		InstanceNetworkType:     inst.InstanceNetworkType,
+		ProjectID:               inst.ResourceGroupId,
+		ProjectName:             "", // 资源组名称需要额外查询
 		Tags:                    tags,
 		Description:             inst.Description,
 		Provider:                string(types.ProviderAliyun),

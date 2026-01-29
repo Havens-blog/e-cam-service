@@ -243,7 +243,7 @@ func (h *InstanceHandler) GetByID(ctx *gin.Context) {
 
 // List 获取实例列表
 // @Summary 获取资产实例列表
-// @Description 获取资产实例列表，支持按模型、租户、云账号等条件过滤
+// @Description 获取资产实例列表，支持按模型、租户、云账号等条件过滤，支持任意属性组合过滤
 // @Tags 资产实例
 // @Accept json
 // @Produce json
@@ -251,8 +251,20 @@ func (h *InstanceHandler) GetByID(ctx *gin.Context) {
 // @Param tenant_id query string false "租户ID"
 // @Param account_id query int false "云账号ID"
 // @Param asset_name query string false "资产名称(模糊搜索)"
+// @Param asset_id query string false "资产ID(精确匹配)"
+// @Param provider query string false "云平台(aliyun/aws/huawei/tencent/volcengine)"
 // @Param status query string false "状态"
 // @Param region query string false "地域"
+// @Param zone query string false "可用区"
+// @Param vpc_id query string false "VPC ID"
+// @Param instance_type query string false "实例规格"
+// @Param os_type query string false "操作系统类型"
+// @Param charge_type query string false "计费类型"
+// @Param private_ip query string false "内网IP"
+// @Param public_ip query string false "公网IP"
+// @Param has_tags query string false "是否有标签(true/false)"
+// @Param tag_key query string false "标签键(过滤包含此标签键的实例)"
+// @Param tag_value query string false "标签值(需配合tag_key使用)"
 // @Param offset query int false "偏移量" default(0)
 // @Param limit query int false "限制数量" default(20)
 // @Success 200 {object} ginx.Result{data=InstanceListResp} "成功"
@@ -262,8 +274,13 @@ func (h *InstanceHandler) List(ctx *gin.Context) {
 	tenantID := ctx.Query("tenant_id")
 	accountIDStr := ctx.Query("account_id")
 	assetName := ctx.Query("asset_name")
-	status := ctx.Query("status")
-	region := ctx.Query("region")
+	assetID := ctx.Query("asset_id")
+	provider := ctx.Query("provider")
+
+	// 标签过滤参数
+	hasTags := ctx.Query("has_tags")
+	tagKey := ctx.Query("tag_key")
+	tagValue := ctx.Query("tag_value")
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
@@ -273,20 +290,52 @@ func (h *InstanceHandler) List(ctx *gin.Context) {
 		accountID, _ = strconv.ParseInt(accountIDStr, 10, 64)
 	}
 
-	// 构建属性过滤条件
+	// 构建属性过滤条件 - 支持多种属性组合过滤
 	attributes := make(map[string]interface{})
-	if status != "" {
-		attributes["status"] = status
+
+	// 常用过滤属性
+	attrFilters := map[string]string{
+		"status":        ctx.Query("status"),
+		"region":        ctx.Query("region"),
+		"zone":          ctx.Query("zone"),
+		"vpc_id":        ctx.Query("vpc_id"),
+		"instance_type": ctx.Query("instance_type"),
+		"os_type":       ctx.Query("os_type"),
+		"charge_type":   ctx.Query("charge_type"),
+		"private_ip":    ctx.Query("private_ip"),
+		"public_ip":     ctx.Query("public_ip"),
+		"project_id":    ctx.Query("project_id"),
 	}
-	if region != "" {
-		attributes["region"] = region
+
+	for key, value := range attrFilters {
+		if value != "" {
+			attributes[key] = value
+		}
+	}
+
+	// 构建标签过滤条件
+	var tagFilter *domain.TagFilter
+	if hasTags != "" || tagKey != "" {
+		tagFilter = &domain.TagFilter{}
+		if hasTags == "true" {
+			tagFilter.HasTags = true
+		} else if hasTags == "false" {
+			tagFilter.NoTags = true
+		}
+		if tagKey != "" {
+			tagFilter.Key = tagKey
+			tagFilter.Value = tagValue
+		}
 	}
 
 	filter := domain.InstanceFilter{
 		ModelUID:   modelUID,
 		TenantID:   tenantID,
 		AccountID:  accountID,
+		AssetID:    assetID,
 		AssetName:  assetName,
+		Provider:   provider,
+		TagFilter:  tagFilter,
 		Attributes: attributes,
 		Offset:     int64(offset),
 		Limit:      int64(limit),

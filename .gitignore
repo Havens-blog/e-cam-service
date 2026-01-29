@@ -101,3 +101,7 @@ bak/
 # Kubernetes secrets
 secrets/
 scripts/
+
+*.md
+*.ps1
+*.yml

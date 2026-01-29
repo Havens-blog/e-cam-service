@@ -23,6 +23,7 @@ type RuleCondition struct {
 type Rule struct {
 	ID          int64           `bson:"id"`
 	NodeID      int64           `bson:"node_id"`
+	EnvID       int64           `bson:"env_id"`
 	Name        string          `bson:"name"`
 	TenantID    string          `bson:"tenant_id"`
 	Priority    int             `bson:"priority"`
@@ -87,6 +88,7 @@ func (d *ruleDAO) Update(ctx context.Context, rule Rule) error {
 	update := bson.M{
 		"$set": bson.M{
 			"node_id":     rule.NodeID,
+			"env_id":      rule.EnvID,
 			"name":        rule.Name,
 			"priority":    rule.Priority,
 			"conditions":  rule.Conditions,

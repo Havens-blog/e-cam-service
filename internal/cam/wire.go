@@ -7,15 +7,16 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task"
 	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
 	taskweb "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
 
 	// 注册各云厂商适配器
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aliyun"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/tencent"
@@ -111,7 +112,11 @@ var ProviderSet = wire.NewSet(
 	InitTaskRepository,
 
 	// 统一适配器工厂
-	cloudx.NewAdapterFactory,
+	asset.NewAdapterFactory,
+
+	// Task层 (需要在 Service 之前初始化，因为 Service 依赖 Queue)
+	task.InitModule,
+	wire.FieldsOf(new(*task.Module), "Queue"),
 
 	// Service层
 	service.NewService,
@@ -119,11 +124,12 @@ var ProviderSet = wire.NewSet(
 	service.NewModelService,
 	service.NewInstanceService,
 
-	// Task层
-	task.InitModule,
-	wire.FieldsOf(new(*task.Module), "Queue"),
+	// Task Service
 	taskservice.NewTaskService,
 	taskweb.NewTaskHandler,
+
+	// Scheduler 自动同步调度器
+	scheduler.NewAutoSyncScheduler,
 
 	// Logger
 	ProvideLogger,
@@ -133,7 +139,7 @@ var ProviderSet = wire.NewSet(
 	web.NewInstanceHandler,
 
 	// Module (排除 IAMModule，手动初始化)
-	wire.Struct(new(Module), "Hdl", "InstanceHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "TaskModule", "TaskSvc", "TaskHdl"),
+	wire.Struct(new(Module), "Hdl", "InstanceHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "TaskModule", "TaskSvc", "TaskHdl", "AutoScheduler"),
 )
 
 // InitModule 初始化CAM模块

@@ -35,9 +35,15 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, endpointHdl *end
 	endpointHdl.PrivateRoutes(server)
 	camModule.Hdl.PrivateRoutes(server)
 
+	// 注册实例路由
+	logger.Info("注册实例路由")
+	camGroup := server.Group("/api/v1/cam")
+	if camModule.InstanceHdl != nil {
+		camModule.InstanceHdl.RegisterRoutes(camGroup)
+	}
+
 	// 注册任务路由
 	logger.Info("注册任务路由")
-	camGroup := server.Group("/api/v1/cam")
 	camModule.TaskHdl.RegisterRoutes(camGroup)
 
 	// 注册IAM路由
@@ -47,6 +53,16 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, endpointHdl *end
 		logger.Info("IAM路由注册完成")
 	} else {
 		logger.Warn("IAM模块未初始化，跳过IAM路由注册")
+	}
+
+	// 注册服务树路由
+	if camModule.ServiceTreeModule != nil {
+		logger.Info("注册服务树路由")
+		stGroup := server.Group("/api/v1/cam/service-tree")
+		camModule.ServiceTreeModule.RegisterRoutes(stGroup)
+		logger.Info("服务树路由注册完成")
+	} else {
+		logger.Warn("服务树模块未初始化，跳过服务树路由注册")
 	}
 
 	// 注册CMDB路由

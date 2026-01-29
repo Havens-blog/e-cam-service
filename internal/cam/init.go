@@ -2,6 +2,8 @@ package cam
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam"
+	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
+	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/gotomicro/ego/core/elog"
@@ -31,9 +33,13 @@ func InitModuleWithIAM(db *mongox.Mongo) (*Module, error) {
 
 	module.IAMModule = iamModule
 
+	// 创建 InstanceRepository 用于服务树模块
+	instanceDAO := dao.NewInstanceDAO(db)
+	instanceRepo := repository.NewInstanceRepository(instanceDAO)
+
 	// 初始化服务树模块
 	logger.Info("开始初始化服务树模块")
-	stModule, err := servicetree.InitModule(db, logger)
+	stModule, err := servicetree.InitModule(db, instanceRepo, logger)
 	if err != nil {
 		logger.Error("初始化服务树模块失败", elog.FieldErr(err))
 		return nil, err

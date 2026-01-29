@@ -85,6 +85,7 @@ type BindingVO struct {
 // CreateRuleReq 创建规则请求
 type CreateRuleReq struct {
 	NodeID      int64                  `json:"node_id" binding:"required"`
+	EnvID       int64                  `json:"env_id" binding:"required"`
 	Name        string                 `json:"name" binding:"required"`
 	Priority    int                    `json:"priority"`
 	Conditions  []domain.RuleCondition `json:"conditions" binding:"required"`
@@ -95,6 +96,7 @@ type CreateRuleReq struct {
 // UpdateRuleReq 更新规则请求
 type UpdateRuleReq struct {
 	NodeID      int64                  `json:"node_id" binding:"required"`
+	EnvID       int64                  `json:"env_id" binding:"required"`
 	Name        string                 `json:"name" binding:"required"`
 	Priority    int                    `json:"priority"`
 	Conditions  []domain.RuleCondition `json:"conditions" binding:"required"`
@@ -106,6 +108,7 @@ type UpdateRuleReq struct {
 type RuleVO struct {
 	ID          int64                  `json:"id"`
 	NodeID      int64                  `json:"node_id"`
+	EnvID       int64                  `json:"env_id"`
 	Name        string                 `json:"name"`
 	Priority    int                    `json:"priority"`
 	Conditions  []domain.RuleCondition `json:"conditions"`

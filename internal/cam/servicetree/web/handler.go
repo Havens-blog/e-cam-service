@@ -31,41 +31,33 @@ func NewHandler(
 
 // RegisterRoutes 注册路由
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	g := rg.Group("/service-tree")
-	{
-		// 节点管理
-		g.POST("/nodes", ginx.WrapBody(h.CreateNode))
-		g.GET("/nodes", ginx.WrapBody(h.ListNodes))
-		g.GET("/nodes/:id", ginx.Wrap(h.GetNode))
-		g.PUT("/nodes/:id", ginx.WrapBody(h.UpdateNode))
-		g.DELETE("/nodes/:id", ginx.Wrap(h.DeleteNode))
-		g.PUT("/nodes/:id/move", ginx.WrapBody(h.MoveNode))
-		g.GET("/tree", ginx.Wrap(h.GetTree))
-	}
+	// 节点管理
+	rg.POST("/nodes", ginx.WrapBody(h.CreateNode))
+	rg.GET("/nodes", ginx.WrapBody(h.ListNodes))
+	rg.GET("/nodes/:id", ginx.Wrap(h.GetNode))
+	rg.PUT("/nodes/:id", ginx.WrapBody(h.UpdateNode))
+	rg.DELETE("/nodes/:id", ginx.Wrap(h.DeleteNode))
+	rg.PUT("/nodes/:id/move", ginx.WrapBody(h.MoveNode))
+	rg.GET("/tree", ginx.Wrap(h.GetTree))
 }
 
 func (h *Handler) RegisterBindingRoutes(rg *gin.RouterGroup) {
-	g := rg.Group("/service-tree")
-	{
-		// 资源绑定
-		g.POST("/nodes/:id/bindings", ginx.WrapBody(h.BindResource))
-		g.POST("/nodes/:id/bindings/batch", ginx.WrapBody(h.BatchBindResource))
-		g.GET("/nodes/:id/bindings", ginx.WrapBody(h.ListNodeBindings))
-		g.DELETE("/bindings/:id", ginx.Wrap(h.UnbindResource))
-		g.GET("/resources/:type/:id/node", ginx.Wrap(h.GetResourceNode))
-	}
+	// 资源绑定
+	rg.POST("/nodes/:id/bindings", ginx.WrapBody(h.BindResource))
+	rg.POST("/nodes/:id/bindings/batch", ginx.WrapBody(h.BatchBindResource))
+	rg.GET("/nodes/:id/bindings", ginx.WrapBody(h.ListNodeBindings))
+	rg.DELETE("/bindings/:id", ginx.Wrap(h.UnbindResource))
+	rg.GET("/resources/:type/:id/node", ginx.Wrap(h.GetResourceNode))
 }
 
 func (h *Handler) RegisterRuleRoutes(rg *gin.RouterGroup) {
-	g := rg.Group("/service-tree")
-	{
-		// 绑定规则
-		g.POST("/rules", ginx.WrapBody(h.CreateRule))
-		g.GET("/rules", ginx.WrapBody(h.ListRules))
-		g.GET("/rules/:id", ginx.Wrap(h.GetRule))
-		g.PUT("/rules/:id", ginx.WrapBody(h.UpdateRule))
-		g.DELETE("/rules/:id", ginx.Wrap(h.DeleteRule))
-	}
+	// 绑定规则
+	rg.POST("/rules", ginx.WrapBody(h.CreateRule))
+	rg.GET("/rules", ginx.WrapBody(h.ListRules))
+	rg.GET("/rules/:id", ginx.Wrap(h.GetRule))
+	rg.PUT("/rules/:id", ginx.WrapBody(h.UpdateRule))
+	rg.DELETE("/rules/:id", ginx.Wrap(h.DeleteRule))
+	rg.POST("/rules/execute", ginx.Wrap(h.ExecuteRules))
 }
 
 func (h *Handler) getTenantID(c *gin.Context) string {
@@ -400,6 +392,7 @@ func (h *Handler) CreateRule(c *gin.Context, req CreateRuleReq) (ginx.Result, er
 	tenantID := h.getTenantID(c)
 	rule := domain.BindingRule{
 		NodeID:      req.NodeID,
+		EnvID:       req.EnvID,
 		Name:        req.Name,
 		TenantID:    tenantID,
 		Priority:    req.Priority,
@@ -451,6 +444,7 @@ func (h *Handler) UpdateRule(c *gin.Context, req UpdateRuleReq) (ginx.Result, er
 	rule := domain.BindingRule{
 		ID:          id,
 		NodeID:      req.NodeID,
+		EnvID:       req.EnvID,
 		Name:        req.Name,
 		TenantID:    tenantID,
 		Priority:    req.Priority,
@@ -519,6 +513,26 @@ func (h *Handler) ListRules(c *gin.Context, req ListRuleReq) (ginx.Result, error
 	return ginx.Result{Data: map[string]any{"list": vos, "total": total}}, nil
 }
 
+// ExecuteRules 执行规则匹配
+// @Summary 执行规则匹配
+// @Description 手动触发规则引擎，对未绑定资源执行自动匹配，绑定到规则指定的环境
+// @Tags 服务树
+// @Param X-Tenant-ID header string true "租户ID"
+// @Success 200 {object} ginx.Result{data=int64}
+// @Router /api/v1/cam/service-tree/rules/execute [post]
+func (h *Handler) ExecuteRules(c *gin.Context) (ginx.Result, error) {
+	tenantID := h.getTenantID(c)
+	if tenantID == "" {
+		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
+	}
+
+	count, err := h.ruleSvc.ExecuteRules(c.Request.Context(), tenantID)
+	if err != nil {
+		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+	}
+	return ginx.Result{Data: count, Msg: "规则执行完成"}, nil
+}
+
 // toNodeVO 转换节点为 VO
 func (h *Handler) toNodeVO(node domain.ServiceTreeNode) NodeVO {
 	return NodeVO{
@@ -579,6 +593,7 @@ func (h *Handler) toRuleVO(rule domain.BindingRule) RuleVO {
 	return RuleVO{
 		ID:          rule.ID,
 		NodeID:      rule.NodeID,
+		EnvID:       rule.EnvID,
 		Name:        rule.Name,
 		Priority:    rule.Priority,
 		Conditions:  rule.Conditions,

@@ -15,7 +15,7 @@ const NodeCollection = "c_service_tree_node"
 // Node 服务树节点 DAO 模型
 type Node struct {
 	ID          int64    `bson:"id"`
-	UID         string   `bson:"uid"`
+	UID         string   `bson:"uid,omitempty"` // 空字符串时不存储，让 sparse 索引生效
 	Name        string   `bson:"name"`
 	ParentID    int64    `bson:"parent_id"`
 	Level       int      `bson:"level"`
@@ -87,22 +87,26 @@ func (d *nodeDAO) Update(ctx context.Context, node Node) error {
 	node.Utime = time.Now().UnixMilli()
 
 	filter := bson.M{"id": node.ID}
-	update := bson.M{
-		"$set": bson.M{
-			"uid":         node.UID,
-			"name":        node.Name,
-			"parent_id":   node.ParentID,
-			"level":       node.Level,
-			"path":        node.Path,
-			"owner":       node.Owner,
-			"team":        node.Team,
-			"description": node.Description,
-			"tags":        node.Tags,
-			"order":       node.Order,
-			"status":      node.Status,
-			"utime":       node.Utime,
-		},
+	setFields := bson.M{
+		"name":        node.Name,
+		"parent_id":   node.ParentID,
+		"level":       node.Level,
+		"path":        node.Path,
+		"owner":       node.Owner,
+		"team":        node.Team,
+		"description": node.Description,
+		"tags":        node.Tags,
+		"order":       node.Order,
+		"status":      node.Status,
+		"utime":       node.Utime,
 	}
+
+	// 只有 uid 非空时才更新
+	if node.UID != "" {
+		setFields["uid"] = node.UID
+	}
+
+	update := bson.M{"$set": setFields}
 
 	result, err := d.db.Collection(NodeCollection).UpdateOne(ctx, filter, update)
 	if err != nil {

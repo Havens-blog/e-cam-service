@@ -130,9 +130,11 @@ func (a *AssetAdapter) convertInstance(inst *cvm.Instance, region string) types.
 	}
 
 	// 获取安全组
-	securityGroups := make([]string, 0, len(inst.SecurityGroupIds))
+	securityGroups := make([]types.SecurityGroup, 0, len(inst.SecurityGroupIds))
 	for _, sg := range inst.SecurityGroupIds {
-		securityGroups = append(securityGroups, *sg)
+		securityGroups = append(securityGroups, types.SecurityGroup{
+			ID: *sg,
+		})
 	}
 
 	// 获取标签
@@ -178,21 +180,53 @@ func (a *AssetAdapter) convertInstance(inst *cvm.Instance, region string) types.
 	}
 
 	// 获取系统盘信息
-	systemDiskCategory := ""
-	systemDiskSize := 0
+	systemDisk := types.SystemDisk{}
 	if inst.SystemDisk != nil {
+		if inst.SystemDisk.DiskId != nil {
+			systemDisk.DiskID = *inst.SystemDisk.DiskId
+		}
 		if inst.SystemDisk.DiskType != nil {
-			systemDiskCategory = *inst.SystemDisk.DiskType
+			systemDisk.Category = *inst.SystemDisk.DiskType
 		}
 		if inst.SystemDisk.DiskSize != nil {
-			systemDiskSize = int(*inst.SystemDisk.DiskSize)
+			systemDisk.Size = int(*inst.SystemDisk.DiskSize)
 		}
+	}
+
+	// 获取数据盘信息
+	dataDisks := make([]types.DataDisk, 0)
+	if inst.DataDisks != nil {
+		for _, disk := range inst.DataDisks {
+			dataDisk := types.DataDisk{}
+			if disk.DiskId != nil {
+				dataDisk.DiskID = *disk.DiskId
+			}
+			if disk.DiskType != nil {
+				dataDisk.Category = *disk.DiskType
+			}
+			if disk.DiskSize != nil {
+				dataDisk.Size = int(*disk.DiskSize)
+			}
+			if disk.DeleteWithInstance != nil {
+				dataDisk.DeleteWithInstance = *disk.DeleteWithInstance
+			}
+			if disk.Encrypt != nil {
+				dataDisk.Encrypted = *disk.Encrypt
+			}
+			dataDisks = append(dataDisks, dataDisk)
+		}
+	}
+
+	// 获取项目ID
+	projectID := ""
+	if inst.Placement != nil && inst.Placement.ProjectId != nil {
+		projectID = fmt.Sprintf("%d", *inst.Placement.ProjectId)
 	}
 
 	return types.ECSInstance{
 		InstanceID:         *inst.InstanceId,
 		InstanceName:       *inst.InstanceName,
-		Status:             *inst.InstanceState,
+		Status:             types.NormalizeStatus(*inst.InstanceState),
 		Region:             region,
 		Zone:               *inst.Placement.Zone,
 		InstanceType:       instanceType,
@@ -207,12 +241,13 @@ func (a *AssetAdapter) convertInstance(inst *cvm.Instance, region string) types.
 		VPCID:              *inst.VirtualPrivateCloud.VpcId,
 		VSwitchID:          *inst.VirtualPrivateCloud.SubnetId,
 		SecurityGroups:     securityGroups,
+		SystemDisk:         systemDisk,
+		DataDisks:          dataDisks,
 		ChargeType:         chargeType,
 		CreationTime:       *inst.CreatedTime,
 		ExpiredTime:        safeString(inst.ExpiredTime),
-		SystemDiskCategory: systemDiskCategory,
-		SystemDiskSize:     systemDiskSize,
 		NetworkType:        "vpc",
+		ProjectID:          projectID,
 		Tags:               tags,
 		Description:        "",
 		Provider:           string(types.ProviderTencent),

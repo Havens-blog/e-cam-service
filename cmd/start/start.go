@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Havens-blog/e-cam-service/ioc"
+	"github.com/Havens-blog/e-cam-service/pkg/crypto"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/gotomicro/ego/task/ecron"
 	"github.com/spf13/cobra"
@@ -20,6 +21,15 @@ var Cmd = &cobra.Command{
 
 		logger := elog.DefaultLogger
 		logger.Info("开始启动ECMDB服务")
+
+		// 初始化加密器
+		logger.Info("初始化加密组件")
+		encryptionKey := viper.GetString("security.encryption_key")
+		if err := crypto.InitDefaultCrypto(encryptionKey); err != nil {
+			logger.Warn("加密组件初始化失败，敏感数据将不会加密存储", elog.FieldErr(err))
+		} else {
+			logger.Info("加密组件初始化完成")
+		}
 
 		logger.Info("初始化应用程序组件")
 		app, err := ioc.InitApp()

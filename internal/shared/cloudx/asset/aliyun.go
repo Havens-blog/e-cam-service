@@ -170,9 +170,9 @@ func (a *AliyunAdapter) convertInstance(inst ecs.Instance, region string) types.
 		privateIP = inst.VpcAttributes.PrivateIpAddress.IpAddress[0]
 	}
 
-	securityGroups := make([]string, 0, len(inst.SecurityGroupIds.SecurityGroupId))
+	securityGroups := make([]types.SecurityGroup, 0, len(inst.SecurityGroupIds.SecurityGroupId))
 	for _, sg := range inst.SecurityGroupIds.SecurityGroupId {
-		securityGroups = append(securityGroups, sg)
+		securityGroups = append(securityGroups, types.SecurityGroup{ID: sg})
 	}
 
 	tags := make(map[string]string)

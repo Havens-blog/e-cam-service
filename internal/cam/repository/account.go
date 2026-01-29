@@ -6,6 +6,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cam-service/pkg/crypto"
 )
 
 // CloudAccountRepository 云账号仓储接口
@@ -130,13 +131,22 @@ func (repo *cloudAccountRepository) UpdateTestTime(ctx context.Context, id int64
 
 // toDomain 转换为领域模型
 func (repo *cloudAccountRepository) toDomain(daoAccount dao.CloudAccount) domain.CloudAccount {
+	// 解密 AccessKeySecret
+	decryptedSecret := daoAccount.AccessKeySecret
+	if daoAccount.AccessKeySecret != "" {
+		if decrypted, err := crypto.DecryptSecret(daoAccount.AccessKeySecret); err == nil {
+			decryptedSecret = decrypted
+		}
+		// 如果解密失败，可能是旧的明文数据，保持原值
+	}
+
 	return domain.CloudAccount{
 		ID:              daoAccount.ID,
 		Name:            daoAccount.Name,
 		Provider:        domain.CloudProvider(daoAccount.Provider),
 		Environment:     domain.Environment(daoAccount.Environment),
 		AccessKeyID:     daoAccount.AccessKeyID,
-		AccessKeySecret: daoAccount.AccessKeySecret,
+		AccessKeySecret: decryptedSecret,
 		Regions:         daoAccount.Regions,
 		Description:     daoAccount.Description,
 		Status:          domain.CloudAccountStatus(daoAccount.Status),
@@ -163,13 +173,21 @@ func (repo *cloudAccountRepository) toDomain(daoAccount dao.CloudAccount) domain
 
 // toEntity 转换为DAO实体
 func (repo *cloudAccountRepository) toEntity(account domain.CloudAccount) dao.CloudAccount {
+	// 加密 AccessKeySecret
+	encryptedSecret := account.AccessKeySecret
+	if account.AccessKeySecret != "" {
+		if encrypted, err := crypto.EncryptSecret(account.AccessKeySecret); err == nil {
+			encryptedSecret = encrypted
+		}
+	}
+
 	return dao.CloudAccount{
 		ID:              account.ID,
 		Name:            account.Name,
 		Provider:        dao.CloudProvider(account.Provider),
 		Environment:     dao.Environment(account.Environment),
 		AccessKeyID:     account.AccessKeyID,
-		AccessKeySecret: account.AccessKeySecret,
+		AccessKeySecret: encryptedSecret,
 		Regions:         account.Regions,
 		Description:     account.Description,
 		Status:          dao.CloudAccountStatus(account.Status),

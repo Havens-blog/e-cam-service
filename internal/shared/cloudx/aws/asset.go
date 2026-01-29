@@ -155,9 +155,12 @@ func (a *AssetAdapter) convertInstance(inst ec2types.Instance, region string) ty
 	privateIP := aws.ToString(inst.PrivateIpAddress)
 
 	// 获取安全组
-	securityGroups := make([]string, 0, len(inst.SecurityGroups))
+	securityGroups := make([]types.SecurityGroup, 0, len(inst.SecurityGroups))
 	for _, sg := range inst.SecurityGroups {
-		securityGroups = append(securityGroups, aws.ToString(sg.GroupId))
+		securityGroups = append(securityGroups, types.SecurityGroup{
+			ID:   aws.ToString(sg.GroupId),
+			Name: aws.ToString(sg.GroupName),
+		})
 	}
 
 	// 获取实例类型族
@@ -175,7 +178,7 @@ func (a *AssetAdapter) convertInstance(inst ec2types.Instance, region string) ty
 	// 转换状态
 	status := "unknown"
 	if inst.State != nil {
-		status = string(inst.State.Name)
+		status = types.NormalizeStatus(string(inst.State.Name))
 	}
 
 	// 转换时间
@@ -188,6 +191,12 @@ func (a *AssetAdapter) convertInstance(inst ec2types.Instance, region string) ty
 	chargeType := "PostPaid" // 按需
 	if inst.InstanceLifecycle == ec2types.InstanceLifecycleTypeSpot {
 		chargeType = "Spot"
+	}
+
+	// 系统盘信息
+	systemDisk := types.SystemDisk{}
+	if inst.RootDeviceName != nil {
+		systemDisk.Device = aws.ToString(inst.RootDeviceName)
 	}
 
 	return types.ECSInstance{
@@ -208,6 +217,7 @@ func (a *AssetAdapter) convertInstance(inst ec2types.Instance, region string) ty
 		VPCID:              aws.ToString(inst.VpcId),
 		VSwitchID:          aws.ToString(inst.SubnetId),
 		SecurityGroups:     securityGroups,
+		SystemDisk:         systemDisk,
 		ChargeType:         chargeType,
 		CreationTime:       creationTime,
 		NetworkType:        "vpc",

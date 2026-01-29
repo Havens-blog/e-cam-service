@@ -19,12 +19,13 @@ const (
 type CloudProvider string
 
 const (
-	CloudProviderAliyun  CloudProvider = "aliyun"  // 阿里云
-	CloudProviderAWS     CloudProvider = "aws"     // Amazon Web Services
-	CloudProviderAzure   CloudProvider = "azure"   // Microsoft Azure
-	CloudProviderTencent CloudProvider = "tencent" // 腾讯云
-	CloudProviderHuawei  CloudProvider = "huawei"  // 华为云
-	CloudProviderVolcano CloudProvider = "volcano" // 火山云
+	CloudProviderAliyun     CloudProvider = "aliyun"     // 阿里云
+	CloudProviderAWS        CloudProvider = "aws"        // Amazon Web Services
+	CloudProviderAzure      CloudProvider = "azure"      // Microsoft Azure
+	CloudProviderTencent    CloudProvider = "tencent"    // 腾讯云
+	CloudProviderHuawei     CloudProvider = "huawei"     // 华为云
+	CloudProviderVolcano    CloudProvider = "volcano"    // 火山云 (别名)
+	CloudProviderVolcengine CloudProvider = "volcengine" // 火山引擎
 )
 
 // Environment 环境枚举
@@ -39,7 +40,7 @@ const (
 // CloudAccountConfig 云账号配置信息
 type CloudAccountConfig struct {
 	EnableAutoSync       bool     `json:"enable_auto_sync" bson:"enable_auto_sync"`             // 是否启用自动同步
-	SyncInterval         int64    `json:"sync_interval" bson:"sync_interval"`                   // 同步间隔(秒)
+	SyncInterval         int64    `json:"sync_interval" bson:"sync_interval"`                   // 同步间隔(分钟)
 	ReadOnly             bool     `json:"read_only" bson:"read_only"`                           // 只读权限
 	ShowSubAccounts      bool     `json:"show_sub_accounts" bson:"show_sub_accounts"`           // 显示子账号
 	EnableCostMonitoring bool     `json:"enable_cost_monitoring" bson:"enable_cost_monitoring"` // 启用成本监控

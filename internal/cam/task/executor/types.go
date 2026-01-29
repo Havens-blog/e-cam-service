@@ -6,6 +6,7 @@ type SyncAssetsParams struct {
 	AssetTypes []string `json:"asset_types"`
 	Regions    []string `json:"regions"`
 	AccountID  int64    `json:"account_id"`
+	TenantID   string   `json:"tenant_id"`
 }
 
 // SyncAssetsResult 同步资产任务结果

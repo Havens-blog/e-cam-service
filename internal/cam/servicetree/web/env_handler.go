@@ -21,7 +21,7 @@ func NewEnvHandler(envSvc service.EnvironmentService) *EnvHandler {
 
 // RegisterRoutes 注册环境路由
 func (h *EnvHandler) RegisterRoutes(rg *gin.RouterGroup) {
-	g := rg.Group("/service-tree/environments")
+	g := rg.Group("/environments")
 	{
 		g.POST("", ginx.WrapBody(h.CreateEnv))
 		g.GET("", ginx.WrapBody(h.ListEnvs))
@@ -141,6 +141,9 @@ func (h *EnvHandler) ListEnvs(c *gin.Context, req ListEnvReq) (ginx.Result, erro
 		req.PageSize = 20
 	}
 
+	// 调试日志
+	println("ListEnvs tenantID:", tenantID, "page:", req.Page, "pageSize:", req.PageSize)
+
 	filter := domain.EnvironmentFilter{
 		TenantID: tenantID,
 		Code:     req.Code,
@@ -170,6 +173,14 @@ func (h *EnvHandler) ListEnvs(c *gin.Context, req ListEnvReq) (ginx.Result, erro
 // @Router /api/v1/cam/service-tree/environments/init [post]
 func (h *EnvHandler) InitDefaultEnvs(c *gin.Context) (ginx.Result, error) {
 	tenantID := h.getTenantID(c)
+
+	// 调试日志
+	println("InitDefaultEnvs tenantID:", tenantID)
+
+	if tenantID == "" {
+		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
+	}
+
 	if err := h.envSvc.InitDefaultEnvs(c.Request.Context(), tenantID); err != nil {
 		return ginx.Result{Code: 500, Msg: err.Error()}, nil
 	}

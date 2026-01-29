@@ -25,11 +25,13 @@ const (
 type CloudProvider string
 
 const (
-	CloudProviderAliyun  CloudProvider = "aliyun"  // 阿里云
-	CloudProviderAWS     CloudProvider = "aws"     // Amazon Web Services
-	CloudProviderAzure   CloudProvider = "azure"   // Microsoft Azure
-	CloudProviderTencent CloudProvider = "tencent" // 腾讯云
-	CloudProviderHuawei  CloudProvider = "huawei"  // 华为云
+	CloudProviderAliyun     CloudProvider = "aliyun"     // 阿里云
+	CloudProviderAWS        CloudProvider = "aws"        // Amazon Web Services
+	CloudProviderAzure      CloudProvider = "azure"      // Microsoft Azure
+	CloudProviderTencent    CloudProvider = "tencent"    // 腾讯云
+	CloudProviderHuawei     CloudProvider = "huawei"     // 华为云
+	CloudProviderVolcano    CloudProvider = "volcano"    // 火山云 (别名)
+	CloudProviderVolcengine CloudProvider = "volcengine" // 火山引擎
 )
 
 // Environment 环境枚举

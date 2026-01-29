@@ -12,8 +12,13 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/google/uuid"
 	"github.com/gotomicro/ego/core/elog"
 )
+
+// 任务类型常量 (避免循环导入)
+const TaskTypeSyncAssets taskx.TaskType = "cam:sync_assets"
 
 // CloudAccountService 云账号服务接口
 type CloudAccountService interface {
@@ -49,6 +54,7 @@ type cloudAccountService struct {
 	repo             repository.CloudAccountRepository
 	instanceRepo     repository.InstanceRepository
 	adapterFactory   *asset.AdapterFactory
+	taskQueue        *taskx.Queue
 	logger           *elog.Component
 	validatorFactory cloudx.CloudValidatorFactory
 }
@@ -66,6 +72,7 @@ func NewCloudAccountService(
 	repo repository.CloudAccountRepository,
 	instanceRepo repository.InstanceRepository,
 	adapterFactory *asset.AdapterFactory,
+	taskQueue *taskx.Queue,
 	logger *elog.Component,
 ) CloudAccountService {
 	if logger == nil {
@@ -75,6 +82,7 @@ func NewCloudAccountService(
 		repo:             repo,
 		instanceRepo:     instanceRepo,
 		adapterFactory:   adapterFactory,
+		taskQueue:        taskQueue,
 		logger:           logger,
 		validatorFactory: cloudx.NewCloudValidatorFactory(),
 	}
@@ -348,7 +356,7 @@ func (s *cloudAccountService) DisableAccount(ctx context.Context, id int64) erro
 	return nil
 }
 
-// SyncAccount 同步云账号资产
+// SyncAccount 同步云账号资产 (异步执行)
 func (s *cloudAccountService) SyncAccount(ctx context.Context, id int64, req *domain.SyncAccountRequest) (*domain.SyncResult, error) {
 	// 检查账号是否存在
 	account, err := s.repo.GetByID(ctx, id)
@@ -361,17 +369,9 @@ func (s *cloudAccountService) SyncAccount(ctx context.Context, id int64, req *do
 		return nil, errs.AccountDisabled
 	}
 
+	// 生成任务ID
+	taskID := uuid.New().String()
 	syncTime := time.Now()
-	result := &domain.SyncResult{
-		SyncID:    fmt.Sprintf("sync_%d_%d", id, syncTime.Unix()),
-		Status:    "running",
-		StartTime: syncTime,
-	}
-
-	s.logger.Info("开始同步云账号资产",
-		elog.Int64("account_id", id),
-		elog.String("account_name", account.Name),
-		elog.String("sync_id", result.SyncID))
 
 	// 获取要同步的资源类型
 	assetTypes := req.AssetTypes
@@ -379,29 +379,45 @@ func (s *cloudAccountService) SyncAccount(ctx context.Context, id int64, req *do
 		assetTypes = []string{"ecs"} // 默认只同步 ECS
 	}
 
-	// 执行同步
-	synced, err := s.syncAccountAssets(ctx, &account, assetTypes)
-	if err != nil {
-		s.logger.Error("同步云账号资产失败",
+	// 构建任务参数
+	paramsMap := map[string]any{
+		"provider":    string(account.Provider),
+		"asset_types": assetTypes,
+		"regions":     req.Regions,
+		"account_id":  id,
+		"tenant_id":   account.TenantID,
+	}
+
+	// 创建异步任务
+	t := &taskx.Task{
+		ID:        taskID,
+		Type:      TaskTypeSyncAssets,
+		Status:    taskx.TaskStatusPending,
+		Params:    paramsMap,
+		Progress:  0,
+		Message:   "任务已创建，等待执行",
+		CreatedBy: "system",
+	}
+
+	// 提交任务到队列
+	if err := s.taskQueue.Submit(t); err != nil {
+		s.logger.Error("提交同步任务失败",
 			elog.Int64("account_id", id),
 			elog.FieldErr(err))
-		result.Status = "failed"
-		result.Message = err.Error()
-		return result, nil
+		return nil, fmt.Errorf("提交同步任务失败: %w", err)
 	}
 
-	// 更新同步时间和资产数量
-	if err := s.repo.UpdateSyncTime(ctx, id, syncTime, int64(synced)); err != nil {
-		s.logger.Warn("更新同步时间失败", elog.FieldErr(err))
-	}
-
-	result.Status = "success"
-	result.Message = fmt.Sprintf("同步完成，共同步 %d 个资产", synced)
-
-	s.logger.Info("云账号资产同步完成",
+	s.logger.Info("同步任务已提交",
 		elog.Int64("account_id", id),
-		elog.String("sync_id", result.SyncID),
-		elog.Int("synced", synced))
+		elog.String("task_id", taskID),
+		elog.Any("asset_types", assetTypes))
+
+	result := &domain.SyncResult{
+		SyncID:    taskID,
+		Status:    "pending",
+		Message:   "同步任务已提交，正在后台执行",
+		StartTime: syncTime,
+	}
 
 	return result, nil
 }
@@ -571,6 +587,12 @@ func (s *cloudAccountService) convertECSToInstance(inst types.ECSInstance, accou
 	// 构建模型 UID，格式: {provider}_ecs
 	modelUID := fmt.Sprintf("%s_ecs", inst.Provider)
 
+	// 安全组ID列表
+	securityGroupIDs := make([]string, 0, len(inst.SecurityGroups))
+	for _, sg := range inst.SecurityGroups {
+		securityGroupIDs = append(securityGroupIDs, sg.ID)
+	}
+
 	// 构建动态属性
 	attributes := map[string]interface{}{
 		// 基本信息
@@ -589,24 +611,34 @@ func (s *cloudAccountService) convertECSToInstance(inst types.ECSInstance, accou
 		"memory":               inst.Memory,
 		"os_type":              inst.OSType,
 		"os_name":              inst.OSName,
-		"image_id":             inst.ImageID,
+
+		// 镜像信息
+		"image_id":   inst.ImageID,
+		"image_name": inst.ImageName,
 
 		// 网络信息
 		"public_ip":                  inst.PublicIP,
 		"private_ip":                 inst.PrivateIP,
 		"vpc_id":                     inst.VPCID,
+		"vpc_name":                   inst.VPCName,
 		"vswitch_id":                 inst.VSwitchID,
+		"vswitch_name":               inst.VSwitchName,
 		"security_groups":            inst.SecurityGroups,
+		"security_group_ids":         securityGroupIDs,
 		"internet_max_bandwidth_in":  inst.InternetMaxBandwidthIn,
 		"internet_max_bandwidth_out": inst.InternetMaxBandwidthOut,
 		"network_type":               inst.NetworkType,
 		"instance_network_type":      inst.InstanceNetworkType,
 
-		// 存储信息
-		"system_disk_category": inst.SystemDiskCategory,
-		"system_disk_size":     inst.SystemDiskSize,
-		"data_disks":           inst.DataDisks,
-		"io_optimized":         inst.IoOptimized,
+		// 系统盘信息
+		"system_disk":          inst.SystemDisk,
+		"system_disk_id":       inst.SystemDisk.DiskID,
+		"system_disk_category": inst.SystemDisk.Category,
+		"system_disk_size":     inst.SystemDisk.Size,
+
+		// 数据盘信息
+		"data_disks":   inst.DataDisks,
+		"io_optimized": inst.IoOptimized,
 
 		// 计费信息
 		"charge_type":       inst.ChargeType,
@@ -614,6 +646,14 @@ func (s *cloudAccountService) convertECSToInstance(inst types.ECSInstance, accou
 		"expired_time":      inst.ExpiredTime,
 		"auto_renew":        inst.AutoRenew,
 		"auto_renew_period": inst.AutoRenewPeriod,
+
+		// 项目/资源组信息
+		"project_id":   inst.ProjectID,
+		"project_name": inst.ProjectName,
+
+		// 云账号信息
+		"cloud_account_id":   account.ID,
+		"cloud_account_name": account.Name,
 
 		// 标签
 		"tags": inst.Tags,

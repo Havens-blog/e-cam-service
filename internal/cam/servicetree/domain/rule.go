@@ -17,6 +17,7 @@ const (
 type BindingRule struct {
 	ID          int64           // 规则ID
 	NodeID      int64           // 目标节点ID
+	EnvID       int64           // 目标环境ID
 	Name        string          // 规则名称
 	TenantID    string          // 租户ID
 	Priority    int             // 优先级 (数字越小优先级越高)

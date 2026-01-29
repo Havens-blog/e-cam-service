@@ -100,6 +100,7 @@ func (r *ruleRepository) toDAO(rule domain.BindingRule) dao.Rule {
 	return dao.Rule{
 		ID:          rule.ID,
 		NodeID:      rule.NodeID,
+		EnvID:       rule.EnvID,
 		Name:        rule.Name,
 		TenantID:    rule.TenantID,
 		Priority:    rule.Priority,
@@ -122,6 +123,7 @@ func (r *ruleRepository) toDomain(daoRule dao.Rule) domain.BindingRule {
 	return domain.BindingRule{
 		ID:          daoRule.ID,
 		NodeID:      daoRule.NodeID,
+		EnvID:       daoRule.EnvID,
 		Name:        daoRule.Name,
 		TenantID:    daoRule.TenantID,
 		Priority:    daoRule.Priority,

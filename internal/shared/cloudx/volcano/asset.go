@@ -141,13 +141,15 @@ func (a *AssetAdapter) convertInstance(inst *ecs.InstanceForDescribeInstancesOut
 	}
 
 	// 获取安全组
-	securityGroups := make([]string, 0)
+	securityGroups := make([]types.SecurityGroup, 0)
 	if inst.NetworkInterfaces != nil {
 		for _, ni := range inst.NetworkInterfaces {
 			if ni.SecurityGroupIds != nil {
 				for _, sg := range ni.SecurityGroupIds {
 					if sg != nil {
-						securityGroups = append(securityGroups, *sg)
+						securityGroups = append(securityGroups, types.SecurityGroup{
+							ID: *sg,
+						})
 					}
 				}
 			}
@@ -200,7 +202,7 @@ func (a *AssetAdapter) convertInstance(inst *ecs.InstanceForDescribeInstancesOut
 	return types.ECSInstance{
 		InstanceID:         volcengine.StringValue(inst.InstanceId),
 		InstanceName:       volcengine.StringValue(inst.InstanceName),
-		Status:             volcengine.StringValue(inst.Status),
+		Status:             types.NormalizeStatus(volcengine.StringValue(inst.Status)),
 		Region:             region,
 		Zone:               volcengine.StringValue(inst.ZoneId),
 		InstanceType:       volcengine.StringValue(inst.InstanceTypeId),
