@@ -36,23 +36,28 @@ func (a *EIPAdapter) createClient(region string) (*eip.EipClient, error) {
 		region = a.defaultRegion
 	}
 
-	auth := basic.NewCredentialsBuilder().
+	auth, err := basic.NewCredentialsBuilder().
 		WithAk(a.accessKeyID).
 		WithSk(a.accessKeySecret).
-		Build()
+		SafeBuild()
+	if err != nil {
+		return nil, fmt.Errorf("创建华为云凭证失败: %w", err)
+	}
 
 	r, err := eipregion.SafeValueOf(region)
 	if err != nil {
 		return nil, fmt.Errorf("无效的地域: %s", region)
 	}
 
-	client := eip.NewEipClient(
-		eip.EipClientBuilder().
-			WithRegion(r).
-			WithCredential(auth).
-			Build())
+	client, err := eip.EipClientBuilder().
+		WithRegion(r).
+		WithCredential(auth).
+		SafeBuild()
+	if err != nil {
+		return nil, fmt.Errorf("创建华为云EIP客户端失败: %w", err)
+	}
 
-	return client, nil
+	return eip.NewEipClient(client), nil
 }
 
 // ListInstances 获取EIP列表

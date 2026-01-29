@@ -52,6 +52,9 @@ func (a *VPCAdapter) createClient(region string) (*vpc.VPC, error) {
 func (a *VPCAdapter) ListInstances(ctx context.Context, region string) ([]types.VPCInstance, error) {
 	client, err := a.createClient(region)
 	if err != nil {
+		a.logger.Error("创建火山引擎VPC客户端失败",
+			elog.String("region", region),
+			elog.FieldErr(err))
 		return nil, err
 	}
 
@@ -65,12 +68,22 @@ func (a *VPCAdapter) ListInstances(ctx context.Context, region string) ([]types.
 			PageSize:   &pageSize,
 		}
 
+		a.logger.Debug("调用火山引擎DescribeVpcs",
+			elog.String("region", region),
+			elog.Int64("page", pageNumber))
+
 		output, err := client.DescribeVpcs(input)
 		if err != nil {
+			a.logger.Error("调用火山引擎DescribeVpcs失败",
+				elog.String("region", region),
+				elog.FieldErr(err))
 			return nil, fmt.Errorf("获取VPC列表失败: %w", err)
 		}
 
-		if output.Vpcs == nil {
+		if output.Vpcs == nil || len(output.Vpcs) == 0 {
+			a.logger.Debug("火山引擎VPC列表为空",
+				elog.String("region", region),
+				elog.Int64("page", pageNumber))
 			break
 		}
 

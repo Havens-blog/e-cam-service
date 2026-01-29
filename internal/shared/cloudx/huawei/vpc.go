@@ -36,23 +36,28 @@ func (a *VPCAdapter) createClient(region string) (*vpc.VpcClient, error) {
 		region = a.defaultRegion
 	}
 
-	auth := basic.NewCredentialsBuilder().
+	auth, err := basic.NewCredentialsBuilder().
 		WithAk(a.accessKeyID).
 		WithSk(a.accessKeySecret).
-		Build()
+		SafeBuild()
+	if err != nil {
+		return nil, fmt.Errorf("创建华为云凭证失败: %w", err)
+	}
 
 	r, err := vpcregion.SafeValueOf(region)
 	if err != nil {
 		return nil, fmt.Errorf("无效的地域: %s", region)
 	}
 
-	client := vpc.NewVpcClient(
-		vpc.VpcClientBuilder().
-			WithRegion(r).
-			WithCredential(auth).
-			Build())
+	client, err := vpc.VpcClientBuilder().
+		WithRegion(r).
+		WithCredential(auth).
+		SafeBuild()
+	if err != nil {
+		return nil, fmt.Errorf("创建华为云VPC客户端失败: %w", err)
+	}
 
-	return client, nil
+	return vpc.NewVpcClient(client), nil
 }
 
 // ListInstances 获取VPC列表

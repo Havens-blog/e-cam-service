@@ -52,6 +52,9 @@ func (a *EIPAdapter) createClient(region string) (*vpc.VPC, error) {
 func (a *EIPAdapter) ListInstances(ctx context.Context, region string) ([]types.EIPInstance, error) {
 	client, err := a.createClient(region)
 	if err != nil {
+		a.logger.Error("创建火山引擎EIP客户端失败",
+			elog.String("region", region),
+			elog.FieldErr(err))
 		return nil, err
 	}
 
@@ -65,12 +68,22 @@ func (a *EIPAdapter) ListInstances(ctx context.Context, region string) ([]types.
 			PageSize:   &pageSize,
 		}
 
+		a.logger.Debug("调用火山引擎DescribeEipAddresses",
+			elog.String("region", region),
+			elog.Int64("page", pageNumber))
+
 		output, err := client.DescribeEipAddresses(input)
 		if err != nil {
+			a.logger.Error("调用火山引擎DescribeEipAddresses失败",
+				elog.String("region", region),
+				elog.FieldErr(err))
 			return nil, fmt.Errorf("获取EIP列表失败: %w", err)
 		}
 
-		if output.EipAddresses == nil {
+		if output.EipAddresses == nil || len(output.EipAddresses) == 0 {
+			a.logger.Debug("火山引擎EIP列表为空",
+				elog.String("region", region),
+				elog.Int64("page", pageNumber))
 			break
 		}
 
