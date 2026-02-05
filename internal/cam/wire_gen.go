@@ -58,17 +58,21 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	modelFieldGroupDAO := InitModelFieldGroupDAO(db)
 	modelFieldGroupRepository := repository.NewModelFieldGroupRepository(modelFieldGroupDAO)
 	modelService := service.NewModelService(modelRepository, modelFieldRepository, modelFieldGroupRepository)
-	v := web.NewHandler(serviceService, cloudAccountService, modelService)
+	handler := web.NewHandler(serviceService, cloudAccountService, modelService)
 	instanceService := service.NewInstanceService(instanceRepository)
 	instanceHandler := web.NewInstanceHandler(instanceService)
 	databaseHandler := web.NewDatabaseHandler(instanceService)
 	assetHandler := web.NewAssetHandler(instanceService)
+	instanceRelationDAO := InitInstanceRelationDAO(db)
+	instanceRelationRepository := repository.NewInstanceRelationRepository(instanceRelationDAO)
+	cloudxAdapterFactory := cloudx.NewAdapterFactory(component)
+	assetSyncService := service.NewAssetSyncService(instanceRepository, instanceRelationRepository, cloudAccountRepository, cloudxAdapterFactory, component)
 	taskRepository := InitTaskRepository(db)
 	taskService := service2.NewTaskService(queue, taskRepository, component)
 	taskHandler := web2.NewTaskHandler(taskService)
 	autoSyncScheduler := scheduler.NewAutoSyncScheduler(cloudAccountRepository, queue, component)
 	camModule := &Module{
-		Hdl:           v,
+		Hdl:           handler,
 		InstanceHdl:   instanceHandler,
 		DatabaseHdl:   databaseHandler,
 		AssetHdl:      assetHandler,
@@ -76,10 +80,12 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 		AccountSvc:    cloudAccountService,
 		ModelSvc:      modelService,
 		InstanceSvc:   instanceService,
+		AssetSyncSvc:  assetSyncService,
 		TaskModule:    module,
 		TaskSvc:       taskService,
 		TaskHdl:       taskHandler,
 		AutoScheduler: autoSyncScheduler,
+		Logger:        component,
 	}
 	return camModule, nil
 }
@@ -156,7 +162,7 @@ var ProviderSet = wire.NewSet(
 	InitModelFieldDAO,
 	InitModelFieldGroupDAO,
 	InitInstanceDAO,
-	InitInstanceRelationDAO, repository.NewAssetRepository, repository.NewCloudAccountRepository, repository.NewModelRepository, repository.NewModelFieldRepository, repository.NewModelFieldGroupRepository, repository.NewInstanceRepository, repository.NewInstanceRelationRepository, InitTaskRepository, asset.NewAdapterFactory, cloudx.NewAdapterFactory, task.InitModule, wire.FieldsOf(new(*task.Module), "Queue"), service.NewService, service.NewCloudAccountService, service.NewModelService, service.NewInstanceService, service2.NewTaskService, web2.NewTaskHandler, scheduler.NewAutoSyncScheduler, ProvideLogger, web.NewHandler, web.NewInstanceHandler, web.NewDatabaseHandler, web.NewAssetHandler, wire.Struct(new(Module), "Hdl", "InstanceHdl", "DatabaseHdl", "AssetHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "TaskModule", "TaskSvc", "TaskHdl", "AutoScheduler"),
+	InitInstanceRelationDAO, repository.NewAssetRepository, repository.NewCloudAccountRepository, repository.NewModelRepository, repository.NewModelFieldRepository, repository.NewModelFieldGroupRepository, repository.NewInstanceRepository, repository.NewInstanceRelationRepository, InitTaskRepository, asset.NewAdapterFactory, cloudx.NewAdapterFactory, task.InitModule, wire.FieldsOf(new(*task.Module), "Queue"), service.NewService, service.NewCloudAccountService, service.NewModelService, service.NewInstanceService, service.NewAssetSyncService, service2.NewTaskService, web2.NewTaskHandler, scheduler.NewAutoSyncScheduler, ProvideLogger, web.NewHandler, web.NewInstanceHandler, web.NewDatabaseHandler, web.NewAssetHandler, wire.Struct(new(Module), "Hdl", "InstanceHdl", "DatabaseHdl", "AssetHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "AssetSyncSvc", "TaskModule", "TaskSvc", "TaskHdl", "AutoScheduler", "Logger"),
 )
 
 // ProvideLogger 提供默认logger

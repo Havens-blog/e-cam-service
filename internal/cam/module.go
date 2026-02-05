@@ -2,6 +2,7 @@ package cam
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam"
+	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree"
@@ -10,6 +11,7 @@ import (
 	taskweb "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 )
 
 type Module struct {
@@ -21,12 +23,14 @@ type Module struct {
 	AccountSvc        CloudAccountService
 	ModelSvc          ModelService
 	InstanceSvc       service.InstanceService
+	AssetSyncSvc      service.AssetSyncService // 资产同步服务 (同步到CMDB)
 	TaskModule        *task.Module
 	TaskSvc           taskservice.TaskService
 	TaskHdl           *taskweb.TaskHandler
 	IAMModule         *iam.Module                  // 手动初始化
 	ServiceTreeModule *servicetree.Module          // 服务树模块
 	AutoScheduler     *scheduler.AutoSyncScheduler // 自动同步调度器
+	Logger            *elog.Component              // 日志组件
 }
 
 // RegisterRoutes 注册所有路由
@@ -43,9 +47,12 @@ func (m *Module) RegisterRoutes(r *gin.Engine) {
 		m.DatabaseHdl.RegisterRoutes(camGroup)
 	}
 
-	// 注册统一资产路由 (新RESTful风格)
+	// 注册统一资产路由 (新RESTful风格，使用租户中间件)
 	if m.AssetHdl != nil {
-		m.AssetHdl.RegisterRoutes(camGroup)
+		assetsGroup := camGroup.Group("/assets")
+		assetsGroup.Use(middleware.TenantMiddleware(m.Logger))
+		assetsGroup.Use(middleware.RequireTenant(m.Logger))
+		m.AssetHdl.RegisterRoutesWithGroup(assetsGroup)
 	}
 
 	// 注册IAM路由

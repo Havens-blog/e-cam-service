@@ -32,6 +32,8 @@ type InstanceService interface {
 	Upsert(ctx context.Context, instance domain.Instance) error
 	// UpsertBatch 批量更新或插入实例
 	UpsertBatch(ctx context.Context, instances []domain.Instance) error
+	// Search 统一搜索实例
+	Search(ctx context.Context, filter domain.SearchFilter) ([]domain.Instance, int64, error)
 }
 
 type instanceService struct {
@@ -171,4 +173,9 @@ func (s *instanceService) UpsertBatch(ctx context.Context, instances []domain.In
 		}
 	}
 	return nil
+}
+
+// Search 统一搜索实例
+func (s *instanceService) Search(ctx context.Context, filter domain.SearchFilter) ([]domain.Instance, int64, error) {
+	return s.repo.Search(ctx, filter)
 }

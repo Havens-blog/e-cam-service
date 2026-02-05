@@ -35,6 +35,18 @@ type CloudAdapter interface {
 	// EIP 获取EIP适配器 (弹性公网IP)
 	EIP() EIPAdapter
 
+	// NAS 获取NAS适配器 (文件存储)
+	NAS() NASAdapter
+
+	// OSS 获取OSS适配器 (对象存储)
+	OSS() OSSAdapter
+
+	// Kafka 获取Kafka适配器 (消息队列)
+	Kafka() KafkaAdapter
+
+	// Elasticsearch 获取Elasticsearch适配器 (搜索服务)
+	Elasticsearch() ElasticsearchAdapter
+
 	// IAM 获取IAM适配器
 	IAM() IAMAdapter
 
@@ -283,4 +295,93 @@ type EIPAdapter interface {
 
 	// ListInstancesWithFilter 带过滤条件获取EIP列表
 	ListInstancesWithFilter(ctx context.Context, region string, filter *types.EIPInstanceFilter) ([]types.EIPInstance, error)
+}
+
+// ============================================================================
+// NASAdapter - NAS文件存储适配器接口
+// ============================================================================
+
+// NASAdapter NAS文件存储适配器接口
+// 用于阿里云NAS、华为云SFS、腾讯云CFS、AWS EFS等
+type NASAdapter interface {
+	// ListInstances 获取NAS文件系统列表
+	ListInstances(ctx context.Context, region string) ([]types.NASInstance, error)
+
+	// GetInstance 获取单个NAS文件系统详情
+	GetInstance(ctx context.Context, region, fileSystemID string) (*types.NASInstance, error)
+
+	// ListInstancesByIDs 批量获取NAS文件系统
+	ListInstancesByIDs(ctx context.Context, region string, fileSystemIDs []string) ([]types.NASInstance, error)
+
+	// GetInstanceStatus 获取文件系统状态
+	GetInstanceStatus(ctx context.Context, region, fileSystemID string) (string, error)
+
+	// ListInstancesWithFilter 带过滤条件获取文件系统列表
+	ListInstancesWithFilter(ctx context.Context, region string, filter *types.NASInstanceFilter) ([]types.NASInstance, error)
+}
+
+// ============================================================================
+// OSSAdapter - OSS对象存储适配器接口
+// ============================================================================
+
+// OSSAdapter OSS对象存储适配器接口
+// 用于阿里云OSS、华为云OBS、腾讯云COS、AWS S3、火山引擎TOS等
+type OSSAdapter interface {
+	// ListBuckets 获取存储桶列表 (OSS是全局服务，region参数可选)
+	ListBuckets(ctx context.Context, region string) ([]types.OSSBucket, error)
+
+	// GetBucket 获取单个存储桶详情
+	GetBucket(ctx context.Context, bucketName string) (*types.OSSBucket, error)
+
+	// GetBucketStats 获取存储桶统计信息
+	GetBucketStats(ctx context.Context, bucketName string) (*types.OSSBucketStats, error)
+
+	// ListBucketsWithFilter 带过滤条件获取存储桶列表
+	ListBucketsWithFilter(ctx context.Context, region string, filter *types.OSSBucketFilter) ([]types.OSSBucket, error)
+}
+
+// ============================================================================
+// KafkaAdapter - Kafka消息队列适配器接口
+// ============================================================================
+
+// KafkaAdapter Kafka消息队列适配器接口
+// 用于阿里云Kafka、华为云DMS Kafka、腾讯云CKafka、AWS MSK等
+type KafkaAdapter interface {
+	// ListInstances 获取Kafka实例列表
+	ListInstances(ctx context.Context, region string) ([]types.KafkaInstance, error)
+
+	// GetInstance 获取单个Kafka实例详情
+	GetInstance(ctx context.Context, region, instanceID string) (*types.KafkaInstance, error)
+
+	// ListInstancesByIDs 批量获取Kafka实例
+	ListInstancesByIDs(ctx context.Context, region string, instanceIDs []string) ([]types.KafkaInstance, error)
+
+	// GetInstanceStatus 获取实例状态
+	GetInstanceStatus(ctx context.Context, region, instanceID string) (string, error)
+
+	// ListInstancesWithFilter 带过滤条件获取实例列表
+	ListInstancesWithFilter(ctx context.Context, region string, filter *types.KafkaInstanceFilter) ([]types.KafkaInstance, error)
+}
+
+// ============================================================================
+// ElasticsearchAdapter - Elasticsearch搜索服务适配器接口
+// ============================================================================
+
+// ElasticsearchAdapter Elasticsearch搜索服务适配器接口
+// 用于阿里云ES、华为云CSS、腾讯云ES、AWS OpenSearch等
+type ElasticsearchAdapter interface {
+	// ListInstances 获取Elasticsearch实例列表
+	ListInstances(ctx context.Context, region string) ([]types.ElasticsearchInstance, error)
+
+	// GetInstance 获取单个Elasticsearch实例详情
+	GetInstance(ctx context.Context, region, instanceID string) (*types.ElasticsearchInstance, error)
+
+	// ListInstancesByIDs 批量获取Elasticsearch实例
+	ListInstancesByIDs(ctx context.Context, region string, instanceIDs []string) ([]types.ElasticsearchInstance, error)
+
+	// GetInstanceStatus 获取实例状态
+	GetInstanceStatus(ctx context.Context, region, instanceID string) (string, error)
+
+	// ListInstancesWithFilter 带过滤条件获取实例列表
+	ListInstancesWithFilter(ctx context.Context, region string, filter *types.ElasticsearchInstanceFilter) ([]types.ElasticsearchInstance, error)
 }

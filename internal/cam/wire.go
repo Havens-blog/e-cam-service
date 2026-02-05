@@ -125,6 +125,7 @@ var ProviderSet = wire.NewSet(
 	service.NewCloudAccountService,
 	service.NewModelService,
 	service.NewInstanceService,
+	service.NewAssetSyncService,
 
 	// Task Service
 	taskservice.NewTaskService,
@@ -143,7 +144,7 @@ var ProviderSet = wire.NewSet(
 	web.NewAssetHandler,
 
 	// Module (排除 IAMModule，手动初始化)
-	wire.Struct(new(Module), "Hdl", "InstanceHdl", "DatabaseHdl", "AssetHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "TaskModule", "TaskSvc", "TaskHdl", "AutoScheduler"),
+	wire.Struct(new(Module), "Hdl", "InstanceHdl", "DatabaseHdl", "AssetHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "AssetSyncSvc", "TaskModule", "TaskSvc", "TaskHdl", "AutoScheduler", "Logger"),
 )
 
 // InitModule 初始化CAM模块

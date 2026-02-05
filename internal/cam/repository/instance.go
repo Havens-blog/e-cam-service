@@ -22,7 +22,9 @@ type InstanceRepository interface {
 	DeleteByAccountID(ctx context.Context, accountID int64) error
 	DeleteByAssetIDs(ctx context.Context, tenantID, modelUID string, assetIDs []string) (int64, error)
 	ListAssetIDsByRegion(ctx context.Context, tenantID, modelUID string, accountID int64, region string) ([]string, error)
+	ListAssetIDsByModelUID(ctx context.Context, tenantID, modelUID string, accountID int64) ([]string, error)
 	Upsert(ctx context.Context, instance domain.Instance) error
+	Search(ctx context.Context, filter domain.SearchFilter) ([]domain.Instance, int64, error)
 }
 
 type instanceRepository struct {
@@ -121,6 +123,11 @@ func (r *instanceRepository) ListAssetIDsByRegion(ctx context.Context, tenantID,
 	return r.dao.ListAssetIDsByRegion(ctx, tenantID, modelUID, accountID, region)
 }
 
+// ListAssetIDsByModelUID 获取指定模型的所有 AssetID 列表（不按地域过滤，用于 OSS 等全局资源）
+func (r *instanceRepository) ListAssetIDsByModelUID(ctx context.Context, tenantID, modelUID string, accountID int64) ([]string, error) {
+	return r.dao.ListAssetIDsByModelUID(ctx, tenantID, modelUID, accountID)
+}
+
 // toDAO 领域模型转DAO模型
 func (r *instanceRepository) toDAO(instance domain.Instance) dao.Instance {
 	return dao.Instance{
@@ -174,4 +181,29 @@ func (r *instanceRepository) toDAOFilter(filter domain.InstanceFilter) dao.Insta
 	}
 
 	return daoFilter
+}
+
+// Search 统一搜索实例
+func (r *instanceRepository) Search(ctx context.Context, filter domain.SearchFilter) ([]domain.Instance, int64, error) {
+	daoFilter := dao.SearchFilter{
+		TenantID:   filter.TenantID,
+		Keyword:    filter.Keyword,
+		AssetTypes: filter.AssetTypes,
+		Provider:   filter.Provider,
+		AccountID:  filter.AccountID,
+		Region:     filter.Region,
+		Offset:     filter.Offset,
+		Limit:      filter.Limit,
+	}
+
+	daoInstances, total, err := r.dao.Search(ctx, daoFilter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	instances := make([]domain.Instance, len(daoInstances))
+	for i, daoInst := range daoInstances {
+		instances[i] = r.toDomain(daoInst)
+	}
+	return instances, total, nil
 }

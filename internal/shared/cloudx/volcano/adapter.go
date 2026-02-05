@@ -20,16 +20,20 @@ func init() {
 
 // Adapter 火山引擎统一适配器
 type Adapter struct {
-	account *domain.CloudAccount
-	logger  *elog.Component
-	asset   cloudx.AssetAdapter
-	ecs     *ECSAdapter
-	rds     *RDSAdapter
-	redis   *RedisAdapter
-	mongodb *MongoDBAdapter
-	vpc     *VPCAdapter
-	eip     *EIPAdapter
-	iam     cloudx.IAMAdapter
+	account       *domain.CloudAccount
+	logger        *elog.Component
+	asset         cloudx.AssetAdapter
+	ecs           *ECSAdapter
+	rds           *RDSAdapter
+	redis         *RedisAdapter
+	mongodb       *MongoDBAdapter
+	vpc           *VPCAdapter
+	eip           *EIPAdapter
+	nas           *NASAdapter
+	tos           *TOSAdapter
+	kafka         *KafkaAdapter
+	elasticsearch *ElasticsearchAdapter
+	iam           cloudx.IAMAdapter
 }
 
 // NewAdapter 创建火山引擎适配器
@@ -74,6 +78,18 @@ func NewAdapter(account *domain.CloudAccount) (*Adapter, error) {
 
 	// 创建EIP适配器
 	adapter.eip = NewEIPAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建NAS适配器 (真实实现)
+	adapter.nas = NewNASAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建TOS适配器 (真实实现)
+	adapter.tos = NewTOSAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建Kafka适配器
+	adapter.kafka = NewKafkaAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建Elasticsearch适配器 (ESCloud)
+	adapter.elasticsearch = NewElasticsearchAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
 
 	// 创建IAM适配器
 	adapter.iam = NewIAMAdapter(account, logger)
@@ -120,6 +136,26 @@ func (a *Adapter) VPC() cloudx.VPCAdapter {
 // EIP 获取EIP适配器
 func (a *Adapter) EIP() cloudx.EIPAdapter {
 	return a.eip
+}
+
+// NAS 获取NAS适配器
+func (a *Adapter) NAS() cloudx.NASAdapter {
+	return a.nas
+}
+
+// OSS 获取OSS适配器 (TOS)
+func (a *Adapter) OSS() cloudx.OSSAdapter {
+	return a.tos
+}
+
+// Kafka 获取Kafka适配器 (火山引擎 Kafka)
+func (a *Adapter) Kafka() cloudx.KafkaAdapter {
+	return a.kafka
+}
+
+// Elasticsearch 获取Elasticsearch适配器 (火山引擎 ESCloud)
+func (a *Adapter) Elasticsearch() cloudx.ElasticsearchAdapter {
+	return a.elasticsearch
 }
 
 // IAM 获取IAM适配器

@@ -41,6 +41,24 @@ type TagFilter struct {
 	Value   string // 标签值 (需配合Key使用)
 }
 
+// SearchFilter 统一搜索过滤条件
+type SearchFilter struct {
+	TenantID   string   // 租户ID (必填)
+	Keyword    string   // 搜索关键词 (匹配 asset_id, asset_name, ip 等)
+	AssetTypes []string // 资产类型列表 (ecs, rds, redis, mongodb, vpc, eip)，为空则搜索所有类型
+	Provider   string   // 云厂商过滤
+	AccountID  int64    // 云账号过滤
+	Region     string   // 地域过滤
+	Offset     int64
+	Limit      int64
+}
+
+// SearchResult 搜索结果
+type SearchResult struct {
+	Items []Instance `json:"items"`
+	Total int64      `json:"total"`
+}
+
 // Validate 验证实例数据
 func (i *Instance) Validate() error {
 	if i.ModelUID == "" {

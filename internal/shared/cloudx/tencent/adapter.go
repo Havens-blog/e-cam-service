@@ -18,16 +18,20 @@ func init() {
 
 // Adapter 腾讯云统一适配器
 type Adapter struct {
-	account *domain.CloudAccount
-	logger  *elog.Component
-	asset   cloudx.AssetAdapter
-	ecs     *ECSAdapter
-	rds     *RDSAdapter
-	redis   *RedisAdapter
-	mongodb *MongoDBAdapter
-	vpc     *VPCAdapter
-	eip     *EIPAdapter
-	iam     cloudx.IAMAdapter
+	account       *domain.CloudAccount
+	logger        *elog.Component
+	asset         cloudx.AssetAdapter
+	ecs           *ECSAdapter
+	rds           *RDSAdapter
+	redis         *RedisAdapter
+	mongodb       *MongoDBAdapter
+	vpc           *VPCAdapter
+	eip           *EIPAdapter
+	nas           cloudx.NASAdapter
+	oss           cloudx.OSSAdapter
+	kafka         *KafkaAdapter
+	elasticsearch *ElasticsearchAdapter
+	iam           cloudx.IAMAdapter
 }
 
 // NewAdapter 创建腾讯云适配器
@@ -72,6 +76,18 @@ func NewAdapter(account *domain.CloudAccount) (*Adapter, error) {
 
 	// 创建EIP适配器
 	adapter.eip = NewEIPAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建NAS适配器 (CFS)
+	adapter.nas = NewCFSAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建OSS适配器 (COS)
+	adapter.oss = NewCOSAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建Kafka适配器 (CKafka)
+	adapter.kafka = NewKafkaAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建Elasticsearch适配器 (ES)
+	adapter.elasticsearch = NewElasticsearchAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
 
 	// 创建IAM适配器
 	adapter.iam = NewIAMAdapter(account, logger)
@@ -118,6 +134,26 @@ func (a *Adapter) VPC() cloudx.VPCAdapter {
 // EIP 获取EIP适配器
 func (a *Adapter) EIP() cloudx.EIPAdapter {
 	return a.eip
+}
+
+// NAS 获取NAS适配器
+func (a *Adapter) NAS() cloudx.NASAdapter {
+	return a.nas
+}
+
+// OSS 获取OSS适配器
+func (a *Adapter) OSS() cloudx.OSSAdapter {
+	return a.oss
+}
+
+// Kafka 获取Kafka适配器 (腾讯云 CKafka)
+func (a *Adapter) Kafka() cloudx.KafkaAdapter {
+	return a.kafka
+}
+
+// Elasticsearch 获取Elasticsearch适配器 (腾讯云 ES)
+func (a *Adapter) Elasticsearch() cloudx.ElasticsearchAdapter {
+	return a.elasticsearch
 }
 
 // IAM 获取IAM适配器

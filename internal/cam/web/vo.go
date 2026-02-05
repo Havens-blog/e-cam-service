@@ -484,3 +484,26 @@ type MongoDBInstanceListResp struct {
 	Instances []MongoDBInstanceVO `json:"instances"`
 	Total     int64               `json:"total"`
 }
+
+// ==================== 统一资产 API 响应类型 ====================
+// 用于 Swagger 文档生成
+
+// AssetListResult 资产列表响应（用于 Swagger）
+type AssetListResult struct {
+	Code int                  `json:"code" example:"0"`
+	Msg  string               `json:"msg" example:"success"`
+	Data UnifiedAssetListResp `json:"data"`
+}
+
+// AssetDetailResult 资产详情响应（用于 Swagger）
+type AssetDetailResult struct {
+	Code int            `json:"code" example:"0"`
+	Msg  string         `json:"msg" example:"success"`
+	Data UnifiedAssetVO `json:"data"`
+}
+
+// ErrorResponse 错误响应（用于 Swagger）
+type ErrorResponse struct {
+	Code int    `json:"code" example:"400"`
+	Msg  string `json:"msg" example:"租户ID不能为空"`
+}

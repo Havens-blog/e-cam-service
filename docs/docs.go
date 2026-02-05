@@ -1566,6 +1566,943 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/cam/service-tree/bindings/{id}": {
+            "delete": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "解绑资源",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "绑定ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ginx.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/service-tree/environments": {
+            "get": {
+                "tags": [
+                    "服务树-环境"
+                ],
+                "summary": "获取环境列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/web.EnvironmentVO"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "服务树-环境"
+                ],
+                "summary": "创建环境",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "环境信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/web.CreateEnvReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "integer",
+                                            "format": "int64"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/service-tree/environments/init": {
+            "post": {
+                "tags": [
+                    "服务树-环境"
+                ],
+                "summary": "初始化默认环境",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ginx.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/service-tree/environments/{id}": {
+            "get": {
+                "tags": [
+                    "服务树-环境"
+                ],
+                "summary": "获取环境详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "环境ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/web.EnvironmentVO"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "服务树-环境"
+                ],
+                "summary": "更新环境",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "环境ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "环境信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/web.UpdateEnvReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ginx.Result"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "服务树-环境"
+                ],
+                "summary": "删除环境",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "环境ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ginx.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/service-tree/nodes": {
+            "get": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "获取节点列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "父节点ID",
+                        "name": "parent_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "层级",
+                        "name": "level",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "名称",
+                        "name": "name",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/web.NodeVO"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "创建服务树节点",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "节点信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/web.CreateNodeReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "integer",
+                                            "format": "int64"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/service-tree/nodes/{id}": {
+            "get": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "获取节点详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "节点ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/web.NodeVO"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "更新节点",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "节点ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "节点信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/web.UpdateNodeReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ginx.Result"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "删除节点",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "节点ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ginx.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/service-tree/nodes/{id}/bindings": {
+            "get": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "获取节点绑定的资源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "节点ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "环境ID",
+                        "name": "env_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/web.BindingVO"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "绑定资源到节点",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "节点ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "资源信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/web.BindResourceReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "integer",
+                                            "format": "int64"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/service-tree/nodes/{id}/bindings/batch": {
+            "post": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "批量绑定资源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "节点ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "资源列表",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/web.BatchBindReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "integer",
+                                            "format": "int64"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/service-tree/nodes/{id}/move": {
+            "put": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "移动节点",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "节点ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "目标父节点",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/web.MoveNodeReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ginx.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/service-tree/resources/{type}/{id}/node": {
+            "get": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "获取资源所属节点",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资源类型",
+                        "name": "type",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "资源ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/web.NodeVO"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/service-tree/rules": {
+            "get": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "获取规则列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "节点ID",
+                        "name": "node_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否启用",
+                        "name": "enabled",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/web.RuleVO"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "创建绑定规则",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "规则信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/web.CreateRuleReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "integer",
+                                            "format": "int64"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/service-tree/rules/execute": {
+            "post": {
+                "description": "手动触发规则引擎，对未绑定资源执行自动匹配，绑定到规则指定的环境",
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "执行规则匹配",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "integer",
+                                            "format": "int64"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/service-tree/rules/{id}": {
+            "get": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "获取规则详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "规则ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/web.RuleVO"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "更新规则",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "规则ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "规则信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/web.UpdateRuleReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ginx.Result"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "删除规则",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "规则ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ginx.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/service-tree/tree": {
+            "get": {
+                "tags": [
+                    "服务树"
+                ],
+                "summary": "获取服务树结构",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "根节点ID",
+                        "name": "root_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/web.TreeNodeVO"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/cam/assets": {
             "get": {
                 "description": "获取云资产列表，支持按云厂商、资产类型、状态等条件过滤",
@@ -1647,7 +2584,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -1666,7 +2603,7 @@ const docTemplate = `{
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -1700,7 +2637,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -1716,13 +2653,13 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -1758,7 +2695,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -1777,13 +2714,13 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -1828,7 +2765,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -1844,7 +2781,7 @@ const docTemplate = `{
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -1880,7 +2817,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -1899,13 +2836,1570 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/ecs": {
+            "get": {
+                "description": "从数据库获取已同步的云虚拟机实例列表，支持按IP地址过滤",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-ECS"
+                ],
+                "summary": "获取云虚拟机列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例名称(模糊搜索)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "内网IP",
+                        "name": "private_ip",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "公网IP",
+                        "name": "public_ip",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "VPC ID",
+                        "name": "vpc_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetListResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/ecs/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定云虚拟机实例的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-ECS"
+                ],
+                "summary": "获取云虚拟机详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID(云厂商实例ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetDetailResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "实例不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/eip": {
+            "get": {
+                "description": "从数据库获取已同步的弹性公网IP列表，支持按绑定实例类型、IP地址、VPC等过滤",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-EIP"
+                ],
+                "summary": "获取弹性公网IP列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "状态(InUse/Available)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "EIP名称(模糊搜索)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "IP地址(精确匹配)",
+                        "name": "ip_address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "绑定的实例ID",
+                        "name": "instance_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "绑定的实例类型(EcsInstance/SlbInstance/Nat/HaVip/NetworkInterface)",
+                        "name": "instance_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "VPC ID",
+                        "name": "vpc_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "线路类型(BGP/BGP_PRO/ChinaTelecom/ChinaUnicom/ChinaMobile)",
+                        "name": "isp",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "绑定状态: bound(已绑定)/unbound(未绑定)",
+                        "name": "bindable",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetListResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/eip/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定弹性公网IP的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-EIP"
+                ],
+                "summary": "获取弹性公网IP详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID(EIP Allocation ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetDetailResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "EIP不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/elasticsearch": {
+            "get": {
+                "description": "从数据库获取已同步的Elasticsearch实例列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-Elasticsearch"
+                ],
+                "summary": "获取Elasticsearch实例列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例名称(模糊搜索)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ES版本",
+                        "name": "version",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "VPC ID",
+                        "name": "vpc_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetListResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/elasticsearch/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定Elasticsearch实例的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-Elasticsearch"
+                ],
+                "summary": "获取Elasticsearch实例详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID(实例ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetDetailResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "实例不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/kafka": {
+            "get": {
+                "description": "从数据库获取已同步的Kafka实例列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-Kafka"
+                ],
+                "summary": "获取Kafka实例列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例名称(模糊搜索)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "VPC ID",
+                        "name": "vpc_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetListResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/kafka/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定Kafka实例的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-Kafka"
+                ],
+                "summary": "获取Kafka实例详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID(实例ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetDetailResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "实例不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/mongodb": {
+            "get": {
+                "description": "从数据库获取已同步的MongoDB实例列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-MongoDB"
+                ],
+                "summary": "获取MongoDB实例列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例名称(模糊搜索)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetListResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/mongodb/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定MongoDB实例的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-MongoDB"
+                ],
+                "summary": "获取MongoDB实例详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID(云厂商实例ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetDetailResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "实例不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/nas": {
+            "get": {
+                "description": "从数据库获取已同步的NAS文件系统列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-NAS"
+                ],
+                "summary": "获取NAS文件系统列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "文件系统名称(模糊搜索)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "文件系统类型(standard/extreme/cpfs)",
+                        "name": "file_system_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "协议类型(NFS/SMB)",
+                        "name": "protocol_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetListResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/nas/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定NAS文件系统的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-NAS"
+                ],
+                "summary": "获取NAS文件系统详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID(文件系统ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetDetailResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "文件系统不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/oss": {
+            "get": {
+                "description": "从数据库获取已同步的OSS存储桶列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-OSS"
+                ],
+                "summary": "获取OSS存储桶列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "存储桶名称(模糊搜索)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "存储类型(Standard/IA/Archive)",
+                        "name": "storage_class",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "访问权限(private/public-read/public-read-write)",
+                        "name": "acl",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetListResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/oss/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定OSS存储桶的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-OSS"
+                ],
+                "summary": "获取OSS存储桶详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID(存储桶名称)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetDetailResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "存储桶不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/rds": {
+            "get": {
+                "description": "从数据库获取已同步的RDS实例列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-RDS"
+                ],
+                "summary": "获取RDS实例列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例名称(模糊搜索)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetListResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/rds/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定RDS实例的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-RDS"
+                ],
+                "summary": "获取RDS实例详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID(云厂商实例ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetDetailResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "实例不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/redis": {
+            "get": {
+                "description": "从数据库获取已同步的Redis实例列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-Redis"
+                ],
+                "summary": "获取Redis实例列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例名称(模糊搜索)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetListResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/redis/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定Redis实例的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-Redis"
+                ],
+                "summary": "获取Redis实例详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID(云厂商实例ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetDetailResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "实例不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/search": {
+            "get": {
+                "description": "跨资产类型搜索，支持按关键词匹配资产ID、名称、IP地址等。返回匹配信息供前端高亮显示",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-搜索"
+                ],
+                "summary": "统一搜索资产",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "搜索关键词(匹配资产ID、名称、IP等)",
+                        "name": "keyword",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产类型(逗号分隔: ecs,rds,redis,mongodb,vpc,eip)",
+                        "name": "types",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.SearchResultResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
                         }
                     }
                 }
@@ -1930,7 +4424,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -1946,7 +4440,7 @@ const docTemplate = `{
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -1981,25 +4475,178 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "云账号不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/vpc": {
+            "get": {
+                "description": "从数据库获取已同步的VPC列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-VPC"
+                ],
+                "summary": "获取VPC列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "VPC名称(模糊搜索)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetListResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/vpc/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定VPC的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-VPC"
+                ],
+                "summary": "获取VPC详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID(VPC ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetDetailResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "VPC不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
                         }
                     }
                 }
@@ -2033,7 +4680,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -2049,19 +4696,19 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "资产不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2102,7 +4749,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -2118,19 +4765,19 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "资产不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2160,25 +4807,25 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "资产不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2257,7 +4904,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -2276,7 +4923,7 @@ const docTemplate = `{
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2310,7 +4957,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -2326,13 +4973,13 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2366,7 +5013,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -2382,19 +5029,19 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "云账号不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2435,7 +5082,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -2451,19 +5098,19 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "云账号不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2493,25 +5140,25 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "云账号不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2543,25 +5190,25 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "云账号不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2593,25 +5240,25 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "云账号不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2654,7 +5301,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -2670,25 +5317,25 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "云账号不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "409": {
                         "description": "云账号已禁用",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2722,7 +5369,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -2738,19 +5385,508 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "云账号不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "连接失败",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/databases/mongodb": {
+            "get": {
+                "description": "从数据库获取已同步的MongoDB实例列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "数据库管理"
+                ],
+                "summary": "获取MongoDB实例列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "tenant_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例名称(模糊搜索)",
+                        "name": "asset_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/web.DatabaseInstanceListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/databases/mongodb/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定MongoDB实例的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "数据库管理"
+                ],
+                "summary": "获取MongoDB实例详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资产ID(云厂商实例ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "tenant_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/web.DatabaseInstanceVO"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "实例不存在",
+                        "schema": {
+                            "$ref": "#/definitions/ginx.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/databases/rds": {
+            "get": {
+                "description": "从数据库获取已同步的RDS实例列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "数据库管理"
+                ],
+                "summary": "获取RDS实例列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "tenant_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例名称(模糊搜索)",
+                        "name": "asset_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/web.DatabaseInstanceListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/databases/rds/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定RDS实例的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "数据库管理"
+                ],
+                "summary": "获取RDS实例详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资产ID(云厂商实例ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "tenant_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/web.DatabaseInstanceVO"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "实例不存在",
+                        "schema": {
+                            "$ref": "#/definitions/ginx.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/databases/redis": {
+            "get": {
+                "description": "从数据库获取已同步的Redis实例列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "数据库管理"
+                ],
+                "summary": "获取Redis实例列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "tenant_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "实例名称(模糊搜索)",
+                        "name": "asset_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/web.DatabaseInstanceListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/databases/redis/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定Redis实例的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "数据库管理"
+                ],
+                "summary": "获取Redis实例详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资产ID(云厂商实例ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "tenant_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/web.DatabaseInstanceVO"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "实例不存在",
+                        "schema": {
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2791,25 +5927,25 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "分组不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2839,19 +5975,19 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "分组不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2892,25 +6028,25 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "字段不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -2940,19 +6076,19 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "字段不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -3101,7 +6237,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -3145,7 +6281,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -3191,7 +6327,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -3235,7 +6371,7 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -3269,7 +6405,7 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -3303,7 +6439,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -3352,7 +6488,7 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -3382,7 +6518,7 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -3407,7 +6543,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -3490,7 +6626,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -3509,7 +6645,7 @@ const docTemplate = `{
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -3543,7 +6679,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -3559,13 +6695,13 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -3599,7 +6735,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -3615,13 +6751,13 @@ const docTemplate = `{
                     "404": {
                         "description": "模型不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -3662,7 +6798,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -3678,19 +6814,19 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "模型不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -3720,19 +6856,19 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "模型不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -3766,7 +6902,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -3785,7 +6921,7 @@ const docTemplate = `{
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -3826,7 +6962,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -3842,13 +6978,13 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -3882,7 +7018,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -3901,7 +7037,7 @@ const docTemplate = `{
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -3942,7 +7078,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -3958,13 +7094,13 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -4034,7 +7170,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -4050,7 +7186,7 @@ const docTemplate = `{
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -4086,7 +7222,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -4102,13 +7238,13 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -4144,7 +7280,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -4160,13 +7296,13 @@ const docTemplate = `{
                     "400": {
                         "description": "请求参数错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -4200,7 +7336,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                                    "$ref": "#/definitions/ginx.Result"
                                 },
                                 {
                                     "type": "object",
@@ -4216,13 +7352,13 @@ const docTemplate = `{
                     "404": {
                         "description": "任务不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -4252,25 +7388,25 @@ const docTemplate = `{
                     "200": {
                         "description": "删除成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "400": {
                         "description": "任务无法删除",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "任务不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -4302,25 +7438,25 @@ const docTemplate = `{
                     "200": {
                         "description": "取消成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "400": {
                         "description": "任务无法取消",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "404": {
                         "description": "任务不存在",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     },
                     "500": {
                         "description": "服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_pkg_ginx.Result"
+                            "$ref": "#/definitions/ginx.Result"
                         }
                     }
                 }
@@ -4506,6 +7642,23 @@ const docTemplate = `{
                 "PolicyTypeCustom"
             ]
         },
+        "domain.RuleCondition": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "description": "匹配字段 (provider/region/tag.xxx/name/attributes.xxx)",
+                    "type": "string"
+                },
+                "operator": {
+                    "description": "操作符 (eq/ne/contains/regex/in)",
+                    "type": "string"
+                },
+                "value": {
+                    "description": "匹配值",
+                    "type": "string"
+                }
+            }
+        },
         "domain.SyncTargetType": {
             "type": "string",
             "enum": [
@@ -4650,6 +7803,18 @@ const docTemplate = `{
                 "TenantStatusSuspended",
                 "TenantStatusDeleted"
             ]
+        },
+        "ginx.Result": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {},
+                "msg": {
+                    "type": "string"
+                }
+            }
         },
         "github_com_Havens-blog_e-cam-service_internal_cam_domain.Model": {
             "type": "object",
@@ -5223,18 +8388,6 @@ const docTemplate = `{
                 "SyncTaskStatusRetrying"
             ]
         },
-        "github_com_Havens-blog_e-cam-service_pkg_ginx.Result": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "integer"
-                },
-                "data": {},
-                "msg": {
-                    "type": "string"
-                }
-            }
-        },
         "service.GroupSyncResult": {
             "type": "object",
             "properties": {
@@ -5261,6 +8414,38 @@ const docTemplate = `{
                 }
             }
         },
+        "web.AssetDetailResult": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "data": {
+                    "$ref": "#/definitions/web.UnifiedAssetVO"
+                },
+                "msg": {
+                    "type": "string",
+                    "example": "success"
+                }
+            }
+        },
+        "web.AssetListResult": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "data": {
+                    "$ref": "#/definitions/web.UnifiedAssetListResp"
+                },
+                "msg": {
+                    "type": "string",
+                    "example": "success"
+                }
+            }
+        },
         "web.AssignUserGroupsVO": {
             "type": "object",
             "required": [
@@ -5281,6 +8466,78 @@ const docTemplate = `{
                     "items": {
                         "type": "integer"
                     }
+                }
+            }
+        },
+        "web.BatchBindReq": {
+            "type": "object",
+            "required": [
+                "env_id",
+                "resource_ids",
+                "resource_type"
+            ],
+            "properties": {
+                "env_id": {
+                    "type": "integer"
+                },
+                "resource_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "resource_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "web.BindResourceReq": {
+            "type": "object",
+            "required": [
+                "env_id",
+                "resource_id",
+                "resource_type"
+            ],
+            "properties": {
+                "env_id": {
+                    "description": "环境ID",
+                    "type": "integer"
+                },
+                "resource_id": {
+                    "type": "integer"
+                },
+                "resource_type": {
+                    "description": "instance/asset",
+                    "type": "string"
+                }
+            }
+        },
+        "web.BindingVO": {
+            "type": "object",
+            "properties": {
+                "bind_type": {
+                    "type": "string"
+                },
+                "create_time": {
+                    "type": "integer"
+                },
+                "env_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "node_id": {
+                    "type": "integer"
+                },
+                "resource_id": {
+                    "type": "integer"
+                },
+                "resource_type": {
+                    "type": "string"
+                },
+                "rule_id": {
+                    "type": "integer"
                 }
             }
         },
@@ -5532,6 +8789,30 @@ const docTemplate = `{
                 }
             }
         },
+        "web.CreateEnvReq": {
+            "type": "object",
+            "required": [
+                "code",
+                "name"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "integer"
+                }
+            }
+        },
         "web.CreateFieldGroupReq": {
             "type": "object",
             "required": [
@@ -5643,6 +8924,84 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/web.CreateAssetReq"
                     }
+                }
+            }
+        },
+        "web.CreateNodeReq": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "description": "描述",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "节点名称",
+                    "type": "string"
+                },
+                "order": {
+                    "description": "排序",
+                    "type": "integer"
+                },
+                "owner": {
+                    "description": "负责人",
+                    "type": "string"
+                },
+                "parent_id": {
+                    "description": "父节点ID",
+                    "type": "integer"
+                },
+                "tags": {
+                    "description": "标签",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "team": {
+                    "description": "团队",
+                    "type": "string"
+                },
+                "uid": {
+                    "description": "节点唯一标识",
+                    "type": "string"
+                }
+            }
+        },
+        "web.CreateRuleReq": {
+            "type": "object",
+            "required": [
+                "conditions",
+                "env_id",
+                "name",
+                "node_id"
+            ],
+            "properties": {
+                "conditions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.RuleCondition"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "env_id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "node_id": {
+                    "type": "integer"
+                },
+                "priority": {
+                    "type": "integer"
                 }
             }
         },
@@ -5819,6 +9178,62 @@ const docTemplate = `{
                 }
             }
         },
+        "web.DatabaseInstanceListResp": {
+            "type": "object",
+            "properties": {
+                "instances": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/web.DatabaseInstanceVO"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "web.DatabaseInstanceVO": {
+            "type": "object",
+            "properties": {
+                "account_id": {
+                    "type": "integer"
+                },
+                "asset_id": {
+                    "type": "string"
+                },
+                "asset_name": {
+                    "type": "string"
+                },
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "create_time": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "model_uid": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
+                },
+                "update_time": {
+                    "type": "integer"
+                }
+            }
+        },
         "web.DiscoverAssetsReq": {
             "type": "object",
             "required": [
@@ -5840,6 +9255,51 @@ const docTemplate = `{
                 }
             }
         },
+        "web.EnvironmentVO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "create_time": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "update_time": {
+                    "type": "integer"
+                }
+            }
+        },
+        "web.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer",
+                    "example": 400
+                },
+                "msg": {
+                    "type": "string",
+                    "example": "租户ID不能为空"
+                }
+            }
+        },
         "web.GenerateAuditReportVO": {
             "type": "object",
             "required": [
@@ -5855,6 +9315,23 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "tenant_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "web.MatchInfo": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "description": "匹配的字段名",
+                    "type": "string"
+                },
+                "label": {
+                    "description": "字段显示名称",
+                    "type": "string"
+                },
+                "value": {
+                    "description": "匹配的字段值",
                     "type": "string"
                 }
             }
@@ -5882,6 +9359,64 @@ const docTemplate = `{
                 },
                 "path": {
                     "type": "string"
+                }
+            }
+        },
+        "web.MoveNodeReq": {
+            "type": "object",
+            "properties": {
+                "new_parent_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "web.NodeVO": {
+            "type": "object",
+            "properties": {
+                "create_time": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "level": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "integer"
+                },
+                "owner": {
+                    "type": "string"
+                },
+                "parent_id": {
+                    "type": "integer"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "team": {
+                    "type": "string"
+                },
+                "uid": {
+                    "type": "string"
+                },
+                "update_time": {
+                    "type": "integer"
                 }
             }
         },
@@ -5915,6 +9450,127 @@ const docTemplate = `{
                 "data": {},
                 "msg": {
                     "type": "string"
+                }
+            }
+        },
+        "web.RuleVO": {
+            "type": "object",
+            "properties": {
+                "conditions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.RuleCondition"
+                    }
+                },
+                "create_time": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "env_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "node_id": {
+                    "type": "integer"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "update_time": {
+                    "type": "integer"
+                }
+            }
+        },
+        "web.SearchListResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/web.SearchResultVO"
+                    }
+                },
+                "keyword": {
+                    "description": "返回搜索关键词，方便前端高亮",
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "web.SearchResultResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "data": {
+                    "$ref": "#/definitions/web.SearchListResp"
+                },
+                "msg": {
+                    "type": "string",
+                    "example": "success"
+                }
+            }
+        },
+        "web.SearchResultVO": {
+            "type": "object",
+            "properties": {
+                "account_id": {
+                    "type": "integer"
+                },
+                "asset_id": {
+                    "type": "string"
+                },
+                "asset_name": {
+                    "type": "string"
+                },
+                "asset_type": {
+                    "type": "string"
+                },
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "create_time": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "matches": {
+                    "description": "匹配信息，用于前端高亮",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/web.MatchInfo"
+                    }
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
+                },
+                "update_time": {
+                    "type": "integer"
                 }
             }
         },
@@ -6121,6 +9777,121 @@ const docTemplate = `{
                 }
             }
         },
+        "web.TreeNodeVO": {
+            "type": "object",
+            "properties": {
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/web.TreeNodeVO"
+                    }
+                },
+                "create_time": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "level": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "integer"
+                },
+                "owner": {
+                    "type": "string"
+                },
+                "parent_id": {
+                    "type": "integer"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "resource_count": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "team": {
+                    "type": "string"
+                },
+                "uid": {
+                    "type": "string"
+                },
+                "update_time": {
+                    "type": "integer"
+                }
+            }
+        },
+        "web.UnifiedAssetListResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/web.UnifiedAssetVO"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "web.UnifiedAssetVO": {
+            "type": "object",
+            "properties": {
+                "account_id": {
+                    "type": "integer"
+                },
+                "asset_id": {
+                    "type": "string"
+                },
+                "asset_name": {
+                    "type": "string"
+                },
+                "asset_type": {
+                    "type": "string"
+                },
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "create_time": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
+                },
+                "update_time": {
+                    "type": "integer"
+                }
+            }
+        },
         "web.UpdateAssetReq": {
             "type": "object",
             "properties": {
@@ -6179,6 +9950,33 @@ const docTemplate = `{
                 }
             }
         },
+        "web.UpdateEnvReq": {
+            "type": "object",
+            "required": [
+                "code",
+                "name"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "integer"
+                }
+            }
+        },
         "web.UpdateFieldGroupReq": {
             "type": "object",
             "properties": {
@@ -6230,6 +10028,41 @@ const docTemplate = `{
                 }
             }
         },
+        "web.UpdateNodeReq": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "integer"
+                },
+                "owner": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "team": {
+                    "type": "string"
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
         "web.UpdatePoliciesVO": {
             "type": "object",
             "required": [
@@ -6242,6 +10075,41 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/domain.PermissionPolicy"
                     }
+                }
+            }
+        },
+        "web.UpdateRuleReq": {
+            "type": "object",
+            "required": [
+                "conditions",
+                "env_id",
+                "name",
+                "node_id"
+            ],
+            "properties": {
+                "conditions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.RuleCondition"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "env_id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "node_id": {
+                    "type": "integer"
+                },
+                "priority": {
+                    "type": "integer"
                 }
             }
         },

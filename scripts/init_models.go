@@ -73,18 +73,40 @@ type AttributeGroup struct {
 	Utime       int64  `bson:"utime"`
 }
 
+// RelationType 关系类型定义
+type RelationType struct {
+	ID             int64  `bson:"id"`
+	UID            string `bson:"uid"`
+	Name           string `bson:"name"`
+	SourceModelUID string `bson:"source_model_uid"`
+	TargetModelUID string `bson:"target_model_uid"`
+	Direction      string `bson:"direction"`
+	Description    string `bson:"description"`
+	Ctime          int64  `bson:"ctime"`
+	Utime          int64  `bson:"utime"`
+}
+
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// 连接MongoDB
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017"))
+	// MongoDB连接配置
+	credential := options.Credential{
+		Username:   "ecmdb",
+		Password:   "123456",
+		AuthSource: "admin",
+	}
+	clientOpts := options.Client().
+		ApplyURI("mongodb://106.52.187.69:27017").
+		SetAuth(credential)
+
+	client, err := mongo.Connect(ctx, clientOpts)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer client.Disconnect(ctx)
 
-	db := client.Database("e_cam")
+	db := client.Database("ecmdb")
 	now := time.Now().UnixMilli()
 
 	// 初始化模型分组
@@ -99,31 +121,65 @@ func main() {
 
 	// 初始化模型
 	models := []Model{
-		// 通用云资源模型
+		// 通用云资源模型 (用于跨云查询)
 		{ID: 1, UID: "cloud_vm", Name: "虚拟机", ModelGroupID: 1, Category: "compute", Level: 1, Provider: "all", Icon: "server", Description: "云服务器/虚拟机", Extensible: true, Ctime: now, Utime: now},
+		{ID: 2, UID: "cloud_rds", Name: "关系型数据库", ModelGroupID: 4, Category: "database", Level: 1, Provider: "all", Icon: "database", Description: "云关系型数据库", Extensible: true, Ctime: now, Utime: now},
+		{ID: 3, UID: "cloud_redis", Name: "Redis缓存", ModelGroupID: 4, Category: "database", Level: 1, Provider: "all", Icon: "cache", Description: "云Redis缓存", Extensible: true, Ctime: now, Utime: now},
+		{ID: 4, UID: "cloud_mongodb", Name: "MongoDB", ModelGroupID: 4, Category: "database", Level: 1, Provider: "all", Icon: "database", Description: "云MongoDB数据库", Extensible: true, Ctime: now, Utime: now},
+		{ID: 5, UID: "cloud_vpc", Name: "VPC", ModelGroupID: 3, Category: "network", Level: 1, Provider: "all", Icon: "network", Description: "虚拟私有云", Extensible: true, Ctime: now, Utime: now},
+		{ID: 6, UID: "cloud_eip", Name: "弹性公网IP", ModelGroupID: 3, Category: "network", Level: 1, Provider: "all", Icon: "ip", Description: "弹性公网IP", Extensible: true, Ctime: now, Utime: now},
+		{ID: 7, UID: "cloud_slb", Name: "负载均衡", ModelGroupID: 3, Category: "network", Level: 1, Provider: "all", Icon: "loadbalancer", Description: "云负载均衡", Extensible: true, Ctime: now, Utime: now},
+		{ID: 8, UID: "cloud_oss", Name: "对象存储", ModelGroupID: 2, Category: "storage", Level: 1, Provider: "all", Icon: "storage", Description: "云对象存储", Extensible: true, Ctime: now, Utime: now},
 
 		// 阿里云
 		{ID: 11, UID: "aliyun_ecs", Name: "阿里云ECS", ModelGroupID: 1, ParentUID: "cloud_vm", Category: "compute", Level: 2, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
-		{ID: 12, UID: "aliyun_rds", Name: "阿里云RDS", ModelGroupID: 4, Category: "database", Level: 1, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
-		{ID: 13, UID: "aliyun_oss", Name: "阿里云OSS", ModelGroupID: 2, Category: "storage", Level: 1, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
-		{ID: 14, UID: "aliyun_vpc", Name: "阿里云VPC", ModelGroupID: 3, Category: "network", Level: 1, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
-		{ID: 15, UID: "aliyun_slb", Name: "阿里云SLB", ModelGroupID: 3, Category: "network", Level: 1, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
-		{ID: 16, UID: "aliyun_security_group", Name: "阿里云安全组", ModelGroupID: 5, Category: "security", Level: 1, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
-		{ID: 17, UID: "aliyun_ram_user", Name: "阿里云RAM用户", ModelGroupID: 6, Category: "iam", Level: 1, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
-		{ID: 18, UID: "aliyun_ram_group", Name: "阿里云RAM用户组", ModelGroupID: 6, Category: "iam", Level: 1, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
-		{ID: 19, UID: "aliyun_ram_policy", Name: "阿里云RAM策略", ModelGroupID: 6, Category: "iam", Level: 1, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
+		{ID: 12, UID: "aliyun_rds", Name: "阿里云RDS", ModelGroupID: 4, ParentUID: "cloud_rds", Category: "database", Level: 2, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
+		{ID: 13, UID: "aliyun_redis", Name: "阿里云Redis", ModelGroupID: 4, ParentUID: "cloud_redis", Category: "database", Level: 2, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
+		{ID: 14, UID: "aliyun_mongodb", Name: "阿里云MongoDB", ModelGroupID: 4, ParentUID: "cloud_mongodb", Category: "database", Level: 2, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
+		{ID: 15, UID: "aliyun_vpc", Name: "阿里云VPC", ModelGroupID: 3, ParentUID: "cloud_vpc", Category: "network", Level: 2, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
+		{ID: 16, UID: "aliyun_eip", Name: "阿里云EIP", ModelGroupID: 3, ParentUID: "cloud_eip", Category: "network", Level: 2, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
+		{ID: 17, UID: "aliyun_slb", Name: "阿里云SLB", ModelGroupID: 3, ParentUID: "cloud_slb", Category: "network", Level: 2, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
+		{ID: 18, UID: "aliyun_oss", Name: "阿里云OSS", ModelGroupID: 2, ParentUID: "cloud_oss", Category: "storage", Level: 2, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
+		{ID: 19, UID: "aliyun_security_group", Name: "阿里云安全组", ModelGroupID: 5, Category: "security", Level: 1, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
+		{ID: 20, UID: "aliyun_ram_user", Name: "阿里云RAM用户", ModelGroupID: 6, Category: "iam", Level: 1, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
+		{ID: 21, UID: "aliyun_ram_group", Name: "阿里云RAM用户组", ModelGroupID: 6, Category: "iam", Level: 1, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
+		{ID: 22, UID: "aliyun_ram_policy", Name: "阿里云RAM策略", ModelGroupID: 6, Category: "iam", Level: 1, Provider: "aliyun", Extensible: true, Ctime: now, Utime: now},
 
 		// AWS
-		{ID: 101, UID: "aws_ec2", Name: "AWS EC2", ModelGroupID: 1, ParentUID: "cloud_vm", Category: "compute", Level: 2, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
-		{ID: 102, UID: "aws_rds", Name: "AWS RDS", ModelGroupID: 4, Category: "database", Level: 1, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
-		{ID: 103, UID: "aws_s3", Name: "AWS S3", ModelGroupID: 2, Category: "storage", Level: 1, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
-		{ID: 104, UID: "aws_vpc", Name: "AWS VPC", ModelGroupID: 3, Category: "network", Level: 1, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
-		{ID: 105, UID: "aws_iam_user", Name: "AWS IAM用户", ModelGroupID: 6, Category: "iam", Level: 1, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
-		{ID: 106, UID: "aws_iam_group", Name: "AWS IAM用户组", ModelGroupID: 6, Category: "iam", Level: 1, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
-		{ID: 107, UID: "aws_iam_policy", Name: "AWS IAM策略", ModelGroupID: 6, Category: "iam", Level: 1, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
+		{ID: 101, UID: "aws_ecs", Name: "AWS EC2", ModelGroupID: 1, ParentUID: "cloud_vm", Category: "compute", Level: 2, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
+		{ID: 102, UID: "aws_rds", Name: "AWS RDS", ModelGroupID: 4, ParentUID: "cloud_rds", Category: "database", Level: 2, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
+		{ID: 103, UID: "aws_redis", Name: "AWS ElastiCache", ModelGroupID: 4, ParentUID: "cloud_redis", Category: "database", Level: 2, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
+		{ID: 104, UID: "aws_mongodb", Name: "AWS DocumentDB", ModelGroupID: 4, ParentUID: "cloud_mongodb", Category: "database", Level: 2, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
+		{ID: 105, UID: "aws_vpc", Name: "AWS VPC", ModelGroupID: 3, ParentUID: "cloud_vpc", Category: "network", Level: 2, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
+		{ID: 106, UID: "aws_eip", Name: "AWS Elastic IP", ModelGroupID: 3, ParentUID: "cloud_eip", Category: "network", Level: 2, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
+		{ID: 107, UID: "aws_s3", Name: "AWS S3", ModelGroupID: 2, ParentUID: "cloud_oss", Category: "storage", Level: 2, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
+		{ID: 108, UID: "aws_iam_user", Name: "AWS IAM用户", ModelGroupID: 6, Category: "iam", Level: 1, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
+		{ID: 109, UID: "aws_iam_group", Name: "AWS IAM用户组", ModelGroupID: 6, Category: "iam", Level: 1, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
+		{ID: 110, UID: "aws_iam_policy", Name: "AWS IAM策略", ModelGroupID: 6, Category: "iam", Level: 1, Provider: "aws", Extensible: true, Ctime: now, Utime: now},
 
 		// 华为云
 		{ID: 201, UID: "huawei_ecs", Name: "华为云ECS", ModelGroupID: 1, ParentUID: "cloud_vm", Category: "compute", Level: 2, Provider: "huawei", Extensible: true, Ctime: now, Utime: now},
+		{ID: 202, UID: "huawei_rds", Name: "华为云RDS", ModelGroupID: 4, ParentUID: "cloud_rds", Category: "database", Level: 2, Provider: "huawei", Extensible: true, Ctime: now, Utime: now},
+		{ID: 203, UID: "huawei_redis", Name: "华为云DCS", ModelGroupID: 4, ParentUID: "cloud_redis", Category: "database", Level: 2, Provider: "huawei", Extensible: true, Ctime: now, Utime: now},
+		{ID: 204, UID: "huawei_mongodb", Name: "华为云DDS", ModelGroupID: 4, ParentUID: "cloud_mongodb", Category: "database", Level: 2, Provider: "huawei", Extensible: true, Ctime: now, Utime: now},
+		{ID: 205, UID: "huawei_vpc", Name: "华为云VPC", ModelGroupID: 3, ParentUID: "cloud_vpc", Category: "network", Level: 2, Provider: "huawei", Extensible: true, Ctime: now, Utime: now},
+		{ID: 206, UID: "huawei_eip", Name: "华为云EIP", ModelGroupID: 3, ParentUID: "cloud_eip", Category: "network", Level: 2, Provider: "huawei", Extensible: true, Ctime: now, Utime: now},
+
+		// 腾讯云
+		{ID: 301, UID: "tencent_ecs", Name: "腾讯云CVM", ModelGroupID: 1, ParentUID: "cloud_vm", Category: "compute", Level: 2, Provider: "tencent", Extensible: true, Ctime: now, Utime: now},
+		{ID: 302, UID: "tencent_rds", Name: "腾讯云CDB", ModelGroupID: 4, ParentUID: "cloud_rds", Category: "database", Level: 2, Provider: "tencent", Extensible: true, Ctime: now, Utime: now},
+		{ID: 303, UID: "tencent_redis", Name: "腾讯云Redis", ModelGroupID: 4, ParentUID: "cloud_redis", Category: "database", Level: 2, Provider: "tencent", Extensible: true, Ctime: now, Utime: now},
+		{ID: 304, UID: "tencent_mongodb", Name: "腾讯云MongoDB", ModelGroupID: 4, ParentUID: "cloud_mongodb", Category: "database", Level: 2, Provider: "tencent", Extensible: true, Ctime: now, Utime: now},
+		{ID: 305, UID: "tencent_vpc", Name: "腾讯云VPC", ModelGroupID: 3, ParentUID: "cloud_vpc", Category: "network", Level: 2, Provider: "tencent", Extensible: true, Ctime: now, Utime: now},
+		{ID: 306, UID: "tencent_eip", Name: "腾讯云EIP", ModelGroupID: 3, ParentUID: "cloud_eip", Category: "network", Level: 2, Provider: "tencent", Extensible: true, Ctime: now, Utime: now},
+
+		// 火山引擎
+		{ID: 401, UID: "volcano_ecs", Name: "火山引擎ECS", ModelGroupID: 1, ParentUID: "cloud_vm", Category: "compute", Level: 2, Provider: "volcano", Extensible: true, Ctime: now, Utime: now},
+		{ID: 402, UID: "volcano_rds", Name: "火山引擎RDS", ModelGroupID: 4, ParentUID: "cloud_rds", Category: "database", Level: 2, Provider: "volcano", Extensible: true, Ctime: now, Utime: now},
+		{ID: 403, UID: "volcano_redis", Name: "火山引擎Redis", ModelGroupID: 4, ParentUID: "cloud_redis", Category: "database", Level: 2, Provider: "volcano", Extensible: true, Ctime: now, Utime: now},
+		{ID: 404, UID: "volcano_mongodb", Name: "火山引擎MongoDB", ModelGroupID: 4, ParentUID: "cloud_mongodb", Category: "database", Level: 2, Provider: "volcano", Extensible: true, Ctime: now, Utime: now},
+		{ID: 405, UID: "volcano_vpc", Name: "火山引擎VPC", ModelGroupID: 3, ParentUID: "cloud_vpc", Category: "network", Level: 2, Provider: "volcano", Extensible: true, Ctime: now, Utime: now},
+		{ID: 406, UID: "volcano_eip", Name: "火山引擎EIP", ModelGroupID: 3, ParentUID: "cloud_eip", Category: "network", Level: 2, Provider: "volcano", Extensible: true, Ctime: now, Utime: now},
 	}
 
 	// 属性分组定义
@@ -246,6 +302,139 @@ func main() {
 		{ID: 207, FieldUID: "last_login_date", FieldName: "最后登录时间", FieldType: "datetime", ModelUID: "aliyun_ram_user", GroupID: 21, Display: true, Index: 5, Ctime: now, Utime: now},
 	}
 
+	// ==================== 通用云资源模型属性 ====================
+
+	// 通用 RDS 属性分组
+	cloudRdsAttrGroups := []AttributeGroup{
+		{ID: 100, UID: "basic", Name: "基本信息", ModelUID: "cloud_rds", Index: 1, IsBuiltin: true, Ctime: now, Utime: now},
+		{ID: 101, UID: "config", Name: "配置信息", ModelUID: "cloud_rds", Index: 2, IsBuiltin: true, Ctime: now, Utime: now},
+		{ID: 102, UID: "network", Name: "网络信息", ModelUID: "cloud_rds", Index: 3, IsBuiltin: true, Ctime: now, Utime: now},
+	}
+	cloudRdsFields := []ModelField{
+		{ID: 1001, FieldUID: "instance_id", FieldName: "实例ID", FieldType: "string", ModelUID: "cloud_rds", GroupID: 100, DisplayName: "实例ID", Display: true, Index: 1, Required: true, Ctime: now, Utime: now},
+		{ID: 1002, FieldUID: "instance_name", FieldName: "实例名称", FieldType: "string", ModelUID: "cloud_rds", GroupID: 100, DisplayName: "实例名称", Display: true, Index: 2, Ctime: now, Utime: now},
+		{ID: 1003, FieldUID: "status", FieldName: "状态", FieldType: "string", ModelUID: "cloud_rds", GroupID: 100, DisplayName: "状态", Display: true, Index: 3, Ctime: now, Utime: now},
+		{ID: 1004, FieldUID: "region", FieldName: "地域", FieldType: "string", ModelUID: "cloud_rds", GroupID: 100, DisplayName: "地域", Display: true, Index: 4, Ctime: now, Utime: now},
+		{ID: 1005, FieldUID: "zone", FieldName: "可用区", FieldType: "string", ModelUID: "cloud_rds", GroupID: 100, DisplayName: "可用区", Display: true, Index: 5, Ctime: now, Utime: now},
+		{ID: 1006, FieldUID: "provider", FieldName: "云厂商", FieldType: "string", ModelUID: "cloud_rds", GroupID: 100, DisplayName: "云厂商", Display: true, Index: 6, Ctime: now, Utime: now},
+		{ID: 1007, FieldUID: "engine", FieldName: "数据库引擎", FieldType: "string", ModelUID: "cloud_rds", GroupID: 101, DisplayName: "数据库引擎", Display: true, Index: 1, Ctime: now, Utime: now},
+		{ID: 1008, FieldUID: "engine_version", FieldName: "引擎版本", FieldType: "string", ModelUID: "cloud_rds", GroupID: 101, DisplayName: "引擎版本", Display: true, Index: 2, Ctime: now, Utime: now},
+		{ID: 1009, FieldUID: "instance_class", FieldName: "实例规格", FieldType: "string", ModelUID: "cloud_rds", GroupID: 101, DisplayName: "实例规格", Display: true, Index: 3, Ctime: now, Utime: now},
+		{ID: 1010, FieldUID: "cpu", FieldName: "CPU", FieldType: "int", ModelUID: "cloud_rds", GroupID: 101, DisplayName: "CPU", Display: true, Index: 4, Ctime: now, Utime: now},
+		{ID: 1011, FieldUID: "memory", FieldName: "内存(MB)", FieldType: "int", ModelUID: "cloud_rds", GroupID: 101, DisplayName: "内存(MB)", Display: true, Index: 5, Ctime: now, Utime: now},
+		{ID: 1012, FieldUID: "storage", FieldName: "存储(GB)", FieldType: "int", ModelUID: "cloud_rds", GroupID: 101, DisplayName: "存储(GB)", Display: true, Index: 6, Ctime: now, Utime: now},
+		{ID: 1013, FieldUID: "connection_string", FieldName: "连接地址", FieldType: "string", ModelUID: "cloud_rds", GroupID: 102, DisplayName: "连接地址", Display: true, Index: 1, Ctime: now, Utime: now},
+		{ID: 1014, FieldUID: "port", FieldName: "端口", FieldType: "int", ModelUID: "cloud_rds", GroupID: 102, DisplayName: "端口", Display: true, Index: 2, Ctime: now, Utime: now},
+		{ID: 1015, FieldUID: "vpc_id", FieldName: "VPC ID", FieldType: "string", ModelUID: "cloud_rds", GroupID: 102, DisplayName: "VPC ID", Display: true, Index: 3, Ctime: now, Utime: now},
+		{ID: 1016, FieldUID: "private_ip", FieldName: "私网IP", FieldType: "string", ModelUID: "cloud_rds", GroupID: 102, DisplayName: "私网IP", Display: true, Index: 4, Ctime: now, Utime: now},
+	}
+
+	// 通用 Redis 属性分组
+	cloudRedisAttrGroups := []AttributeGroup{
+		{ID: 110, UID: "basic", Name: "基本信息", ModelUID: "cloud_redis", Index: 1, IsBuiltin: true, Ctime: now, Utime: now},
+		{ID: 111, UID: "config", Name: "配置信息", ModelUID: "cloud_redis", Index: 2, IsBuiltin: true, Ctime: now, Utime: now},
+		{ID: 112, UID: "network", Name: "网络信息", ModelUID: "cloud_redis", Index: 3, IsBuiltin: true, Ctime: now, Utime: now},
+	}
+	cloudRedisFields := []ModelField{
+		{ID: 1101, FieldUID: "instance_id", FieldName: "实例ID", FieldType: "string", ModelUID: "cloud_redis", GroupID: 110, DisplayName: "实例ID", Display: true, Index: 1, Required: true, Ctime: now, Utime: now},
+		{ID: 1102, FieldUID: "instance_name", FieldName: "实例名称", FieldType: "string", ModelUID: "cloud_redis", GroupID: 110, DisplayName: "实例名称", Display: true, Index: 2, Ctime: now, Utime: now},
+		{ID: 1103, FieldUID: "status", FieldName: "状态", FieldType: "string", ModelUID: "cloud_redis", GroupID: 110, DisplayName: "状态", Display: true, Index: 3, Ctime: now, Utime: now},
+		{ID: 1104, FieldUID: "region", FieldName: "地域", FieldType: "string", ModelUID: "cloud_redis", GroupID: 110, DisplayName: "地域", Display: true, Index: 4, Ctime: now, Utime: now},
+		{ID: 1105, FieldUID: "provider", FieldName: "云厂商", FieldType: "string", ModelUID: "cloud_redis", GroupID: 110, DisplayName: "云厂商", Display: true, Index: 5, Ctime: now, Utime: now},
+		{ID: 1106, FieldUID: "engine_version", FieldName: "引擎版本", FieldType: "string", ModelUID: "cloud_redis", GroupID: 111, DisplayName: "引擎版本", Display: true, Index: 1, Ctime: now, Utime: now},
+		{ID: 1107, FieldUID: "instance_class", FieldName: "实例规格", FieldType: "string", ModelUID: "cloud_redis", GroupID: 111, DisplayName: "实例规格", Display: true, Index: 2, Ctime: now, Utime: now},
+		{ID: 1108, FieldUID: "architecture", FieldName: "架构类型", FieldType: "string", ModelUID: "cloud_redis", GroupID: 111, DisplayName: "架构类型", Display: true, Index: 3, Ctime: now, Utime: now},
+		{ID: 1109, FieldUID: "capacity", FieldName: "容量(MB)", FieldType: "int", ModelUID: "cloud_redis", GroupID: 111, DisplayName: "容量(MB)", Display: true, Index: 4, Ctime: now, Utime: now},
+		{ID: 1110, FieldUID: "bandwidth", FieldName: "带宽(Mbps)", FieldType: "int", ModelUID: "cloud_redis", GroupID: 111, DisplayName: "带宽(Mbps)", Display: true, Index: 5, Ctime: now, Utime: now},
+		{ID: 1111, FieldUID: "connection_domain", FieldName: "连接地址", FieldType: "string", ModelUID: "cloud_redis", GroupID: 112, DisplayName: "连接地址", Display: true, Index: 1, Ctime: now, Utime: now},
+		{ID: 1112, FieldUID: "port", FieldName: "端口", FieldType: "int", ModelUID: "cloud_redis", GroupID: 112, DisplayName: "端口", Display: true, Index: 2, Ctime: now, Utime: now},
+		{ID: 1113, FieldUID: "vpc_id", FieldName: "VPC ID", FieldType: "string", ModelUID: "cloud_redis", GroupID: 112, DisplayName: "VPC ID", Display: true, Index: 3, Ctime: now, Utime: now},
+		{ID: 1114, FieldUID: "private_ip", FieldName: "私网IP", FieldType: "string", ModelUID: "cloud_redis", GroupID: 112, DisplayName: "私网IP", Display: true, Index: 4, Ctime: now, Utime: now},
+	}
+
+	// 通用 MongoDB 属性分组
+	cloudMongodbAttrGroups := []AttributeGroup{
+		{ID: 120, UID: "basic", Name: "基本信息", ModelUID: "cloud_mongodb", Index: 1, IsBuiltin: true, Ctime: now, Utime: now},
+		{ID: 121, UID: "config", Name: "配置信息", ModelUID: "cloud_mongodb", Index: 2, IsBuiltin: true, Ctime: now, Utime: now},
+		{ID: 122, UID: "network", Name: "网络信息", ModelUID: "cloud_mongodb", Index: 3, IsBuiltin: true, Ctime: now, Utime: now},
+	}
+	cloudMongodbFields := []ModelField{
+		{ID: 1201, FieldUID: "instance_id", FieldName: "实例ID", FieldType: "string", ModelUID: "cloud_mongodb", GroupID: 120, DisplayName: "实例ID", Display: true, Index: 1, Required: true, Ctime: now, Utime: now},
+		{ID: 1202, FieldUID: "instance_name", FieldName: "实例名称", FieldType: "string", ModelUID: "cloud_mongodb", GroupID: 120, DisplayName: "实例名称", Display: true, Index: 2, Ctime: now, Utime: now},
+		{ID: 1203, FieldUID: "status", FieldName: "状态", FieldType: "string", ModelUID: "cloud_mongodb", GroupID: 120, DisplayName: "状态", Display: true, Index: 3, Ctime: now, Utime: now},
+		{ID: 1204, FieldUID: "region", FieldName: "地域", FieldType: "string", ModelUID: "cloud_mongodb", GroupID: 120, DisplayName: "地域", Display: true, Index: 4, Ctime: now, Utime: now},
+		{ID: 1205, FieldUID: "provider", FieldName: "云厂商", FieldType: "string", ModelUID: "cloud_mongodb", GroupID: 120, DisplayName: "云厂商", Display: true, Index: 5, Ctime: now, Utime: now},
+		{ID: 1206, FieldUID: "engine_version", FieldName: "引擎版本", FieldType: "string", ModelUID: "cloud_mongodb", GroupID: 121, DisplayName: "引擎版本", Display: true, Index: 1, Ctime: now, Utime: now},
+		{ID: 1207, FieldUID: "instance_class", FieldName: "实例规格", FieldType: "string", ModelUID: "cloud_mongodb", GroupID: 121, DisplayName: "实例规格", Display: true, Index: 2, Ctime: now, Utime: now},
+		{ID: 1208, FieldUID: "db_type", FieldName: "数据库类型", FieldType: "string", ModelUID: "cloud_mongodb", GroupID: 121, DisplayName: "数据库类型", Display: true, Index: 3, Ctime: now, Utime: now},
+		{ID: 1209, FieldUID: "cpu", FieldName: "CPU", FieldType: "int", ModelUID: "cloud_mongodb", GroupID: 121, DisplayName: "CPU", Display: true, Index: 4, Ctime: now, Utime: now},
+		{ID: 1210, FieldUID: "memory", FieldName: "内存(MB)", FieldType: "int", ModelUID: "cloud_mongodb", GroupID: 121, DisplayName: "内存(MB)", Display: true, Index: 5, Ctime: now, Utime: now},
+		{ID: 1211, FieldUID: "storage", FieldName: "存储(GB)", FieldType: "int", ModelUID: "cloud_mongodb", GroupID: 121, DisplayName: "存储(GB)", Display: true, Index: 6, Ctime: now, Utime: now},
+		{ID: 1212, FieldUID: "connection_string", FieldName: "连接地址", FieldType: "string", ModelUID: "cloud_mongodb", GroupID: 122, DisplayName: "连接地址", Display: true, Index: 1, Ctime: now, Utime: now},
+		{ID: 1213, FieldUID: "port", FieldName: "端口", FieldType: "int", ModelUID: "cloud_mongodb", GroupID: 122, DisplayName: "端口", Display: true, Index: 2, Ctime: now, Utime: now},
+		{ID: 1214, FieldUID: "vpc_id", FieldName: "VPC ID", FieldType: "string", ModelUID: "cloud_mongodb", GroupID: 122, DisplayName: "VPC ID", Display: true, Index: 3, Ctime: now, Utime: now},
+	}
+
+	// 通用 VPC 属性分组
+	cloudVpcAttrGroups := []AttributeGroup{
+		{ID: 130, UID: "basic", Name: "基本信息", ModelUID: "cloud_vpc", Index: 1, IsBuiltin: true, Ctime: now, Utime: now},
+		{ID: 131, UID: "network", Name: "网络配置", ModelUID: "cloud_vpc", Index: 2, IsBuiltin: true, Ctime: now, Utime: now},
+		{ID: 132, UID: "resource", Name: "关联资源", ModelUID: "cloud_vpc", Index: 3, IsBuiltin: true, Ctime: now, Utime: now},
+	}
+	cloudVpcFields := []ModelField{
+		{ID: 1301, FieldUID: "vpc_id", FieldName: "VPC ID", FieldType: "string", ModelUID: "cloud_vpc", GroupID: 130, DisplayName: "VPC ID", Display: true, Index: 1, Required: true, Ctime: now, Utime: now},
+		{ID: 1302, FieldUID: "vpc_name", FieldName: "VPC名称", FieldType: "string", ModelUID: "cloud_vpc", GroupID: 130, DisplayName: "VPC名称", Display: true, Index: 2, Ctime: now, Utime: now},
+		{ID: 1303, FieldUID: "status", FieldName: "状态", FieldType: "string", ModelUID: "cloud_vpc", GroupID: 130, DisplayName: "状态", Display: true, Index: 3, Ctime: now, Utime: now},
+		{ID: 1304, FieldUID: "region", FieldName: "地域", FieldType: "string", ModelUID: "cloud_vpc", GroupID: 130, DisplayName: "地域", Display: true, Index: 4, Ctime: now, Utime: now},
+		{ID: 1305, FieldUID: "provider", FieldName: "云厂商", FieldType: "string", ModelUID: "cloud_vpc", GroupID: 130, DisplayName: "云厂商", Display: true, Index: 5, Ctime: now, Utime: now},
+		{ID: 1306, FieldUID: "is_default", FieldName: "默认VPC", FieldType: "bool", ModelUID: "cloud_vpc", GroupID: 130, DisplayName: "默认VPC", Display: true, Index: 6, Ctime: now, Utime: now},
+		{ID: 1307, FieldUID: "cidr_block", FieldName: "CIDR", FieldType: "string", ModelUID: "cloud_vpc", GroupID: 131, DisplayName: "CIDR", Display: true, Index: 1, Ctime: now, Utime: now},
+		{ID: 1308, FieldUID: "ipv6_cidr_block", FieldName: "IPv6 CIDR", FieldType: "string", ModelUID: "cloud_vpc", GroupID: 131, DisplayName: "IPv6 CIDR", Display: true, Index: 2, Ctime: now, Utime: now},
+		{ID: 1309, FieldUID: "enable_ipv6", FieldName: "启用IPv6", FieldType: "bool", ModelUID: "cloud_vpc", GroupID: 131, DisplayName: "启用IPv6", Display: true, Index: 3, Ctime: now, Utime: now},
+		{ID: 1310, FieldUID: "vswitch_count", FieldName: "交换机数量", FieldType: "int", ModelUID: "cloud_vpc", GroupID: 132, DisplayName: "交换机数量", Display: true, Index: 1, Ctime: now, Utime: now},
+		{ID: 1311, FieldUID: "route_table_count", FieldName: "路由表数量", FieldType: "int", ModelUID: "cloud_vpc", GroupID: 132, DisplayName: "路由表数量", Display: true, Index: 2, Ctime: now, Utime: now},
+		{ID: 1312, FieldUID: "nat_gateway_count", FieldName: "NAT网关数量", FieldType: "int", ModelUID: "cloud_vpc", GroupID: 132, DisplayName: "NAT网关数量", Display: true, Index: 3, Ctime: now, Utime: now},
+		{ID: 1313, FieldUID: "security_group_count", FieldName: "安全组数量", FieldType: "int", ModelUID: "cloud_vpc", GroupID: 132, DisplayName: "安全组数量", Display: true, Index: 4, Ctime: now, Utime: now},
+	}
+
+	// 通用 EIP 属性分组
+	cloudEipAttrGroups := []AttributeGroup{
+		{ID: 140, UID: "basic", Name: "基本信息", ModelUID: "cloud_eip", Index: 1, IsBuiltin: true, Ctime: now, Utime: now},
+		{ID: 141, UID: "bindinfo", Name: "绑定信息", ModelUID: "cloud_eip", Index: 2, IsBuiltin: true, Ctime: now, Utime: now},
+		{ID: 142, UID: "billing", Name: "计费信息", ModelUID: "cloud_eip", Index: 3, IsBuiltin: true, Ctime: now, Utime: now},
+	}
+	cloudEipFields := []ModelField{
+		{ID: 1401, FieldUID: "allocation_id", FieldName: "EIP ID", FieldType: "string", ModelUID: "cloud_eip", GroupID: 140, DisplayName: "EIP ID", Display: true, Index: 1, Required: true, Ctime: now, Utime: now},
+		{ID: 1402, FieldUID: "ip_address", FieldName: "IP地址", FieldType: "string", ModelUID: "cloud_eip", GroupID: 140, DisplayName: "IP地址", Display: true, Index: 2, Required: true, Ctime: now, Utime: now},
+		{ID: 1403, FieldUID: "name", FieldName: "名称", FieldType: "string", ModelUID: "cloud_eip", GroupID: 140, DisplayName: "名称", Display: true, Index: 3, Ctime: now, Utime: now},
+		{ID: 1404, FieldUID: "status", FieldName: "状态", FieldType: "string", ModelUID: "cloud_eip", GroupID: 140, DisplayName: "状态", Display: true, Index: 4, Ctime: now, Utime: now},
+		{ID: 1405, FieldUID: "region", FieldName: "地域", FieldType: "string", ModelUID: "cloud_eip", GroupID: 140, DisplayName: "地域", Display: true, Index: 5, Ctime: now, Utime: now},
+		{ID: 1406, FieldUID: "provider", FieldName: "云厂商", FieldType: "string", ModelUID: "cloud_eip", GroupID: 140, DisplayName: "云厂商", Display: true, Index: 6, Ctime: now, Utime: now},
+		{ID: 1407, FieldUID: "isp", FieldName: "线路类型", FieldType: "string", ModelUID: "cloud_eip", GroupID: 140, DisplayName: "线路类型", Display: true, Index: 7, Ctime: now, Utime: now},
+		{ID: 1408, FieldUID: "instance_id", FieldName: "绑定实例ID", FieldType: "string", ModelUID: "cloud_eip", GroupID: 141, DisplayName: "绑定实例ID", Display: true, Index: 1, Ctime: now, Utime: now},
+		{ID: 1409, FieldUID: "instance_type", FieldName: "绑定实例类型", FieldType: "string", ModelUID: "cloud_eip", GroupID: 141, DisplayName: "绑定实例类型", Display: true, Index: 2, Ctime: now, Utime: now},
+		{ID: 1410, FieldUID: "instance_name", FieldName: "绑定实例名称", FieldType: "string", ModelUID: "cloud_eip", GroupID: 141, DisplayName: "绑定实例名称", Display: true, Index: 3, Ctime: now, Utime: now},
+		{ID: 1411, FieldUID: "vpc_id", FieldName: "VPC ID", FieldType: "string", ModelUID: "cloud_eip", GroupID: 141, DisplayName: "VPC ID", Display: true, Index: 4, Ctime: now, Utime: now},
+		{ID: 1412, FieldUID: "bandwidth", FieldName: "带宽(Mbps)", FieldType: "int", ModelUID: "cloud_eip", GroupID: 142, DisplayName: "带宽(Mbps)", Display: true, Index: 1, Ctime: now, Utime: now},
+		{ID: 1413, FieldUID: "internet_charge_type", FieldName: "计费方式", FieldType: "string", ModelUID: "cloud_eip", GroupID: 142, DisplayName: "计费方式", Display: true, Index: 2, Ctime: now, Utime: now},
+		{ID: 1414, FieldUID: "charge_type", FieldName: "付费类型", FieldType: "string", ModelUID: "cloud_eip", GroupID: 142, DisplayName: "付费类型", Display: true, Index: 3, Ctime: now, Utime: now},
+	}
+
+	// ==================== 关系类型定义 ====================
+	relationTypes := []RelationType{
+		// ECS 关系
+		{ID: 1, UID: "ecs_belongs_to_vpc", Name: "ECS属于VPC", SourceModelUID: "cloud_vm", TargetModelUID: "cloud_vpc", Direction: "many_to_one", Description: "ECS实例所属的VPC", Ctime: now, Utime: now},
+		// EIP 关系
+		{ID: 2, UID: "eip_bindto_ecs", Name: "EIP绑定ECS", SourceModelUID: "cloud_eip", TargetModelUID: "cloud_vm", Direction: "one_to_one", Description: "EIP绑定到ECS实例", Ctime: now, Utime: now},
+		{ID: 3, UID: "eip_belongs_to_vpc", Name: "EIP属于VPC", SourceModelUID: "cloud_eip", TargetModelUID: "cloud_vpc", Direction: "many_to_one", Description: "EIP所属的VPC", Ctime: now, Utime: now},
+		// RDS 关系
+		{ID: 4, UID: "rds_belongs_to_vpc", Name: "RDS属于VPC", SourceModelUID: "cloud_rds", TargetModelUID: "cloud_vpc", Direction: "many_to_one", Description: "RDS实例所属的VPC", Ctime: now, Utime: now},
+		// Redis 关系
+		{ID: 5, UID: "redis_belongs_to_vpc", Name: "Redis属于VPC", SourceModelUID: "cloud_redis", TargetModelUID: "cloud_vpc", Direction: "many_to_one", Description: "Redis实例所属的VPC", Ctime: now, Utime: now},
+		// MongoDB 关系
+		{ID: 6, UID: "mongodb_belongs_to_vpc", Name: "MongoDB属于VPC", SourceModelUID: "cloud_mongodb", TargetModelUID: "cloud_vpc", Direction: "many_to_one", Description: "MongoDB实例所属的VPC", Ctime: now, Utime: now},
+	}
+
 	// 插入数据
 	fmt.Println("Inserting model groups...")
 	for _, g := range groups {
@@ -273,6 +462,12 @@ func main() {
 	allAttrGroups := append(vmAttrGroups, ecsAttrGroups...)
 	allAttrGroups = append(allAttrGroups, rdsAttrGroups...)
 	allAttrGroups = append(allAttrGroups, ramUserAttrGroups...)
+	// 添加通用云资源模型属性分组
+	allAttrGroups = append(allAttrGroups, cloudRdsAttrGroups...)
+	allAttrGroups = append(allAttrGroups, cloudRedisAttrGroups...)
+	allAttrGroups = append(allAttrGroups, cloudMongodbAttrGroups...)
+	allAttrGroups = append(allAttrGroups, cloudVpcAttrGroups...)
+	allAttrGroups = append(allAttrGroups, cloudEipAttrGroups...)
 	for _, g := range allAttrGroups {
 		_, err := db.Collection("c_attribute_group").UpdateOne(ctx,
 			bson.M{"model_uid": g.ModelUID, "uid": g.UID},
@@ -287,6 +482,12 @@ func main() {
 	allFields := append(vmFields, ecsFields...)
 	allFields = append(allFields, rdsFields...)
 	allFields = append(allFields, ramUserFields...)
+	// 添加通用云资源模型字段
+	allFields = append(allFields, cloudRdsFields...)
+	allFields = append(allFields, cloudRedisFields...)
+	allFields = append(allFields, cloudMongodbFields...)
+	allFields = append(allFields, cloudVpcFields...)
+	allFields = append(allFields, cloudEipFields...)
 	for _, f := range allFields {
 		_, err := db.Collection("c_attribute").UpdateOne(ctx,
 			bson.M{"model_uid": f.ModelUID, "field_uid": f.FieldUID},
@@ -294,6 +495,17 @@ func main() {
 			options.Update().SetUpsert(true))
 		if err != nil {
 			log.Printf("Failed to insert field %s.%s: %v", f.ModelUID, f.FieldUID, err)
+		}
+	}
+
+	fmt.Println("Inserting relation types...")
+	for _, rt := range relationTypes {
+		_, err := db.Collection("c_model_relation_type").UpdateOne(ctx,
+			bson.M{"uid": rt.UID},
+			bson.M{"$set": rt},
+			options.Update().SetUpsert(true))
+		if err != nil {
+			log.Printf("Failed to insert relation type %s: %v", rt.UID, err)
 		}
 	}
 
