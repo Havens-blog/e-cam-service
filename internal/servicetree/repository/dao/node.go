@@ -15,7 +15,7 @@ const NodeCollection = "c_service_tree_node"
 // Node 服务树节点 DAO 模型
 type Node struct {
 	ID          int64    `bson:"id"`
-	UID         string   `bson:"uid,omitempty"` // 空字符串时不存储，让 sparse 索引生效
+	UID         string   `bson:"uid,omitempty"`
 	Name        string   `bson:"name"`
 	ParentID    int64    `bson:"parent_id"`
 	Level       int      `bson:"level"`
@@ -101,7 +101,6 @@ func (d *nodeDAO) Update(ctx context.Context, node Node) error {
 		"utime":       node.Utime,
 	}
 
-	// 只有 uid 非空时才更新
 	if node.UID != "" {
 		setFields["uid"] = node.UID
 	}
@@ -167,7 +166,6 @@ func (d *nodeDAO) List(ctx context.Context, filter NodeFilter) ([]Node, error) {
 	return nodes, err
 }
 
-// ListByPath 根据路径前缀查询子树
 func (d *nodeDAO) ListByPath(ctx context.Context, tenantID, pathPrefix string) ([]Node, error) {
 	filter := bson.M{
 		"tenant_id": tenantID,

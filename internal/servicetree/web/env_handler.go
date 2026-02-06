@@ -36,13 +36,6 @@ func (h *EnvHandler) getTenantID(c *gin.Context) string {
 	return c.GetHeader("X-Tenant-ID")
 }
 
-// CreateEnv 创建环境
-// @Summary 创建环境
-// @Tags 服务树-环境
-// @Param X-Tenant-ID header string true "租户ID"
-// @Param body body CreateEnvReq true "环境信息"
-// @Success 200 {object} ginx.Result{data=int64}
-// @Router /api/v1/cam/service-tree/environments [post]
 func (h *EnvHandler) CreateEnv(c *gin.Context, req CreateEnvReq) (ginx.Result, error) {
 	tenantID := h.getTenantID(c)
 	env := domain.Environment{
@@ -61,12 +54,6 @@ func (h *EnvHandler) CreateEnv(c *gin.Context, req CreateEnvReq) (ginx.Result, e
 	return ginx.Result{Data: id}, nil
 }
 
-// GetEnv 获取环境详情
-// @Summary 获取环境详情
-// @Tags 服务树-环境
-// @Param id path int true "环境ID"
-// @Success 200 {object} ginx.Result{data=EnvironmentVO}
-// @Router /api/v1/cam/service-tree/environments/{id} [get]
 func (h *EnvHandler) GetEnv(c *gin.Context) (ginx.Result, error) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -80,13 +67,6 @@ func (h *EnvHandler) GetEnv(c *gin.Context) (ginx.Result, error) {
 	return ginx.Result{Data: h.toEnvVO(env)}, nil
 }
 
-// UpdateEnv 更新环境
-// @Summary 更新环境
-// @Tags 服务树-环境
-// @Param id path int true "环境ID"
-// @Param body body UpdateEnvReq true "环境信息"
-// @Success 200 {object} ginx.Result
-// @Router /api/v1/cam/service-tree/environments/{id} [put]
 func (h *EnvHandler) UpdateEnv(c *gin.Context, req UpdateEnvReq) (ginx.Result, error) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -111,12 +91,6 @@ func (h *EnvHandler) UpdateEnv(c *gin.Context, req UpdateEnvReq) (ginx.Result, e
 	return ginx.Result{Msg: "更新成功"}, nil
 }
 
-// DeleteEnv 删除环境
-// @Summary 删除环境
-// @Tags 服务树-环境
-// @Param id path int true "环境ID"
-// @Success 200 {object} ginx.Result
-// @Router /api/v1/cam/service-tree/environments/{id} [delete]
 func (h *EnvHandler) DeleteEnv(c *gin.Context) (ginx.Result, error) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -129,20 +103,11 @@ func (h *EnvHandler) DeleteEnv(c *gin.Context) (ginx.Result, error) {
 	return ginx.Result{Msg: "删除成功"}, nil
 }
 
-// ListEnvs 获取环境列表
-// @Summary 获取环境列表
-// @Tags 服务树-环境
-// @Param X-Tenant-ID header string true "租户ID"
-// @Success 200 {object} ginx.Result{data=[]EnvironmentVO}
-// @Router /api/v1/cam/service-tree/environments [get]
 func (h *EnvHandler) ListEnvs(c *gin.Context, req ListEnvReq) (ginx.Result, error) {
 	tenantID := h.getTenantID(c)
 	if req.PageSize <= 0 {
 		req.PageSize = 20
 	}
-
-	// 调试日志
-	println("ListEnvs tenantID:", tenantID, "page:", req.Page, "pageSize:", req.PageSize)
 
 	filter := domain.EnvironmentFilter{
 		TenantID: tenantID,
@@ -165,18 +130,8 @@ func (h *EnvHandler) ListEnvs(c *gin.Context, req ListEnvReq) (ginx.Result, erro
 	return ginx.Result{Data: map[string]any{"list": vos, "total": total}}, nil
 }
 
-// InitDefaultEnvs 初始化默认环境
-// @Summary 初始化默认环境
-// @Tags 服务树-环境
-// @Param X-Tenant-ID header string true "租户ID"
-// @Success 200 {object} ginx.Result
-// @Router /api/v1/cam/service-tree/environments/init [post]
 func (h *EnvHandler) InitDefaultEnvs(c *gin.Context) (ginx.Result, error) {
 	tenantID := h.getTenantID(c)
-
-	// 调试日志
-	println("InitDefaultEnvs tenantID:", tenantID)
-
 	if tenantID == "" {
 		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
 	}

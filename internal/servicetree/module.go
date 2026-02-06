@@ -3,17 +3,51 @@
 package servicetree
 
 import (
-	camst "github.com/Havens-blog/e-cam-service/internal/cam/servicetree"
+	"github.com/Havens-blog/e-cam-service/internal/servicetree/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/servicetree/service"
+	"github.com/Havens-blog/e-cam-service/internal/servicetree/web"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/gin-gonic/gin"
 )
 
-// Module 服务树模块 - 别名到 cam/servicetree.Module
-type Module = camst.Module
+// Module 服务树模块
+type Module struct {
+	Handler            *web.Handler
+	EnvHandler         *web.EnvHandler
+	TreeService        service.TreeService
+	BindingService     service.BindingService
+	RuleService        service.RuleEngineService
+	EnvironmentService service.EnvironmentService
+}
 
 // NewModule 创建服务树模块
-var NewModule = camst.NewModule
+func NewModule(
+	handler *web.Handler,
+	envHandler *web.EnvHandler,
+	treeSvc service.TreeService,
+	bindingSvc service.BindingService,
+	ruleSvc service.RuleEngineService,
+	envSvc service.EnvironmentService,
+) *Module {
+	return &Module{
+		Handler:            handler,
+		EnvHandler:         envHandler,
+		TreeService:        treeSvc,
+		BindingService:     bindingSvc,
+		RuleService:        ruleSvc,
+		EnvironmentService: envSvc,
+	}
+}
+
+// RegisterRoutes 注册路由
+func (m *Module) RegisterRoutes(rg *gin.RouterGroup) {
+	m.Handler.RegisterRoutes(rg)
+	m.Handler.RegisterBindingRoutes(rg)
+	m.Handler.RegisterRuleRoutes(rg)
+	m.EnvHandler.RegisterRoutes(rg)
+}
 
 // InitIndexes 初始化数据库索引
 func InitIndexes(db *mongox.Mongo) error {
-	return camst.InitIndexes(db)
+	return dao.InitIndexes(db)
 }

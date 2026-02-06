@@ -1,10 +1,11 @@
 package cam
 
 import (
-	"github.com/Havens-blog/e-cam-service/internal/cam/iam"
+	// 使用新的独立 IAM 模块
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree"
+	"github.com/Havens-blog/e-cam-service/internal/iam"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -22,7 +23,7 @@ func InitModuleWithIAM(db *mongox.Mongo) (*Module, error) {
 	}
 	logger.Info("CAM基础模块初始化成功")
 
-	// 初始化IAM模块
+	// 初始化IAM模块（使用新的独立模块）
 	logger.Info("开始初始化IAM模块")
 	iamModule, err := iam.InitModule(db)
 	if err != nil {

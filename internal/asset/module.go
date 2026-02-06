@@ -1,44 +1,95 @@
 // Package asset 资产管理模块
 // 这是从 internal/cam 重构后的独立模块
-// 当前阶段：别名模式，重新导出 cam 的实现
 package asset
 
 import (
+	"github.com/Havens-blog/e-cam-service/internal/asset/domain"
+	"github.com/Havens-blog/e-cam-service/internal/asset/repository"
+	"github.com/Havens-blog/e-cam-service/internal/asset/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/asset/service"
+
+	// 兼容旧代码，导出 cam 的 Model 相关类型
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	camrepo "github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	camservice "github.com/Havens-blog/e-cam-service/internal/cam/service"
 )
 
-// 重新导出 domain 类型
+// Instance 相关类型 (独立实现)
 type (
-	Instance        = camdomain.Instance
-	InstanceFilter  = camdomain.InstanceFilter
-	Model           = camdomain.Model
-	ModelFilter     = camdomain.ModelFilter
-	ModelField      = camdomain.ModelField
-	ModelFieldGroup = camdomain.ModelFieldGroup
+	Instance       = domain.Instance
+	InstanceFilter = domain.InstanceFilter
+	TagFilter      = domain.TagFilter
+	SearchFilter   = domain.SearchFilter
+	SearchResult   = domain.SearchResult
 )
 
-// 重新导出 repository 类型
+// Model/Field 相关类型 (独立实现)
 type (
-	InstanceRepository = camrepo.InstanceRepository
-	ModelRepository    = camrepo.ModelRepository
+	Model                 = domain.Model
+	ModelFilter           = domain.ModelFilter
+	ModelField            = domain.ModelField
+	ModelFieldFilter      = domain.ModelFieldFilter
+	ModelFieldGroup       = domain.ModelFieldGroup
+	ModelFieldGroupFilter = domain.ModelFieldGroupFilter
 )
 
-// 重新导出 service 类型
-type (
-	InstanceService = camservice.InstanceService
-	ModelService    = camservice.ModelService
+// 字段类型常量
+const (
+	FieldTypeString   = domain.FieldTypeString
+	FieldTypeInt      = domain.FieldTypeInt
+	FieldTypeFloat    = domain.FieldTypeFloat
+	FieldTypeBool     = domain.FieldTypeBool
+	FieldTypeDateTime = domain.FieldTypeDateTime
+	FieldTypeArray    = domain.FieldTypeArray
+	FieldTypeObject   = domain.FieldTypeObject
+	FieldTypeEnum     = domain.FieldTypeEnum
+	FieldTypeLink     = domain.FieldTypeLink
 )
 
-// NewInstanceRepository 创建实例仓储
-var NewInstanceRepository = camrepo.NewInstanceRepository
+// DAO 类型
+type InstanceDAO = dao.InstanceDAO
 
-// NewModelRepository 创建模型仓储
-var NewModelRepository = camrepo.NewModelRepository
+// Repository 类型
+type InstanceRepository = repository.InstanceRepository
 
-// NewInstanceService 创建实例服务
-var NewInstanceService = camservice.NewInstanceService
+// Service 类型
+type InstanceService = service.InstanceService
 
-// NewModelService 创建模型服务
-var NewModelService = camservice.NewModelService
+// 构造函数 (独立实现)
+var (
+	NewInstanceDAO        = dao.NewInstanceDAO
+	NewInstanceRepository = repository.NewInstanceRepository
+	NewInstanceService    = service.NewInstanceService
+)
+
+// ============ 兼容旧代码：Model 相关 (仍使用 cam 实现) ============
+
+// Model 相关 Repository 类型 (别名到 cam)
+type ModelRepository = camrepo.ModelRepository
+
+// Model 相关 Service 类型 (别名到 cam)
+type ModelService = camservice.ModelService
+
+// Model 相关构造函数 (别名到 cam)
+var (
+	NewModelRepository = camrepo.NewModelRepository
+	NewModelService    = camservice.NewModelService
+)
+
+// ============ 兼容旧代码：其他 cam domain 类型 ============
+
+// 其他 cam domain 类型 (别名)
+type (
+	InstanceRelation       = camdomain.InstanceRelation
+	InstanceRelationFilter = camdomain.InstanceRelationFilter
+	ModelGroup             = camdomain.ModelGroup
+	RelationType           = camdomain.RelationType
+	ModelRelation          = camdomain.ModelRelation
+)
+
+// 关系映射常量
+const (
+	MappingOneToOne   = camdomain.MappingOneToOne
+	MappingOneToMany  = camdomain.MappingOneToMany
+	MappingManyToMany = camdomain.MappingManyToMany
+)

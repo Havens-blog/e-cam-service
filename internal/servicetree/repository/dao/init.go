@@ -70,7 +70,6 @@ func initBindingIndexes(ctx context.Context, db *mongox.Mongo) error {
 			Options: options.Index().SetUnique(true),
 		},
 		{
-			// 资源唯一绑定：同一资源只能绑定到一个节点
 			Keys:    bson.D{{Key: "tenant_id", Value: 1}, {Key: "resource_type", Value: 1}, {Key: "resource_id", Value: 1}},
 			Options: options.Index().SetUnique(true),
 		},

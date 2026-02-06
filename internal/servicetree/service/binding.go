@@ -12,13 +12,10 @@ import (
 
 // BindingService 资源绑定服务接口
 type BindingService interface {
-	// 绑定管理
 	BindResource(ctx context.Context, nodeID, envID int64, resourceType string, resourceID int64, tenantID string) (int64, error)
 	BindResourceBatch(ctx context.Context, req domain.BatchBindRequest) (int64, error)
 	UnbindResource(ctx context.Context, tenantID, resourceType string, resourceID int64) error
 	UnbindByID(ctx context.Context, bindingID int64) error
-
-	// 查询
 	GetBinding(ctx context.Context, id int64) (domain.ResourceBinding, error)
 	GetResourceBinding(ctx context.Context, tenantID, resourceType string, resourceID int64) (domain.ResourceBinding, error)
 	ListBindings(ctx context.Context, filter domain.BindingFilter) ([]domain.ResourceBinding, int64, error)
@@ -46,22 +43,19 @@ func NewBindingService(
 }
 
 func (s *bindingService) BindResource(ctx context.Context, nodeID, envID int64, resourceType string, resourceID int64, tenantID string) (int64, error) {
-	// 验证资源类型
 	if resourceType != domain.ResourceTypeInstance && resourceType != domain.ResourceTypeAsset {
 		return 0, domain.ErrInvalidResourceType
 	}
 
-	// 验证节点存在
 	_, err := s.nodeRepo.GetByID(ctx, nodeID)
 	if err != nil {
 		return 0, fmt.Errorf("节点不存在: %w", err)
 	}
 
-	// 检查资源是否已绑定
 	existing, err := s.bindingRepo.GetByResource(ctx, tenantID, resourceType, resourceID)
 	if err == nil {
 		if existing.NodeID == nodeID && existing.EnvID == envID {
-			return existing.ID, nil // 已绑定到同一节点和环境
+			return existing.ID, nil
 		}
 		return 0, domain.ErrBindingExists
 	}
@@ -69,7 +63,6 @@ func (s *bindingService) BindResource(ctx context.Context, nodeID, envID int64, 
 		return 0, err
 	}
 
-	// 创建绑定
 	binding := domain.ResourceBinding{
 		NodeID:       nodeID,
 		EnvID:        envID,
@@ -99,18 +92,16 @@ func (s *bindingService) BindResourceBatch(ctx context.Context, req domain.Batch
 		return 0, nil
 	}
 
-	// 验证节点存在
 	_, err := s.nodeRepo.GetByID(ctx, req.NodeID)
 	if err != nil {
 		return 0, fmt.Errorf("节点不存在: %w", err)
 	}
 
-	// 过滤已绑定的资源
 	var bindings []domain.ResourceBinding
 	for _, resourceID := range req.ResourceIDs {
 		_, err := s.bindingRepo.GetByResource(ctx, req.TenantID, req.ResourceType, resourceID)
 		if err == nil {
-			continue // 已绑定，跳过
+			continue
 		}
 		if !errors.Is(err, domain.ErrBindingNotFound) {
 			s.logger.Warn("检查绑定状态失败", elog.Int64("resourceID", resourceID), elog.FieldErr(err))

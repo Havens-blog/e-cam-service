@@ -1,33 +1,69 @@
 // Package account 云账号管理模块
 // 这是从 internal/cam 重构后的独立模块
-// 当前阶段：别名模式，重新导出 cam 的实现
 package account
 
 import (
-	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
-	camrepo "github.com/Havens-blog/e-cam-service/internal/cam/repository"
-	camservice "github.com/Havens-blog/e-cam-service/internal/cam/service"
+	"github.com/Havens-blog/e-cam-service/internal/account/repository"
+	"github.com/Havens-blog/e-cam-service/internal/account/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/account/service"
+	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 )
 
-// 重新导出 domain 类型
+// 重新导出 domain 类型 (来自 shared/domain)
 type (
-	CloudAccount              = camdomain.CloudAccount
-	CloudAccountFilter        = camdomain.CloudAccountFilter
-	CreateCloudAccountRequest = camdomain.CreateCloudAccountRequest
-	UpdateCloudAccountRequest = camdomain.UpdateCloudAccountRequest
-	ConnectionTestResult      = camdomain.ConnectionTestResult
-	SyncAccountRequest        = camdomain.SyncAccountRequest
-	SyncResult                = camdomain.SyncResult
+	CloudAccount              = domain.CloudAccount
+	CloudAccountFilter        = domain.CloudAccountFilter
+	CloudAccountStatus        = domain.CloudAccountStatus
+	CloudAccountConfig        = domain.CloudAccountConfig
+	CloudProvider             = domain.CloudProvider
+	Environment               = domain.Environment
+	CreateCloudAccountRequest = domain.CreateCloudAccountRequest
+	UpdateCloudAccountRequest = domain.UpdateCloudAccountRequest
+	ConnectionTestResult      = domain.ConnectionTestResult
+	SyncAccountRequest        = domain.SyncAccountRequest
+	SyncResult                = domain.SyncResult
 )
+
+// 重新导出状态常量
+const (
+	CloudAccountStatusActive   = domain.CloudAccountStatusActive
+	CloudAccountStatusDisabled = domain.CloudAccountStatusDisabled
+	CloudAccountStatusError    = domain.CloudAccountStatusError
+	CloudAccountStatusTesting  = domain.CloudAccountStatusTesting
+)
+
+// 重新导出云厂商常量
+const (
+	CloudProviderAliyun     = domain.CloudProviderAliyun
+	CloudProviderAWS        = domain.CloudProviderAWS
+	CloudProviderAzure      = domain.CloudProviderAzure
+	CloudProviderTencent    = domain.CloudProviderTencent
+	CloudProviderHuawei     = domain.CloudProviderHuawei
+	CloudProviderVolcano    = domain.CloudProviderVolcano
+	CloudProviderVolcengine = domain.CloudProviderVolcengine
+)
+
+// 重新导出环境常量
+const (
+	EnvironmentProduction  = domain.EnvironmentProduction
+	EnvironmentStaging     = domain.EnvironmentStaging
+	EnvironmentDevelopment = domain.EnvironmentDevelopment
+)
+
+// 重新导出 DAO 类型
+type CloudAccountDAO = dao.CloudAccountDAO
 
 // 重新导出 repository 类型
-type CloudAccountRepository = camrepo.CloudAccountRepository
+type CloudAccountRepository = repository.CloudAccountRepository
 
 // 重新导出 service 类型
-type CloudAccountService = camservice.CloudAccountService
+type CloudAccountService = service.CloudAccountService
+
+// NewCloudAccountDAO 创建云账号DAO
+var NewCloudAccountDAO = dao.NewCloudAccountDAO
 
 // NewCloudAccountRepository 创建云账号仓储
-var NewCloudAccountRepository = camrepo.NewCloudAccountRepository
+var NewCloudAccountRepository = repository.NewCloudAccountRepository
 
 // NewCloudAccountService 创建云账号服务
-var NewCloudAccountService = camservice.NewCloudAccountService
+var NewCloudAccountService = service.NewCloudAccountService

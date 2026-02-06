@@ -4,14 +4,14 @@ import "github.com/Havens-blog/e-cam-service/internal/servicetree/domain"
 
 // CreateNodeReq 创建节点请求
 type CreateNodeReq struct {
-	UID         string   `json:"uid"`                     // 节点唯一标识
-	Name        string   `json:"name" binding:"required"` // 节点名称
-	ParentID    int64    `json:"parent_id"`               // 父节点ID
-	Owner       string   `json:"owner"`                   // 负责人
-	Team        string   `json:"team"`                    // 团队
-	Description string   `json:"description"`             // 描述
-	Tags        []string `json:"tags"`                    // 标签
-	Order       int      `json:"order"`                   // 排序
+	UID         string   `json:"uid"`
+	Name        string   `json:"name" binding:"required"`
+	ParentID    int64    `json:"parent_id"`
+	Owner       string   `json:"owner"`
+	Team        string   `json:"team"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
+	Order       int      `json:"order"`
 }
 
 // UpdateNodeReq 更新节点请求
@@ -49,7 +49,7 @@ type NodeVO struct {
 	UpdateTime  int64    `json:"update_time"`
 }
 
-// TreeNodeVO 树节点响应 (带子节点)
+// TreeNodeVO 树节点响应
 type TreeNodeVO struct {
 	NodeVO
 	Children      []*TreeNodeVO `json:"children,omitempty"`
@@ -58,8 +58,8 @@ type TreeNodeVO struct {
 
 // BindResourceReq 绑定资源请求
 type BindResourceReq struct {
-	EnvID        int64  `json:"env_id" binding:"required"`        // 环境ID
-	ResourceType string `json:"resource_type" binding:"required"` // instance/asset
+	EnvID        int64  `json:"env_id" binding:"required"`
+	ResourceType string `json:"resource_type" binding:"required"`
 	ResourceID   int64  `json:"resource_id" binding:"required"`
 }
 

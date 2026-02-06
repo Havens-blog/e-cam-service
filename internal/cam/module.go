@@ -1,7 +1,6 @@
 package cam
 
 import (
-	"github.com/Havens-blog/e-cam-service/internal/cam/iam"
 	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
@@ -10,6 +9,7 @@ import (
 	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
 	taskweb "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
+	"github.com/Havens-blog/e-cam-service/internal/iam"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -27,7 +27,7 @@ type Module struct {
 	TaskModule        *task.Module
 	TaskSvc           taskservice.TaskService
 	TaskHdl           *taskweb.TaskHandler
-	IAMModule         *iam.Module                  // 手动初始化
+	IAMModule         *iam.Module                  // 使用独立的 IAM 模块
 	ServiceTreeModule *servicetree.Module          // 服务树模块
 	AutoScheduler     *scheduler.AutoSyncScheduler // 自动同步调度器
 	Logger            *elog.Component              // 日志组件

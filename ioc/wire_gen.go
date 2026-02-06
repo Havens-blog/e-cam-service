@@ -29,20 +29,20 @@ func InitApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	v2 := module.Hdl
+	handler := module.Hdl
 	camModule, err := cam.InitModuleWithIAM(mongo)
 	if err != nil {
 		return nil, err
 	}
 	cmdbModule := cmdb.InitModule(mongo)
-	engine := InitWebServer(provider, v, v2, camModule, cmdbModule)
+	engine := InitWebServer(provider, v, handler, camModule, cmdbModule)
 	server := InitGrpcServer()
-	v3 := InitJobs()
+	v2 := InitJobs()
 	app := &App{
 		Logger:    logger,
 		Web:       engine,
 		Grpc:      server,
-		Jobs:      v3,
+		Jobs:      v2,
 		EndModule: module,
 		CamModule: camModule,
 	}

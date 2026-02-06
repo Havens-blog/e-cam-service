@@ -44,7 +44,6 @@ func (s *environmentService) Create(ctx context.Context, env domain.Environment)
 		return 0, err
 	}
 
-	// 检查 code 是否已存在
 	_, err := s.envRepo.GetByCode(ctx, env.TenantID, env.Code)
 	if err == nil {
 		return 0, domain.ErrEnvCodeExists
@@ -72,7 +71,6 @@ func (s *environmentService) Update(ctx context.Context, env domain.Environment)
 		return err
 	}
 
-	// 如果修改了 code，检查新 code 是否已存在
 	if env.Code != existing.Code {
 		_, err := s.envRepo.GetByCode(ctx, env.TenantID, env.Code)
 		if err == nil {
@@ -88,7 +86,6 @@ func (s *environmentService) Update(ctx context.Context, env domain.Environment)
 }
 
 func (s *environmentService) Delete(ctx context.Context, id int64) error {
-	// 检查是否有绑定资源
 	count, err := s.bindingRepo.Count(ctx, domain.BindingFilter{EnvID: id})
 	if err != nil {
 		return err
@@ -122,9 +119,7 @@ func (s *environmentService) List(ctx context.Context, filter domain.Environment
 	return envs, total, nil
 }
 
-// InitDefaultEnvs 初始化默认环境
 func (s *environmentService) InitDefaultEnvs(ctx context.Context, tenantID string) error {
-	// 检查是否已有环境
 	count, err := s.envRepo.Count(ctx, domain.EnvironmentFilter{TenantID: tenantID})
 	if err != nil {
 		return err
@@ -134,7 +129,6 @@ func (s *environmentService) InitDefaultEnvs(ctx context.Context, tenantID strin
 		return nil
 	}
 
-	// 创建默认环境
 	defaultEnvs := domain.DefaultEnvironments(tenantID)
 	_, err = s.envRepo.CreateBatch(ctx, defaultEnvs)
 	if err != nil {

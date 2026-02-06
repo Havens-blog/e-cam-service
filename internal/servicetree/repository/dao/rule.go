@@ -138,7 +138,6 @@ func (d *ruleDAO) List(ctx context.Context, filter RuleFilter) ([]Rule, error) {
 	return rules, err
 }
 
-// ListEnabled 获取所有启用的规则，按优先级排序
 func (d *ruleDAO) ListEnabled(ctx context.Context, tenantID string) ([]Rule, error) {
 	filter := bson.M{
 		"tenant_id": tenantID,
