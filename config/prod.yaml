@@ -123,6 +123,11 @@ frontend:
 grpc:
   server:
     name: "e-cam-service"
-    port: 8098
+    port: 8099
     etcdTTL: 60
     key: "1234567890"
+  client:
+    ecmdb:
+      target: "etcd:///service/e-cam-service"
+      secure: false
+      key: "1234567890"

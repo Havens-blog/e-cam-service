@@ -23,6 +23,483 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/cam/assets/disk": {
+            "get": {
+                "description": "从数据库获取已同步的云盘列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-云盘"
+                ],
+                "summary": "获取云盘列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "云盘状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "云盘名称(模糊搜索)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "云盘类型(system/data)",
+                        "name": "disk_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "挂载的实例ID",
+                        "name": "instance_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetListResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/assets/disk/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定云盘的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-云盘"
+                ],
+                "summary": "获取云盘详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID(云盘ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetDetailResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "云盘不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/assets/security-group": {
+            "get": {
+                "description": "从数据库获取已同步的安全组列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-安全组"
+                ],
+                "summary": "获取安全组列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "安全组名称(模糊搜索)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "VPC ID",
+                        "name": "vpc_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetListResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/assets/security-group/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定安全组的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-安全组"
+                ],
+                "summary": "获取安全组详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID(安全组ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetDetailResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "安全组不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/assets/snapshot": {
+            "get": {
+                "description": "从数据库获取已同步的快照列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-快照"
+                ],
+                "summary": "获取快照列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "云账号ID",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "地域",
+                        "name": "region",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "快照状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "快照名称(模糊搜索)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "源磁盘ID",
+                        "name": "source_disk_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "偏移量",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "限制数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetListResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cam/assets/snapshot/{asset_id}": {
+            "get": {
+                "description": "从数据库获取指定快照的详细信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-快照"
+                ],
+                "summary": "获取快照详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID(快照ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.AssetDetailResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "快照不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/cam/iam/audit/logs": {
             "get": {
                 "produces": [
@@ -92,7 +569,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.PageResult"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.PageResult"
                         }
                     }
                 }
@@ -187,7 +664,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.GenerateAuditReportVO"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.GenerateAuditReportVO"
                         }
                     }
                 ],
@@ -195,7 +672,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -241,7 +718,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.PageResult"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.PageResult"
                         }
                     }
                 }
@@ -271,7 +748,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.CreateUserGroupVO"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.CreateUserGroupVO"
                         }
                     }
                 ],
@@ -279,7 +756,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -317,13 +794,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/web.Result"
+                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/service.GroupSyncResult"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_service.GroupSyncResult"
                                         }
                                     }
                                 }
@@ -333,13 +810,13 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     },
                     "500": {
                         "description": "同步失败",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -374,7 +851,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -411,7 +888,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.UpdateUserGroupVO"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.UpdateUserGroupVO"
                         }
                     }
                 ],
@@ -419,7 +896,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -452,7 +929,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -487,7 +964,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -526,7 +1003,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.UpdatePoliciesVO"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.UpdatePoliciesVO"
                         }
                     }
                 ],
@@ -534,7 +1011,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -562,7 +1039,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -590,7 +1067,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -618,7 +1095,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -646,7 +1123,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -703,7 +1180,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.PageResult"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.PageResult"
                         }
                     }
                 }
@@ -726,7 +1203,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.CreateSyncTaskVO"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.CreateSyncTaskVO"
                         }
                     }
                 ],
@@ -734,7 +1211,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -762,7 +1239,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -790,7 +1267,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -848,7 +1325,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.PageResult"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.PageResult"
                         }
                     }
                 }
@@ -878,7 +1355,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.CreateTemplateVO"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.CreateTemplateVO"
                         }
                     }
                 ],
@@ -886,7 +1363,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -918,7 +1395,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.CreateFromGroupVO"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.CreateFromGroupVO"
                         }
                     }
                 ],
@@ -926,7 +1403,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -961,7 +1438,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -998,7 +1475,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.UpdateTemplateVO"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.UpdateTemplateVO"
                         }
                     }
                 ],
@@ -1006,7 +1483,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -1039,7 +1516,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -1096,7 +1573,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.PageResult"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.PageResult"
                         }
                     }
                 }
@@ -1119,7 +1596,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.CreateTenantVO"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.CreateTenantVO"
                         }
                     }
                 ],
@@ -1127,7 +1604,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -1155,7 +1632,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -1185,7 +1662,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.UpdateTenantVO"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.UpdateTenantVO"
                         }
                     }
                 ],
@@ -1193,7 +1670,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -1219,7 +1696,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -1247,7 +1724,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -1305,7 +1782,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.PageResult"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.PageResult"
                         }
                     }
                 }
@@ -1328,7 +1805,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.CreateUserVO"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.CreateUserVO"
                         }
                     }
                 ],
@@ -1336,7 +1813,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -1368,7 +1845,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.AssignUserGroupsVO"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.AssignUserGroupsVO"
                         }
                     }
                 ],
@@ -1376,7 +1853,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -1414,7 +1891,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/web.Result"
+                                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                                 },
                                 {
                                     "type": "object",
@@ -1459,7 +1936,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -1496,7 +1973,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.UpdateUserVO"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.UpdateUserVO"
                         }
                     }
                 ],
@@ -1504,7 +1981,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -1537,7 +2014,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_iam_web.Result"
                         }
                     }
                 }
@@ -1560,7 +2037,22 @@ const docTemplate = `{
                     "200": {
                         "description": "成功",
                         "schema": {
-                            "$ref": "#/definitions/web.Result"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ginx.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/web.MenuItem"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -1620,7 +2112,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/web.EnvironmentVO"
+                                                "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.EnvironmentVO"
                                             }
                                         }
                                     }
@@ -1649,7 +2141,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.CreateEnvReq"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.CreateEnvReq"
                         }
                     }
                 ],
@@ -1728,7 +2220,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/web.EnvironmentVO"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.EnvironmentVO"
                                         }
                                     }
                                 }
@@ -1756,7 +2248,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.UpdateEnvReq"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.UpdateEnvReq"
                         }
                     }
                 ],
@@ -1840,7 +2332,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/web.NodeVO"
+                                                "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.NodeVO"
                                             }
                                         }
                                     }
@@ -1869,7 +2361,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.CreateNodeReq"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.CreateNodeReq"
                         }
                     }
                 ],
@@ -1923,7 +2415,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/web.NodeVO"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.NodeVO"
                                         }
                                     }
                                 }
@@ -1951,7 +2443,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.UpdateNodeReq"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.UpdateNodeReq"
                         }
                     }
                 ],
@@ -2030,7 +2522,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/web.BindingVO"
+                                                "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.BindingVO"
                                             }
                                         }
                                     }
@@ -2066,7 +2558,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.BindResourceReq"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.BindResourceReq"
                         }
                     }
                 ],
@@ -2120,7 +2612,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.BatchBindReq"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.BatchBindReq"
                         }
                     }
                 ],
@@ -2167,7 +2659,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.MoveNodeReq"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.MoveNodeReq"
                         }
                     }
                 ],
@@ -2222,7 +2714,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/web.NodeVO"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.NodeVO"
                                         }
                                     }
                                 }
@@ -2273,7 +2765,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/web.RuleVO"
+                                                "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.RuleVO"
                                             }
                                         }
                                     }
@@ -2302,7 +2794,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.CreateRuleReq"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.CreateRuleReq"
                         }
                     }
                 ],
@@ -2395,7 +2887,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/web.RuleVO"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.RuleVO"
                                         }
                                     }
                                 }
@@ -2423,7 +2915,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.UpdateRuleReq"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.UpdateRuleReq"
                         }
                     }
                 ],
@@ -2493,7 +2985,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/web.TreeNodeVO"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.TreeNodeVO"
                                         }
                                     }
                                 }
@@ -2925,6 +3417,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "string",
+                        "description": "计费类型(PrePaid/PostPaid)",
+                        "name": "charge_type",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "default": 0,
                         "description": "偏移量",
@@ -3002,6 +3500,70 @@ const docTemplate = `{
                         "description": "成功",
                         "schema": {
                             "$ref": "#/definitions/web.AssetDetailResult"
+                        }
+                    },
+                    "400": {
+                        "description": "租户ID不能为空",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "实例不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cam/assets/ecs/{asset_id}/relations": {
+            "get": {
+                "description": "获取指定ECS实例关联的云盘、快照、安全组、VPC、子网等资源",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "资产管理-ECS"
+                ],
+                "summary": "获取ECS实例关联资源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID(云厂商实例ID)",
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "aliyun",
+                            "aws",
+                            "huawei",
+                            "tencent",
+                            "volcano"
+                        ],
+                        "type": "string",
+                        "description": "云厂商",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.ECSRelationsResult"
                         }
                     },
                     "400": {
@@ -6910,7 +7472,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/domain.ModelFieldGroup"
+                                                "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_domain.ModelFieldGroup"
                                             }
                                         }
                                     }
@@ -6968,7 +7530,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/domain.ModelFieldGroup"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_domain.ModelFieldGroup"
                                         }
                                     }
                                 }
@@ -7026,7 +7588,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/domain.ModelField"
+                                                "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_domain.ModelField"
                                             }
                                         }
                                     }
@@ -7084,7 +7646,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/domain.ModelField"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_domain.ModelField"
                                         }
                                     }
                                 }
@@ -7176,7 +7738,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/web.TaskListResp"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_task_web.TaskListResp"
                                         }
                                     }
                                 }
@@ -7212,7 +7774,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.SubmitDiscoverAssetsTaskReq"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_task_web.SubmitDiscoverAssetsTaskReq"
                         }
                     }
                 ],
@@ -7228,7 +7790,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/web.SubmitTaskResp"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_task_web.SubmitTaskResp"
                                         }
                                     }
                                 }
@@ -7270,7 +7832,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/web.SubmitSyncAssetsTaskReq"
+                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_task_web.SubmitSyncAssetsTaskReq"
                         }
                     }
                 ],
@@ -7286,7 +7848,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/web.SubmitTaskResp"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_task_web.SubmitTaskResp"
                                         }
                                     }
                                 }
@@ -7342,7 +7904,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/web.TaskResp"
+                                            "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_task_web.TaskResp"
                                         }
                                     }
                                 }
@@ -7510,107 +8072,6 @@ const docTemplate = `{
                 "CloudUserTypeVolcUser"
             ]
         },
-        "domain.ModelField": {
-            "type": "object",
-            "properties": {
-                "createTime": {
-                    "description": "创建时间",
-                    "type": "string"
-                },
-                "display": {
-                    "description": "是否显示（兼容旧系统）",
-                    "type": "boolean"
-                },
-                "displayName": {
-                    "description": "显示名称（用于前端展示）",
-                    "type": "string"
-                },
-                "fieldName": {
-                    "description": "字段名称",
-                    "type": "string"
-                },
-                "fieldType": {
-                    "description": "字段类型",
-                    "type": "string"
-                },
-                "fieldUID": {
-                    "description": "字段唯一标识",
-                    "type": "string"
-                },
-                "groupID": {
-                    "description": "所属分组ID",
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "id": {
-                    "description": "业务ID",
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "index": {
-                    "description": "排序索引",
-                    "type": "integer"
-                },
-                "link": {
-                    "description": "是否为关联字段（兼容旧系统）",
-                    "type": "boolean"
-                },
-                "linkModel": {
-                    "description": "关联模型UID",
-                    "type": "string"
-                },
-                "modelUID": {
-                    "description": "所属模型UID",
-                    "type": "string"
-                },
-                "option": {
-                    "description": "字段选项（JSON）",
-                    "type": "string"
-                },
-                "required": {
-                    "description": "是否必填",
-                    "type": "boolean"
-                },
-                "secure": {
-                    "description": "是否敏感字段",
-                    "type": "boolean"
-                },
-                "updateTime": {
-                    "description": "更新时间",
-                    "type": "string"
-                }
-            }
-        },
-        "domain.ModelFieldGroup": {
-            "type": "object",
-            "properties": {
-                "createTime": {
-                    "description": "创建时间",
-                    "type": "string"
-                },
-                "id": {
-                    "description": "业务ID",
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "index": {
-                    "description": "排序索引",
-                    "type": "integer"
-                },
-                "modelUID": {
-                    "description": "所属模型UID",
-                    "type": "string"
-                },
-                "name": {
-                    "description": "分组名称",
-                    "type": "string"
-                },
-                "updateTime": {
-                    "description": "更新时间",
-                    "type": "string"
-                }
-            }
-        },
         "domain.PermissionPolicy": {
             "type": "object",
             "properties": {
@@ -7641,23 +8102,6 @@ const docTemplate = `{
                 "PolicyTypeSystem",
                 "PolicyTypeCustom"
             ]
-        },
-        "domain.RuleCondition": {
-            "type": "object",
-            "properties": {
-                "field": {
-                    "description": "匹配字段 (provider/region/tag.xxx/name/attributes.xxx)",
-                    "type": "string"
-                },
-                "operator": {
-                    "description": "操作符 (eq/ne/contains/regex/in)",
-                    "type": "string"
-                },
-                "value": {
-                    "description": "匹配值",
-                    "type": "string"
-                }
-            }
         },
         "domain.SyncTargetType": {
             "type": "string",
@@ -7875,6 +8319,1102 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_Havens-blog_e-cam-service_internal_cam_domain.ModelField": {
+            "type": "object",
+            "properties": {
+                "createTime": {
+                    "description": "创建时间",
+                    "type": "string"
+                },
+                "display": {
+                    "description": "是否显示（兼容旧系统）",
+                    "type": "boolean"
+                },
+                "displayName": {
+                    "description": "显示名称（用于前端展示）",
+                    "type": "string"
+                },
+                "fieldName": {
+                    "description": "字段名称",
+                    "type": "string"
+                },
+                "fieldType": {
+                    "description": "字段类型",
+                    "type": "string"
+                },
+                "fieldUID": {
+                    "description": "字段唯一标识",
+                    "type": "string"
+                },
+                "groupID": {
+                    "description": "所属分组ID",
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "id": {
+                    "description": "业务ID",
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "index": {
+                    "description": "排序索引",
+                    "type": "integer"
+                },
+                "link": {
+                    "description": "是否为关联字段（兼容旧系统）",
+                    "type": "boolean"
+                },
+                "linkModel": {
+                    "description": "关联模型UID",
+                    "type": "string"
+                },
+                "modelUID": {
+                    "description": "所属模型UID",
+                    "type": "string"
+                },
+                "option": {
+                    "description": "字段选项（JSON）",
+                    "type": "string"
+                },
+                "required": {
+                    "description": "是否必填",
+                    "type": "boolean"
+                },
+                "secure": {
+                    "description": "是否敏感字段",
+                    "type": "boolean"
+                },
+                "updateTime": {
+                    "description": "更新时间",
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_domain.ModelFieldGroup": {
+            "type": "object",
+            "properties": {
+                "createTime": {
+                    "description": "创建时间",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "业务ID",
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "index": {
+                    "description": "排序索引",
+                    "type": "integer"
+                },
+                "modelUID": {
+                    "description": "所属模型UID",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "分组名称",
+                    "type": "string"
+                },
+                "updateTime": {
+                    "description": "更新时间",
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_service.GroupSyncResult": {
+            "type": "object",
+            "properties": {
+                "created_groups": {
+                    "type": "integer"
+                },
+                "failed_groups": {
+                    "type": "integer"
+                },
+                "failed_members": {
+                    "type": "integer"
+                },
+                "synced_members": {
+                    "type": "integer"
+                },
+                "total_groups": {
+                    "type": "integer"
+                },
+                "total_members": {
+                    "type": "integer"
+                },
+                "updated_groups": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.AssignUserGroupsVO": {
+            "type": "object",
+            "required": [
+                "group_ids",
+                "user_ids"
+            ],
+            "properties": {
+                "group_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "user_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.CreateFromGroupVO": {
+            "type": "object",
+            "required": [
+                "group_id",
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 500
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.CreateSyncTaskVO": {
+            "type": "object",
+            "required": [
+                "cloud_account_id",
+                "provider",
+                "target_id",
+                "target_type",
+                "task_type"
+            ],
+            "properties": {
+                "cloud_account_id": {
+                    "type": "integer"
+                },
+                "provider": {
+                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
+                },
+                "target_id": {
+                    "type": "integer"
+                },
+                "target_type": {
+                    "$ref": "#/definitions/domain.SyncTargetType"
+                },
+                "task_type": {
+                    "$ref": "#/definitions/domain.SyncTaskType"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.CreateTemplateVO": {
+            "type": "object",
+            "required": [
+                "category",
+                "cloud_platforms",
+                "name",
+                "tenant_id"
+            ],
+            "properties": {
+                "category": {
+                    "$ref": "#/definitions/domain.TemplateCategory"
+                },
+                "cloud_platforms": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
+                    }
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 500
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                },
+                "policies": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.PermissionPolicy"
+                    }
+                },
+                "tenant_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.CreateTenantVO": {
+            "type": "object",
+            "required": [
+                "id",
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 500
+                },
+                "display_name": {
+                    "type": "string",
+                    "maxLength": 200
+                },
+                "id": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 1
+                },
+                "metadata": {
+                    "$ref": "#/definitions/domain.TenantMetadata"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                },
+                "settings": {
+                    "$ref": "#/definitions/domain.TenantSettings"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.CreateUserGroupVO": {
+            "type": "object",
+            "required": [
+                "cloud_platforms",
+                "name",
+                "tenant_id"
+            ],
+            "properties": {
+                "cloud_platforms": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
+                    }
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 500
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                },
+                "policies": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.PermissionPolicy"
+                    }
+                },
+                "tenant_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.CreateUserVO": {
+            "type": "object",
+            "required": [
+                "cloud_account_id",
+                "tenant_id",
+                "user_type",
+                "username"
+            ],
+            "properties": {
+                "cloud_account_id": {
+                    "type": "integer"
+                },
+                "display_name": {
+                    "type": "string",
+                    "maxLength": 200
+                },
+                "email": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
+                },
+                "user_groups": {
+                    "description": "用户组ID列表",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "user_type": {
+                    "$ref": "#/definitions/domain.CloudUserType"
+                },
+                "username": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.GenerateAuditReportVO": {
+            "type": "object",
+            "required": [
+                "end_time",
+                "start_time",
+                "tenant_id"
+            ],
+            "properties": {
+                "end_time": {
+                    "type": "string"
+                },
+                "start_time": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.PageResult": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {},
+                "msg": {
+                    "type": "string"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.Result": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {},
+                "msg": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.UpdatePoliciesVO": {
+            "type": "object",
+            "required": [
+                "policies"
+            ],
+            "properties": {
+                "policies": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/domain.PermissionPolicy"
+                    }
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.UpdateTemplateVO": {
+            "type": "object",
+            "properties": {
+                "cloud_platforms": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "policies": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.PermissionPolicy"
+                    }
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.UpdateTenantVO": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/domain.TenantMetadata"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "settings": {
+                    "$ref": "#/definitions/domain.TenantSettings"
+                },
+                "status": {
+                    "$ref": "#/definitions/domain.TenantStatus"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.UpdateUserGroupVO": {
+            "type": "object",
+            "properties": {
+                "cloud_platforms": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "policies": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.PermissionPolicy"
+                    }
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_iam_web.UpdateUserVO": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/domain.CloudUserStatus"
+                },
+                "user_groups": {
+                    "description": "用户组ID列表",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_domain.RuleCondition": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "description": "匹配字段 (provider/region/tag.xxx/name/attributes.xxx)",
+                    "type": "string"
+                },
+                "operator": {
+                    "description": "操作符 (eq/ne/contains/regex/in)",
+                    "type": "string"
+                },
+                "value": {
+                    "description": "匹配值",
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.BatchBindReq": {
+            "type": "object",
+            "required": [
+                "env_id",
+                "resource_ids",
+                "resource_type"
+            ],
+            "properties": {
+                "env_id": {
+                    "type": "integer"
+                },
+                "resource_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "resource_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.BindResourceReq": {
+            "type": "object",
+            "required": [
+                "env_id",
+                "resource_id",
+                "resource_type"
+            ],
+            "properties": {
+                "env_id": {
+                    "description": "环境ID",
+                    "type": "integer"
+                },
+                "resource_id": {
+                    "type": "integer"
+                },
+                "resource_type": {
+                    "description": "instance/asset",
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.BindingVO": {
+            "type": "object",
+            "properties": {
+                "bind_type": {
+                    "type": "string"
+                },
+                "create_time": {
+                    "type": "integer"
+                },
+                "env_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "node_id": {
+                    "type": "integer"
+                },
+                "resource_id": {
+                    "type": "integer"
+                },
+                "resource_type": {
+                    "type": "string"
+                },
+                "rule_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.CreateEnvReq": {
+            "type": "object",
+            "required": [
+                "code",
+                "name"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.CreateNodeReq": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "description": "描述",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "节点名称",
+                    "type": "string"
+                },
+                "order": {
+                    "description": "排序",
+                    "type": "integer"
+                },
+                "owner": {
+                    "description": "负责人",
+                    "type": "string"
+                },
+                "parent_id": {
+                    "description": "父节点ID",
+                    "type": "integer"
+                },
+                "tags": {
+                    "description": "标签",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "team": {
+                    "description": "团队",
+                    "type": "string"
+                },
+                "uid": {
+                    "description": "节点唯一标识",
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.CreateRuleReq": {
+            "type": "object",
+            "required": [
+                "conditions",
+                "env_id",
+                "name",
+                "node_id"
+            ],
+            "properties": {
+                "conditions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_domain.RuleCondition"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "env_id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "node_id": {
+                    "type": "integer"
+                },
+                "priority": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.EnvironmentVO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "create_time": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "update_time": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.MoveNodeReq": {
+            "type": "object",
+            "properties": {
+                "new_parent_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.NodeVO": {
+            "type": "object",
+            "properties": {
+                "create_time": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "level": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "integer"
+                },
+                "owner": {
+                    "type": "string"
+                },
+                "parent_id": {
+                    "type": "integer"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "team": {
+                    "type": "string"
+                },
+                "uid": {
+                    "type": "string"
+                },
+                "update_time": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.RuleVO": {
+            "type": "object",
+            "properties": {
+                "conditions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_domain.RuleCondition"
+                    }
+                },
+                "create_time": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "env_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "node_id": {
+                    "type": "integer"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "update_time": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.TreeNodeVO": {
+            "type": "object",
+            "properties": {
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.TreeNodeVO"
+                    }
+                },
+                "create_time": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "level": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "integer"
+                },
+                "owner": {
+                    "type": "string"
+                },
+                "parent_id": {
+                    "type": "integer"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "resource_count": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "team": {
+                    "type": "string"
+                },
+                "uid": {
+                    "type": "string"
+                },
+                "update_time": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.UpdateEnvReq": {
+            "type": "object",
+            "required": [
+                "code",
+                "name"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.UpdateNodeReq": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "integer"
+                },
+                "owner": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "team": {
+                    "type": "string"
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_servicetree_web.UpdateRuleReq": {
+            "type": "object",
+            "required": [
+                "conditions",
+                "env_id",
+                "name",
+                "node_id"
+            ],
+            "properties": {
+                "conditions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_servicetree_domain.RuleCondition"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "env_id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "node_id": {
+                    "type": "integer"
+                },
+                "priority": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_task_web.SubmitDiscoverAssetsTaskReq": {
+            "type": "object",
+            "required": [
+                "provider"
+            ],
+            "properties": {
+                "account_id": {
+                    "type": "integer"
+                },
+                "asset_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_task_web.SubmitSyncAssetsTaskReq": {
+            "type": "object",
+            "required": [
+                "provider"
+            ],
+            "properties": {
+                "account_id": {
+                    "type": "integer"
+                },
+                "asset_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "regions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_task_web.SubmitTaskResp": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_task_web.TaskListResp": {
+            "type": "object",
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_cam_task_web.TaskResp"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_cam_task_web.TaskResp": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "duration": {
+                    "type": "integer"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "params": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "progress": {
+                    "type": "integer"
+                },
+                "result": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_Havens-blog_e-cam-service_internal_cam_web.CreateBatchInstanceReq": {
             "type": "object",
             "required": [
@@ -8084,6 +9624,406 @@ const docTemplate = `{
                 },
                 "tenant_id": {
                     "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_service.GroupSyncResult": {
+            "type": "object",
+            "properties": {
+                "created_groups": {
+                    "type": "integer"
+                },
+                "failed_groups": {
+                    "type": "integer"
+                },
+                "failed_members": {
+                    "type": "integer"
+                },
+                "synced_members": {
+                    "type": "integer"
+                },
+                "total_groups": {
+                    "type": "integer"
+                },
+                "total_members": {
+                    "type": "integer"
+                },
+                "updated_groups": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.AssignUserGroupsVO": {
+            "type": "object",
+            "required": [
+                "group_ids",
+                "user_ids"
+            ],
+            "properties": {
+                "group_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "user_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.CreateFromGroupVO": {
+            "type": "object",
+            "required": [
+                "group_id",
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 500
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.CreateSyncTaskVO": {
+            "type": "object",
+            "required": [
+                "cloud_account_id",
+                "provider",
+                "target_id",
+                "target_type",
+                "task_type"
+            ],
+            "properties": {
+                "cloud_account_id": {
+                    "type": "integer"
+                },
+                "provider": {
+                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
+                },
+                "target_id": {
+                    "type": "integer"
+                },
+                "target_type": {
+                    "$ref": "#/definitions/domain.SyncTargetType"
+                },
+                "task_type": {
+                    "$ref": "#/definitions/domain.SyncTaskType"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.CreateTemplateVO": {
+            "type": "object",
+            "required": [
+                "category",
+                "cloud_platforms",
+                "name",
+                "tenant_id"
+            ],
+            "properties": {
+                "category": {
+                    "$ref": "#/definitions/domain.TemplateCategory"
+                },
+                "cloud_platforms": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
+                    }
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 500
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                },
+                "policies": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.PermissionPolicy"
+                    }
+                },
+                "tenant_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.CreateTenantVO": {
+            "type": "object",
+            "required": [
+                "id",
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 500
+                },
+                "display_name": {
+                    "type": "string",
+                    "maxLength": 200
+                },
+                "id": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 1
+                },
+                "metadata": {
+                    "$ref": "#/definitions/domain.TenantMetadata"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                },
+                "settings": {
+                    "$ref": "#/definitions/domain.TenantSettings"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.CreateUserGroupVO": {
+            "type": "object",
+            "required": [
+                "cloud_platforms",
+                "name",
+                "tenant_id"
+            ],
+            "properties": {
+                "cloud_platforms": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
+                    }
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 500
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                },
+                "policies": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.PermissionPolicy"
+                    }
+                },
+                "tenant_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.CreateUserVO": {
+            "type": "object",
+            "required": [
+                "cloud_account_id",
+                "tenant_id",
+                "user_type",
+                "username"
+            ],
+            "properties": {
+                "cloud_account_id": {
+                    "type": "integer"
+                },
+                "display_name": {
+                    "type": "string",
+                    "maxLength": 200
+                },
+                "email": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
+                },
+                "user_groups": {
+                    "description": "用户组ID列表",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "user_type": {
+                    "$ref": "#/definitions/domain.CloudUserType"
+                },
+                "username": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.GenerateAuditReportVO": {
+            "type": "object",
+            "required": [
+                "end_time",
+                "start_time",
+                "tenant_id"
+            ],
+            "properties": {
+                "end_time": {
+                    "type": "string"
+                },
+                "start_time": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.PageResult": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {},
+                "msg": {
+                    "type": "string"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.Result": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {},
+                "msg": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.UpdatePoliciesVO": {
+            "type": "object",
+            "required": [
+                "policies"
+            ],
+            "properties": {
+                "policies": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/domain.PermissionPolicy"
+                    }
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.UpdateTemplateVO": {
+            "type": "object",
+            "properties": {
+                "cloud_platforms": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "policies": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.PermissionPolicy"
+                    }
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.UpdateTenantVO": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/domain.TenantMetadata"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "settings": {
+                    "$ref": "#/definitions/domain.TenantSettings"
+                },
+                "status": {
+                    "$ref": "#/definitions/domain.TenantStatus"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.UpdateUserGroupVO": {
+            "type": "object",
+            "properties": {
+                "cloud_platforms": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "policies": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.PermissionPolicy"
+                    }
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_iam_web.UpdateUserVO": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/domain.CloudUserStatus"
+                },
+                "user_groups": {
+                    "description": "用户组ID列表",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 }
             }
         },
@@ -8388,29 +10328,123 @@ const docTemplate = `{
                 "SyncTaskStatusRetrying"
             ]
         },
-        "service.GroupSyncResult": {
+        "github_com_Havens-blog_e-cam-service_internal_task_web.SubmitDiscoverAssetsTaskReq": {
+            "type": "object",
+            "required": [
+                "provider"
+            ],
+            "properties": {
+                "account_id": {
+                    "type": "integer"
+                },
+                "asset_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_task_web.SubmitSyncAssetsTaskReq": {
+            "type": "object",
+            "required": [
+                "provider"
+            ],
+            "properties": {
+                "account_id": {
+                    "type": "integer"
+                },
+                "asset_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "regions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_task_web.SubmitTaskResp": {
             "type": "object",
             "properties": {
-                "created_groups": {
+                "message": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_task_web.TaskListResp": {
+            "type": "object",
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_task_web.TaskResp"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Havens-blog_e-cam-service_internal_task_web.TaskResp": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "duration": {
                     "type": "integer"
                 },
-                "failed_groups": {
+                "error": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "params": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "progress": {
                     "type": "integer"
                 },
-                "failed_members": {
-                    "type": "integer"
+                "result": {
+                    "type": "object",
+                    "additionalProperties": true
                 },
-                "synced_members": {
-                    "type": "integer"
+                "started_at": {
+                    "type": "string"
                 },
-                "total_groups": {
-                    "type": "integer"
+                "status": {
+                    "type": "string"
                 },
-                "total_members": {
-                    "type": "integer"
-                },
-                "updated_groups": {
-                    "type": "integer"
+                "type": {
+                    "type": "string"
                 }
             }
         },
@@ -8443,101 +10477,6 @@ const docTemplate = `{
                 "msg": {
                     "type": "string",
                     "example": "success"
-                }
-            }
-        },
-        "web.AssignUserGroupsVO": {
-            "type": "object",
-            "required": [
-                "group_ids",
-                "user_ids"
-            ],
-            "properties": {
-                "group_ids": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "user_ids": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "type": "integer"
-                    }
-                }
-            }
-        },
-        "web.BatchBindReq": {
-            "type": "object",
-            "required": [
-                "env_id",
-                "resource_ids",
-                "resource_type"
-            ],
-            "properties": {
-                "env_id": {
-                    "type": "integer"
-                },
-                "resource_ids": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "resource_type": {
-                    "type": "string"
-                }
-            }
-        },
-        "web.BindResourceReq": {
-            "type": "object",
-            "required": [
-                "env_id",
-                "resource_id",
-                "resource_type"
-            ],
-            "properties": {
-                "env_id": {
-                    "description": "环境ID",
-                    "type": "integer"
-                },
-                "resource_id": {
-                    "type": "integer"
-                },
-                "resource_type": {
-                    "description": "instance/asset",
-                    "type": "string"
-                }
-            }
-        },
-        "web.BindingVO": {
-            "type": "object",
-            "properties": {
-                "bind_type": {
-                    "type": "string"
-                },
-                "create_time": {
-                    "type": "integer"
-                },
-                "env_id": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "node_id": {
-                    "type": "integer"
-                },
-                "resource_id": {
-                    "type": "integer"
-                },
-                "resource_type": {
-                    "type": "string"
-                },
-                "rule_id": {
-                    "type": "integer"
                 }
             }
         },
@@ -8789,30 +10728,6 @@ const docTemplate = `{
                 }
             }
         },
-        "web.CreateEnvReq": {
-            "type": "object",
-            "required": [
-                "code",
-                "name"
-            ],
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "color": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "order": {
-                    "type": "integer"
-                }
-            }
-        },
         "web.CreateFieldGroupReq": {
             "type": "object",
             "required": [
@@ -8892,27 +10807,6 @@ const docTemplate = `{
                 }
             }
         },
-        "web.CreateFromGroupVO": {
-            "type": "object",
-            "required": [
-                "group_id",
-                "name"
-            ],
-            "properties": {
-                "description": {
-                    "type": "string",
-                    "maxLength": 500
-                },
-                "group_id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string",
-                    "maxLength": 100,
-                    "minLength": 1
-                }
-            }
-        },
         "web.CreateMultiAssetsReq": {
             "type": "object",
             "required": [
@@ -8924,257 +10818,6 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/web.CreateAssetReq"
                     }
-                }
-            }
-        },
-        "web.CreateNodeReq": {
-            "type": "object",
-            "required": [
-                "name"
-            ],
-            "properties": {
-                "description": {
-                    "description": "描述",
-                    "type": "string"
-                },
-                "name": {
-                    "description": "节点名称",
-                    "type": "string"
-                },
-                "order": {
-                    "description": "排序",
-                    "type": "integer"
-                },
-                "owner": {
-                    "description": "负责人",
-                    "type": "string"
-                },
-                "parent_id": {
-                    "description": "父节点ID",
-                    "type": "integer"
-                },
-                "tags": {
-                    "description": "标签",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "team": {
-                    "description": "团队",
-                    "type": "string"
-                },
-                "uid": {
-                    "description": "节点唯一标识",
-                    "type": "string"
-                }
-            }
-        },
-        "web.CreateRuleReq": {
-            "type": "object",
-            "required": [
-                "conditions",
-                "env_id",
-                "name",
-                "node_id"
-            ],
-            "properties": {
-                "conditions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain.RuleCondition"
-                    }
-                },
-                "description": {
-                    "type": "string"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "env_id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "node_id": {
-                    "type": "integer"
-                },
-                "priority": {
-                    "type": "integer"
-                }
-            }
-        },
-        "web.CreateSyncTaskVO": {
-            "type": "object",
-            "required": [
-                "cloud_account_id",
-                "provider",
-                "target_id",
-                "target_type",
-                "task_type"
-            ],
-            "properties": {
-                "cloud_account_id": {
-                    "type": "integer"
-                },
-                "provider": {
-                    "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
-                },
-                "target_id": {
-                    "type": "integer"
-                },
-                "target_type": {
-                    "$ref": "#/definitions/domain.SyncTargetType"
-                },
-                "task_type": {
-                    "$ref": "#/definitions/domain.SyncTaskType"
-                }
-            }
-        },
-        "web.CreateTemplateVO": {
-            "type": "object",
-            "required": [
-                "category",
-                "cloud_platforms",
-                "name",
-                "tenant_id"
-            ],
-            "properties": {
-                "category": {
-                    "$ref": "#/definitions/domain.TemplateCategory"
-                },
-                "cloud_platforms": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
-                    }
-                },
-                "description": {
-                    "type": "string",
-                    "maxLength": 500
-                },
-                "name": {
-                    "type": "string",
-                    "maxLength": 100,
-                    "minLength": 1
-                },
-                "policies": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain.PermissionPolicy"
-                    }
-                },
-                "tenant_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "web.CreateTenantVO": {
-            "type": "object",
-            "required": [
-                "id",
-                "name"
-            ],
-            "properties": {
-                "description": {
-                    "type": "string",
-                    "maxLength": 500
-                },
-                "display_name": {
-                    "type": "string",
-                    "maxLength": 200
-                },
-                "id": {
-                    "type": "string",
-                    "maxLength": 50,
-                    "minLength": 1
-                },
-                "metadata": {
-                    "$ref": "#/definitions/domain.TenantMetadata"
-                },
-                "name": {
-                    "type": "string",
-                    "maxLength": 100,
-                    "minLength": 1
-                },
-                "settings": {
-                    "$ref": "#/definitions/domain.TenantSettings"
-                }
-            }
-        },
-        "web.CreateUserGroupVO": {
-            "type": "object",
-            "required": [
-                "cloud_platforms",
-                "name",
-                "tenant_id"
-            ],
-            "properties": {
-                "cloud_platforms": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
-                    }
-                },
-                "description": {
-                    "type": "string",
-                    "maxLength": 500
-                },
-                "name": {
-                    "type": "string",
-                    "maxLength": 100,
-                    "minLength": 1
-                },
-                "policies": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain.PermissionPolicy"
-                    }
-                },
-                "tenant_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "web.CreateUserVO": {
-            "type": "object",
-            "required": [
-                "cloud_account_id",
-                "tenant_id",
-                "user_type",
-                "username"
-            ],
-            "properties": {
-                "cloud_account_id": {
-                    "type": "integer"
-                },
-                "display_name": {
-                    "type": "string",
-                    "maxLength": 200
-                },
-                "email": {
-                    "type": "string"
-                },
-                "tenant_id": {
-                    "type": "string"
-                },
-                "user_groups": {
-                    "description": "用户组ID列表",
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "user_type": {
-                    "$ref": "#/definitions/domain.CloudUserType"
-                },
-                "username": {
-                    "type": "string",
-                    "maxLength": 100,
-                    "minLength": 1
                 }
             }
         },
@@ -9255,35 +10898,69 @@ const docTemplate = `{
                 }
             }
         },
-        "web.EnvironmentVO": {
+        "web.ECSRelationsResp": {
+            "type": "object",
+            "properties": {
+                "disks": {
+                    "description": "关联的云盘",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/web.UnifiedAssetVO"
+                    }
+                },
+                "ecs": {
+                    "description": "ECS实例信息",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/web.UnifiedAssetVO"
+                        }
+                    ]
+                },
+                "security_groups": {
+                    "description": "关联的安全组",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/web.UnifiedAssetVO"
+                    }
+                },
+                "snapshots": {
+                    "description": "关联的快照",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/web.UnifiedAssetVO"
+                    }
+                },
+                "subnet": {
+                    "description": "关联的子网/交换机",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/web.UnifiedAssetVO"
+                        }
+                    ]
+                },
+                "vpc": {
+                    "description": "关联的VPC",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/web.UnifiedAssetVO"
+                        }
+                    ]
+                }
+            }
+        },
+        "web.ECSRelationsResult": {
             "type": "object",
             "properties": {
                 "code": {
-                    "type": "string"
+                    "type": "integer",
+                    "example": 0
                 },
-                "color": {
-                    "type": "string"
+                "data": {
+                    "$ref": "#/definitions/web.ECSRelationsResp"
                 },
-                "create_time": {
-                    "type": "integer"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "order": {
-                    "type": "integer"
-                },
-                "status": {
-                    "type": "integer"
-                },
-                "update_time": {
-                    "type": "integer"
+                "msg": {
+                    "type": "string",
+                    "example": "success"
                 }
             }
         },
@@ -9297,25 +10974,6 @@ const docTemplate = `{
                 "msg": {
                     "type": "string",
                     "example": "租户ID不能为空"
-                }
-            }
-        },
-        "web.GenerateAuditReportVO": {
-            "type": "object",
-            "required": [
-                "end_time",
-                "start_time",
-                "tenant_id"
-            ],
-            "properties": {
-                "end_time": {
-                    "type": "string"
-                },
-                "start_time": {
-                    "type": "string"
-                },
-                "tenant_id": {
-                    "type": "string"
                 }
             }
         },
@@ -9359,135 +11017,6 @@ const docTemplate = `{
                 },
                 "path": {
                     "type": "string"
-                }
-            }
-        },
-        "web.MoveNodeReq": {
-            "type": "object",
-            "properties": {
-                "new_parent_id": {
-                    "type": "integer"
-                }
-            }
-        },
-        "web.NodeVO": {
-            "type": "object",
-            "properties": {
-                "create_time": {
-                    "type": "integer"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "level": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "order": {
-                    "type": "integer"
-                },
-                "owner": {
-                    "type": "string"
-                },
-                "parent_id": {
-                    "type": "integer"
-                },
-                "path": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "integer"
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "team": {
-                    "type": "string"
-                },
-                "uid": {
-                    "type": "string"
-                },
-                "update_time": {
-                    "type": "integer"
-                }
-            }
-        },
-        "web.PageResult": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "integer"
-                },
-                "data": {},
-                "msg": {
-                    "type": "string"
-                },
-                "page": {
-                    "type": "integer"
-                },
-                "size": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "web.Result": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "integer"
-                },
-                "data": {},
-                "msg": {
-                    "type": "string"
-                }
-            }
-        },
-        "web.RuleVO": {
-            "type": "object",
-            "properties": {
-                "conditions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain.RuleCondition"
-                    }
-                },
-                "create_time": {
-                    "type": "integer"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "env_id": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "node_id": {
-                    "type": "integer"
-                },
-                "priority": {
-                    "type": "integer"
-                },
-                "update_time": {
-                    "type": "integer"
                 }
             }
         },
@@ -9574,66 +11103,6 @@ const docTemplate = `{
                 }
             }
         },
-        "web.SubmitDiscoverAssetsTaskReq": {
-            "type": "object",
-            "required": [
-                "provider"
-            ],
-            "properties": {
-                "account_id": {
-                    "type": "integer"
-                },
-                "asset_types": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "provider": {
-                    "type": "string"
-                },
-                "region": {
-                    "type": "string"
-                }
-            }
-        },
-        "web.SubmitSyncAssetsTaskReq": {
-            "type": "object",
-            "required": [
-                "provider"
-            ],
-            "properties": {
-                "account_id": {
-                    "type": "integer"
-                },
-                "asset_types": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "provider": {
-                    "type": "string"
-                },
-                "regions": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
-        "web.SubmitTaskResp": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string"
-                },
-                "task_id": {
-                    "type": "string"
-                }
-            }
-        },
         "web.SyncAccountReq": {
             "description": "同步云账号资产的请求参数",
             "type": "object",
@@ -9714,125 +11183,6 @@ const docTemplate = `{
                 },
                 "value": {
                     "type": "string"
-                }
-            }
-        },
-        "web.TaskListResp": {
-            "type": "object",
-            "properties": {
-                "tasks": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/web.TaskResp"
-                    }
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "web.TaskResp": {
-            "type": "object",
-            "properties": {
-                "completed_at": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "created_by": {
-                    "type": "string"
-                },
-                "duration": {
-                    "type": "integer"
-                },
-                "error": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "params": {
-                    "type": "object",
-                    "additionalProperties": true
-                },
-                "progress": {
-                    "type": "integer"
-                },
-                "result": {
-                    "type": "object",
-                    "additionalProperties": true
-                },
-                "started_at": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                }
-            }
-        },
-        "web.TreeNodeVO": {
-            "type": "object",
-            "properties": {
-                "children": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/web.TreeNodeVO"
-                    }
-                },
-                "create_time": {
-                    "type": "integer"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "level": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "order": {
-                    "type": "integer"
-                },
-                "owner": {
-                    "type": "string"
-                },
-                "parent_id": {
-                    "type": "integer"
-                },
-                "path": {
-                    "type": "string"
-                },
-                "resource_count": {
-                    "type": "integer"
-                },
-                "status": {
-                    "type": "integer"
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "team": {
-                    "type": "string"
-                },
-                "uid": {
-                    "type": "string"
-                },
-                "update_time": {
-                    "type": "integer"
                 }
             }
         },
@@ -9950,33 +11300,6 @@ const docTemplate = `{
                 }
             }
         },
-        "web.UpdateEnvReq": {
-            "type": "object",
-            "required": [
-                "code",
-                "name"
-            ],
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "color": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "order": {
-                    "type": "integer"
-                },
-                "status": {
-                    "type": "integer"
-                }
-            }
-        },
         "web.UpdateFieldGroupReq": {
             "type": "object",
             "properties": {
@@ -10025,181 +11348,6 @@ const docTemplate = `{
                 },
                 "secure": {
                     "type": "boolean"
-                }
-            }
-        },
-        "web.UpdateNodeReq": {
-            "type": "object",
-            "required": [
-                "name"
-            ],
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "order": {
-                    "type": "integer"
-                },
-                "owner": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "integer"
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "team": {
-                    "type": "string"
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "web.UpdatePoliciesVO": {
-            "type": "object",
-            "required": [
-                "policies"
-            ],
-            "properties": {
-                "policies": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "$ref": "#/definitions/domain.PermissionPolicy"
-                    }
-                }
-            }
-        },
-        "web.UpdateRuleReq": {
-            "type": "object",
-            "required": [
-                "conditions",
-                "env_id",
-                "name",
-                "node_id"
-            ],
-            "properties": {
-                "conditions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain.RuleCondition"
-                    }
-                },
-                "description": {
-                    "type": "string"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "env_id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "node_id": {
-                    "type": "integer"
-                },
-                "priority": {
-                    "type": "integer"
-                }
-            }
-        },
-        "web.UpdateTemplateVO": {
-            "type": "object",
-            "properties": {
-                "cloud_platforms": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
-                    }
-                },
-                "description": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "policies": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain.PermissionPolicy"
-                    }
-                }
-            }
-        },
-        "web.UpdateTenantVO": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "display_name": {
-                    "type": "string"
-                },
-                "metadata": {
-                    "$ref": "#/definitions/domain.TenantMetadata"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "settings": {
-                    "$ref": "#/definitions/domain.TenantSettings"
-                },
-                "status": {
-                    "$ref": "#/definitions/domain.TenantStatus"
-                }
-            }
-        },
-        "web.UpdateUserGroupVO": {
-            "type": "object",
-            "properties": {
-                "cloud_platforms": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_Havens-blog_e-cam-service_internal_shared_domain.CloudProvider"
-                    }
-                },
-                "description": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "policies": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain.PermissionPolicy"
-                    }
-                }
-            }
-        },
-        "web.UpdateUserVO": {
-            "type": "object",
-            "properties": {
-                "display_name": {
-                    "type": "string"
-                },
-                "email": {
-                    "type": "string"
-                },
-                "status": {
-                    "$ref": "#/definitions/domain.CloudUserStatus"
-                },
-                "user_groups": {
-                    "description": "用户组ID列表",
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
                 }
             }
         }
