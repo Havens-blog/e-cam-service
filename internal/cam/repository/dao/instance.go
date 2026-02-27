@@ -295,6 +295,31 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 				{"model_uid": "cloud_oss"},
 				{"model_uid": bson.M{"$regex": "_oss$"}},
 			}
+		case "cloud_kafka", "kafka":
+			query["$or"] = []bson.M{
+				{"model_uid": "cloud_kafka"},
+				{"model_uid": bson.M{"$regex": "_kafka$"}},
+			}
+		case "cloud_elasticsearch", "elasticsearch":
+			query["$or"] = []bson.M{
+				{"model_uid": "cloud_elasticsearch"},
+				{"model_uid": bson.M{"$regex": "_elasticsearch$"}},
+			}
+		case "cloud_disk", "disk":
+			query["$or"] = []bson.M{
+				{"model_uid": "cloud_disk"},
+				{"model_uid": bson.M{"$regex": "_disk$"}},
+			}
+		case "cloud_snapshot", "snapshot":
+			query["$or"] = []bson.M{
+				{"model_uid": "cloud_snapshot"},
+				{"model_uid": bson.M{"$regex": "_snapshot$"}},
+			}
+		case "cloud_security_group", "security_group", "security-group":
+			query["$or"] = []bson.M{
+				{"model_uid": "cloud_security_group"},
+				{"model_uid": bson.M{"$regex": "_security_group$"}},
+			}
 		default:
 			query["model_uid"] = filter.ModelUID
 		}
@@ -523,6 +548,26 @@ func (d *instanceDAO) buildSearchQuery(filter SearchFilter) bson.M {
 				typePatterns = append(typePatterns,
 					bson.M{"model_uid": "cloud_oss"},
 					bson.M{"model_uid": bson.M{"$regex": "_oss$"}})
+			case "kafka", "cloud_kafka":
+				typePatterns = append(typePatterns,
+					bson.M{"model_uid": "cloud_kafka"},
+					bson.M{"model_uid": bson.M{"$regex": "_kafka$"}})
+			case "elasticsearch", "cloud_elasticsearch":
+				typePatterns = append(typePatterns,
+					bson.M{"model_uid": "cloud_elasticsearch"},
+					bson.M{"model_uid": bson.M{"$regex": "_elasticsearch$"}})
+			case "disk", "cloud_disk":
+				typePatterns = append(typePatterns,
+					bson.M{"model_uid": "cloud_disk"},
+					bson.M{"model_uid": bson.M{"$regex": "_disk$"}})
+			case "snapshot", "cloud_snapshot":
+				typePatterns = append(typePatterns,
+					bson.M{"model_uid": "cloud_snapshot"},
+					bson.M{"model_uid": bson.M{"$regex": "_snapshot$"}})
+			case "security_group", "security-group", "cloud_security_group":
+				typePatterns = append(typePatterns,
+					bson.M{"model_uid": "cloud_security_group"},
+					bson.M{"model_uid": bson.M{"$regex": "_security_group$"}})
 			}
 		}
 		if len(typePatterns) > 0 {

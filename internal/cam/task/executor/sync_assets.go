@@ -166,7 +166,7 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 	return nil
 }
 
-// expandAssetTypes 展开资产类型，支持 database, network, storage, middleware 等聚合类型
+// expandAssetTypes 展开资产类型，支持 database, network, storage, middleware, compute 等聚合类型
 func expandAssetTypes(assetTypes []string) []string {
 	expanded := make([]string, 0, len(assetTypes)*3)
 	seen := make(map[string]bool)
@@ -203,6 +203,14 @@ func expandAssetTypes(assetTypes []string) []string {
 				if !seen[mwType] {
 					expanded = append(expanded, mwType)
 					seen[mwType] = true
+				}
+			}
+		case "compute":
+			// compute 展开为 ecs, disk, snapshot, security_group, image
+			for _, computeType := range []string{"ecs", "disk", "snapshot", "security_group", "image"} {
+				if !seen[computeType] {
+					expanded = append(expanded, computeType)
+					seen[computeType] = true
 				}
 			}
 		default:
@@ -409,6 +417,82 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 			synced, err := e.syncRegionElasticsearch(ctx, cloudxAdapter, account, region)
 			if err != nil {
 				e.logger.Error("同步Elasticsearch失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "disk":
+			// 懒加载 cloudx 适配器
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionDisk(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步云盘失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "snapshot":
+			// 懒加载 cloudx 适配器
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionSnapshot(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步快照失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "security_group", "securitygroup", "sg":
+			// 懒加载 cloudx 适配器
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionSecurityGroup(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步安全组失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "image":
+			// 懒加载 cloudx 适配器
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionImage(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步镜像失败",
 					elog.String("region", region),
 					elog.FieldErr(err))
 				continue
@@ -1845,6 +1929,616 @@ func (e *SyncAssetsExecutor) convertElasticsearchToInstance(inst types.Elasticse
 		ModelUID:   modelUID,
 		AssetID:    inst.InstanceID,
 		AssetName:  inst.InstanceName,
+		TenantID:   account.TenantID,
+		AccountID:  account.ID,
+		Attributes: attributes,
+	}
+}
+
+// syncRegionDisk 同步单个地域的云盘
+func (e *SyncAssetsExecutor) syncRegionDisk(
+	ctx context.Context,
+	adapter cloudx.CloudAdapter,
+	account *domain.CloudAccount,
+	region string,
+) (int, error) {
+	modelUID := fmt.Sprintf("%s_disk", account.Provider)
+
+	e.logger.Info("开始同步云盘",
+		elog.String("region", region),
+		elog.String("model_uid", modelUID),
+		elog.String("tenant_id", account.TenantID))
+
+	diskAdapter := adapter.Disk()
+	if diskAdapter == nil {
+		e.logger.Warn("Disk适配器不可用", elog.String("provider", string(account.Provider)))
+		return 0, nil
+	}
+
+	cloudInstances, err := diskAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取云盘列表失败: %w", err)
+	}
+
+	e.logger.Info("获取到云端云盘",
+		elog.String("region", region),
+		elog.Int("count", len(cloudInstances)))
+
+	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	if err != nil {
+		localAssetIDs = []string{}
+	}
+
+	cloudAssetIDSet := make(map[string]bool)
+	for _, inst := range cloudInstances {
+		cloudAssetIDSet[inst.DiskID] = true
+	}
+
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
+		if err != nil {
+			e.logger.Error("删除过期云盘失败", elog.FieldErr(err))
+		} else {
+			e.logger.Info("删除过期云盘", elog.Int64("deleted", deleted))
+		}
+	}
+
+	synced := 0
+	for _, inst := range cloudInstances {
+		instance := e.convertDiskToInstance(inst, account)
+		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
+			e.logger.Error("保存云盘失败", elog.String("asset_id", inst.DiskID), elog.FieldErr(err))
+			continue
+		}
+		synced++
+	}
+
+	e.logger.Info("同步地域云盘完成",
+		elog.String("region", region),
+		elog.Int("synced", synced),
+		elog.Int("deleted", len(toDelete)))
+
+	return synced, nil
+}
+
+// syncRegionSnapshot 同步单个地域的快照
+func (e *SyncAssetsExecutor) syncRegionSnapshot(
+	ctx context.Context,
+	adapter cloudx.CloudAdapter,
+	account *domain.CloudAccount,
+	region string,
+) (int, error) {
+	modelUID := fmt.Sprintf("%s_snapshot", account.Provider)
+
+	e.logger.Info("开始同步快照",
+		elog.String("region", region),
+		elog.String("model_uid", modelUID),
+		elog.String("tenant_id", account.TenantID))
+
+	snapshotAdapter := adapter.Snapshot()
+	if snapshotAdapter == nil {
+		e.logger.Warn("Snapshot适配器不可用", elog.String("provider", string(account.Provider)))
+		return 0, nil
+	}
+
+	cloudInstances, err := snapshotAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取快照列表失败: %w", err)
+	}
+
+	e.logger.Info("获取到云端快照",
+		elog.String("region", region),
+		elog.Int("count", len(cloudInstances)))
+
+	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	if err != nil {
+		localAssetIDs = []string{}
+	}
+
+	cloudAssetIDSet := make(map[string]bool)
+	for _, inst := range cloudInstances {
+		cloudAssetIDSet[inst.SnapshotID] = true
+	}
+
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
+		if err != nil {
+			e.logger.Error("删除过期快照失败", elog.FieldErr(err))
+		} else {
+			e.logger.Info("删除过期快照", elog.Int64("deleted", deleted))
+		}
+	}
+
+	synced := 0
+	for _, inst := range cloudInstances {
+		instance := e.convertSnapshotToInstance(inst, account)
+		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
+			e.logger.Error("保存快照失败", elog.String("asset_id", inst.SnapshotID), elog.FieldErr(err))
+			continue
+		}
+		synced++
+	}
+
+	e.logger.Info("同步地域快照完成",
+		elog.String("region", region),
+		elog.Int("synced", synced),
+		elog.Int("deleted", len(toDelete)))
+
+	return synced, nil
+}
+
+// syncRegionSecurityGroup 同步单个地域的安全组
+func (e *SyncAssetsExecutor) syncRegionSecurityGroup(
+	ctx context.Context,
+	adapter cloudx.CloudAdapter,
+	account *domain.CloudAccount,
+	region string,
+) (int, error) {
+	modelUID := fmt.Sprintf("%s_security_group", account.Provider)
+
+	e.logger.Info("开始同步安全组",
+		elog.String("region", region),
+		elog.String("model_uid", modelUID),
+		elog.String("tenant_id", account.TenantID))
+
+	sgAdapter := adapter.SecurityGroup()
+	if sgAdapter == nil {
+		e.logger.Warn("SecurityGroup适配器不可用", elog.String("provider", string(account.Provider)))
+		return 0, nil
+	}
+
+	cloudInstances, err := sgAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取安全组列表失败: %w", err)
+	}
+
+	e.logger.Info("获取到云端安全组",
+		elog.String("region", region),
+		elog.Int("count", len(cloudInstances)))
+
+	// 为每个安全组获取规则详情
+	for i := range cloudInstances {
+		sg := &cloudInstances[i]
+		e.logger.Info("处理安全组",
+			elog.String("sg_id", sg.SecurityGroupID),
+			elog.String("sg_name", sg.SecurityGroupName),
+			elog.Int("existing_ingress", len(sg.IngressRules)),
+			elog.Int("existing_egress", len(sg.EgressRules)))
+
+		// 始终尝试获取规则，不管是否已有规则
+		rules, err := sgAdapter.GetSecurityGroupRules(ctx, region, sg.SecurityGroupID)
+		if err != nil {
+			e.logger.Warn("获取安全组规则失败",
+				elog.String("sg_id", sg.SecurityGroupID),
+				elog.FieldErr(err))
+			continue
+		}
+
+		e.logger.Info("获取到安全组规则",
+			elog.String("sg_id", sg.SecurityGroupID),
+			elog.Int("rules_count", len(rules)))
+
+		// 清空现有规则，重新填充
+		sg.IngressRules = nil
+		sg.EgressRules = nil
+
+		for _, rule := range rules {
+			e.logger.Debug("规则详情",
+				elog.String("sg_id", sg.SecurityGroupID),
+				elog.String("direction", rule.Direction),
+				elog.String("protocol", rule.Protocol),
+				elog.String("port_range", rule.PortRange))
+
+			if rule.Direction == "ingress" {
+				sg.IngressRules = append(sg.IngressRules, rule)
+			} else {
+				sg.EgressRules = append(sg.EgressRules, rule)
+			}
+		}
+		sg.IngressRuleCount = len(sg.IngressRules)
+		sg.EgressRuleCount = len(sg.EgressRules)
+
+		e.logger.Info("安全组规则处理完成",
+			elog.String("sg_id", sg.SecurityGroupID),
+			elog.Int("ingress_count", sg.IngressRuleCount),
+			elog.Int("egress_count", sg.EgressRuleCount))
+	}
+
+	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	if err != nil {
+		localAssetIDs = []string{}
+	}
+
+	cloudAssetIDSet := make(map[string]bool)
+	for _, inst := range cloudInstances {
+		cloudAssetIDSet[inst.SecurityGroupID] = true
+	}
+
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
+		if err != nil {
+			e.logger.Error("删除过期安全组失败", elog.FieldErr(err))
+		} else {
+			e.logger.Info("删除过期安全组", elog.Int64("deleted", deleted))
+		}
+	}
+
+	synced := 0
+	for i := range cloudInstances {
+		inst := &cloudInstances[i]
+		instance := e.convertSecurityGroupToInstance(*inst, account)
+
+		e.logger.Info("保存安全组",
+			elog.String("sg_id", inst.SecurityGroupID),
+			elog.Int("ingress_rules", len(inst.IngressRules)),
+			elog.Int("egress_rules", len(inst.EgressRules)))
+
+		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
+			e.logger.Error("保存安全组失败", elog.String("asset_id", inst.SecurityGroupID), elog.FieldErr(err))
+			continue
+		}
+		synced++
+	}
+
+	e.logger.Info("同步地域安全组完成",
+		elog.String("region", region),
+		elog.Int("synced", synced),
+		elog.Int("deleted", len(toDelete)))
+
+	return synced, nil
+}
+
+// convertDiskToInstance 将云盘转换为 Instance 领域模型
+func (e *SyncAssetsExecutor) convertDiskToInstance(inst types.DiskInstance, account *domain.CloudAccount) camdomain.Instance {
+	modelUID := fmt.Sprintf("%s_disk", account.Provider)
+
+	attributes := map[string]any{
+		// 基本信息
+		"status":      inst.Status,
+		"region":      inst.Region,
+		"zone":        inst.Zone,
+		"provider":    inst.Provider,
+		"description": inst.Description,
+
+		// 磁盘类型
+		"disk_type":         inst.DiskType,
+		"category":          inst.Category,
+		"performance_level": inst.PerformanceLevel,
+
+		// 容量信息
+		"size":       inst.Size,
+		"iops":       inst.IOPS,
+		"throughput": inst.Throughput,
+
+		// 状态信息
+		"portable":             inst.Portable,
+		"delete_auto_snapshot": inst.DeleteAutoSnapshot,
+		"delete_with_instance": inst.DeleteWithInstance,
+		"enable_auto_snapshot": inst.EnableAutoSnapshot,
+
+		// 挂载信息
+		"instance_id":   inst.InstanceID,
+		"instance_name": inst.InstanceName,
+		"device":        inst.Device,
+		"attached_time": inst.AttachedTime,
+		"attachments":   inst.Attachments,
+		"multi_attach":  inst.MultiAttach,
+
+		// 加密信息
+		"encrypted":  inst.Encrypted,
+		"kms_key_id": inst.KMSKeyID,
+
+		// 快照信息
+		"source_snapshot_id":      inst.SourceSnapshotID,
+		"auto_snapshot_policy_id": inst.AutoSnapshotPolicyID,
+		"snapshot_count":          inst.SnapshotCount,
+
+		// 镜像信息
+		"image_id": inst.ImageID,
+
+		// 计费信息
+		"charge_type":   inst.ChargeType,
+		"expired_time":  inst.ExpiredTime,
+		"creation_time": inst.CreationTime,
+
+		// 资源组
+		"resource_group_id": inst.ResourceGroupID,
+
+		// 云账号信息
+		"cloud_account_id":   account.ID,
+		"cloud_account_name": account.Name,
+
+		// 标签
+		"tags": inst.Tags,
+	}
+
+	return camdomain.Instance{
+		ModelUID:   modelUID,
+		AssetID:    inst.DiskID,
+		AssetName:  inst.DiskName,
+		TenantID:   account.TenantID,
+		AccountID:  account.ID,
+		Attributes: attributes,
+	}
+}
+
+// convertSnapshotToInstance 将快照转换为 Instance 领域模型
+func (e *SyncAssetsExecutor) convertSnapshotToInstance(inst types.SnapshotInstance, account *domain.CloudAccount) camdomain.Instance {
+	modelUID := fmt.Sprintf("%s_snapshot", account.Provider)
+
+	attributes := map[string]any{
+		// 基本信息
+		"status":      inst.Status,
+		"region":      inst.Region,
+		"provider":    inst.Provider,
+		"description": inst.Description,
+
+		// 快照类型
+		"snapshot_type":  inst.SnapshotType,
+		"category":       inst.Category,
+		"instant_access": inst.InstantAccess,
+
+		// 状态信息
+		"progress": inst.Progress,
+
+		// 容量信息
+		"source_disk_size": inst.SourceDiskSize,
+		"snapshot_size":    inst.SnapshotSize,
+
+		// 来源信息
+		"source_disk_id":       inst.SourceDiskID,
+		"source_disk_type":     inst.SourceDiskType,
+		"source_disk_category": inst.SourceDiskCategory,
+		"source_instance_id":   inst.SourceInstanceID,
+		"source_instance_name": inst.SourceInstanceName,
+
+		// 加密信息
+		"encrypted":  inst.Encrypted,
+		"kms_key_id": inst.KMSKeyID,
+
+		// 使用信息
+		"usage":            inst.Usage,
+		"used_image_count": inst.UsedImageCount,
+		"used_disk_count":  inst.UsedDiskCount,
+
+		// 保留信息
+		"retention_days": inst.RetentionDays,
+
+		// 资源组
+		"resource_group_id": inst.ResourceGroupID,
+
+		// 时间信息
+		"creation_time":      inst.CreationTime,
+		"last_modified_time": inst.LastModifiedTime,
+
+		// 云账号信息
+		"cloud_account_id":   account.ID,
+		"cloud_account_name": account.Name,
+
+		// 标签
+		"tags": inst.Tags,
+	}
+
+	return camdomain.Instance{
+		ModelUID:   modelUID,
+		AssetID:    inst.SnapshotID,
+		AssetName:  inst.SnapshotName,
+		TenantID:   account.TenantID,
+		AccountID:  account.ID,
+		Attributes: attributes,
+	}
+}
+
+// convertSecurityGroupToInstance 将安全组转换为 Instance 领域模型
+func (e *SyncAssetsExecutor) convertSecurityGroupToInstance(inst types.SecurityGroupInstance, account *domain.CloudAccount) camdomain.Instance {
+	modelUID := fmt.Sprintf("%s_security_group", account.Provider)
+
+	attributes := map[string]any{
+		// 基本信息
+		"region":              inst.Region,
+		"provider":            inst.Provider,
+		"description":         inst.Description,
+		"security_group_type": inst.SecurityGroupType,
+
+		// 网络信息
+		"vpc_id":   inst.VPCID,
+		"vpc_name": inst.VPCName,
+
+		// 规则统计
+		"ingress_rule_count": inst.IngressRuleCount,
+		"egress_rule_count":  inst.EgressRuleCount,
+
+		// 关联实例
+		"instance_count": inst.InstanceCount,
+		"instance_ids":   inst.InstanceIDs,
+
+		// 规则详情
+		"ingress_rules": inst.IngressRules,
+		"egress_rules":  inst.EgressRules,
+
+		// 资源组
+		"resource_group_id": inst.ResourceGroupID,
+
+		// 时间信息
+		"creation_time": inst.CreationTime,
+
+		// 云账号信息
+		"cloud_account_id":   account.ID,
+		"cloud_account_name": account.Name,
+
+		// 标签
+		"tags": inst.Tags,
+	}
+
+	return camdomain.Instance{
+		ModelUID:   modelUID,
+		AssetID:    inst.SecurityGroupID,
+		AssetName:  inst.SecurityGroupName,
+		TenantID:   account.TenantID,
+		AccountID:  account.ID,
+		Attributes: attributes,
+	}
+}
+
+// syncRegionImage 同步单个地域的镜像
+func (e *SyncAssetsExecutor) syncRegionImage(
+	ctx context.Context,
+	adapter cloudx.CloudAdapter,
+	account *domain.CloudAccount,
+	region string,
+) (int, error) {
+	modelUID := fmt.Sprintf("%s_image", account.Provider)
+
+	e.logger.Info("开始同步镜像",
+		elog.String("region", region),
+		elog.String("model_uid", modelUID),
+		elog.String("tenant_id", account.TenantID))
+
+	imageAdapter := adapter.Image()
+	if imageAdapter == nil {
+		e.logger.Warn("Image适配器不可用", elog.String("provider", string(account.Provider)))
+		return 0, nil
+	}
+
+	cloudInstances, err := imageAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取镜像列表失败: %w", err)
+	}
+
+	e.logger.Info("获取到云端镜像",
+		elog.String("region", region),
+		elog.Int("count", len(cloudInstances)))
+
+	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	if err != nil {
+		localAssetIDs = []string{}
+	}
+
+	cloudAssetIDSet := make(map[string]bool)
+	for _, inst := range cloudInstances {
+		cloudAssetIDSet[inst.ImageID] = true
+	}
+
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
+		if err != nil {
+			e.logger.Error("删除过期镜像失败", elog.FieldErr(err))
+		} else {
+			e.logger.Info("删除过期镜像", elog.Int64("deleted", deleted))
+		}
+	}
+
+	synced := 0
+	for _, inst := range cloudInstances {
+		instance := e.convertImageToInstance(inst, account)
+		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
+			e.logger.Error("保存镜像失败", elog.String("asset_id", inst.ImageID), elog.FieldErr(err))
+			continue
+		}
+		synced++
+	}
+
+	e.logger.Info("同步地域镜像完成",
+		elog.String("region", region),
+		elog.Int("synced", synced),
+		elog.Int("deleted", len(toDelete)))
+
+	return synced, nil
+}
+
+// convertImageToInstance 将镜像转换为 Instance 领域模型
+func (e *SyncAssetsExecutor) convertImageToInstance(inst types.ImageInstance, account *domain.CloudAccount) camdomain.Instance {
+	modelUID := fmt.Sprintf("%s_image", account.Provider)
+
+	attributes := map[string]any{
+		// 基本信息
+		"status":        inst.Status,
+		"region":        inst.Region,
+		"provider":      inst.Provider,
+		"description":   inst.Description,
+		"image_version": inst.ImageVersion,
+		"image_family":  inst.ImageFamily,
+
+		// 镜像类型
+		"image_owner_alias": inst.ImageOwnerAlias,
+		"is_self_shared":    inst.IsSelfShared,
+		"is_public":         inst.IsPublic,
+		"is_copied":         inst.IsCopied,
+
+		// 操作系统信息
+		"os_type":      inst.OSType,
+		"os_name":      inst.OSName,
+		"os_name_en":   inst.OSNameEn,
+		"platform":     inst.Platform,
+		"architecture": inst.Architecture,
+
+		// 状态信息
+		"progress": inst.Progress,
+
+		// 磁盘信息
+		"size":                 inst.Size,
+		"disk_device_mappings": inst.DiskDeviceMappings,
+
+		// 来源信息
+		"source_instance_id": inst.SourceInstanceID,
+		"source_snapshot_id": inst.SourceSnapshotID,
+		"source_region":      inst.SourceRegion,
+
+		// 使用统计
+		"usage":          inst.Usage,
+		"instance_count": inst.InstanceCount,
+
+		// 资源组
+		"resource_group_id": inst.ResourceGroupID,
+
+		// 时间信息
+		"creation_time": inst.CreationTime,
+
+		// 云账号信息
+		"cloud_account_id":   account.ID,
+		"cloud_account_name": account.Name,
+
+		// 功能支持
+		"is_support_cloudinit":    inst.IsSupportCloudinit,
+		"is_support_io_optimized": inst.IsSupportIoOptimized,
+		"boot_mode":               inst.BootMode,
+
+		// 标签
+		"tags": inst.Tags,
+	}
+
+	return camdomain.Instance{
+		ModelUID:   modelUID,
+		AssetID:    inst.ImageID,
+		AssetName:  inst.ImageName,
 		TenantID:   account.TenantID,
 		AccountID:  account.ID,
 		Attributes: attributes,

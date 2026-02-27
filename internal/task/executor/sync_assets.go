@@ -392,6 +392,7 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 }
 
 // syncRegionECS 同步单个地域的 ECS 实例
+// 同时同步关联的磁盘、快照、安全组
 func (e *SyncAssetsExecutor) syncRegionECS(
 	ctx context.Context,
 	adapter asset.CloudAssetAdapter,

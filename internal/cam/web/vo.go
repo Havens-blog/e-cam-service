@@ -507,3 +507,22 @@ type ErrorResponse struct {
 	Code int    `json:"code" example:"400"`
 	Msg  string `json:"msg" example:"租户ID不能为空"`
 }
+
+// ==================== ECS 关联资源 API 响应类型 ====================
+
+// ECSRelationsResp ECS关联资源响应
+type ECSRelationsResp struct {
+	ECS            *UnifiedAssetVO  `json:"ecs"`             // ECS实例信息
+	Disks          []UnifiedAssetVO `json:"disks"`           // 关联的云盘
+	Snapshots      []UnifiedAssetVO `json:"snapshots"`       // 关联的快照
+	SecurityGroups []UnifiedAssetVO `json:"security_groups"` // 关联的安全组
+	VPC            *UnifiedAssetVO  `json:"vpc"`             // 关联的VPC
+	Subnet         *UnifiedAssetVO  `json:"subnet"`          // 关联的子网/交换机
+}
+
+// ECSRelationsResult ECS关联资源响应（用于 Swagger）
+type ECSRelationsResult struct {
+	Code int              `json:"code" example:"0"`
+	Msg  string           `json:"msg" example:"success"`
+	Data ECSRelationsResp `json:"data"`
+}

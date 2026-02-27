@@ -18,7 +18,7 @@ func NewMenuHandler() *MenuHandler {
 // @Tags 系统管理
 // @Accept json
 // @Produce json
-// @Success 200 {object} Result "成功"
+// @Success 200 {object} ginx.Result{data=[]MenuItem} "成功"
 // @Router /api/v1/cam/menus [get]
 func (h *MenuHandler) GetMenus(ctx *gin.Context) {
 	menus := []MenuItem{

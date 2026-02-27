@@ -9,6 +9,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // AssetHandler 资产HTTP处理器
@@ -45,6 +46,19 @@ func (h *AssetHandler) registerAssetRoutes(assetsGroup *gin.RouterGroup) {
 	// ECS 云虚拟机
 	assetsGroup.GET("/ecs", h.ListECS)
 	assetsGroup.GET("/ecs/:asset_id", h.GetECS)
+	assetsGroup.GET("/ecs/:asset_id/relations", h.GetECSRelations)
+
+	// 云盘
+	assetsGroup.GET("/disk", h.ListDisk)
+	assetsGroup.GET("/disk/:asset_id", h.GetDisk)
+
+	// 快照
+	assetsGroup.GET("/snapshot", h.ListSnapshot)
+	assetsGroup.GET("/snapshot/:asset_id", h.GetSnapshot)
+
+	// 安全组
+	assetsGroup.GET("/security-group", h.ListSecurityGroup)
+	assetsGroup.GET("/security-group/:asset_id", h.GetSecurityGroup)
 
 	// RDS 关系型数据库
 	assetsGroup.GET("/rds", h.ListRDS)
@@ -166,6 +180,7 @@ func (h *AssetHandler) Search(ctx *gin.Context) {
 // @Param private_ip query string false "内网IP"
 // @Param public_ip query string false "公网IP"
 // @Param vpc_id query string false "VPC ID"
+// @Param charge_type query string false "计费类型(PrePaid/PostPaid)"
 // @Param offset query int false "偏移量" default(0)
 // @Param limit query int false "限制数量" default(20)
 // @Success 200 {object} AssetListResult "成功"
@@ -184,6 +199,7 @@ func (h *AssetHandler) ListECS(ctx *gin.Context) {
 	privateIP := ctx.Query("private_ip")
 	publicIP := ctx.Query("public_ip")
 	vpcID := ctx.Query("vpc_id")
+	chargeType := ctx.Query("charge_type")
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
@@ -210,6 +226,9 @@ func (h *AssetHandler) ListECS(ctx *gin.Context) {
 	}
 	if vpcID != "" {
 		attributes["vpc_id"] = vpcID
+	}
+	if chargeType != "" {
+		attributes["charge_type"] = chargeType
 	}
 
 	filter := domain.InstanceFilter{
@@ -250,6 +269,203 @@ func (h *AssetHandler) ListECS(ctx *gin.Context) {
 // @Router /cam/assets/ecs/{asset_id} [get]
 func (h *AssetHandler) GetECS(ctx *gin.Context) {
 	h.getAsset(ctx, "ecs")
+}
+
+// GetECSRelations 获取ECS实例关联资源
+// @Summary 获取ECS实例关联资源
+// @Description 获取指定ECS实例关联的云盘、快照、安全组、VPC、子网等资源
+// @Tags 资产管理-ECS
+// @Accept json
+// @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param asset_id path string true "资产ID(云厂商实例ID)"
+// @Param provider query string false "云厂商" Enums(aliyun,aws,huawei,tencent,volcano)
+// @Success 200 {object} ECSRelationsResult "成功"
+// @Failure 400 {object} ErrorResponse "租户ID不能为空"
+// @Failure 404 {object} ErrorResponse "实例不存在"
+// @Router /cam/assets/ecs/{asset_id}/relations [get]
+func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
+	assetID := ctx.Param("asset_id")
+	if assetID == "" {
+		ctx.JSON(400, ErrorResultWithMsg(errs.ParamsError, "asset_id is required"))
+		return
+	}
+
+	tenantID := middleware.GetTenantID(ctx)
+	provider := ctx.Query("provider")
+
+	// 1. 先获取 ECS 实例
+	ecsFilter := domain.InstanceFilter{
+		AssetID:  assetID,
+		TenantID: tenantID,
+		Provider: provider,
+		Limit:    10,
+	}
+
+	ecsInstances, _, err := h.instanceSvc.List(ctx.Request.Context(), ecsFilter)
+	if err != nil {
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
+	}
+
+	// 找到匹配的 ECS 实例
+	var ecsInstance *domain.Instance
+	for i, inst := range ecsInstances {
+		if matchAssetType(inst.ModelUID, "ecs") {
+			ecsInstance = &ecsInstances[i]
+			break
+		}
+	}
+
+	if ecsInstance == nil {
+		ctx.JSON(404, ErrorResult(errs.InstanceNotFound))
+		return
+	}
+
+	// 从 ECS 实例属性中获取 region 和 account_id
+	region := ""
+	if r, ok := ecsInstance.Attributes["region"].(string); ok {
+		region = r
+	}
+	accountID := ecsInstance.AccountID
+
+	// 获取 VPC ID 和 子网 ID
+	vpcID := ""
+	subnetID := ""
+	if v, ok := ecsInstance.Attributes["vpc_id"].(string); ok {
+		vpcID = v
+	}
+	// 子网字段可能是 vswitch_id (阿里云) 或 subnet_id (其他云)
+	if s, ok := ecsInstance.Attributes["vswitch_id"].(string); ok {
+		subnetID = s
+	} else if s, ok := ecsInstance.Attributes["subnet_id"].(string); ok {
+		subnetID = s
+	}
+
+	// 2. 查询关联的云盘 (通过 instance_id 属性)
+	diskFilter := domain.InstanceFilter{
+		ModelUID:  "disk",
+		TenantID:  tenantID,
+		AccountID: accountID,
+		Provider:  provider,
+		Attributes: map[string]interface{}{
+			"instance_id": assetID,
+		},
+		Limit: 100,
+	}
+	if region != "" {
+		diskFilter.Attributes["region"] = region
+	}
+
+	disks, _, _ := h.instanceSvc.List(ctx.Request.Context(), diskFilter)
+
+	// 3. 查询关联的快照 (通过云盘ID查询)
+	var snapshots []domain.Instance
+	for _, disk := range disks {
+		snapshotFilter := domain.InstanceFilter{
+			ModelUID:  "snapshot",
+			TenantID:  tenantID,
+			AccountID: accountID,
+			Provider:  provider,
+			Attributes: map[string]interface{}{
+				"source_disk_id": disk.AssetID,
+			},
+			Limit: 100,
+		}
+		if region != "" {
+			snapshotFilter.Attributes["region"] = region
+		}
+		diskSnapshots, _, _ := h.instanceSvc.List(ctx.Request.Context(), snapshotFilter)
+		snapshots = append(snapshots, diskSnapshots...)
+	}
+
+	// 4. 查询关联的安全组 (通过 ECS 的 security_group_ids 或 security_groups 属性)
+	var securityGroups []domain.Instance
+	var sgIDs []string
+
+	// 从 security_group_ids 提取 (支持 []interface{} 和 primitive.A)
+	sgIDs = extractStringArray(ecsInstance.Attributes["security_group_ids"])
+
+	// 如果 security_group_ids 为空，尝试从 security_groups 提取
+	if len(sgIDs) == 0 {
+		sgIDs = extractSecurityGroupIDs(ecsInstance.Attributes["security_groups"])
+	}
+
+	// 根据安全组 ID 查询安全组实例
+	for _, sgID := range sgIDs {
+		sgFilter := domain.InstanceFilter{
+			AssetID:   sgID,
+			TenantID:  tenantID,
+			AccountID: accountID,
+			Provider:  provider,
+			Limit:     10,
+		}
+		sgInstances, _, _ := h.instanceSvc.List(ctx.Request.Context(), sgFilter)
+		for _, inst := range sgInstances {
+			if matchAssetType(inst.ModelUID, "security_group") {
+				securityGroups = append(securityGroups, inst)
+				break
+			}
+		}
+	}
+
+	// 5. 查询关联的 VPC
+	var vpcInstance *domain.Instance
+	if vpcID != "" {
+		vpcFilter := domain.InstanceFilter{
+			AssetID:   vpcID,
+			TenantID:  tenantID,
+			AccountID: accountID,
+			Provider:  provider,
+			Limit:     10,
+		}
+		vpcInstances, _, _ := h.instanceSvc.List(ctx.Request.Context(), vpcFilter)
+		for i, inst := range vpcInstances {
+			if matchAssetType(inst.ModelUID, "vpc") {
+				vpcInstance = &vpcInstances[i]
+				break
+			}
+		}
+	}
+
+	// 6. 查询关联的子网/交换机
+	var subnetInstance *domain.Instance
+	if subnetID != "" {
+		subnetFilter := domain.InstanceFilter{
+			AssetID:   subnetID,
+			TenantID:  tenantID,
+			AccountID: accountID,
+			Provider:  provider,
+			Limit:     10,
+		}
+		subnetInstances, _, _ := h.instanceSvc.List(ctx.Request.Context(), subnetFilter)
+		for i, inst := range subnetInstances {
+			if matchAssetType(inst.ModelUID, "subnet") || matchAssetType(inst.ModelUID, "vswitch") {
+				subnetInstance = &subnetInstances[i]
+				break
+			}
+		}
+	}
+
+	// 7. 构建响应
+	ecsVO := h.toUnifiedAssetVO(*ecsInstance)
+	resp := ECSRelationsResp{
+		ECS:            &ecsVO,
+		Disks:          h.toUnifiedAssetVOs(disks),
+		Snapshots:      h.toUnifiedAssetVOs(snapshots),
+		SecurityGroups: h.toUnifiedAssetVOs(securityGroups),
+	}
+
+	if vpcInstance != nil {
+		vpcVO := h.toUnifiedAssetVO(*vpcInstance)
+		resp.VPC = &vpcVO
+	}
+	if subnetInstance != nil {
+		subnetVO := h.toUnifiedAssetVO(*subnetInstance)
+		resp.Subnet = &subnetVO
+	}
+
+	ctx.JSON(200, Result(resp))
 }
 
 // ==================== RDS 关系型数据库 ====================
@@ -911,6 +1127,270 @@ func (h *AssetHandler) GetElasticsearch(ctx *gin.Context) {
 	h.getAsset(ctx, "elasticsearch")
 }
 
+// ==================== 云盘 Disk ====================
+
+// ListDisk 获取云盘列表
+// @Summary 获取云盘列表
+// @Description 从数据库获取已同步的云盘列表
+// @Tags 资产管理-云盘
+// @Accept json
+// @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param account_id query int false "云账号ID"
+// @Param provider query string false "云厂商" Enums(aliyun,aws,huawei,tencent,volcano)
+// @Param region query string false "地域"
+// @Param status query string false "云盘状态"
+// @Param name query string false "云盘名称(模糊搜索)"
+// @Param disk_type query string false "云盘类型(system/data)"
+// @Param instance_id query string false "挂载的实例ID"
+// @Param offset query int false "偏移量" default(0)
+// @Param limit query int false "限制数量" default(20)
+// @Success 200 {object} AssetListResult "成功"
+// @Failure 400 {object} ErrorResponse "租户ID不能为空"
+// @Router /api/v1/cam/assets/disk [get]
+func (h *AssetHandler) ListDisk(ctx *gin.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	provider := ctx.Query("provider")
+	region := ctx.Query("region")
+	status := ctx.Query("status")
+	name := ctx.Query("name")
+	accountIDStr := ctx.Query("account_id")
+	diskType := ctx.Query("disk_type")
+	instanceID := ctx.Query("instance_id")
+
+	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+
+	var accountID int64
+	if accountIDStr != "" {
+		accountID, _ = strconv.ParseInt(accountIDStr, 10, 64)
+	}
+
+	attributes := make(map[string]interface{})
+	if region != "" {
+		attributes["region"] = region
+	}
+	if status != "" {
+		attributes["status"] = status
+	}
+	if diskType != "" {
+		attributes["disk_type"] = diskType
+	}
+	if instanceID != "" {
+		attributes["instance_id"] = instanceID
+	}
+
+	filter := domain.InstanceFilter{
+		ModelUID:   "disk",
+		TenantID:   tenantID,
+		AccountID:  accountID,
+		AssetName:  name,
+		Provider:   provider,
+		Attributes: attributes,
+		Offset:     int64(offset),
+		Limit:      int64(limit),
+	}
+
+	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
+	if err != nil {
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
+	}
+
+	ctx.JSON(200, Result(UnifiedAssetListResp{
+		Items: h.toUnifiedAssetVOs(instances),
+		Total: total,
+	}))
+}
+
+// GetDisk 获取云盘详情
+// @Summary 获取云盘详情
+// @Description 从数据库获取指定云盘的详细信息
+// @Tags 资产管理-云盘
+// @Accept json
+// @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param asset_id path string true "资产ID(云盘ID)"
+// @Param provider query string false "云厂商" Enums(aliyun,aws,huawei,tencent,volcano)
+// @Success 200 {object} AssetDetailResult "成功"
+// @Failure 400 {object} ErrorResponse "租户ID不能为空"
+// @Failure 404 {object} ErrorResponse "云盘不存在"
+// @Router /api/v1/cam/assets/disk/{asset_id} [get]
+func (h *AssetHandler) GetDisk(ctx *gin.Context) {
+	h.getAsset(ctx, "disk")
+}
+
+// ==================== 快照 Snapshot ====================
+
+// ListSnapshot 获取快照列表
+// @Summary 获取快照列表
+// @Description 从数据库获取已同步的快照列表
+// @Tags 资产管理-快照
+// @Accept json
+// @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param account_id query int false "云账号ID"
+// @Param provider query string false "云厂商" Enums(aliyun,aws,huawei,tencent,volcano)
+// @Param region query string false "地域"
+// @Param status query string false "快照状态"
+// @Param name query string false "快照名称(模糊搜索)"
+// @Param source_disk_id query string false "源磁盘ID"
+// @Param offset query int false "偏移量" default(0)
+// @Param limit query int false "限制数量" default(20)
+// @Success 200 {object} AssetListResult "成功"
+// @Failure 400 {object} ErrorResponse "租户ID不能为空"
+// @Router /api/v1/cam/assets/snapshot [get]
+func (h *AssetHandler) ListSnapshot(ctx *gin.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	provider := ctx.Query("provider")
+	region := ctx.Query("region")
+	status := ctx.Query("status")
+	name := ctx.Query("name")
+	accountIDStr := ctx.Query("account_id")
+	sourceDiskID := ctx.Query("source_disk_id")
+
+	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+
+	var accountID int64
+	if accountIDStr != "" {
+		accountID, _ = strconv.ParseInt(accountIDStr, 10, 64)
+	}
+
+	attributes := make(map[string]interface{})
+	if region != "" {
+		attributes["region"] = region
+	}
+	if status != "" {
+		attributes["status"] = status
+	}
+	if sourceDiskID != "" {
+		attributes["source_disk_id"] = sourceDiskID
+	}
+
+	filter := domain.InstanceFilter{
+		ModelUID:   "snapshot",
+		TenantID:   tenantID,
+		AccountID:  accountID,
+		AssetName:  name,
+		Provider:   provider,
+		Attributes: attributes,
+		Offset:     int64(offset),
+		Limit:      int64(limit),
+	}
+
+	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
+	if err != nil {
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
+	}
+
+	ctx.JSON(200, Result(UnifiedAssetListResp{
+		Items: h.toUnifiedAssetVOs(instances),
+		Total: total,
+	}))
+}
+
+// GetSnapshot 获取快照详情
+// @Summary 获取快照详情
+// @Description 从数据库获取指定快照的详细信息
+// @Tags 资产管理-快照
+// @Accept json
+// @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param asset_id path string true "资产ID(快照ID)"
+// @Param provider query string false "云厂商" Enums(aliyun,aws,huawei,tencent,volcano)
+// @Success 200 {object} AssetDetailResult "成功"
+// @Failure 400 {object} ErrorResponse "租户ID不能为空"
+// @Failure 404 {object} ErrorResponse "快照不存在"
+// @Router /api/v1/cam/assets/snapshot/{asset_id} [get]
+func (h *AssetHandler) GetSnapshot(ctx *gin.Context) {
+	h.getAsset(ctx, "snapshot")
+}
+
+// ==================== 安全组 SecurityGroup ====================
+
+// ListSecurityGroup 获取安全组列表
+// @Summary 获取安全组列表
+// @Description 从数据库获取已同步的安全组列表
+// @Tags 资产管理-安全组
+// @Accept json
+// @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param account_id query int false "云账号ID"
+// @Param provider query string false "云厂商" Enums(aliyun,aws,huawei,tencent,volcano)
+// @Param region query string false "地域"
+// @Param name query string false "安全组名称(模糊搜索)"
+// @Param vpc_id query string false "VPC ID"
+// @Param offset query int false "偏移量" default(0)
+// @Param limit query int false "限制数量" default(20)
+// @Success 200 {object} AssetListResult "成功"
+// @Failure 400 {object} ErrorResponse "租户ID不能为空"
+// @Router /api/v1/cam/assets/security-group [get]
+func (h *AssetHandler) ListSecurityGroup(ctx *gin.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	provider := ctx.Query("provider")
+	region := ctx.Query("region")
+	name := ctx.Query("name")
+	accountIDStr := ctx.Query("account_id")
+	vpcID := ctx.Query("vpc_id")
+
+	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+
+	var accountID int64
+	if accountIDStr != "" {
+		accountID, _ = strconv.ParseInt(accountIDStr, 10, 64)
+	}
+
+	attributes := make(map[string]interface{})
+	if region != "" {
+		attributes["region"] = region
+	}
+	if vpcID != "" {
+		attributes["vpc_id"] = vpcID
+	}
+
+	filter := domain.InstanceFilter{
+		ModelUID:   "security_group",
+		TenantID:   tenantID,
+		AccountID:  accountID,
+		AssetName:  name,
+		Provider:   provider,
+		Attributes: attributes,
+		Offset:     int64(offset),
+		Limit:      int64(limit),
+	}
+
+	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
+	if err != nil {
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
+	}
+
+	ctx.JSON(200, Result(UnifiedAssetListResp{
+		Items: h.toUnifiedAssetVOs(instances),
+		Total: total,
+	}))
+}
+
+// GetSecurityGroup 获取安全组详情
+// @Summary 获取安全组详情
+// @Description 从数据库获取指定安全组的详细信息
+// @Tags 资产管理-安全组
+// @Accept json
+// @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param asset_id path string true "资产ID(安全组ID)"
+// @Param provider query string false "云厂商" Enums(aliyun,aws,huawei,tencent,volcano)
+// @Success 200 {object} AssetDetailResult "成功"
+// @Failure 400 {object} ErrorResponse "租户ID不能为空"
+// @Failure 404 {object} ErrorResponse "安全组不存在"
+// @Router /api/v1/cam/assets/security-group/{asset_id} [get]
+func (h *AssetHandler) GetSecurityGroup(ctx *gin.Context) {
+	h.getAsset(ctx, "security_group")
+}
+
 // ==================== 通用方法 ====================
 
 // listAssets 通用的资产列表查询
@@ -1010,6 +1490,27 @@ func matchAssetType(modelUID, assetType string) bool {
 			modelUID == "huawei_ecs" ||
 			modelUID == "tencent_ecs" ||
 			modelUID == "volcano_ecs"
+	case "disk":
+		return modelUID == "disk" || modelUID == "cloud_disk" ||
+			modelUID == "aliyun_disk" ||
+			modelUID == "aws_disk" ||
+			modelUID == "huawei_disk" ||
+			modelUID == "tencent_disk" ||
+			modelUID == "volcano_disk"
+	case "snapshot":
+		return modelUID == "snapshot" || modelUID == "cloud_snapshot" ||
+			modelUID == "aliyun_snapshot" ||
+			modelUID == "aws_snapshot" ||
+			modelUID == "huawei_snapshot" ||
+			modelUID == "tencent_snapshot" ||
+			modelUID == "volcano_snapshot"
+	case "security_group":
+		return modelUID == "security_group" || modelUID == "cloud_security_group" ||
+			modelUID == "aliyun_security_group" ||
+			modelUID == "aws_security_group" ||
+			modelUID == "huawei_security_group" ||
+			modelUID == "tencent_security_group" ||
+			modelUID == "volcano_security_group"
 	case "rds":
 		return modelUID == "rds" || modelUID == "cloud_rds" ||
 			modelUID == "aliyun_rds" ||
@@ -1038,6 +1539,14 @@ func matchAssetType(modelUID, assetType string) bool {
 			modelUID == "huawei_vpc" ||
 			modelUID == "tencent_vpc" ||
 			modelUID == "volcano_vpc"
+	case "subnet", "vswitch":
+		return modelUID == "subnet" || modelUID == "vswitch" ||
+			modelUID == "cloud_subnet" || modelUID == "cloud_vswitch" ||
+			modelUID == "aliyun_vswitch" ||
+			modelUID == "aws_subnet" ||
+			modelUID == "huawei_subnet" ||
+			modelUID == "tencent_subnet" ||
+			modelUID == "volcano_subnet"
 	case "eip":
 		return modelUID == "eip" || modelUID == "cloud_eip" ||
 			modelUID == "aliyun_eip" ||
@@ -1149,6 +1658,12 @@ func extractAssetType(modelUID string) string {
 	switch modelUID {
 	case "cloud_vm":
 		return "ecs"
+	case "cloud_disk":
+		return "disk"
+	case "cloud_snapshot":
+		return "snapshot"
+	case "cloud_security_group":
+		return "security_group"
 	case "cloud_rds":
 		return "rds"
 	case "cloud_redis":
@@ -1169,7 +1684,7 @@ func extractAssetType(modelUID string) string {
 		return "elasticsearch"
 	}
 	// aliyun_ecs -> ecs, aws_rds -> rds, etc.
-	for _, suffix := range []string{"_ecs", "_rds", "_redis", "_mongodb", "_vpc", "_eip", "_nas", "_oss", "_kafka", "_elasticsearch"} {
+	for _, suffix := range []string{"_ecs", "_disk", "_snapshot", "_security_group", "_rds", "_redis", "_mongodb", "_vpc", "_eip", "_nas", "_oss", "_kafka", "_elasticsearch"} {
 		if len(modelUID) > len(suffix) && modelUID[len(modelUID)-len(suffix):] == suffix {
 			return suffix[1:] // 去掉前缀下划线
 		}
@@ -1312,4 +1827,81 @@ func (h *AssetHandler) findMatches(inst domain.Instance, keyword string) []Match
 	}
 
 	return matches
+}
+
+// ==================== 辅助函数 ====================
+
+// extractStringArray 从 interface{} 提取字符串数组
+// 支持 []interface{}, []string, primitive.A 等类型
+func extractStringArray(v interface{}) []string {
+	if v == nil {
+		return nil
+	}
+
+	var result []string
+
+	switch arr := v.(type) {
+	case []string:
+		return arr
+	case []interface{}:
+		for _, item := range arr {
+			if s, ok := item.(string); ok && s != "" {
+				result = append(result, s)
+			}
+		}
+	case primitive.A:
+		for _, item := range arr {
+			if s, ok := item.(string); ok && s != "" {
+				result = append(result, s)
+			}
+		}
+	}
+
+	return result
+}
+
+// extractSecurityGroupIDs 从 security_groups 属性提取安全组ID列表
+// 支持 []interface{}, primitive.A 等类型，每个元素可能是 string 或 map
+func extractSecurityGroupIDs(v interface{}) []string {
+	if v == nil {
+		return nil
+	}
+
+	var result []string
+	var items []interface{}
+
+	switch arr := v.(type) {
+	case []interface{}:
+		items = arr
+	case primitive.A:
+		items = arr
+	default:
+		return nil
+	}
+
+	for _, item := range items {
+		var sgID string
+		switch sg := item.(type) {
+		case string:
+			sgID = sg
+		case map[string]interface{}:
+			// JSON 字段名是小写 "id"
+			if id, ok := sg["id"].(string); ok {
+				sgID = id
+			} else if id, ok := sg["ID"].(string); ok {
+				sgID = id
+			}
+		case primitive.M:
+			if id, ok := sg["id"].(string); ok {
+				sgID = id
+			} else if id, ok := sg["ID"].(string); ok {
+				sgID = id
+			}
+		}
+		if sgID != "" {
+			result = append(result, sgID)
+		}
+	}
+
+	return result
 }

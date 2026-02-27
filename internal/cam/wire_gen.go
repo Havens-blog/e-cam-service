@@ -7,6 +7,8 @@
 package cam
 
 import (
+	"sync"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
@@ -21,14 +23,15 @@ import (
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/google/wire"
 	"github.com/gotomicro/ego/core/elog"
-	"sync"
-)
 
-import (
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aliyun"
+
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
+
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
+
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/tencent"
+
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/volcano"
 )
 
@@ -63,6 +66,9 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	instanceHandler := web.NewInstanceHandler(instanceService)
 	databaseHandler := web.NewDatabaseHandler(instanceService)
 	assetHandler := web.NewAssetHandler(instanceService)
+	dashboardDAO := dao.NewDashboardDAO(db)
+	dashboardService := service.NewDashboardService(dashboardDAO)
+	dashboardHandler := web.NewDashboardHandler(dashboardService)
 	instanceRelationDAO := InitInstanceRelationDAO(db)
 	instanceRelationRepository := repository.NewInstanceRelationRepository(instanceRelationDAO)
 	cloudxAdapterFactory := cloudx.NewAdapterFactory(component)
@@ -76,6 +82,7 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 		InstanceHdl:   instanceHandler,
 		DatabaseHdl:   databaseHandler,
 		AssetHdl:      assetHandler,
+		DashboardHdl:  dashboardHandler,
 		Svc:           serviceService,
 		AccountSvc:    cloudAccountService,
 		ModelSvc:      modelService,
