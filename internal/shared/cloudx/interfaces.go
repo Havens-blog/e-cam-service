@@ -17,8 +17,24 @@ type CloudAdapter interface {
 	// Deprecated: 请使用 ECS() 获取云虚拟机适配器
 	Asset() AssetAdapter
 
+	// ========== 计算资源 ==========
+
 	// ECS 获取ECS适配器 (云虚拟机专用)
 	ECS() ECSAdapter
+
+	// SecurityGroup 获取安全组适配器
+	SecurityGroup() SecurityGroupAdapter
+
+	// Image 获取镜像适配器
+	Image() ImageAdapter
+
+	// Disk 获取云盘适配器
+	Disk() DiskAdapter
+
+	// Snapshot 获取快照适配器
+	Snapshot() SnapshotAdapter
+
+	// ========== 数据库资源 ==========
 
 	// RDS 获取RDS适配器 (云数据库MySQL/PostgreSQL等)
 	RDS() RDSAdapter
@@ -29,11 +45,15 @@ type CloudAdapter interface {
 	// MongoDB 获取MongoDB适配器 (云MongoDB)
 	MongoDB() MongoDBAdapter
 
+	// ========== 网络资源 ==========
+
 	// VPC 获取VPC适配器 (虚拟私有云)
 	VPC() VPCAdapter
 
 	// EIP 获取EIP适配器 (弹性公网IP)
 	EIP() EIPAdapter
+
+	// ========== 存储资源 ==========
 
 	// NAS 获取NAS适配器 (文件存储)
 	NAS() NASAdapter
@@ -41,11 +61,15 @@ type CloudAdapter interface {
 	// OSS 获取OSS适配器 (对象存储)
 	OSS() OSSAdapter
 
+	// ========== 中间件资源 ==========
+
 	// Kafka 获取Kafka适配器 (消息队列)
 	Kafka() KafkaAdapter
 
 	// Elasticsearch 获取Elasticsearch适配器 (搜索服务)
 	Elasticsearch() ElasticsearchAdapter
+
+	// ========== IAM ==========
 
 	// IAM 获取IAM适配器
 	IAM() IAMAdapter
@@ -384,4 +408,101 @@ type ElasticsearchAdapter interface {
 
 	// ListInstancesWithFilter 带过滤条件获取实例列表
 	ListInstancesWithFilter(ctx context.Context, region string, filter *types.ElasticsearchInstanceFilter) ([]types.ElasticsearchInstance, error)
+}
+
+// ============================================================================
+// SecurityGroupAdapter - 安全组适配器接口
+// ============================================================================
+
+// SecurityGroupAdapter 安全组适配器接口
+type SecurityGroupAdapter interface {
+	// ListInstances 获取安全组列表
+	ListInstances(ctx context.Context, region string) ([]types.SecurityGroupInstance, error)
+
+	// GetInstance 获取单个安全组详情 (包含规则)
+	GetInstance(ctx context.Context, region, securityGroupID string) (*types.SecurityGroupInstance, error)
+
+	// ListInstancesByIDs 批量获取安全组
+	ListInstancesByIDs(ctx context.Context, region string, securityGroupIDs []string) ([]types.SecurityGroupInstance, error)
+
+	// ListInstancesWithFilter 带过滤条件获取安全组列表
+	ListInstancesWithFilter(ctx context.Context, region string, filter *types.SecurityGroupFilter) ([]types.SecurityGroupInstance, error)
+
+	// GetSecurityGroupRules 获取安全组规则
+	GetSecurityGroupRules(ctx context.Context, region, securityGroupID string) ([]types.SecurityGroupRule, error)
+
+	// ListByInstanceID 获取实例关联的安全组
+	ListByInstanceID(ctx context.Context, region, instanceID string) ([]types.SecurityGroupInstance, error)
+}
+
+// ============================================================================
+// ImageAdapter - 镜像适配器接口
+// ============================================================================
+
+// ImageAdapter 镜像适配器接口
+type ImageAdapter interface {
+	// ListInstances 获取镜像列表
+	ListInstances(ctx context.Context, region string) ([]types.ImageInstance, error)
+
+	// GetInstance 获取单个镜像详情
+	GetInstance(ctx context.Context, region, imageID string) (*types.ImageInstance, error)
+
+	// ListInstancesByIDs 批量获取镜像
+	ListInstancesByIDs(ctx context.Context, region string, imageIDs []string) ([]types.ImageInstance, error)
+
+	// ListInstancesWithFilter 带过滤条件获取镜像列表
+	ListInstancesWithFilter(ctx context.Context, region string, filter *types.ImageFilter) ([]types.ImageInstance, error)
+}
+
+// ============================================================================
+// DiskAdapter - 云盘适配器接口
+// ============================================================================
+
+// DiskAdapter 云盘适配器接口
+type DiskAdapter interface {
+	// ListInstances 获取云盘列表
+	ListInstances(ctx context.Context, region string) ([]types.DiskInstance, error)
+
+	// GetInstance 获取单个云盘详情
+	GetInstance(ctx context.Context, region, diskID string) (*types.DiskInstance, error)
+
+	// ListInstancesByIDs 批量获取云盘
+	ListInstancesByIDs(ctx context.Context, region string, diskIDs []string) ([]types.DiskInstance, error)
+
+	// GetInstanceStatus 获取云盘状态
+	GetInstanceStatus(ctx context.Context, region, diskID string) (string, error)
+
+	// ListInstancesWithFilter 带过滤条件获取云盘列表
+	ListInstancesWithFilter(ctx context.Context, region string, filter *types.DiskFilter) ([]types.DiskInstance, error)
+
+	// ListByInstanceID 获取实例挂载的云盘
+	ListByInstanceID(ctx context.Context, region, instanceID string) ([]types.DiskInstance, error)
+}
+
+// ============================================================================
+// SnapshotAdapter - 磁盘快照适配器接口
+// ============================================================================
+
+// SnapshotAdapter 磁盘快照适配器接口
+type SnapshotAdapter interface {
+	// ListInstances 获取快照列表
+	ListInstances(ctx context.Context, region string) ([]types.SnapshotInstance, error)
+
+	// GetInstance 获取单个快照详情
+	GetInstance(ctx context.Context, region, snapshotID string) (*types.SnapshotInstance, error)
+
+	// ListInstancesByIDs 批量获取快照
+	ListInstancesByIDs(ctx context.Context, region string, snapshotIDs []string) ([]types.SnapshotInstance, error)
+
+	// GetInstanceStatus 获取快照状态
+	GetInstanceStatus(ctx context.Context, region, snapshotID string) (string, error)
+
+	// ListInstancesWithFilter 带过滤条件获取快照列表
+	ListInstancesWithFilter(ctx context.Context, region string, filter *types.SnapshotFilter) ([]types.SnapshotInstance, error)
+
+	// ListByDiskID 获取磁盘的快照列表
+	ListByDiskID(ctx context.Context, region, diskID string) ([]types.SnapshotInstance, error)
+
+	// ListByInstanceID 获取实例的快照列表 (系统盘+数据盘)
+	ListByInstanceID(ctx context.Context, region, instanceID string) ([]types.SnapshotInstance, error)
 }

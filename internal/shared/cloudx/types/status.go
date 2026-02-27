@@ -383,3 +383,164 @@ func NormalizeMongoDBStatus(status string) string {
 	}
 	return lower
 }
+
+// ============================================================================
+// SecurityGroup 状态标准化
+// ============================================================================
+
+// SecurityGroup 标准化状态
+const (
+	SecurityGroupStatusAvailable = "available" // 可用
+	SecurityGroupStatusPending   = "pending"   // 创建中
+	SecurityGroupStatusDeleting  = "deleting"  // 删除中
+	SecurityGroupStatusUnknown   = "unknown"   // 未知
+)
+
+// NormalizeSecurityGroupStatus 标准化安全组状态
+func NormalizeSecurityGroupStatus(status string) string {
+	lower := strings.ToLower(status)
+	switch lower {
+	case "available", "active":
+		return SecurityGroupStatusAvailable
+	case "pending", "creating":
+		return SecurityGroupStatusPending
+	case "deleting":
+		return SecurityGroupStatusDeleting
+	case "":
+		return SecurityGroupStatusUnknown
+	default:
+		return lower
+	}
+}
+
+// ============================================================================
+// Image 状态标准化
+// ============================================================================
+
+// Image 标准化状态
+const (
+	ImageStatusAvailable   = "available"   // 可用
+	ImageStatusCreating    = "creating"    // 创建中
+	ImageStatusWaiting     = "waiting"     // 等待中
+	ImageStatusDeprecated  = "deprecated"  // 已弃用
+	ImageStatusUnavailable = "unavailable" // 不可用
+	ImageStatusError       = "error"       // 异常
+	ImageStatusUnknown     = "unknown"     // 未知
+)
+
+// NormalizeImageStatus 标准化镜像状态
+func NormalizeImageStatus(status string) string {
+	lower := strings.ToLower(status)
+	switch lower {
+	case "available", "active", "normal", "using":
+		return ImageStatusAvailable
+	case "creating", "pending", "saving", "syncing", "transient":
+		return ImageStatusCreating
+	case "waiting", "queued":
+		return ImageStatusWaiting
+	case "deprecated", "deregistered":
+		return ImageStatusDeprecated
+	case "unavailable", "deleted":
+		return ImageStatusUnavailable
+	case "error", "failed", "invalid", "killed":
+		return ImageStatusError
+	case "":
+		return ImageStatusUnknown
+	default:
+		return lower
+	}
+}
+
+// ============================================================================
+// Disk 状态标准化
+// ============================================================================
+
+// Disk 标准化状态
+const (
+	DiskStatusAvailable = "available" // 可用 (未挂载)
+	DiskStatusInUse     = "in_use"    // 使用中 (已挂载)
+	DiskStatusCreating  = "creating"  // 创建中
+	DiskStatusAttaching = "attaching" // 挂载中
+	DiskStatusDetaching = "detaching" // 卸载中
+	DiskStatusDeleting  = "deleting"  // 删除中
+	DiskStatusReIniting = "reiniting" // 重置中
+	DiskStatusError     = "error"     // 异常
+	DiskStatusUnknown   = "unknown"   // 未知
+)
+
+// NormalizeDiskStatus 标准化云盘状态
+func NormalizeDiskStatus(status string) string {
+	lower := strings.ToLower(status)
+	switch lower {
+	case "available", "unattached":
+		return DiskStatusAvailable
+	case "in_use", "in-use", "attached":
+		return DiskStatusInUse
+	case "creating", "uploading", "downloading", "extending", "expanding":
+		return DiskStatusCreating
+	case "attaching":
+		return DiskStatusAttaching
+	case "detaching":
+		return DiskStatusDetaching
+	case "deleting", "deleted", "torecycle":
+		return DiskStatusDeleting
+	case "reiniting", "rollbacking":
+		return DiskStatusReIniting
+	case "error", "error_extending", "error_deleting", "error_restoring", "error_rollbacking":
+		return DiskStatusError
+	case "all", "":
+		return DiskStatusUnknown
+	default:
+		return lower
+	}
+}
+
+// IsDiskAvailable 判断云盘是否可用 (未挂载)
+func IsDiskAvailable(status string) bool {
+	return NormalizeDiskStatus(status) == DiskStatusAvailable
+}
+
+// IsDiskInUse 判断云盘是否使用中 (已挂载)
+func IsDiskInUse(status string) bool {
+	return NormalizeDiskStatus(status) == DiskStatusInUse
+}
+
+// ============================================================================
+// Snapshot 状态标准化
+// ============================================================================
+
+// Snapshot 标准化状态
+const (
+	SnapshotStatusNormal       = "normal"       // 正常
+	SnapshotStatusProgressing  = "progressing"  // 创建中
+	SnapshotStatusAccomplished = "accomplished" // 已完成
+	SnapshotStatusFailed       = "failed"       // 失败
+	SnapshotStatusDeleting     = "deleting"     // 删除中
+	SnapshotStatusUnknown      = "unknown"      // 未知
+)
+
+// NormalizeSnapshotStatus 标准化快照状态
+func NormalizeSnapshotStatus(status string) string {
+	lower := strings.ToLower(status)
+	switch lower {
+	case "normal":
+		return SnapshotStatusNormal
+	case "progressing", "pending", "creating", "rollbacking", "backing_up", "copying":
+		return SnapshotStatusProgressing
+	case "accomplished", "completed", "available":
+		return SnapshotStatusAccomplished
+	case "failed", "error", "error_deleting":
+		return SnapshotStatusFailed
+	case "deleting", "torecycle":
+		return SnapshotStatusDeleting
+	case "":
+		return SnapshotStatusUnknown
+	default:
+		return lower
+	}
+}
+
+// IsSnapshotCompleted 判断快照是否已完成
+func IsSnapshotCompleted(status string) bool {
+	return NormalizeSnapshotStatus(status) == SnapshotStatusAccomplished
+}

@@ -22,6 +22,10 @@ type Adapter struct {
 	logger        *elog.Component
 	asset         cloudx.AssetAdapter
 	ecs           *ECSAdapter
+	securityGroup *SecurityGroupAdapter
+	image         cloudx.ImageAdapter
+	disk          *DiskAdapter
+	snapshot      *SnapshotAdapter
 	rds           *RDSAdapter
 	redis         *RedisAdapter
 	mongodb       *MongoDBAdapter
@@ -61,6 +65,18 @@ func NewAdapter(account *domain.CloudAccount) (*Adapter, error) {
 
 	// 创建ECS适配器 (推荐使用)
 	adapter.ecs = NewECSAdapter(account, defaultRegion, logger)
+
+	// 创建安全组适配器
+	adapter.securityGroup = NewSecurityGroupAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建镜像适配器
+	adapter.image = NewImageAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建云盘适配器
+	adapter.disk = NewDiskAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建快照适配器
+	adapter.snapshot = NewSnapshotAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
 
 	// 创建RDS适配器
 	adapter.rds = NewRDSAdapter(account, defaultRegion, logger)
@@ -109,6 +125,26 @@ func (a *Adapter) Asset() cloudx.AssetAdapter {
 // ECS 获取ECS适配器
 func (a *Adapter) ECS() cloudx.ECSAdapter {
 	return a.ecs
+}
+
+// SecurityGroup 获取安全组适配器
+func (a *Adapter) SecurityGroup() cloudx.SecurityGroupAdapter {
+	return a.securityGroup
+}
+
+// Image 获取镜像适配器
+func (a *Adapter) Image() cloudx.ImageAdapter {
+	return a.image
+}
+
+// Disk 获取云盘适配器
+func (a *Adapter) Disk() cloudx.DiskAdapter {
+	return a.disk
+}
+
+// Snapshot 获取快照适配器
+func (a *Adapter) Snapshot() cloudx.SnapshotAdapter {
+	return a.snapshot
 }
 
 // RDS 获取RDS适配器
