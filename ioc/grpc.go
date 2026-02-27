@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func InitGrpcServer() *grpcx.Server {
+func InitGrpcServer(etcdClient *clientv3.Client) *grpcx.Server {
 	logger := elog.DefaultLogger
 	logger.Info("开始初始化gRPC服务器")
 
@@ -49,10 +49,6 @@ func InitGrpcServer() *grpcx.Server {
 		elog.String("name", cfg.Server.Name),
 		elog.Int("port", cfg.Server.Port),
 		elog.Int64("etcd_ttl", cfg.Server.EtcdTTL))
-
-	// 初始化etcd客户端
-	logger.Info("初始化etcd客户端")
-	etcdClient := InitEtcdClient()
 
 	// 创建gRPC服务器
 	logger.Info("创建gRPC服务器实例")

@@ -12,17 +12,22 @@ import (
 //go:generate go run github.com/google/wire/cmd/wire
 
 var BaseSet = wire.NewSet(
-	InitLogger, // 日志初始化（最先初始化）
+	InitLogger,
 	InitMongoDB,
 	InitRedis,
 	InitGrpcServer,
 	InitSessionProvider,
 	InitGinMiddlewares,
+	InitEtcdClient,
+	InitEcmdbPolicyClient,
+	InitEcmdbEndpointClient,
+	InitCheckPolicyMiddleware,
 	InitWebServer,
 	InitJobs,
 	endpoint.InitModule,
-	cam.InitModuleWithIAM, // 使用包含IAM的初始化函数
-	cmdb.InitModule,       // CMDB模块
+	cam.InitModuleWithIAM,
+	cmdb.InitModule,
+	InitAlertModule,
 	wire.FieldsOf(new(*endpoint.Module), "Hdl"),
 	wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
 )

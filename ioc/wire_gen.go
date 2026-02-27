@@ -11,9 +11,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cmdb"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
 	"github.com/google/wire"
-)
 
-import (
 	_ "github.com/Havens-blog/e-cam-service/docs"
 )
 
@@ -35,8 +33,16 @@ func InitApp() (*App, error) {
 		return nil, err
 	}
 	cmdbModule := cmdb.InitModule(mongo)
-	engine := InitWebServer(provider, v, handler, camModule, cmdbModule)
-	server := InitGrpcServer()
+	alertModule := InitAlertModule(mongo)
+
+	// ecmdb 集成：初始化 etcd 客户端和 gRPC 客户端
+	etcdClient := InitEtcdClient()
+	policyClient := InitEcmdbPolicyClient(etcdClient)
+	endpointClient := InitEcmdbEndpointClient(etcdClient)
+	checkPolicyMiddleware := InitCheckPolicyMiddleware(policyClient)
+
+	engine := InitWebServer(provider, v, checkPolicyMiddleware, endpointClient, handler, camModule, cmdbModule, alertModule)
+	server := InitGrpcServer(etcdClient)
 	v2 := InitJobs()
 	app := &App{
 		Logger:    logger,
@@ -58,6 +64,16 @@ var BaseSet = wire.NewSet(
 	InitGrpcServer,
 	InitSessionProvider,
 	InitGinMiddlewares,
+	InitEtcdClient,
+	InitEcmdbPolicyClient,
+	InitEcmdbEndpointClient,
+	InitCheckPolicyMiddleware,
 	InitWebServer,
-	InitJobs, endpoint.InitModule, cam.InitModuleWithIAM, cmdb.InitModule, wire.FieldsOf(new(*endpoint.Module), "Hdl"), wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
+	InitJobs,
+	endpoint.InitModule,
+	cam.InitModuleWithIAM,
+	cmdb.InitModule,
+	InitAlertModule,
+	wire.FieldsOf(new(*endpoint.Module), "Hdl"),
+	wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
 )
