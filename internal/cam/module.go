@@ -1,6 +1,7 @@
 package cam
 
 import (
+	"github.com/Havens-blog/e-cam-service/internal/cam/iam"
 	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
@@ -9,7 +10,6 @@ import (
 	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
 	taskweb "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
-	"github.com/Havens-blog/e-cam-service/internal/iam"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -17,8 +17,9 @@ import (
 type Module struct {
 	Hdl               *Handler
 	InstanceHdl       *web.InstanceHandler
-	DatabaseHdl       *web.DatabaseHandler // 数据库资源处理器 (旧路由，保留兼容)
-	AssetHdl          *web.AssetHandler    // 统一资产处理器 (新RESTful路由)
+	DatabaseHdl       *web.DatabaseHandler  // 数据库资源处理器 (旧路由，保留兼容)
+	AssetHdl          *web.AssetHandler     // 统一资产处理器 (新RESTful路由)
+	DashboardHdl      *web.DashboardHandler // 仪表盘处理器
 	Svc               Service
 	AccountSvc        CloudAccountService
 	ModelSvc          ModelService
@@ -53,6 +54,14 @@ func (m *Module) RegisterRoutes(r *gin.Engine) {
 		assetsGroup.Use(middleware.TenantMiddleware(m.Logger))
 		assetsGroup.Use(middleware.RequireTenant(m.Logger))
 		m.AssetHdl.RegisterRoutesWithGroup(assetsGroup)
+	}
+
+	// 注册仪表盘路由 (使用租户中间件)
+	if m.DashboardHdl != nil {
+		dashboardGroup := camGroup.Group("/dashboard")
+		dashboardGroup.Use(middleware.TenantMiddleware(m.Logger))
+		dashboardGroup.Use(middleware.RequireTenant(m.Logger))
+		m.DashboardHdl.RegisterRoutesWithGroup(dashboardGroup)
 	}
 
 	// 注册IAM路由

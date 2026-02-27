@@ -2,10 +2,10 @@ package cam
 
 import (
 	// 使用新的独立 IAM 模块
+	"github.com/Havens-blog/e-cam-service/internal/cam/iam"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree"
-	"github.com/Havens-blog/e-cam-service/internal/iam"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/gotomicro/ego/core/elog"
 )
