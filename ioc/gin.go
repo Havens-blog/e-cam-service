@@ -6,6 +6,7 @@ import (
 	endpointv1 "github.com/Duke1616/ecmdb/api/proto/gen/ecmdb/endpoint/v1"
 	_ "github.com/Havens-blog/e-cam-service/docs" // 导入生成的文档
 	"github.com/Havens-blog/e-cam-service/internal/alert"
+	"github.com/Havens-blog/e-cam-service/internal/audit"
 	"github.com/Havens-blog/e-cam-service/internal/cam"
 	"github.com/Havens-blog/e-cam-service/internal/cmdb"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
@@ -14,11 +15,12 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/spf13/viper"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *middleware.CheckPolicyMiddleware, endpointClient endpointv1.EndpointServiceClient, endpointHdl *endpoint.Handler, camModule *cam.Module, cmdbModule *cmdb.Module, alertModule *alert.Module) *gin.Engine {
+func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *middleware.CheckPolicyMiddleware, auditMdl *middleware.AuditMiddleware, auditModule *audit.Module, endpointClient endpointv1.EndpointServiceClient, endpointHdl *endpoint.Handler, camModule *cam.Module, cmdbModule *cmdb.Module, alertModule *alert.Module) *gin.Engine {
 	logger := elog.DefaultLogger
 	logger.Info("开始初始化Web服务器")
 	session.SetDefaultProvider(sp)
@@ -32,6 +34,9 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 	// 添加基础中间件
 	server.Use(mdls...)
 
+	// 请求ID中间件（在认证之前）
+	server.Use(middleware.RequestIDMiddleware())
+
 	// Swagger 文档路由（不需要认证）
 	logger.Info("注册 Swagger 文档路由")
 	server.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
@@ -40,13 +45,19 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 	})
 
 	// ===== 以下路由需要 ecmdb session 认证 =====
-	server.Use(middleware.EcmdbAuthMiddleware(sp, logger))
+	// 加固版认证中间件，支持白名单
+	var authCfg middleware.AuthConfig
+	_ = viper.UnmarshalKey("auth", &authCfg)
+	server.Use(middleware.EcmdbAuthMiddlewareWithConfig(sp, authCfg, logger))
 
 	// 租户中间件：从 session 或 header 中提取租户信息
 	server.Use(middleware.TenantMiddleware(logger))
 
-	// ecmdb 策略检查中间件
+	// ecmdb 策略检查中间件（加固版）
 	server.Use(checkPolicy.Build())
+
+	// API 操作审计中间件
+	server.Use(auditMdl.Build())
 
 	// 注册路由
 	logger.Info("注册路由")
@@ -102,10 +113,9 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 		logger.Warn("服务树模块未初始化，跳过服务树路由注册")
 	}
 
-	// 注册CMDB路由（独立路由前缀 /api/v1/cmdb）
+	// 注册CMDB路由（挂在 /api/v1/cam 下，前端请求 /api/v1/cam/cmdb/...）
 	logger.Info("注册CMDB路由")
-	cmdbGroup := server.Group("/api/v1/cmdb")
-	cmdbModule.RegisterRoutes(cmdbGroup)
+	cmdbModule.RegisterRoutes(camGroup)
 	logger.Info("CMDB路由注册完成")
 
 	// 注册告警模块路由
@@ -118,7 +128,19 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 		logger.Warn("告警模块未初始化，跳过告警路由注册")
 	}
 
-	// 注册 Swagger 文档路由（已在上方注册，此处跳过）
+	// 注册审计模块路由
+	if auditModule != nil {
+		logger.Info("注册审计模块路由")
+		auditGroup := server.Group("/api/v1/cam/audit")
+		auditModule.RegisterRoutes(auditGroup)
+
+		// 变更历史路由（挂在 audit 下，避免与 /assets/:id 路由冲突）
+		if auditModule.ChangeHandler != nil {
+			auditGroup.GET("/changes", auditModule.ChangeHandler.ListAssetChanges)
+			auditGroup.GET("/changes/summary", auditModule.ChangeHandler.GetChangeSummary)
+		}
+		logger.Info("审计模块路由注册完成")
+	}
 
 	// 启动时将 e-cam-service 的路由注册到 ecmdb 的权限系统
 	go middleware.RegisterEndpointsToEcmdb(server, endpointClient, logger)
@@ -142,8 +164,8 @@ func corsHdl() gin.HandlerFunc {
 			return true
 		},
 		AllowMethods:  []string{"POST", "GET", "PUT", "DELETE", "PATCH", "OPTIONS"},
-		AllowHeaders:  []string{"Content-Type", "Authorization", "X-Tenant-ID", "X-Finder-Id", "X-Finder-ID"},
-		ExposeHeaders: []string{"X-Access-Token"},
+		AllowHeaders:  []string{"Content-Type", "Authorization", "X-Tenant-ID", "X-Finder-Id", "X-Finder-ID", "X-Request-ID"},
+		ExposeHeaders: []string{"X-Access-Token", "X-Request-ID", "X-Request-User"},
 		// 允许携带 cookie 和 Authorization header
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	auditdomain "github.com/Havens-blog/e-cam-service/internal/audit/domain"
+	auditservice "github.com/Havens-blog/e-cam-service/internal/audit/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
@@ -21,6 +23,8 @@ type AssetSyncService interface {
 	SyncAccountAssets(ctx context.Context, tenantID string, accountID int64, assetTypes []string) (*SyncResult, error)
 	// SyncRelations 同步资产关系
 	SyncRelations(ctx context.Context, tenantID string) (*RelationSyncResult, error)
+	// SetChangeTracker 设置变更追踪器（可选）
+	SetChangeTracker(ct *auditservice.ChangeTracker)
 }
 
 // SyncResult 同步结果
@@ -53,6 +57,7 @@ type assetSyncService struct {
 	relationRepo   repository.InstanceRelationRepository
 	accountRepo    repository.CloudAccountRepository
 	adapterFactory *cloudx.AdapterFactory
+	changeTracker  *auditservice.ChangeTracker // 资产变更追踪器（可选）
 	logger         *elog.Component
 }
 
@@ -71,6 +76,45 @@ func NewAssetSyncService(
 		adapterFactory: adapterFactory,
 		logger:         logger,
 	}
+}
+
+// SetChangeTracker 设置变更追踪器（可选注入，不影响原有构造函数签名）
+func (s *assetSyncService) SetChangeTracker(ct *auditservice.ChangeTracker) {
+	s.changeTracker = ct
+}
+
+// trackAndUpsert 在 Upsert 前追踪变更，然后执行 Upsert
+func (s *assetSyncService) trackAndUpsert(ctx context.Context, instance domain.Instance) error {
+	if s.changeTracker != nil {
+		// 查询旧实例
+		old, err := s.instanceRepo.GetByAssetID(ctx, instance.TenantID, instance.ModelUID, instance.AssetID)
+		if err != nil {
+			s.logger.Warn("查询旧实例用于变更追踪失败",
+				elog.FieldErr(err),
+				elog.String("asset_id", instance.AssetID),
+			)
+		} else if old.AssetID != "" && old.Attributes != nil {
+			// 旧实例存在，追踪变更
+			meta := auditdomain.ChangeMetadata{
+				AssetID:      instance.AssetID,
+				AssetName:    instance.AssetName,
+				ModelUID:     instance.ModelUID,
+				TenantID:     instance.TenantID,
+				AccountID:    instance.AccountID,
+				ChangeSource: "sync_task",
+			}
+			// 从新属性中提取 provider 和 region
+			if p, ok := instance.Attributes["provider"].(string); ok {
+				meta.Provider = p
+			}
+			if r, ok := instance.Attributes["region"].(string); ok {
+				meta.Region = r
+			}
+			// TrackChanges 内部失败仅记录日志，不影响同步
+			_, _ = s.changeTracker.TrackChanges(ctx, meta, old.Attributes, instance.Attributes)
+		}
+	}
+	return s.instanceRepo.Upsert(ctx, instance)
 }
 
 // SyncAssets 同步云资产到 CMDB
@@ -395,7 +439,7 @@ func (s *assetSyncService) syncECSInstances(
 	for _, inst := range instances {
 		cmdbInstance := s.convertECSToCMDBInstance(tenantID, account, inst)
 
-		err := s.instanceRepo.Upsert(ctx, cmdbInstance)
+		err := s.trackAndUpsert(ctx, cmdbInstance)
 		if err != nil {
 			s.logger.Error("保存ECS实例失败",
 				elog.String("asset_id", inst.InstanceID),
@@ -510,7 +554,7 @@ func (s *assetSyncService) syncRDSInstances(
 			ModelUID: "cloud_rds", AssetID: inst.InstanceID, AssetName: inst.InstanceName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
-		if err := s.instanceRepo.Upsert(ctx, cmdbInstance); err != nil {
+		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
 			result.Failed++
 			continue
 		}
@@ -553,7 +597,7 @@ func (s *assetSyncService) syncRedisInstances(
 			ModelUID: "cloud_redis", AssetID: inst.InstanceID, AssetName: inst.InstanceName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
-		if err := s.instanceRepo.Upsert(ctx, cmdbInstance); err != nil {
+		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
 			result.Failed++
 			continue
 		}
@@ -596,7 +640,7 @@ func (s *assetSyncService) syncMongoDBInstances(
 			ModelUID: "cloud_mongodb", AssetID: inst.InstanceID, AssetName: inst.InstanceName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
-		if err := s.instanceRepo.Upsert(ctx, cmdbInstance); err != nil {
+		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
 			result.Failed++
 			continue
 		}
@@ -636,7 +680,7 @@ func (s *assetSyncService) syncVPCInstances(
 			ModelUID: "cloud_vpc", AssetID: inst.VPCID, AssetName: inst.VPCName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
-		if err := s.instanceRepo.Upsert(ctx, cmdbInstance); err != nil {
+		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
 			result.Failed++
 			continue
 		}
@@ -681,7 +725,7 @@ func (s *assetSyncService) syncEIPInstances(
 			ModelUID: "cloud_eip", AssetID: inst.AllocationID, AssetName: assetName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
-		if err := s.instanceRepo.Upsert(ctx, cmdbInstance); err != nil {
+		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
 			result.Failed++
 			continue
 		}
@@ -984,7 +1028,7 @@ func (s *assetSyncService) syncNASInstances(
 			ModelUID: "cloud_nas", AssetID: inst.FileSystemID, AssetName: assetName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
-		if err := s.instanceRepo.Upsert(ctx, cmdbInstance); err != nil {
+		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
 			result.Failed++
 			continue
 		}
@@ -1026,7 +1070,7 @@ func (s *assetSyncService) syncOSSBuckets(
 			ModelUID: "cloud_oss", AssetID: bucket.BucketName, AssetName: bucket.BucketName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
-		if err := s.instanceRepo.Upsert(ctx, cmdbInstance); err != nil {
+		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
 			result.Failed++
 			continue
 		}

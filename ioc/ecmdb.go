@@ -108,5 +108,7 @@ func InitEcmdbEndpointClient(etcdClient *clientv3.Client) endpointv1.EndpointSer
 
 // InitCheckPolicyMiddleware 初始化策略检查中间件
 func InitCheckPolicyMiddleware(policyClient policyv1.PolicyServiceClient) *middleware.CheckPolicyMiddleware {
-	return middleware.NewCheckPolicyMiddleware(policyClient, elog.DefaultLogger)
+	var cfg middleware.PolicyConfig
+	_ = viper.UnmarshalKey("policy", &cfg)
+	return middleware.NewCheckPolicyMiddleware(policyClient, cfg, elog.DefaultLogger)
 }

@@ -86,6 +86,18 @@ cronjob:
 frontend:
   logicflow_url: http://localhost:3333/logicflow-preview
 
+# 认证中间件配置
+auth:
+  whitelist:
+    - "/health"
+    - "/swagger/*"
+    - "/docs"
+
+# 策略检查中间件配置
+policy:
+  fail_mode: "fail_open"
+  whitelist: []
+
 grpc:
   server:
     name: "e-cam-service"

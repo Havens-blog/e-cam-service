@@ -2,7 +2,6 @@
 
 //go:generate go run -mod=mod github.com/google/wire/cmd/wire
 //go:build !wireinject
-// +build !wireinject
 
 package ioc
 
@@ -34,6 +33,11 @@ func InitApp() (*App, error) {
 	}
 	cmdbModule := cmdb.InitModule(mongo)
 	alertModule := InitAlertModule(mongo)
+	auditModule := InitAuditModule(mongo)
+	auditMiddleware := InitAuditMiddleware(auditModule)
+
+	// 将变更追踪器注入到资产同步服务
+	WireChangeTracker(camModule, auditModule)
 
 	// ecmdb 集成：初始化 etcd 客户端和 gRPC 客户端
 	etcdClient := InitEtcdClient()
@@ -41,7 +45,7 @@ func InitApp() (*App, error) {
 	endpointClient := InitEcmdbEndpointClient(etcdClient)
 	checkPolicyMiddleware := InitCheckPolicyMiddleware(policyClient)
 
-	engine := InitWebServer(provider, v, checkPolicyMiddleware, endpointClient, handler, camModule, cmdbModule, alertModule)
+	engine := InitWebServer(provider, v, checkPolicyMiddleware, auditMiddleware, auditModule, endpointClient, handler, camModule, cmdbModule, alertModule)
 	server := InitGrpcServer(etcdClient)
 	v2 := InitJobs()
 	app := &App{
@@ -68,6 +72,8 @@ var BaseSet = wire.NewSet(
 	InitEcmdbPolicyClient,
 	InitEcmdbEndpointClient,
 	InitCheckPolicyMiddleware,
+	InitAuditModule,
+	InitAuditMiddleware,
 	InitWebServer,
 	InitJobs,
 	endpoint.InitModule,

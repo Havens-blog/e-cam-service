@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/ecodeclub/ginx/gctx"
 	"github.com/ecodeclub/ginx/session"
@@ -17,15 +18,39 @@ const (
 	CtxUsernameKey = "username"
 )
 
-// EcmdbAuthMiddleware 复用 ecmdb 的 session 做认证
+// AuthConfig 认证中间件配置
+type AuthConfig struct {
+	Whitelist []string `mapstructure:"whitelist"` // 白名单路径（精确匹配或前缀匹配 /path/*）
+}
+
+// EcmdbAuthMiddleware 复用 ecmdb 的 session 做认证（向后兼容）
 // 用户在 ecmdb 登录后，e-cam-service 通过共享 Redis session 验证身份
 func EcmdbAuthMiddleware(sp session.Provider, logger *elog.Component) gin.HandlerFunc {
+	return EcmdbAuthMiddlewareWithConfig(sp, AuthConfig{}, logger)
+}
+
+// EcmdbAuthMiddlewareWithConfig 加固版认证中间件，支持白名单和结构化错误响应
+func EcmdbAuthMiddlewareWithConfig(sp session.Provider, cfg AuthConfig, logger *elog.Component) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 白名单匹配
+		if matchWhitelist(c.Request.URL.Path, cfg.Whitelist) {
+			c.Next()
+			return
+		}
+
 		gCtx := &gctx.Context{Context: c}
 		sess, err := sp.Get(gCtx)
 		if err != nil {
-			logger.Debug("ecmdb session 认证失败", elog.FieldErr(err))
-			c.AbortWithStatus(http.StatusUnauthorized)
+			logger.Debug("ecmdb session 认证失败",
+				elog.FieldErr(err),
+				elog.String("client_ip", c.ClientIP()),
+				elog.String("path", c.Request.URL.Path),
+			)
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"code":    401,
+				"message": "认证失败：会话无效或已过期",
+			})
+			c.Abort()
 			return
 		}
 
@@ -35,6 +60,8 @@ func EcmdbAuthMiddleware(sp session.Provider, logger *elog.Component) gin.Handle
 		c.Set(CtxUidKey, claims.Uid)
 		if username, ok := claims.Data["username"]; ok {
 			c.Set(CtxUsernameKey, username)
+			// 设置调试响应头
+			c.Header("X-Request-User", username)
 		}
 
 		// 同时注入 tenant_id（从 session 中获取，如果有的话）
@@ -47,6 +74,23 @@ func EcmdbAuthMiddleware(sp session.Provider, logger *elog.Component) gin.Handle
 
 		c.Next()
 	}
+}
+
+// matchWhitelist 检查路径是否匹配白名单
+func matchWhitelist(path string, whitelist []string) bool {
+	for _, pattern := range whitelist {
+		if strings.HasSuffix(pattern, "/*") {
+			// 前缀匹配
+			prefix := strings.TrimSuffix(pattern, "/*")
+			if strings.HasPrefix(path, prefix) {
+				return true
+			}
+		} else if path == pattern {
+			// 精确匹配
+			return true
+		}
+	}
+	return false
 }
 
 // GetUid 从上下文中获取用户ID

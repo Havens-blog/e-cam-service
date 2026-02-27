@@ -22,6 +22,8 @@ var BaseSet = wire.NewSet(
 	InitEcmdbPolicyClient,
 	InitEcmdbEndpointClient,
 	InitCheckPolicyMiddleware,
+	InitAuditModule,
+	InitAuditMiddleware,
 	InitWebServer,
 	InitJobs,
 	endpoint.InitModule,
