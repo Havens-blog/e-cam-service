@@ -36,6 +36,25 @@ type InstanceFilter struct {
 	Limit      int64
 }
 
+// AssetStatsResult 资产统计结果
+type AssetStatsResult struct {
+	Total       int64                     `bson:"total"`
+	ByAssetType []AssetTypeCount          `bson:"by_asset_type"`
+	ByProvider  []ProviderCount           `bson:"by_provider"`
+}
+
+// AssetTypeCount 按资产类型统计
+type AssetTypeCount struct {
+	AssetType string `bson:"_id"`
+	Count     int64  `bson:"count"`
+}
+
+// ProviderCount 按云厂商统计
+type ProviderCount struct {
+	Provider string `bson:"_id"`
+	Count    int64  `bson:"count"`
+}
+
 // InstanceDAO 资产实例数据访问接口
 type InstanceDAO interface {
 	Create(ctx context.Context, instance Instance) (int64, error)
@@ -44,10 +63,21 @@ type InstanceDAO interface {
 	GetByID(ctx context.Context, id int64) (Instance, error)
 	GetByAssetID(ctx context.Context, tenantID, modelUID, assetID string) (Instance, error)
 	List(ctx context.Context, filter InstanceFilter) ([]Instance, error)
+	ListByIDs(ctx context.Context, ids []int64) ([]Instance, error)
 	Count(ctx context.Context, filter InstanceFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByAccountID(ctx context.Context, accountID int64) error
 	Upsert(ctx context.Context, instance Instance) error
+	// ListUnbound 查询未绑定到任何服务树节点的资产 (通过 $lookup 排除已有 binding 的)
+	ListUnbound(ctx context.Context, tenantID string, offset, limit int64) ([]Instance, error)
+	// CountUnbound 统计未绑定资产数量
+	CountUnbound(ctx context.Context, tenantID string) (int64, error)
+	// AggregateStatsByIDs 根据资源ID列表聚合统计（高性能）
+	AggregateStatsByIDs(ctx context.Context, ids []int64) (*AssetStatsResult, error)
+	// AggregateAllStats 聚合统计全部资产
+	AggregateAllStats(ctx context.Context, tenantID string) (*AssetStatsResult, error)
+	// AggregateUnboundStats 聚合统计未绑定资产
+	AggregateUnboundStats(ctx context.Context, tenantID string) (*AssetStatsResult, error)
 }
 
 type instanceDAO struct {
@@ -142,6 +172,21 @@ func (d *instanceDAO) GetByAssetID(ctx context.Context, tenantID, modelUID, asse
 
 	err := d.db.Collection(InstanceCollection).FindOne(ctx, filter).Decode(&instance)
 	return instance, err
+}
+
+// ListByIDs 根据ID列表批量查询实例
+func (d *instanceDAO) ListByIDs(ctx context.Context, ids []int64) ([]Instance, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	filter := bson.M{"id": bson.M{"$in": ids}}
+	cursor, err := d.db.Collection(InstanceCollection).Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	var instances []Instance
+	return instances, cursor.All(ctx, &instances)
 }
 
 // List 获取实例列表
@@ -240,4 +285,237 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 	}
 
 	return query
+}
+
+// unboundPipeline 构建查询未绑定资产的聚合管道
+// 思路: c_instance LEFT JOIN c_resource_binding，保留 binding 为空的记录
+func (d *instanceDAO) unboundPipeline(tenantID string) mongo.Pipeline {
+	return mongo.Pipeline{
+		// 1. 按租户过滤
+		{{Key: "$match", Value: bson.M{"tenant_id": tenantID}}},
+		// 2. LEFT JOIN binding 表: 用 instance.id 关联 binding.resource_id
+		{{Key: "$lookup", Value: bson.M{
+			"from": "c_resource_binding",
+			"let":  bson.M{"inst_id": "$id", "tenant": "$tenant_id"},
+			"pipeline": mongo.Pipeline{
+				{{Key: "$match", Value: bson.M{"$expr": bson.M{"$and": bson.A{
+					bson.M{"$eq": bson.A{"$resource_id", "$$inst_id"}},
+					bson.M{"$eq": bson.A{"$tenant_id", "$$tenant"}},
+					bson.M{"$eq": bson.A{"$resource_type", "instance"}},
+				}}}}},
+				// 只需要知道有没有，取1条就够
+				{{Key: "$limit", Value: 1}},
+				{{Key: "$project", Value: bson.M{"_id": 1}}},
+			},
+			"as": "_bindings",
+		}}},
+		// 3. 只保留没有 binding 的
+		{{Key: "$match", Value: bson.M{"_bindings": bson.M{"$size": 0}}}},
+		// 4. 去掉临时字段
+		{{Key: "$project", Value: bson.M{"_bindings": 0}}},
+	}
+}
+
+// ListUnbound 查询未绑定到任何服务树节点的资产
+func (d *instanceDAO) ListUnbound(ctx context.Context, tenantID string, offset, limit int64) ([]Instance, error) {
+	pipeline := d.unboundPipeline(tenantID)
+
+	// 排序
+	pipeline = append(pipeline, bson.D{{Key: "$sort", Value: bson.M{"ctime": -1}}})
+	// 分页
+	if offset > 0 {
+		pipeline = append(pipeline, bson.D{{Key: "$skip", Value: offset}})
+	}
+	if limit > 0 {
+		pipeline = append(pipeline, bson.D{{Key: "$limit", Value: limit}})
+	}
+
+	cursor, err := d.db.Collection(InstanceCollection).Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var instances []Instance
+	err = cursor.All(ctx, &instances)
+	return instances, err
+}
+
+// CountUnbound 统计未绑定资产数量
+func (d *instanceDAO) CountUnbound(ctx context.Context, tenantID string) (int64, error) {
+	pipeline := d.unboundPipeline(tenantID)
+	pipeline = append(pipeline, bson.D{{Key: "$count", Value: "total"}})
+
+	cursor, err := d.db.Collection(InstanceCollection).Aggregate(ctx, pipeline)
+	if err != nil {
+		return 0, err
+	}
+	defer cursor.Close(ctx)
+
+	var result []struct {
+		Total int64 `bson:"total"`
+	}
+	if err := cursor.All(ctx, &result); err != nil {
+		return 0, err
+	}
+	if len(result) == 0 {
+		return 0, nil
+	}
+	return result[0].Total, nil
+}
+
+// AggregateStatsByIDs 根据资源ID列表聚合统计（高性能，单次聚合）
+func (d *instanceDAO) AggregateStatsByIDs(ctx context.Context, ids []int64) (*AssetStatsResult, error) {
+	if len(ids) == 0 {
+		return &AssetStatsResult{ByAssetType: []AssetTypeCount{}, ByProvider: []ProviderCount{}}, nil
+	}
+
+	// 使用 $facet 一次聚合获取所有统计
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"id": bson.M{"$in": ids}}}},
+		{{Key: "$facet", Value: bson.M{
+			"total": bson.A{
+				bson.M{"$count": "count"},
+			},
+			"by_asset_type": bson.A{
+				bson.M{"$group": bson.M{"_id": "$model_uid", "count": bson.M{"$sum": 1}}},
+			},
+			"by_provider": bson.A{
+				bson.M{"$match": bson.M{"attributes.provider": bson.M{"$ne": nil}}},
+				bson.M{"$group": bson.M{"_id": "$attributes.provider", "count": bson.M{"$sum": 1}}},
+			},
+		}}},
+	}
+
+	cursor, err := d.db.Collection(InstanceCollection).Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []struct {
+		Total       []struct{ Count int64 `bson:"count"` } `bson:"total"`
+		ByAssetType []AssetTypeCount                          `bson:"by_asset_type"`
+		ByProvider  []ProviderCount                           `bson:"by_provider"`
+	}
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return &AssetStatsResult{ByAssetType: []AssetTypeCount{}, ByProvider: []ProviderCount{}}, nil
+	}
+
+	r := results[0]
+	total := int64(0)
+	if len(r.Total) > 0 {
+		total = r.Total[0].Count
+	}
+
+	return &AssetStatsResult{
+		Total:       total,
+		ByAssetType: r.ByAssetType,
+		ByProvider:  r.ByProvider,
+	}, nil
+}
+
+// AggregateAllStats 聚合统计全部资产
+func (d *instanceDAO) AggregateAllStats(ctx context.Context, tenantID string) (*AssetStatsResult, error) {
+	match := bson.M{}
+	if tenantID != "" {
+		match["tenant_id"] = tenantID
+	}
+
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: match}},
+		{{Key: "$facet", Value: bson.M{
+			"total": bson.A{
+				bson.M{"$count": "count"},
+			},
+			"by_asset_type": bson.A{
+				bson.M{"$group": bson.M{"_id": "$model_uid", "count": bson.M{"$sum": 1}}},
+			},
+			"by_provider": bson.A{
+				bson.M{"$match": bson.M{"attributes.provider": bson.M{"$ne": nil}}},
+				bson.M{"$group": bson.M{"_id": "$attributes.provider", "count": bson.M{"$sum": 1}}},
+			},
+		}}},
+	}
+
+	cursor, err := d.db.Collection(InstanceCollection).Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []struct {
+		Total       []struct{ Count int64 `bson:"count"` } `bson:"total"`
+		ByAssetType []AssetTypeCount                          `bson:"by_asset_type"`
+		ByProvider  []ProviderCount                           `bson:"by_provider"`
+	}
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return &AssetStatsResult{ByAssetType: []AssetTypeCount{}, ByProvider: []ProviderCount{}}, nil
+	}
+
+	r := results[0]
+	total := int64(0)
+	if len(r.Total) > 0 {
+		total = r.Total[0].Count
+	}
+
+	return &AssetStatsResult{
+		Total:       total,
+		ByAssetType: r.ByAssetType,
+		ByProvider:  r.ByProvider,
+	}, nil
+}
+
+// AggregateUnboundStats 聚合统计未绑定资产
+func (d *instanceDAO) AggregateUnboundStats(ctx context.Context, tenantID string) (*AssetStatsResult, error) {
+	// 基于未绑定 pipeline，追加统计阶段
+	pipeline := d.unboundPipeline(tenantID)
+	pipeline = append(pipeline, bson.D{{Key: "$facet", Value: bson.M{
+		"total": bson.A{
+			bson.M{"$count": "count"},
+		},
+		"by_asset_type": bson.A{
+			bson.M{"$group": bson.M{"_id": "$model_uid", "count": bson.M{"$sum": 1}}},
+		},
+		"by_provider": bson.A{
+			bson.M{"$match": bson.M{"attributes.provider": bson.M{"$ne": nil}}},
+			bson.M{"$group": bson.M{"_id": "$attributes.provider", "count": bson.M{"$sum": 1}}},
+		},
+	}}})
+
+	cursor, err := d.db.Collection(InstanceCollection).Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []struct {
+		Total       []struct{ Count int64 `bson:"count"` } `bson:"total"`
+		ByAssetType []AssetTypeCount                          `bson:"by_asset_type"`
+		ByProvider  []ProviderCount                           `bson:"by_provider"`
+	}
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return &AssetStatsResult{ByAssetType: []AssetTypeCount{}, ByProvider: []ProviderCount{}}, nil
+	}
+
+	r := results[0]
+	total := int64(0)
+	if len(r.Total) > 0 {
+		total = r.Total[0].Count
+	}
+
+	return &AssetStatsResult{
+		Total:       total,
+		ByAssetType: r.ByAssetType,
+		ByProvider:  r.ByProvider,
+	}, nil
 }

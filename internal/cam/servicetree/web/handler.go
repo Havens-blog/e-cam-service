@@ -11,9 +11,10 @@ import (
 
 // Handler 服务树 HTTP 处理器
 type Handler struct {
-	treeSvc    service.TreeService
-	bindingSvc service.BindingService
-	ruleSvc    service.RuleEngineService
+	treeSvc      service.TreeService
+	bindingSvc   service.BindingService
+	ruleSvc      service.RuleEngineService
+	nodeAssetSvc service.NodeAssetService
 }
 
 // NewHandler 创建处理器
@@ -21,11 +22,13 @@ func NewHandler(
 	treeSvc service.TreeService,
 	bindingSvc service.BindingService,
 	ruleSvc service.RuleEngineService,
+	nodeAssetSvc service.NodeAssetService,
 ) *Handler {
 	return &Handler{
-		treeSvc:    treeSvc,
-		bindingSvc: bindingSvc,
-		ruleSvc:    ruleSvc,
+		treeSvc:      treeSvc,
+		bindingSvc:   bindingSvc,
+		ruleSvc:      ruleSvc,
+		nodeAssetSvc: nodeAssetSvc,
 	}
 }
 
@@ -48,6 +51,11 @@ func (h *Handler) RegisterBindingRoutes(rg *gin.RouterGroup) {
 	rg.GET("/nodes/:id/bindings", ginx.WrapBody(h.ListNodeBindings))
 	rg.DELETE("/bindings/:id", ginx.Wrap(h.UnbindResource))
 	rg.GET("/resources/:type/:id/node", ginx.Wrap(h.GetResourceNode))
+
+	// 节点资产查询 (绑定 + CMDB 资产详情)
+	rg.GET("/nodes/:id/assets", ginx.WrapBody(h.ListNodeAssets))
+	rg.GET("/nodes/:id/assets/stats", ginx.Wrap(h.GetNodeAssetStats))
+	rg.GET("/assets/:id/node", ginx.Wrap(h.GetAssetNode))
 }
 
 func (h *Handler) RegisterRuleRoutes(rg *gin.RouterGroup) {
@@ -379,6 +387,117 @@ func (h *Handler) GetResourceNode(c *gin.Context) (ginx.Result, error) {
 	}
 
 	return ginx.Result{Data: h.toNodeVO(node)}, nil
+}
+
+// ListNodeAssets 查询节点下的云资产列表
+// @Summary 查询节点下的云资产列表（含资产详情）
+// @Tags 服务树
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param id path int true "节点ID"
+// @Param env_id query int false "环境ID"
+// @Param asset_type query string false "资产类型 (ecs/rds/redis/vpc等)"
+// @Param include_children query bool false "是否包含子节点"
+// @Param offset query int false "偏移量"
+// @Param limit query int false "限制数量"
+// @Success 200 {object} ginx.Result
+// @Router /api/v1/cam/service-tree/nodes/{id}/assets [get]
+func (h *Handler) ListNodeAssets(c *gin.Context, req ListNodeAssetsReq) (ginx.Result, error) {
+	tenantID := h.getTenantID(c)
+	if tenantID == "" {
+		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
+	}
+
+	nodeID, err := h.getIDParam(c)
+	if err != nil {
+		return ginx.Result{Code: 400, Msg: "无效的节点ID"}, nil
+	}
+
+	if req.Limit <= 0 {
+		req.Limit = 20
+	}
+
+	filter := domain.NodeAssetFilter{
+		TenantID:        tenantID,
+		NodeID:          nodeID,
+		EnvID:           req.EnvID,
+		AssetType:       req.AssetType,
+		IncludeChildren: req.IncludeChildren,
+		Offset:          req.Offset,
+		Limit:           req.Limit,
+	}
+
+	assets, total, err := h.nodeAssetSvc.ListNodeAssets(c.Request.Context(), filter)
+	if err != nil {
+		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+	}
+
+	return ginx.Result{Data: map[string]any{"items": assets, "total": total}}, nil
+}
+
+// GetNodeAssetStats 查询节点资产统计
+// @Summary 查询节点资产统计
+// @Tags 服务树
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param id path int true "节点ID"
+// @Param include_children query bool false "是否包含子节点"
+// @Success 200 {object} ginx.Result{data=AssetStatsVO}
+// @Router /api/v1/cam/service-tree/nodes/{id}/assets/stats [get]
+func (h *Handler) GetNodeAssetStats(c *gin.Context) (ginx.Result, error) {
+	tenantID := h.getTenantID(c)
+	if tenantID == "" {
+		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
+	}
+
+	nodeID, err := h.getIDParam(c)
+	if err != nil {
+		return ginx.Result{Code: 400, Msg: "无效的节点ID"}, nil
+	}
+
+	includeChildren := c.Query("include_children") == "true"
+
+	stats, err := h.nodeAssetSvc.GetNodeAssetStats(c.Request.Context(), tenantID, nodeID, includeChildren)
+	if err != nil {
+		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+	}
+
+	return ginx.Result{Data: AssetStatsVO{
+		Total:       stats.Total,
+		ByAssetType: stats.ByAssetType,
+		ByProvider:  stats.ByProvider,
+	}}, nil
+}
+
+// GetAssetNode 查询资产所属的服务树节点
+// @Summary 查询资产所属的服务树节点
+// @Tags 服务树
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param id path int true "CMDB资产实例ID"
+// @Success 200 {object} ginx.Result{data=AssetNodeVO}
+// @Failure 404 {object} ginx.Result
+// @Router /api/v1/cam/service-tree/assets/{id}/node [get]
+func (h *Handler) GetAssetNode(c *gin.Context) (ginx.Result, error) {
+	tenantID := h.getTenantID(c)
+	if tenantID == "" {
+		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
+	}
+
+	resourceID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return ginx.Result{Code: 400, Msg: "无效的资产ID"}, nil
+	}
+
+	node, err := h.nodeAssetSvc.GetAssetNode(c.Request.Context(), tenantID, resourceID)
+	if err != nil {
+		return ginx.Result{Code: 404, Msg: "资产未绑定到任何节点"}, nil
+	}
+
+	return ginx.Result{Data: AssetNodeVO{
+		NodeID: node.ID,
+		UID:    node.UID,
+		Name:   node.Name,
+		Path:   node.Path,
+		Level:  node.Level,
+	}}, nil
 }
 
 // CreateRule 创建规则

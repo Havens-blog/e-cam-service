@@ -36,6 +36,16 @@ type BindingFilter struct {
 	Limit        int64
 }
 
+// NodeIDsBindingFilter DAO 层多节点过滤条件
+type NodeIDsBindingFilter struct {
+	TenantID     string
+	NodeIDs      []int64
+	EnvID        int64
+	ResourceType string
+	Offset       int64
+	Limit        int64
+}
+
 // BindingDAO 资源绑定数据访问接口
 type BindingDAO interface {
 	Create(ctx context.Context, binding Binding) (int64, error)
@@ -43,8 +53,10 @@ type BindingDAO interface {
 	GetByID(ctx context.Context, id int64) (Binding, error)
 	GetByResource(ctx context.Context, tenantID, resourceType string, resourceID int64) (Binding, error)
 	List(ctx context.Context, filter BindingFilter) ([]Binding, error)
+	ListByNodeIDs(ctx context.Context, filter NodeIDsBindingFilter) ([]Binding, error)
 	Count(ctx context.Context, filter BindingFilter) (int64, error)
 	CountByNodeID(ctx context.Context, nodeID int64) (int64, error)
+	CountByNodeIDs(ctx context.Context, filter NodeIDsBindingFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByNodeID(ctx context.Context, nodeID int64) error
 	DeleteByResource(ctx context.Context, tenantID, resourceType string, resourceID int64) error
@@ -146,6 +158,56 @@ func (d *bindingDAO) Count(ctx context.Context, filter BindingFilter) (int64, er
 func (d *bindingDAO) CountByNodeID(ctx context.Context, nodeID int64) (int64, error) {
 	filter := bson.M{"node_id": nodeID}
 	return d.db.Collection(BindingCollection).CountDocuments(ctx, filter)
+}
+
+func (d *bindingDAO) ListByNodeIDs(ctx context.Context, filter NodeIDsBindingFilter) ([]Binding, error) {
+	if len(filter.NodeIDs) == 0 {
+		return nil, nil
+	}
+	query := d.buildNodeIDsQuery(filter)
+
+	opts := options.Find()
+	if filter.Offset > 0 {
+		opts.SetSkip(filter.Offset)
+	}
+	if filter.Limit > 0 {
+		opts.SetLimit(filter.Limit)
+	}
+	opts.SetSort(bson.M{"ctime": -1})
+
+	cursor, err := d.db.Collection(BindingCollection).Find(ctx, query, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var bindings []Binding
+	err = cursor.All(ctx, &bindings)
+	return bindings, err
+}
+
+func (d *bindingDAO) CountByNodeIDs(ctx context.Context, filter NodeIDsBindingFilter) (int64, error) {
+	if len(filter.NodeIDs) == 0 {
+		return 0, nil
+	}
+	query := d.buildNodeIDsQuery(filter)
+	return d.db.Collection(BindingCollection).CountDocuments(ctx, query)
+}
+
+func (d *bindingDAO) buildNodeIDsQuery(filter NodeIDsBindingFilter) bson.M {
+	query := bson.M{
+		"node_id": bson.M{"$in": filter.NodeIDs},
+	}
+	if filter.TenantID != "" {
+		query["tenant_id"] = filter.TenantID
+	}
+	if filter.EnvID > 0 {
+		query["env_id"] = filter.EnvID
+	}
+	if filter.ResourceType != "" {
+		query["resource_type"] = filter.ResourceType
+	}
+	return query
 }
 
 func (d *bindingDAO) Delete(ctx context.Context, id int64) error {

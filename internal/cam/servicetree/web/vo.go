@@ -188,3 +188,47 @@ type ListEnvReq struct {
 	Page     int    `form:"page"`
 	PageSize int    `form:"page_size"`
 }
+
+// ListNodeAssetsReq 节点资产列表请求
+type ListNodeAssetsReq struct {
+	EnvID           int64  `form:"env_id"`
+	AssetType       string `form:"asset_type"`
+	IncludeChildren bool   `form:"include_children"`
+	Offset          int64  `form:"offset"`
+	Limit           int64  `form:"limit"`
+}
+
+// NodeAssetVO 节点资产响应
+type NodeAssetVO struct {
+	BindingID  int64                  `json:"binding_id"`
+	NodeID     int64                  `json:"node_id"`
+	EnvID      int64                  `json:"env_id"`
+	BindType   string                 `json:"bind_type"`
+	ID         int64                  `json:"id"`
+	AssetID    string                 `json:"asset_id"`
+	AssetName  string                 `json:"asset_name"`
+	AssetType  string                 `json:"asset_type"`
+	Provider   string                 `json:"provider"`
+	Region     string                 `json:"region"`
+	Status     string                 `json:"status"`
+	AccountID  int64                  `json:"account_id"`
+	Attributes map[string]interface{} `json:"attributes"`
+	CreateTime int64                  `json:"create_time"`
+	UpdateTime int64                  `json:"update_time"`
+}
+
+// AssetStatsVO 资产统计响应
+type AssetStatsVO struct {
+	Total       int64            `json:"total"`
+	ByAssetType map[string]int64 `json:"by_asset_type"`
+	ByProvider  map[string]int64 `json:"by_provider"`
+}
+
+// AssetNodeVO 资产所属节点响应
+type AssetNodeVO struct {
+	NodeID int64  `json:"node_id"`
+	UID    string `json:"uid"`
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Level  int    `json:"level"`
+}

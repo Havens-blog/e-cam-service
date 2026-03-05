@@ -261,6 +261,10 @@ func (h *AttributeHandler) ListAttributes(ctx *gin.Context) {
 // ListAttributesWithGroups 获取带分组的属性列表
 func (h *AttributeHandler) ListAttributesWithGroups(ctx *gin.Context) {
 	modelUID := ctx.Param("uid")
+	if modelUID == "" {
+		ctx.JSON(400, ErrorResultWithMsg(errs.ParamsError, "模型UID不能为空"))
+		return
+	}
 
 	groups, err := h.svc.ListAttributesWithGroups(ctx.Request.Context(), modelUID)
 	if err != nil {

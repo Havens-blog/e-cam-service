@@ -205,6 +205,20 @@ func (s *attributeService) InitBuiltinGroups(ctx context.Context, modelUID strin
 
 // ListAttributesWithGroups 获取带分组的属性列表
 func (s *attributeService) ListAttributesWithGroups(ctx context.Context, modelUID string) ([]domain.AttributeGroupWithAttrs, error) {
+	if modelUID == "" {
+		return nil, fmt.Errorf("model_uid is required")
+	}
+
+	// 检查模型是否存在
+	exists, err := s.modelRepo.Exists(ctx, modelUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check model existence: %w", err)
+	}
+	if !exists {
+		// 模型不存在时返回空分组列表，而不是报错
+		return []domain.AttributeGroupWithAttrs{}, nil
+	}
+
 	// 获取所有分组
 	groups, err := s.attrGroupRepo.List(ctx, modelUID)
 	if err != nil {
@@ -213,8 +227,9 @@ func (s *attributeService) ListAttributesWithGroups(ctx context.Context, modelUI
 
 	// 如果没有分组，初始化内置分组
 	if len(groups) == 0 {
-		if err := s.InitBuiltinGroups(ctx, modelUID); err != nil {
-			return nil, fmt.Errorf("failed to init builtin groups: %w", err)
+		if initErr := s.InitBuiltinGroups(ctx, modelUID); initErr != nil {
+			// 初始化失败不阻塞请求，返回空分组
+			return []domain.AttributeGroupWithAttrs{}, nil
 		}
 		groups, err = s.attrGroupRepo.List(ctx, modelUID)
 		if err != nil {

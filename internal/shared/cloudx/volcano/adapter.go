@@ -33,6 +33,7 @@ type Adapter struct {
 	mongodb       *MongoDBAdapter
 	vpc           *VPCAdapter
 	eip           *EIPAdapter
+	lb            *LBAdapter
 	nas           *NASAdapter
 	tos           *TOSAdapter
 	kafka         *KafkaAdapter
@@ -94,6 +95,9 @@ func NewAdapter(account *domain.CloudAccount) (*Adapter, error) {
 
 	// 创建EIP适配器
 	adapter.eip = NewEIPAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建LB适配器 (CLB)
+	adapter.lb = NewLBAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
 
 	// 创建NAS适配器 (真实实现)
 	adapter.nas = NewNASAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
@@ -172,6 +176,11 @@ func (a *Adapter) VPC() cloudx.VPCAdapter {
 // EIP 获取EIP适配器
 func (a *Adapter) EIP() cloudx.EIPAdapter {
 	return a.eip
+}
+
+// LB 获取负载均衡适配器 (火山引擎 CLB)
+func (a *Adapter) LB() cloudx.LBAdapter {
+	return a.lb
 }
 
 // NAS 获取NAS适配器

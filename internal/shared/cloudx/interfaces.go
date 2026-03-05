@@ -53,6 +53,9 @@ type CloudAdapter interface {
 	// EIP 获取EIP适配器 (弹性公网IP)
 	EIP() EIPAdapter
 
+	// LB 获取负载均衡适配器 (SLB/ALB/NLB)
+	LB() LBAdapter
+
 	// ========== 存储资源 ==========
 
 	// NAS 获取NAS适配器 (文件存储)
@@ -319,6 +322,29 @@ type EIPAdapter interface {
 
 	// ListInstancesWithFilter 带过滤条件获取EIP列表
 	ListInstancesWithFilter(ctx context.Context, region string, filter *types.EIPInstanceFilter) ([]types.EIPInstance, error)
+}
+
+// ============================================================================
+// LBAdapter - 负载均衡适配器接口
+// ============================================================================
+
+// LBAdapter 负载均衡适配器接口
+// 用于阿里云SLB/ALB/NLB、华为云ELB、腾讯云CLB、AWS ELB等
+type LBAdapter interface {
+	// ListInstances 获取负载均衡实例列表
+	ListInstances(ctx context.Context, region string) ([]types.LBInstance, error)
+
+	// GetInstance 获取单个负载均衡实例详情
+	GetInstance(ctx context.Context, region, lbID string) (*types.LBInstance, error)
+
+	// ListInstancesByIDs 批量获取负载均衡实例
+	ListInstancesByIDs(ctx context.Context, region string, lbIDs []string) ([]types.LBInstance, error)
+
+	// GetInstanceStatus 获取实例状态
+	GetInstanceStatus(ctx context.Context, region, lbID string) (string, error)
+
+	// ListInstancesWithFilter 带过滤条件获取实例列表
+	ListInstancesWithFilter(ctx context.Context, region string, filter *types.LBInstanceFilter) ([]types.LBInstance, error)
 }
 
 // ============================================================================

@@ -18,6 +18,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.281.0
 	github.com/aws/aws-sdk-go-v2/service/efs v1.41.10
 	github.com/aws/aws-sdk-go-v2/service/elasticache v1.51.9
+	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.43.8
 	github.com/aws/aws-sdk-go-v2/service/iam v1.50.2
 	github.com/aws/aws-sdk-go-v2/service/kafka v1.46.7
 	github.com/aws/aws-sdk-go-v2/service/opensearch v1.57.1
@@ -49,6 +50,7 @@ require (
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cdb v1.3.40
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cfs v1.3.38
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ckafka v1.3.16
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/clb v1.1.55
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.44
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.3.30
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/es v1.3.44

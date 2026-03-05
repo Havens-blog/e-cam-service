@@ -40,6 +40,7 @@ logs/*.log
 *.swo
 *~
 .kiro
+.claude
 
 # OS generated files
 .DS_Store

@@ -183,7 +183,7 @@ func expandAssetTypes(assetTypes []string) []string {
 				}
 			}
 		case "network", "net":
-			for _, netType := range []string{"vpc", "eip"} {
+			for _, netType := range []string{"vpc", "eip", "lb"} {
 				if !seen[netType] {
 					expanded = append(expanded, netType)
 					seen[netType] = true
@@ -319,6 +319,52 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 				continue
 			}
 			totalSynced += synced
+		case "lb":
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			lbAdapter := cloudxAdapter.LB()
+			if lbAdapter == nil {
+				e.logger.Warn("LB适配器不可用", elog.String("provider", string(account.Provider)))
+				continue
+			}
+			lbInstances, err := lbAdapter.ListInstances(ctx, region)
+			if err != nil {
+				e.logger.Error("同步LB失败", elog.String("region", region), elog.FieldErr(err))
+				continue
+			}
+			for _, inst := range lbInstances {
+				assetName := inst.LoadBalancerName
+				if assetName == "" {
+					assetName = inst.LoadBalancerID
+				}
+				attrs := map[string]any{
+					"status": inst.Status, "region": inst.Region, "provider": inst.Provider,
+					"load_balancer_type": inst.LoadBalancerType, "address": inst.Address,
+					"address_type": inst.AddressType, "vpc_id": inst.VPCID,
+					"bandwidth": inst.Bandwidth, "zone": inst.Zone,
+					"load_balancer_spec": inst.LoadBalancerSpec,
+					"listener_count":     inst.ListenerCount, "backend_server_count": inst.BackendServerCount,
+					"charge_type": inst.ChargeType, "creation_time": inst.CreationTime,
+					"cloud_account_id": account.ID, "cloud_account_name": account.Name,
+					"tags": inst.Tags, "description": inst.Description,
+				}
+				cmdbInst := assetdomain.Instance{
+					ModelUID: fmt.Sprintf("%s_lb", account.Provider), AssetID: inst.LoadBalancerID,
+					AssetName: assetName, TenantID: account.TenantID, AccountID: account.ID, Attributes: attrs,
+				}
+				if err := e.instanceRepo.Upsert(ctx, cmdbInst); err != nil {
+					e.logger.Error("保存LB失败", elog.String("asset_id", inst.LoadBalancerID), elog.FieldErr(err))
+					continue
+				}
+				totalSynced++
+			}
 		case "nas":
 			if cloudxAdapter == nil && cloudxErr == nil {
 				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)

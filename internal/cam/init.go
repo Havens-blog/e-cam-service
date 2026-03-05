@@ -6,6 +6,8 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree"
+	cmdbrepository "github.com/Havens-blog/e-cam-service/internal/cmdb/repository"
+	cmdbdao "github.com/Havens-blog/e-cam-service/internal/cmdb/repository/dao"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -38,9 +40,13 @@ func InitModuleWithIAM(db *mongox.Mongo) (*Module, error) {
 	instanceDAO := dao.NewInstanceDAO(db)
 	instanceRepo := repository.NewInstanceRepository(instanceDAO)
 
+	// 创建 CMDB InstanceRepository 用于节点资产查询
+	cmdbInstanceDAO := cmdbdao.NewInstanceDAO(db)
+	cmdbInstanceRepo := cmdbrepository.NewInstanceRepository(cmdbInstanceDAO)
+
 	// 初始化服务树模块
 	logger.Info("开始初始化服务树模块")
-	stModule, err := servicetree.InitModule(db, instanceRepo, logger)
+	stModule, err := servicetree.InitModule(db, instanceRepo, cmdbInstanceRepo, logger)
 	if err != nil {
 		logger.Error("初始化服务树模块失败", elog.FieldErr(err))
 		return nil, err

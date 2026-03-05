@@ -12,6 +12,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/web"
+	cmdbrepository "github.com/Havens-blog/e-cam-service/internal/cmdb/repository"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/google/wire"
 	"github.com/gotomicro/ego/core/elog"
@@ -21,7 +22,8 @@ import (
 
 // InitModule 初始化服务树模块
 // instanceRepo 从 cam 模块注入，用于规则引擎查询实例
-func InitModule(db *mongox.Mongo, instanceRepo repository.InstanceRepository, logger *elog.Component) (*Module, error) {
+// cmdbRepo 从 cmdb 模块注入，用于节点资产查询
+func InitModule(db *mongox.Mongo, instanceRepo repository.InstanceRepository, cmdbRepo cmdbrepository.InstanceRepository, logger *elog.Component) (*Module, error) {
 	nodeDAO := dao.NewNodeDAO(db)
 	nodeRepository := repository2.NewNodeRepository(nodeDAO)
 	bindingDAO := dao.NewBindingDAO(db)
@@ -31,16 +33,17 @@ func InitModule(db *mongox.Mongo, instanceRepo repository.InstanceRepository, lo
 	ruleDAO := dao.NewRuleDAO(db)
 	ruleRepository := repository2.NewRuleRepository(ruleDAO)
 	ruleEngineService := service.NewRuleEngineService(ruleRepository, bindingRepository, nodeRepository, instanceRepo, logger)
-	handler := web.NewHandler(treeService, bindingService, ruleEngineService)
+	nodeAssetService := service.NewNodeAssetService(bindingRepository, nodeRepository, cmdbRepo, logger)
+	handler := web.NewHandler(treeService, bindingService, ruleEngineService, nodeAssetService)
 	environmentDAO := dao.NewEnvironmentDAO(db)
 	environmentRepository := repository2.NewEnvironmentRepository(environmentDAO)
 	environmentService := service.NewEnvironmentService(environmentRepository, bindingRepository, logger)
 	envHandler := web.NewEnvHandler(environmentService)
-	module := NewModule(handler, envHandler, treeService, bindingService, ruleEngineService, environmentService)
+	module := NewModule(handler, envHandler, treeService, bindingService, ruleEngineService, environmentService, nodeAssetService)
 	return module, nil
 }
 
 // wire.go:
 
 // ProviderSet 服务树模块依赖注入集合
-var ProviderSet = wire.NewSet(dao.NewNodeDAO, dao.NewBindingDAO, dao.NewRuleDAO, dao.NewEnvironmentDAO, repository2.NewNodeRepository, repository2.NewBindingRepository, repository2.NewRuleRepository, repository2.NewEnvironmentRepository, service.NewTreeService, service.NewBindingService, service.NewRuleEngineService, service.NewEnvironmentService, web.NewHandler, web.NewEnvHandler)
+var ProviderSet = wire.NewSet(dao.NewNodeDAO, dao.NewBindingDAO, dao.NewRuleDAO, dao.NewEnvironmentDAO, repository2.NewNodeRepository, repository2.NewBindingRepository, repository2.NewRuleRepository, repository2.NewEnvironmentRepository, service.NewTreeService, service.NewBindingService, service.NewRuleEngineService, service.NewEnvironmentService, service.NewNodeAssetService, web.NewHandler, web.NewEnvHandler)

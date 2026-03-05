@@ -16,8 +16,10 @@ type BindingRepository interface {
 	GetByID(ctx context.Context, id int64) (domain.ResourceBinding, error)
 	GetByResource(ctx context.Context, tenantID, resourceType string, resourceID int64) (domain.ResourceBinding, error)
 	List(ctx context.Context, filter domain.BindingFilter) ([]domain.ResourceBinding, error)
+	ListByNodeIDs(ctx context.Context, filter domain.NodeIDsBindingFilter) ([]domain.ResourceBinding, error)
 	Count(ctx context.Context, filter domain.BindingFilter) (int64, error)
 	CountByNodeID(ctx context.Context, nodeID int64) (int64, error)
+	CountByNodeIDs(ctx context.Context, filter domain.NodeIDsBindingFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByNodeID(ctx context.Context, nodeID int64) error
 	DeleteByResource(ctx context.Context, tenantID, resourceType string, resourceID int64) error
@@ -86,6 +88,34 @@ func (r *bindingRepository) Count(ctx context.Context, filter domain.BindingFilt
 
 func (r *bindingRepository) CountByNodeID(ctx context.Context, nodeID int64) (int64, error) {
 	return r.dao.CountByNodeID(ctx, nodeID)
+}
+
+func (r *bindingRepository) ListByNodeIDs(ctx context.Context, filter domain.NodeIDsBindingFilter) ([]domain.ResourceBinding, error) {
+	daoBindings, err := r.dao.ListByNodeIDs(ctx, dao.NodeIDsBindingFilter{
+		TenantID:     filter.TenantID,
+		NodeIDs:      filter.NodeIDs,
+		EnvID:        filter.EnvID,
+		ResourceType: filter.ResourceType,
+		Offset:       filter.Offset,
+		Limit:        filter.Limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	bindings := make([]domain.ResourceBinding, len(daoBindings))
+	for i, daoBinding := range daoBindings {
+		bindings[i] = r.toDomain(daoBinding)
+	}
+	return bindings, nil
+}
+
+func (r *bindingRepository) CountByNodeIDs(ctx context.Context, filter domain.NodeIDsBindingFilter) (int64, error) {
+	return r.dao.CountByNodeIDs(ctx, dao.NodeIDsBindingFilter{
+		TenantID:     filter.TenantID,
+		NodeIDs:      filter.NodeIDs,
+		EnvID:        filter.EnvID,
+		ResourceType: filter.ResourceType,
+	})
 }
 
 func (r *bindingRepository) Delete(ctx context.Context, id int64) error {

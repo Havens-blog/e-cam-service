@@ -80,6 +80,10 @@ func (h *AssetHandler) registerAssetRoutes(assetsGroup *gin.RouterGroup) {
 	assetsGroup.GET("/eip", h.ListEIP)
 	assetsGroup.GET("/eip/:asset_id", h.GetEIP)
 
+	// LB 负载均衡
+	assetsGroup.GET("/lb", h.ListLB)
+	assetsGroup.GET("/lb/:asset_id", h.GetLB)
+
 	// NAS 文件存储
 	assetsGroup.GET("/nas", h.ListNAS)
 	assetsGroup.GET("/nas/:asset_id", h.GetNAS)
@@ -747,6 +751,106 @@ func (h *AssetHandler) ListEIP(ctx *gin.Context) {
 // @Router /cam/assets/eip/{asset_id} [get]
 func (h *AssetHandler) GetEIP(ctx *gin.Context) {
 	h.getAsset(ctx, "eip")
+}
+
+// ==================== LB 负载均衡 ====================
+
+// ListLB 获取负载均衡实例列表
+// @Summary 获取负载均衡实例列表
+// @Description 从数据库获取已同步的负载均衡实例列表（SLB/ALB/NLB）
+// @Tags 资产管理-LB
+// @Accept json
+// @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param account_id query int false "云账号ID"
+// @Param provider query string false "云厂商" Enums(aliyun,aws,huawei,tencent,volcano)
+// @Param region query string false "地域"
+// @Param status query string false "状态"
+// @Param name query string false "实例名称(模糊搜索)"
+// @Param lb_type query string false "负载均衡类型(slb/alb/nlb)"
+// @Param address_type query string false "地址类型(internet/intranet)"
+// @Param vpc_id query string false "VPC ID"
+// @Param offset query int false "偏移量" default(0)
+// @Param limit query int false "限制数量" default(20)
+// @Success 200 {object} AssetListResult "成功"
+// @Failure 400 {object} ErrorResponse "租户ID不能为空"
+// @Router /cam/assets/lb [get]
+func (h *AssetHandler) ListLB(ctx *gin.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	provider := ctx.Query("provider")
+	region := ctx.Query("region")
+	status := ctx.Query("status")
+	name := ctx.Query("name")
+	accountIDStr := ctx.Query("account_id")
+
+	// LB 特有过滤参数
+	lbType := ctx.Query("lb_type")
+	addressType := ctx.Query("address_type")
+	vpcID := ctx.Query("vpc_id")
+
+	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+
+	var accountID int64
+	if accountIDStr != "" {
+		accountID, _ = strconv.ParseInt(accountIDStr, 10, 64)
+	}
+
+	attributes := make(map[string]interface{})
+	if region != "" {
+		attributes["region"] = region
+	}
+	if status != "" {
+		attributes["status"] = status
+	}
+	if lbType != "" {
+		attributes["load_balancer_type"] = lbType
+	}
+	if addressType != "" {
+		attributes["address_type"] = addressType
+	}
+	if vpcID != "" {
+		attributes["vpc_id"] = vpcID
+	}
+
+	filter := domain.InstanceFilter{
+		ModelUID:   "lb",
+		TenantID:   tenantID,
+		AccountID:  accountID,
+		AssetName:  name,
+		Provider:   provider,
+		Attributes: attributes,
+		Offset:     int64(offset),
+		Limit:      int64(limit),
+	}
+
+	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
+	if err != nil {
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
+	}
+
+	ctx.JSON(200, Result(UnifiedAssetListResp{
+		Items: h.toUnifiedAssetVOs(instances),
+		Total: total,
+	}))
+}
+
+// GetLB 获取负载均衡实例详情
+// @Summary 获取负载均衡实例详情
+// @Description 获取单个负载均衡实例的详细信息
+// @Tags 资产管理-LB
+// @Accept json
+// @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param asset_id path string true "资产ID"
+// @Param provider query string false "云厂商"
+// @Success 200 {object} AssetDetailResult "成功"
+// @Failure 400 {object} ErrorResponse "租户ID不能为空"
+// @Failure 404 {object} ErrorResponse "负载均衡实例不存在"
+// @Router /cam/assets/lb/{asset_id} [get]
+func (h *AssetHandler) GetLB(ctx *gin.Context) {
+	h.getAsset(ctx, "lb")
 }
 
 // ==================== NAS 文件存储 ====================
@@ -1554,6 +1658,14 @@ func matchAssetType(modelUID, assetType string) bool {
 			modelUID == "huawei_eip" ||
 			modelUID == "tencent_eip" ||
 			modelUID == "volcano_eip"
+	case "lb":
+		return modelUID == "lb" || modelUID == "cloud_lb" ||
+			modelUID == "slb" || modelUID == "alb" || modelUID == "nlb" ||
+			modelUID == "aliyun_lb" || modelUID == "aliyun_slb" || modelUID == "aliyun_alb" || modelUID == "aliyun_nlb" ||
+			modelUID == "aws_lb" || modelUID == "aws_elb" || modelUID == "aws_alb" || modelUID == "aws_nlb" ||
+			modelUID == "huawei_lb" || modelUID == "huawei_elb" ||
+			modelUID == "tencent_lb" || modelUID == "tencent_clb" ||
+			modelUID == "volcano_lb"
 	case "nas":
 		return modelUID == "nas" || modelUID == "cloud_nas" ||
 			modelUID == "aliyun_nas" ||
@@ -1674,6 +1786,8 @@ func extractAssetType(modelUID string) string {
 		return "vpc"
 	case "cloud_eip":
 		return "eip"
+	case "cloud_lb", "cloud_slb", "cloud_alb", "cloud_nlb":
+		return "lb"
 	case "cloud_nas":
 		return "nas"
 	case "cloud_oss":
@@ -1684,7 +1798,7 @@ func extractAssetType(modelUID string) string {
 		return "elasticsearch"
 	}
 	// aliyun_ecs -> ecs, aws_rds -> rds, etc.
-	for _, suffix := range []string{"_ecs", "_disk", "_snapshot", "_security_group", "_rds", "_redis", "_mongodb", "_vpc", "_eip", "_nas", "_oss", "_kafka", "_elasticsearch"} {
+	for _, suffix := range []string{"_ecs", "_disk", "_snapshot", "_security_group", "_rds", "_redis", "_mongodb", "_vpc", "_eip", "_lb", "_slb", "_alb", "_nlb", "_nas", "_oss", "_kafka", "_elasticsearch"} {
 		if len(modelUID) > len(suffix) && modelUID[len(modelUID)-len(suffix):] == suffix {
 			return suffix[1:] // 去掉前缀下划线
 		}

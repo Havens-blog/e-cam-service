@@ -8,6 +8,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/web"
+	cmdbrepository "github.com/Havens-blog/e-cam-service/internal/cmdb/repository"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/google/wire"
 	"github.com/gotomicro/ego/core/elog"
@@ -32,6 +33,7 @@ var ProviderSet = wire.NewSet(
 	service.NewBindingService,
 	service.NewRuleEngineService,
 	service.NewEnvironmentService,
+	service.NewNodeAssetService,
 
 	// Handler
 	web.NewHandler,
@@ -40,7 +42,8 @@ var ProviderSet = wire.NewSet(
 
 // InitModule 初始化服务树模块
 // instanceRepo 从 cam 模块注入，用于规则引擎查询实例
-func InitModule(db *mongox.Mongo, instanceRepo camrepo.InstanceRepository, logger *elog.Component) (*Module, error) {
+// cmdbRepo 从 cmdb 模块注入，用于节点资产查询
+func InitModule(db *mongox.Mongo, instanceRepo camrepo.InstanceRepository, cmdbRepo cmdbrepository.InstanceRepository, logger *elog.Component) (*Module, error) {
 	wire.Build(
 		ProviderSet,
 		NewModule,

@@ -16,6 +16,7 @@ type Module struct {
 	BindingService     service.BindingService
 	RuleService        service.RuleEngineService
 	EnvironmentService service.EnvironmentService
+	NodeAssetService   service.NodeAssetService
 }
 
 // NewModule 创建服务树模块
@@ -26,6 +27,7 @@ func NewModule(
 	bindingSvc service.BindingService,
 	ruleSvc service.RuleEngineService,
 	envSvc service.EnvironmentService,
+	nodeAssetSvc service.NodeAssetService,
 ) *Module {
 	return &Module{
 		Handler:            handler,
@@ -34,6 +36,7 @@ func NewModule(
 		BindingService:     bindingSvc,
 		RuleService:        ruleSvc,
 		EnvironmentService: envSvc,
+		NodeAssetService:   nodeAssetSvc,
 	}
 }
 
