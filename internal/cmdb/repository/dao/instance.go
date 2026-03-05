@@ -38,9 +38,9 @@ type InstanceFilter struct {
 
 // AssetStatsResult 资产统计结果
 type AssetStatsResult struct {
-	Total       int64                     `bson:"total"`
-	ByAssetType []AssetTypeCount          `bson:"by_asset_type"`
-	ByProvider  []ProviderCount           `bson:"by_provider"`
+	Total       int64            `bson:"total"`
+	ByAssetType []AssetTypeCount `bson:"by_asset_type"`
+	ByProvider  []ProviderCount  `bson:"by_provider"`
 }
 
 // AssetTypeCount 按资产类型统计
@@ -135,10 +135,18 @@ func (d *instanceDAO) CreateBatch(ctx context.Context, instances []Instance) (in
 
 // Update 更新实例
 func (d *instanceDAO) Update(ctx context.Context, instance Instance) error {
-	instance.Utime = time.Now().UnixMilli()
+	now := time.Now().UnixMilli()
 
 	filter := bson.M{"id": instance.ID}
-	update := bson.M{"$set": instance}
+	update := bson.M{"$set": bson.M{
+		"asset_name": instance.AssetName,
+		"model_uid":  instance.ModelUID,
+		"asset_id":   instance.AssetID,
+		"tenant_id":  instance.TenantID,
+		"account_id": instance.AccountID,
+		"attributes": instance.Attributes,
+		"utime":      now,
+	}}
 
 	result, err := d.db.Collection(InstanceCollection).UpdateOne(ctx, filter, update)
 	if err != nil {
@@ -394,9 +402,11 @@ func (d *instanceDAO) AggregateStatsByIDs(ctx context.Context, ids []int64) (*As
 	defer cursor.Close(ctx)
 
 	var results []struct {
-		Total       []struct{ Count int64 `bson:"count"` } `bson:"total"`
-		ByAssetType []AssetTypeCount                          `bson:"by_asset_type"`
-		ByProvider  []ProviderCount                           `bson:"by_provider"`
+		Total []struct {
+			Count int64 `bson:"count"`
+		} `bson:"total"`
+		ByAssetType []AssetTypeCount `bson:"by_asset_type"`
+		ByProvider  []ProviderCount  `bson:"by_provider"`
 	}
 	if err := cursor.All(ctx, &results); err != nil {
 		return nil, err
@@ -448,9 +458,11 @@ func (d *instanceDAO) AggregateAllStats(ctx context.Context, tenantID string) (*
 	defer cursor.Close(ctx)
 
 	var results []struct {
-		Total       []struct{ Count int64 `bson:"count"` } `bson:"total"`
-		ByAssetType []AssetTypeCount                          `bson:"by_asset_type"`
-		ByProvider  []ProviderCount                           `bson:"by_provider"`
+		Total []struct {
+			Count int64 `bson:"count"`
+		} `bson:"total"`
+		ByAssetType []AssetTypeCount `bson:"by_asset_type"`
+		ByProvider  []ProviderCount  `bson:"by_provider"`
 	}
 	if err := cursor.All(ctx, &results); err != nil {
 		return nil, err
@@ -496,9 +508,11 @@ func (d *instanceDAO) AggregateUnboundStats(ctx context.Context, tenantID string
 	defer cursor.Close(ctx)
 
 	var results []struct {
-		Total       []struct{ Count int64 `bson:"count"` } `bson:"total"`
-		ByAssetType []AssetTypeCount                          `bson:"by_asset_type"`
-		ByProvider  []ProviderCount                           `bson:"by_provider"`
+		Total []struct {
+			Count int64 `bson:"count"`
+		} `bson:"total"`
+		ByAssetType []AssetTypeCount `bson:"by_asset_type"`
+		ByProvider  []ProviderCount  `bson:"by_provider"`
 	}
 	if err := cursor.All(ctx, &results); err != nil {
 		return nil, err

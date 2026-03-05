@@ -73,14 +73,6 @@ func (s *instanceService) Update(ctx context.Context, instance domain.Instance) 
 		return errs.ErrInstanceNotFound
 	}
 
-	existing, err := s.repo.GetByID(ctx, instance.ID)
-	if err != nil {
-		return fmt.Errorf("failed to get instance: %w", err)
-	}
-	if existing.ID == 0 {
-		return errs.ErrInstanceNotFound
-	}
-
 	return s.repo.Update(ctx, instance)
 }
 
