@@ -389,7 +389,13 @@ func (s *cloudAccountService) SyncAccount(ctx context.Context, id int64, req *do
 	// 获取要同步的资源类型
 	assetTypes := req.AssetTypes
 	if len(assetTypes) == 0 {
-		assetTypes = []string{"ecs"} // 默认只同步 ECS
+		// 默认同步所有常用资源类型（包括 ECS 关联的磁盘、快照、安全组）
+		assetTypes = []string{
+			"ecs", "disk", "snapshot", "security_group",
+			"rds", "redis", "mongodb",
+			"vpc", "eip", "lb",
+			"nas", "oss",
+		}
 	}
 
 	// 构建任务参数

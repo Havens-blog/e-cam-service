@@ -124,7 +124,12 @@ func (s *assetSyncService) SyncAssets(ctx context.Context, tenantID, provider st
 	}
 
 	if len(assetTypes) == 0 {
-		assetTypes = []string{"ecs"}
+		assetTypes = []string{
+			"ecs", "disk", "snapshot", "security_group",
+			"rds", "redis", "mongodb",
+			"vpc", "eip", "lb",
+			"nas", "oss",
+		}
 	}
 
 	result := &SyncResult{
@@ -184,7 +189,12 @@ func (s *assetSyncService) SyncAccountAssets(ctx context.Context, tenantID strin
 	}
 
 	if len(assetTypes) == 0 {
-		assetTypes = []string{"ecs"}
+		assetTypes = []string{
+			"ecs", "disk", "snapshot", "security_group",
+			"rds", "redis", "mongodb",
+			"vpc", "eip", "lb",
+			"nas", "oss",
+		}
 	}
 
 	// 获取账号信息
@@ -372,6 +382,33 @@ func (s *assetSyncService) syncRegion(
 				continue
 			}
 			result.ByAssetType["oss"] += synced.TotalSynced
+
+		case "disk", "cloud_disk":
+			synced, err = s.syncDiskInstances(ctx, tenantID, adapter, account, region)
+			if err != nil {
+				s.logger.Error("同步云盘失败", elog.String("region", region), elog.FieldErr(err))
+				result.Failed++
+				continue
+			}
+			result.ByAssetType["disk"] += synced.TotalSynced
+
+		case "snapshot", "cloud_snapshot":
+			synced, err = s.syncSnapshotInstances(ctx, tenantID, adapter, account, region)
+			if err != nil {
+				s.logger.Error("同步快照失败", elog.String("region", region), elog.FieldErr(err))
+				result.Failed++
+				continue
+			}
+			result.ByAssetType["snapshot"] += synced.TotalSynced
+
+		case "security_group", "cloud_security_group":
+			synced, err = s.syncSecurityGroupInstances(ctx, tenantID, adapter, account, region)
+			if err != nil {
+				s.logger.Error("同步安全组失败", elog.String("region", region), elog.FieldErr(err))
+				result.Failed++
+				continue
+			}
+			result.ByAssetType["security_group"] += synced.TotalSynced
 
 		case "database":
 			// 聚合类型：同步所有数据库资源
@@ -1132,6 +1169,181 @@ func (s *assetSyncService) syncOSSBuckets(
 		}
 		cmdbInstance := domain.Instance{
 			ModelUID: "cloud_oss", AssetID: bucket.BucketName, AssetName: bucket.BucketName,
+			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
+		}
+		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
+			result.Failed++
+			continue
+		}
+		result.TotalSynced++
+	}
+	return result, nil
+}
+
+// ==================== 云盘同步 ====================
+
+func (s *assetSyncService) syncDiskInstances(
+	ctx context.Context,
+	tenantID string,
+	adapter cloudx.CloudAdapter,
+	account *shareddomain.CloudAccount,
+	region string,
+) (*SyncResult, error) {
+	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+
+	diskAdapter := adapter.Disk()
+	if diskAdapter == nil {
+		s.logger.Warn("Disk适配器不可用", elog.String("provider", string(account.Provider)))
+		return result, nil
+	}
+
+	instances, err := diskAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return nil, fmt.Errorf("获取云盘失败: %w", err)
+	}
+
+	for _, inst := range instances {
+		attrs := map[string]interface{}{
+			"provider": string(account.Provider), "cloud_account_id": account.ID,
+			"region": inst.Region, "zone": inst.Zone,
+			"disk_id": inst.DiskID, "disk_name": inst.DiskName,
+			"disk_type": inst.DiskType, "category": inst.Category,
+			"performance_level": inst.PerformanceLevel,
+			"size":              inst.Size, "iops": inst.IOPS, "throughput": inst.Throughput,
+			"status": inst.Status, "portable": inst.Portable,
+			"delete_with_instance": inst.DeleteWithInstance,
+			"enable_auto_snapshot": inst.EnableAutoSnapshot,
+			"instance_id":          inst.InstanceID, "instance_name": inst.InstanceName,
+			"device": inst.Device, "attached_time": inst.AttachedTime,
+			"encrypted": inst.Encrypted, "kms_key_id": inst.KMSKeyID,
+			"source_snapshot_id":      inst.SourceSnapshotID,
+			"auto_snapshot_policy_id": inst.AutoSnapshotPolicyID,
+			"snapshot_count":          inst.SnapshotCount,
+			"image_id":                inst.ImageID,
+			"charge_type":             inst.ChargeType, "expired_time": inst.ExpiredTime,
+			"resource_group_id": inst.ResourceGroupID,
+			"creation_time":     inst.CreationTime,
+			"tags":              inst.Tags, "description": inst.Description,
+			"multi_attach": inst.MultiAttach,
+		}
+		assetName := inst.DiskName
+		if assetName == "" {
+			assetName = inst.DiskID
+		}
+		cmdbInstance := domain.Instance{
+			ModelUID: "cloud_disk", AssetID: inst.DiskID, AssetName: assetName,
+			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
+		}
+		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
+			result.Failed++
+			continue
+		}
+		result.TotalSynced++
+	}
+	return result, nil
+}
+
+// ==================== 快照同步 ====================
+
+func (s *assetSyncService) syncSnapshotInstances(
+	ctx context.Context,
+	tenantID string,
+	adapter cloudx.CloudAdapter,
+	account *shareddomain.CloudAccount,
+	region string,
+) (*SyncResult, error) {
+	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+
+	snapshotAdapter := adapter.Snapshot()
+	if snapshotAdapter == nil {
+		s.logger.Warn("Snapshot适配器不可用", elog.String("provider", string(account.Provider)))
+		return result, nil
+	}
+
+	instances, err := snapshotAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return nil, fmt.Errorf("获取快照失败: %w", err)
+	}
+
+	for _, inst := range instances {
+		attrs := map[string]interface{}{
+			"provider": string(account.Provider), "cloud_account_id": account.ID,
+			"region":      inst.Region,
+			"snapshot_id": inst.SnapshotID, "snapshot_name": inst.SnapshotName,
+			"snapshot_type": inst.SnapshotType, "category": inst.Category,
+			"instant_access": inst.InstantAccess,
+			"status":         inst.Status, "progress": inst.Progress,
+			"source_disk_size": inst.SourceDiskSize, "snapshot_size": inst.SnapshotSize,
+			"source_disk_id": inst.SourceDiskID, "source_disk_type": inst.SourceDiskType,
+			"source_disk_category": inst.SourceDiskCategory,
+			"source_instance_id":   inst.SourceInstanceID, "source_instance_name": inst.SourceInstanceName,
+			"encrypted": inst.Encrypted, "kms_key_id": inst.KMSKeyID,
+			"usage": inst.Usage, "retention_days": inst.RetentionDays,
+			"resource_group_id": inst.ResourceGroupID,
+			"creation_time":     inst.CreationTime,
+			"tags":              inst.Tags, "description": inst.Description,
+		}
+		assetName := inst.SnapshotName
+		if assetName == "" {
+			assetName = inst.SnapshotID
+		}
+		cmdbInstance := domain.Instance{
+			ModelUID: "cloud_snapshot", AssetID: inst.SnapshotID, AssetName: assetName,
+			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
+		}
+		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
+			result.Failed++
+			continue
+		}
+		result.TotalSynced++
+	}
+	return result, nil
+}
+
+// ==================== 安全组同步 ====================
+
+func (s *assetSyncService) syncSecurityGroupInstances(
+	ctx context.Context,
+	tenantID string,
+	adapter cloudx.CloudAdapter,
+	account *shareddomain.CloudAccount,
+	region string,
+) (*SyncResult, error) {
+	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+
+	sgAdapter := adapter.SecurityGroup()
+	if sgAdapter == nil {
+		s.logger.Warn("SecurityGroup适配器不可用", elog.String("provider", string(account.Provider)))
+		return result, nil
+	}
+
+	instances, err := sgAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return nil, fmt.Errorf("获取安全组失败: %w", err)
+	}
+
+	for _, inst := range instances {
+		attrs := map[string]interface{}{
+			"provider": string(account.Provider), "cloud_account_id": account.ID,
+			"region":              inst.Region,
+			"security_group_id":   inst.SecurityGroupID,
+			"security_group_name": inst.SecurityGroupName,
+			"security_group_type": inst.SecurityGroupType,
+			"vpc_id":              inst.VPCID, "vpc_name": inst.VPCName,
+			"ingress_rule_count": inst.IngressRuleCount,
+			"egress_rule_count":  inst.EgressRuleCount,
+			"instance_count":     inst.InstanceCount,
+			"instance_ids":       inst.InstanceIDs,
+			"resource_group_id":  inst.ResourceGroupID,
+			"creation_time":      inst.CreationTime,
+			"tags":               inst.Tags, "description": inst.Description,
+		}
+		assetName := inst.SecurityGroupName
+		if assetName == "" {
+			assetName = inst.SecurityGroupID
+		}
+		cmdbInstance := domain.Instance{
+			ModelUID: "cloud_security_group", AssetID: inst.SecurityGroupID, AssetName: assetName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
