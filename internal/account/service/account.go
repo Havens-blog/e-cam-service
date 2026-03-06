@@ -22,6 +22,7 @@ const TaskTypeSyncAssets taskx.TaskType = "cam:sync_assets"
 type CloudAccountService interface {
 	CreateAccount(ctx context.Context, req *domain.CreateCloudAccountRequest) (*domain.CloudAccount, error)
 	GetAccount(ctx context.Context, id int64) (*domain.CloudAccount, error)
+	GetAccountWithCredentials(ctx context.Context, id int64) (*domain.CloudAccount, error)
 	ListAccounts(ctx context.Context, filter domain.CloudAccountFilter) ([]*domain.CloudAccount, int64, error)
 	UpdateAccount(ctx context.Context, id int64, req *domain.UpdateCloudAccountRequest) error
 	DeleteAccount(ctx context.Context, id int64) error
@@ -108,6 +109,16 @@ func (s *cloudAccountService) GetAccount(ctx context.Context, id int64) (*domain
 		return nil, errs.AccountNotFound
 	}
 	return account.MaskSensitiveData(), nil
+}
+
+// GetAccountWithCredentials 获取云账号（包含完整凭证，仅供内部服务使用）
+func (s *cloudAccountService) GetAccountWithCredentials(ctx context.Context, id int64) (*domain.CloudAccount, error) {
+	account, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		s.logger.Error("failed to get cloud account", elog.FieldErr(err), elog.Int64("id", id))
+		return nil, errs.AccountNotFound
+	}
+	return &account, nil
 }
 
 func (s *cloudAccountService) ListAccounts(ctx context.Context, filter domain.CloudAccountFilter) ([]*domain.CloudAccount, int64, error) {

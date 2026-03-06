@@ -18,6 +18,9 @@ type TaskService interface {
 	// SubmitDiscoverAssetsTask 提交发现资产任务
 	SubmitDiscoverAssetsTask(ctx context.Context, params task.DiscoverAssetsParams, createdBy string) (string, error)
 
+	// SubmitBillingCollectTask 提交账单采集任务
+	SubmitBillingCollectTask(ctx context.Context, params task.SyncBillingParams, createdBy string) (string, error)
+
 	// GetTask 获取任务
 	GetTask(ctx context.Context, taskID string) (*taskx.Task, error)
 
@@ -149,4 +152,37 @@ func (s *taskService) CancelTask(ctx context.Context, taskID string) error {
 // DeleteTask 删除任务
 func (s *taskService) DeleteTask(ctx context.Context, taskID string) error {
 	return s.repo.Delete(ctx, taskID)
+}
+
+// SubmitBillingCollectTask 提交账单采集任务
+func (s *taskService) SubmitBillingCollectTask(ctx context.Context, params task.SyncBillingParams, createdBy string) (string, error) {
+	s.logger.Info("提交账单采集任务",
+		elog.Int64("account_id", params.AccountID),
+		elog.String("created_by", createdBy))
+
+	taskID := uuid.New().String()
+
+	paramsMap := map[string]interface{}{
+		"account_id": params.AccountID,
+		"start_time": params.StartTime,
+		"end_time":   params.EndTime,
+		"tenant_id":  params.TenantID,
+	}
+
+	t := &taskx.Task{
+		ID:        taskID,
+		Type:      task.TaskTypeSyncBilling,
+		Status:    taskx.TaskStatusPending,
+		Params:    paramsMap,
+		Progress:  0,
+		Message:   "账单采集任务已创建，等待执行",
+		CreatedBy: createdBy,
+	}
+
+	if err := s.queue.Submit(t); err != nil {
+		return "", fmt.Errorf("提交任务失败: %w", err)
+	}
+
+	s.logger.Info("账单采集任务已提交", elog.String("task_id", taskID))
+	return taskID, nil
 }

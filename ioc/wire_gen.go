@@ -27,12 +27,12 @@ func InitApp() (*App, error) {
 		return nil, err
 	}
 	handler := module.Hdl
-	camModule, err := cam.InitModuleWithIAM(mongo)
+	alertModule := InitAlertModule(mongo)
+	camModule, err := cam.InitModuleWithIAM(mongo, cmdable, alertModule)
 	if err != nil {
 		return nil, err
 	}
 	cmdbModule := cmdb.InitModule(mongo)
-	alertModule := InitAlertModule(mongo)
 	auditModule := InitAuditModule(mongo)
 	auditMiddleware := InitAuditMiddleware(auditModule)
 
@@ -47,7 +47,7 @@ func InitApp() (*App, error) {
 
 	engine := InitWebServer(provider, v, checkPolicyMiddleware, auditMiddleware, auditModule, endpointClient, handler, camModule, cmdbModule, alertModule)
 	server := InitGrpcServer(etcdClient)
-	v2 := InitJobs()
+	v2 := InitJobs(camModule)
 	app := &App{
 		Logger:    logger,
 		Web:       engine,

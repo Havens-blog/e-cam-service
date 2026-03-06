@@ -28,6 +28,9 @@ type CloudAccountService interface {
 	// GetAccount 获取云账号详情
 	GetAccount(ctx context.Context, id int64) (*domain.CloudAccount, error)
 
+	// GetAccountWithCredentials 获取云账号（包含完整凭证，仅供内部服务使用）
+	GetAccountWithCredentials(ctx context.Context, id int64) (*domain.CloudAccount, error)
+
 	// ListAccounts 获取云账号列表
 	ListAccounts(ctx context.Context, filter domain.CloudAccountFilter) ([]*domain.CloudAccount, int64, error)
 
@@ -150,6 +153,16 @@ func (s *cloudAccountService) GetAccount(ctx context.Context, id int64) (*domain
 	// 脱敏敏感数据
 	maskedAccount := account.MaskSensitiveData()
 	return maskedAccount, nil
+}
+
+// GetAccountWithCredentials 获取云账号（包含完整凭证，仅供内部服务使用）
+func (s *cloudAccountService) GetAccountWithCredentials(ctx context.Context, id int64) (*domain.CloudAccount, error) {
+	account, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		s.logger.Error("failed to get cloud account", elog.FieldErr(err), elog.Int64("id", id))
+		return nil, errs.AccountNotFound
+	}
+	return &account, nil
 }
 
 // ListAccounts 获取云账号列表

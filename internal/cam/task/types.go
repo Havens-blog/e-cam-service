@@ -6,6 +6,7 @@ import "github.com/Havens-blog/e-cam-service/pkg/taskx"
 const (
 	TaskTypeSyncAssets     taskx.TaskType = "cam:sync_assets"
 	TaskTypeDiscoverAssets taskx.TaskType = "cam:discover_assets"
+	TaskTypeSyncBilling    taskx.TaskType = "cam:sync_billing"
 )
 
 // SyncAssetsParams 同步资产任务参数
@@ -41,4 +42,20 @@ type DiscoverAssetsResult struct {
 	Count   int                    `json:"count"`
 	Assets  []interface{}          `json:"assets"`
 	Details map[string]interface{} `json:"details,omitempty"`
+}
+
+// SyncBillingParams 账单采集任务参数
+type SyncBillingParams struct {
+	AccountID int64  `json:"account_id"`
+	StartTime string `json:"start_time"` // RFC3339
+	EndTime   string `json:"end_time"`   // RFC3339
+	TenantID  string `json:"tenant_id"`
+}
+
+// SyncBillingResult 账单采集任务结果
+type SyncBillingResult struct {
+	RecordCount int64                  `json:"record_count"`
+	Provider    string                 `json:"provider"`
+	BillRange   string                 `json:"bill_range"`
+	Details     map[string]interface{} `json:"details,omitempty"`
 }

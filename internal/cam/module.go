@@ -1,6 +1,9 @@
 package cam
 
 import (
+	"context"
+
+	costhandler "github.com/Havens-blog/e-cam-service/internal/cam/cost/handler"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam"
 	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
@@ -32,6 +35,38 @@ type Module struct {
 	ServiceTreeModule *servicetree.Module          // 服务树模块
 	AutoScheduler     *scheduler.AutoSyncScheduler // 自动同步调度器
 	Logger            *elog.Component              // 日志组件
+
+	// 成本管理模块处理器
+	CostHdl       *costhandler.CostHandler       // 成本分析处理器
+	BudgetHdl     *costhandler.BudgetHandler     // 预算管理处理器
+	AllocationHdl *costhandler.AllocationHandler // 成本分摊处理器
+	CollectorHdl  *costhandler.CollectorHandler  // 采集管理处理器
+
+	// 成本管理模块服务（供定时任务使用）
+	CostCollectorSvc CostCollectorService
+	CostBudgetSvc    CostBudgetService
+	CostAnomalySvc   CostAnomalyService
+	CostOptimizerSvc CostOptimizerService
+}
+
+// CostCollectorService 采集服务接口（供定时任务使用）
+type CostCollectorService interface {
+	StartScheduledCollection(ctx context.Context) error
+}
+
+// CostBudgetService 预算检查服务接口（供定时任务使用）
+type CostBudgetService interface {
+	CheckBudgets(ctx context.Context, tenantID string) error
+}
+
+// CostAnomalyService 异常检测服务接口（供定时任务使用）
+type CostAnomalyService interface {
+	DetectAnomalies(ctx context.Context, tenantID, date string) error
+}
+
+// CostOptimizerService 优化建议服务接口（供定时任务使用）
+type CostOptimizerService interface {
+	GenerateRecommendations(ctx context.Context, tenantID string) error
 }
 
 // RegisterRoutes 注册所有路由

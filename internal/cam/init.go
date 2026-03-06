@@ -2,6 +2,16 @@ package cam
 
 import (
 	// 使用新的独立 IAM 模块
+	"github.com/Havens-blog/e-cam-service/internal/alert"
+	"github.com/Havens-blog/e-cam-service/internal/cam/cost/allocation"
+	"github.com/Havens-blog/e-cam-service/internal/cam/cost/analysis"
+	"github.com/Havens-blog/e-cam-service/internal/cam/cost/anomaly"
+	"github.com/Havens-blog/e-cam-service/internal/cam/cost/budget"
+	"github.com/Havens-blog/e-cam-service/internal/cam/cost/collector"
+	costhandler "github.com/Havens-blog/e-cam-service/internal/cam/cost/handler"
+	"github.com/Havens-blog/e-cam-service/internal/cam/cost/normalizer"
+	"github.com/Havens-blog/e-cam-service/internal/cam/cost/optimizer"
+	costdao "github.com/Havens-blog/e-cam-service/internal/cam/cost/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
@@ -10,10 +20,18 @@ import (
 	cmdbdao "github.com/Havens-blog/e-cam-service/internal/cmdb/repository/dao"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/redis/go-redis/v9"
+
+	// 注册各云厂商 billing adapter（触发 init() 注册到全局注册表）
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/billing/aliyun"
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/billing/aws"
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/billing/huawei"
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/billing/tencent"
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/billing/volcano"
 )
 
-// InitModuleWithIAM 初始化CAM模块（包含IAM）
-func InitModuleWithIAM(db *mongox.Mongo) (*Module, error) {
+// InitModuleWithIAM 初始化CAM模块（包含IAM和成本管理）
+func InitModuleWithIAM(db *mongox.Mongo, redisClient redis.Cmdable, alertModule *alert.Module) (*Module, error) {
 	logger := elog.DefaultLogger
 	logger.Info("开始初始化CAM模块（包含IAM）")
 
@@ -59,6 +77,16 @@ func InitModuleWithIAM(db *mongox.Mongo) (*Module, error) {
 
 	module.ServiceTreeModule = stModule
 
+	// 初始化成本管理模块
+	logger.Info("开始初始化成本管理模块")
+	if err := initCostModule(module, db, redisClient, alertModule, logger); err != nil {
+		logger.Error("初始化成本管理模块失败", elog.FieldErr(err))
+		// 成本模块初始化失败不阻塞启动，仅记录警告
+		logger.Warn("成本管理模块未启用，相关功能不可用")
+	} else {
+		logger.Info("成本管理模块初始化成功")
+	}
+
 	// 启动自动同步调度器
 	if module.AutoScheduler != nil {
 		logger.Info("启动自动同步调度器")
@@ -67,4 +95,60 @@ func InitModuleWithIAM(db *mongox.Mongo) (*Module, error) {
 
 	logger.Info("CAM模块（包含IAM）初始化完成")
 	return module, nil
+}
+
+// initCostModule 初始化成本管理子模块
+func initCostModule(module *Module, db *mongox.Mongo, redisClient redis.Cmdable, alertModule *alert.Module, logger *elog.Component) error {
+	// 初始化成本模块 MongoDB 索引
+	if err := costdao.InitCostIndexes(db); err != nil {
+		logger.Warn("初始化成本模块索引失败", elog.FieldErr(err))
+	}
+
+	// 初始化 DAO 层
+	billDAO := costdao.NewBillDAO(db)
+	collectLogDAO := costdao.NewCollectLogDAO(db)
+	budgetDAO := costdao.NewBudgetDAO(db)
+	allocationDAO := costdao.NewAllocationDAO(db)
+	anomalyDAO := costdao.NewAnomalyDAO(db)
+	optimizerDAO := costdao.NewOptimizerDAO(db)
+
+	// 初始化标准化服务
+	normalizerSvc := normalizer.NewNormalizerService(billDAO, logger)
+
+	// 初始化采集服务
+	// 使用 cam 模块的 AccountSvc，它满足 accountservice.CloudAccountService 接口
+	collectorSvc := collector.NewCollectorService(normalizerSvc, billDAO, collectLogDAO, module.AccountSvc, redisClient, logger)
+
+	// 初始化成本分析服务
+	costSvc := analysis.NewCostService(billDAO, redisClient, logger)
+
+	// 初始化预算管理服务
+	var alertSvc = alertModule.AlertService
+	budgetSvc := budget.NewBudgetService(budgetDAO, billDAO, alertSvc, logger)
+
+	// 初始化成本分摊服务
+	allocationSvc := allocation.NewAllocationService(allocationDAO, billDAO, logger)
+
+	// 初始化异常检测服务
+	anomalySvc := anomaly.NewAnomalyService(anomalyDAO, billDAO, alertSvc, logger)
+
+	// 初始化优化建议服务
+	optimizerSvc := optimizer.NewOptimizerService(optimizerDAO, billDAO, logger)
+
+	// 初始化 HTTP 处理器
+	module.CostHdl = costhandler.NewCostHandler(costSvc, anomalySvc, optimizerSvc)
+	module.BudgetHdl = costhandler.NewBudgetHandler(budgetSvc)
+	module.AllocationHdl = costhandler.NewAllocationHandler(allocationSvc)
+	module.CollectorHdl = costhandler.NewCollectorHandler(collectorSvc, module.TaskSvc)
+
+	// 注册账单采集执行器到任务队列
+	module.TaskModule.RegisterBillingExecutor(normalizerSvc, billDAO, collectLogDAO, module.AccountSvc, redisClient, logger)
+
+	// 设置服务引用（供定时任务使用）
+	module.CostCollectorSvc = collectorSvc
+	module.CostBudgetSvc = budgetSvc
+	module.CostAnomalySvc = anomalySvc
+	module.CostOptimizerSvc = optimizerSvc
+
+	return nil
 }

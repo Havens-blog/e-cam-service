@@ -320,6 +320,23 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 				{"model_uid": "cloud_security_group"},
 				{"model_uid": bson.M{"$regex": "_security_group$"}},
 			}
+		case "cloud_lb", "lb", "slb":
+			query["$or"] = []bson.M{
+				{"model_uid": "cloud_lb"},
+				{"model_uid": bson.M{"$regex": "_lb$"}},
+				{"model_uid": bson.M{"$regex": "_slb$"}},
+				{"model_uid": bson.M{"$regex": "_alb$"}},
+				{"model_uid": bson.M{"$regex": "_nlb$"}},
+				{"model_uid": bson.M{"$regex": "_elb$"}},
+				{"model_uid": bson.M{"$regex": "_clb$"}},
+			}
+		case "cloud_subnet", "subnet", "vswitch":
+			query["$or"] = []bson.M{
+				{"model_uid": "cloud_subnet"},
+				{"model_uid": "cloud_vswitch"},
+				{"model_uid": bson.M{"$regex": "_subnet$"}},
+				{"model_uid": bson.M{"$regex": "_vswitch$"}},
+			}
 		default:
 			query["model_uid"] = filter.ModelUID
 		}
@@ -568,6 +585,21 @@ func (d *instanceDAO) buildSearchQuery(filter SearchFilter) bson.M {
 				typePatterns = append(typePatterns,
 					bson.M{"model_uid": "cloud_security_group"},
 					bson.M{"model_uid": bson.M{"$regex": "_security_group$"}})
+			case "lb", "slb", "cloud_lb":
+				typePatterns = append(typePatterns,
+					bson.M{"model_uid": "cloud_lb"},
+					bson.M{"model_uid": bson.M{"$regex": "_lb$"}},
+					bson.M{"model_uid": bson.M{"$regex": "_slb$"}},
+					bson.M{"model_uid": bson.M{"$regex": "_alb$"}},
+					bson.M{"model_uid": bson.M{"$regex": "_nlb$"}},
+					bson.M{"model_uid": bson.M{"$regex": "_elb$"}},
+					bson.M{"model_uid": bson.M{"$regex": "_clb$"}})
+			case "subnet", "vswitch", "cloud_subnet":
+				typePatterns = append(typePatterns,
+					bson.M{"model_uid": "cloud_subnet"},
+					bson.M{"model_uid": "cloud_vswitch"},
+					bson.M{"model_uid": bson.M{"$regex": "_subnet$"}},
+					bson.M{"model_uid": bson.M{"$regex": "_vswitch$"}})
 			}
 		}
 		if len(typePatterns) > 0 {
@@ -598,6 +630,7 @@ func (d *instanceDAO) buildSearchQuery(filter SearchFilter) bson.M {
 			{"attributes.private_ip": bson.M{"$regex": filter.Keyword, "$options": "i"}},
 			{"attributes.public_ip": bson.M{"$regex": filter.Keyword, "$options": "i"}},
 			{"attributes.ip_address": bson.M{"$regex": filter.Keyword, "$options": "i"}},
+			{"attributes.address": bson.M{"$regex": filter.Keyword, "$options": "i"}},
 			{"attributes.connection_string": bson.M{"$regex": filter.Keyword, "$options": "i"}},
 			{"attributes.cidr_block": bson.M{"$regex": filter.Keyword, "$options": "i"}},
 		}

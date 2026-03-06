@@ -113,6 +113,24 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 		logger.Warn("服务树模块未初始化，跳过服务树路由注册")
 	}
 
+	// 注册成本管理路由
+	if camModule.CostHdl != nil {
+		logger.Info("注册成本分析路由")
+		camModule.CostHdl.PrivateRoutes(server)
+	}
+	if camModule.BudgetHdl != nil {
+		logger.Info("注册预算管理路由")
+		camModule.BudgetHdl.PrivateRoutes(server)
+	}
+	if camModule.AllocationHdl != nil {
+		logger.Info("注册成本分摊路由")
+		camModule.AllocationHdl.PrivateRoutes(server)
+	}
+	if camModule.CollectorHdl != nil {
+		logger.Info("注册采集管理路由")
+		camModule.CollectorHdl.PrivateRoutes(server)
+	}
+
 	// 注册CMDB路由（挂在 /api/v1/cam 下，前端请求 /api/v1/cam/cmdb/...）
 	logger.Info("注册CMDB路由")
 	cmdbModule.RegisterRoutes(camGroup)
