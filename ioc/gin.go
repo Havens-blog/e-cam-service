@@ -3,7 +3,7 @@ package ioc
 import (
 	"time"
 
-	endpointv1 "github.com/Duke1616/ecmdb/api/proto/gen/ecmdb/endpoint/v1"
+	endpointv1 "github.com/Havens-blog/e-cam-service/api/proto/gen/ecmdb/endpoint/v1"
 	_ "github.com/Havens-blog/e-cam-service/docs" // 导入生成的文档
 	"github.com/Havens-blog/e-cam-service/internal/alert"
 	"github.com/Havens-blog/e-cam-service/internal/audit"

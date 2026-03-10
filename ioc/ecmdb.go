@@ -3,8 +3,8 @@ package ioc
 import (
 	"fmt"
 
-	endpointv1 "github.com/Duke1616/ecmdb/api/proto/gen/ecmdb/endpoint/v1"
-	policyv1 "github.com/Duke1616/ecmdb/api/proto/gen/ecmdb/policy/v1"
+	endpointv1 "github.com/Havens-blog/e-cam-service/api/proto/gen/ecmdb/endpoint/v1"
+	policyv1 "github.com/Havens-blog/e-cam-service/api/proto/gen/ecmdb/policy/v1"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/grpcx/interceptors/jwt"
 	"github.com/gotomicro/ego/core/elog"

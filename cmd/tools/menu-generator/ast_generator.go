@@ -93,7 +93,7 @@ func generateMenuFile(menus []MenuData) *ast.File {
 		Tok: token.IMPORT,
 		Specs: []ast.Spec{
 			&ast.ImportSpec{
-				Path: &ast.BasicLit{Kind: token.STRING, Value: `"github.com/Duke1616/ecmdb/internal/menu"`},
+				Path: &ast.BasicLit{Kind: token.STRING, Value: `"github.com/Havens-blog/e-cam-service/pkg/menu"`},
 			},
 		},
 	}

@@ -3,7 +3,6 @@ module github.com/Havens-blog/e-cam-service
 go 1.24.1
 
 require (
-	github.com/Duke1616/ecmdb v0.0.0
 	github.com/alibabacloud-go/alikafka-20190916/v3 v3.16.0
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.1.13
 	github.com/alibabacloud-go/elasticsearch-20170613/v4 v4.1.0
@@ -73,6 +72,7 @@ require (
 	golang.org/x/sync v0.19.0
 	golang.org/x/time v0.14.0
 	google.golang.org/grpc v1.74.2
+	google.golang.org/protobuf v1.36.10
 	pgregory.net/rapid v1.2.0
 )
 
@@ -206,11 +206,8 @@ require (
 	golang.org/x/tools v0.39.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250528174236-200df99c418a // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250528174236-200df99c418a // indirect
-	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	mvdan.cc/sh/v3 v3.10.0 // indirect
 )
-
-replace github.com/Duke1616/ecmdb => ../ecmdb

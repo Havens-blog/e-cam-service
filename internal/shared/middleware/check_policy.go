@@ -3,10 +3,9 @@ package middleware
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"time"
 
-	policyv1 "github.com/Duke1616/ecmdb/api/proto/gen/ecmdb/policy/v1"
+	policyv1 "github.com/Havens-blog/e-cam-service/api/proto/gen/ecmdb/policy/v1"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -56,9 +55,10 @@ func (m *CheckPolicyMiddleware) Build() gin.HandlerFunc {
 			return
 		}
 
-		uid := GetUid(c)
-		if uid == 0 {
-			m.logger.Warn("策略检查: 用户ID为空")
+		// 从 Authorization 头获取 token
+		token := c.GetHeader("Authorization")
+		if token == "" {
+			m.logger.Warn("策略检查: Token为空")
 			c.JSON(http.StatusForbidden, gin.H{
 				"code":    403,
 				"message": "权限不足",
@@ -75,7 +75,7 @@ func (m *CheckPolicyMiddleware) Build() gin.HandlerFunc {
 		defer cancel()
 
 		resp, err := m.policyClient.Authorize(ctx, &policyv1.AuthorizeReq{
-			UserId:   strconv.FormatInt(uid, 10),
+			Token:    token,
 			Path:     path,
 			Method:   method,
 			Resource: m.resource,
@@ -87,7 +87,6 @@ func (m *CheckPolicyMiddleware) Build() gin.HandlerFunc {
 					elog.FieldErr(err),
 					elog.String("path", path),
 					elog.String("method", method),
-					elog.Int64("uid", uid),
 				)
 				c.JSON(http.StatusServiceUnavailable, gin.H{
 					"code":    503,
@@ -101,7 +100,6 @@ func (m *CheckPolicyMiddleware) Build() gin.HandlerFunc {
 				elog.FieldErr(err),
 				elog.String("path", path),
 				elog.String("method", method),
-				elog.Int64("uid", uid),
 			)
 			c.Next()
 			return
@@ -111,7 +109,6 @@ func (m *CheckPolicyMiddleware) Build() gin.HandlerFunc {
 			m.logger.Debug("权限拒绝",
 				elog.String("path", path),
 				elog.String("method", method),
-				elog.Int64("uid", uid),
 			)
 			c.JSON(http.StatusForbidden, gin.H{
 				"code":    403,
