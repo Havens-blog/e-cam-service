@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	cmdbdao "github.com/Havens-blog/e-cam-service/internal/cmdb/repository/dao"
 	cmdbdomain "github.com/Havens-blog/e-cam-service/internal/cmdb/domain"
 	cmdbrepository "github.com/Havens-blog/e-cam-service/internal/cmdb/repository"
+	cmdbdao "github.com/Havens-blog/e-cam-service/internal/cmdb/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/servicetree/domain"
 	"github.com/Havens-blog/e-cam-service/internal/servicetree/repository"
 	"github.com/gotomicro/ego/core/elog"
@@ -18,6 +18,7 @@ type NodeAssetService interface {
 	ListNodeAssets(ctx context.Context, filter domain.NodeAssetFilter) ([]domain.NodeAssetVO, int64, error)
 	GetAssetNode(ctx context.Context, tenantID string, resourceID int64) (domain.ServiceTreeNode, error)
 	GetNodeAssetStats(ctx context.Context, tenantID string, nodeID int64, includeChildren bool) (domain.AssetStats, error)
+	GetGlobalAssetStats(ctx context.Context, tenantID string) (domain.AssetStats, error)
 }
 
 type nodeAssetService struct {
@@ -236,6 +237,30 @@ func (s *nodeAssetService) GetNodeAssetStats(ctx context.Context, tenantID strin
 	}
 
 	// 转换结果
+	stats := domain.AssetStats{
+		Total:       result.Total,
+		ByAssetType: make(map[string]int64),
+		ByProvider:  make(map[string]int64),
+	}
+	for _, item := range result.ByAssetType {
+		assetType := extractAssetType(item.AssetType)
+		stats.ByAssetType[assetType] += item.Count
+	}
+	for _, item := range result.ByProvider {
+		if item.Provider != "" {
+			stats.ByProvider[item.Provider] = item.Count
+		}
+	}
+	return stats, nil
+}
+
+// GetGlobalAssetStats 全局资产统计（不区分节点，按产品类别聚合）
+func (s *nodeAssetService) GetGlobalAssetStats(ctx context.Context, tenantID string) (domain.AssetStats, error) {
+	result, err := s.cmdbRepo.AggregateAllStats(ctx, tenantID)
+	if err != nil {
+		return domain.AssetStats{}, fmt.Errorf("统计全局资产失败: %w", err)
+	}
+
 	stats := domain.AssetStats{
 		Total:       result.Total,
 		ByAssetType: make(map[string]int64),

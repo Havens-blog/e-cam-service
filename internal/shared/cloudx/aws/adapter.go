@@ -32,11 +32,14 @@ type Adapter struct {
 	vpc           *VPCAdapter
 	eip           *EIPAdapter
 	lb            *LBAdapter
+	cdn           *CDNAdapter
+	waf           *WAFAdapter
 	nas           cloudx.NASAdapter
 	oss           cloudx.OSSAdapter
 	kafka         *KafkaAdapter
 	elasticsearch *ElasticsearchAdapter
 	iam           cloudx.IAMAdapter
+	vswitch       *VSwitchAdapter
 }
 
 // NewAdapter 创建AWS适配器
@@ -97,6 +100,12 @@ func NewAdapter(account *domain.CloudAccount) (*Adapter, error) {
 	// 创建LB适配器 (ELBv2)
 	adapter.lb = NewLBAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
 
+	// 创建CDN适配器 (CloudFront)
+	adapter.cdn = NewCDNAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建WAF适配器 (WAFv2)
+	adapter.waf = NewWAFAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
 	// 创建NAS适配器 (EFS)
 	adapter.nas = NewEFSAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
 
@@ -111,6 +120,9 @@ func NewAdapter(account *domain.CloudAccount) (*Adapter, error) {
 
 	// 创建IAM适配器
 	adapter.iam = NewIAMAdapter(account, logger)
+
+	// 创建VSwitch适配器
+	adapter.vswitch = NewVSwitchAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
 
 	return adapter, nil
 }
@@ -181,6 +193,16 @@ func (a *Adapter) LB() cloudx.LBAdapter {
 	return a.lb
 }
 
+// CDN 获取CDN适配器 (AWS CloudFront)
+func (a *Adapter) CDN() cloudx.CDNAdapter {
+	return a.cdn
+}
+
+// WAF 获取WAF适配器 (AWS WAFv2)
+func (a *Adapter) WAF() cloudx.WAFAdapter {
+	return a.waf
+}
+
 // NAS 获取NAS适配器
 func (a *Adapter) NAS() cloudx.NASAdapter {
 	return a.nas
@@ -204,6 +226,11 @@ func (a *Adapter) Elasticsearch() cloudx.ElasticsearchAdapter {
 // IAM 获取IAM适配器
 func (a *Adapter) IAM() cloudx.IAMAdapter {
 	return a.iam
+}
+
+// VSwitch 获取交换机/子网适配器
+func (a *Adapter) VSwitch() cloudx.VSwitchAdapter {
+	return a.vswitch
 }
 
 // ValidateCredentials 验证凭证

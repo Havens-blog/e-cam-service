@@ -210,16 +210,80 @@ func (m *mockCloudAdapter) GetProvider() domain.CloudProvider {
 }
 
 func (m *mockCloudAdapter) Asset() cloudx.AssetAdapter                    { return nil }
-func (m *mockCloudAdapter) SecurityGroup() cloudx.SecurityGroupAdapter    { return nil }
-func (m *mockCloudAdapter) Image() cloudx.ImageAdapter                    { return nil }
-func (m *mockCloudAdapter) Disk() cloudx.DiskAdapter                      { return nil }
-func (m *mockCloudAdapter) Snapshot() cloudx.SnapshotAdapter              { return nil }
-func (m *mockCloudAdapter) NAS() cloudx.NASAdapter                        { return nil }
-func (m *mockCloudAdapter) OSS() cloudx.OSSAdapter                        { return nil }
-func (m *mockCloudAdapter) Kafka() cloudx.KafkaAdapter                    { return nil }
-func (m *mockCloudAdapter) Elasticsearch() cloudx.ElasticsearchAdapter    { return nil }
 func (m *mockCloudAdapter) IAM() cloudx.IAMAdapter                        { return nil }
 func (m *mockCloudAdapter) ValidateCredentials(ctx context.Context) error { return nil }
+
+func (m *mockCloudAdapter) SecurityGroup() cloudx.SecurityGroupAdapter {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(cloudx.SecurityGroupAdapter)
+}
+
+func (m *mockCloudAdapter) Image() cloudx.ImageAdapter {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(cloudx.ImageAdapter)
+}
+
+func (m *mockCloudAdapter) Disk() cloudx.DiskAdapter {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(cloudx.DiskAdapter)
+}
+
+func (m *mockCloudAdapter) Snapshot() cloudx.SnapshotAdapter {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(cloudx.SnapshotAdapter)
+}
+
+func (m *mockCloudAdapter) NAS() cloudx.NASAdapter {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(cloudx.NASAdapter)
+}
+
+func (m *mockCloudAdapter) OSS() cloudx.OSSAdapter {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(cloudx.OSSAdapter)
+}
+
+func (m *mockCloudAdapter) Kafka() cloudx.KafkaAdapter {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(cloudx.KafkaAdapter)
+}
+
+func (m *mockCloudAdapter) Elasticsearch() cloudx.ElasticsearchAdapter {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(cloudx.ElasticsearchAdapter)
+}
+
+func (m *mockCloudAdapter) LB() cloudx.LBAdapter {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(cloudx.LBAdapter)
+}
 
 func (m *mockCloudAdapter) ECS() cloudx.ECSAdapter {
 	args := m.Called()

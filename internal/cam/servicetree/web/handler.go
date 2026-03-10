@@ -55,6 +55,7 @@ func (h *Handler) RegisterBindingRoutes(rg *gin.RouterGroup) {
 	// 节点资产查询 (绑定 + CMDB 资产详情)
 	rg.GET("/nodes/:id/assets", ginx.WrapBody(h.ListNodeAssets))
 	rg.GET("/nodes/:id/assets/stats", ginx.Wrap(h.GetNodeAssetStats))
+	rg.GET("/assets/stats", ginx.Wrap(h.GetGlobalAssetStats))
 	rg.GET("/assets/:id/node", ginx.Wrap(h.GetAssetNode))
 }
 
@@ -456,6 +457,25 @@ func (h *Handler) GetNodeAssetStats(c *gin.Context) (ginx.Result, error) {
 	includeChildren := c.Query("include_children") == "true"
 
 	stats, err := h.nodeAssetSvc.GetNodeAssetStats(c.Request.Context(), tenantID, nodeID, includeChildren)
+	if err != nil {
+		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+	}
+
+	return ginx.Result{Data: AssetStatsVO{
+		Total:       stats.Total,
+		ByAssetType: stats.ByAssetType,
+		ByProvider:  stats.ByProvider,
+	}}, nil
+}
+
+// GetGlobalAssetStats 全局资产统计（不区分节点）
+func (h *Handler) GetGlobalAssetStats(c *gin.Context) (ginx.Result, error) {
+	tenantID := h.getTenantID(c)
+	if tenantID == "" {
+		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
+	}
+
+	stats, err := h.nodeAssetSvc.GetGlobalAssetStats(c.Request.Context(), tenantID)
 	if err != nil {
 		return ginx.Result{Code: 500, Msg: err.Error()}, nil
 	}

@@ -72,6 +72,17 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 		elog.Int64("account_id", params.AccountID),
 		elog.Any("asset_types", params.AssetTypes))
 
+	// 如果未指定资源类型，默认同步所有支持的类型
+	if len(params.AssetTypes) == 0 {
+		params.AssetTypes = []string{
+			"ecs", "disk", "snapshot", "security_group",
+			"rds", "redis", "mongodb",
+			"vpc", "eip", "lb",
+			"nas", "oss",
+			"kafka", "elasticsearch",
+		}
+	}
+
 	// 更新进度: 开始同步
 	e.taskRepo.UpdateProgress(ctx, t.ID, 10, "正在获取云账号信息")
 

@@ -9,6 +9,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -16,12 +17,14 @@ import (
 // 按资产类型提供RESTful风格的API
 type AssetHandler struct {
 	instanceSvc service.InstanceService
+	logger      *elog.Component
 }
 
 // NewAssetHandler 创建资产处理器
 func NewAssetHandler(instanceSvc service.InstanceService) *AssetHandler {
 	return &AssetHandler{
 		instanceSvc: instanceSvc,
+		logger:      elog.DefaultLogger,
 	}
 }
 
@@ -80,9 +83,21 @@ func (h *AssetHandler) registerAssetRoutes(assetsGroup *gin.RouterGroup) {
 	assetsGroup.GET("/eip", h.ListEIP)
 	assetsGroup.GET("/eip/:asset_id", h.GetEIP)
 
+	// VSwitch 交换机/子网
+	assetsGroup.GET("/vswitch", h.ListVSwitch)
+	assetsGroup.GET("/vswitch/:asset_id", h.GetVSwitch)
+
 	// LB 负载均衡
 	assetsGroup.GET("/lb", h.ListLB)
 	assetsGroup.GET("/lb/:asset_id", h.GetLB)
+
+	// CDN 内容分发网络
+	assetsGroup.GET("/cdn", h.ListCDN)
+	assetsGroup.GET("/cdn/:asset_id", h.GetCDN)
+
+	// WAF Web应用防火墙
+	assetsGroup.GET("/waf", h.ListWAF)
+	assetsGroup.GET("/waf/:asset_id", h.GetWAF)
 
 	// NAS 文件存储
 	assetsGroup.GET("/nas", h.ListNAS)
@@ -298,6 +313,11 @@ func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	provider := ctx.Query("provider")
 
+	h.logger.Info("GetECSRelations 请求参数",
+		elog.String("asset_id", assetID),
+		elog.String("tenant_id", tenantID),
+		elog.String("provider", provider))
+
 	// 1. 先获取 ECS 实例
 	ecsFilter := domain.InstanceFilter{
 		AssetID:  assetID,
@@ -308,8 +328,19 @@ func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
 
 	ecsInstances, _, err := h.instanceSvc.List(ctx.Request.Context(), ecsFilter)
 	if err != nil {
+		h.logger.Error("查询ECS实例失败", elog.FieldErr(err))
 		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
 		return
+	}
+
+	h.logger.Info("查询ECS实例结果",
+		elog.Int("count", len(ecsInstances)))
+	for _, inst := range ecsInstances {
+		h.logger.Info("ECS实例",
+			elog.String("model_uid", inst.ModelUID),
+			elog.String("asset_id", inst.AssetID),
+			elog.String("tenant_id", inst.TenantID),
+			elog.Int64("account_id", inst.AccountID))
 	}
 
 	// 找到匹配的 ECS 实例
@@ -322,8 +353,25 @@ func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
 	}
 
 	if ecsInstance == nil {
-		ctx.JSON(404, ErrorResult(errs.InstanceNotFound))
-		return
+		// 如果带 provider 查不到，尝试不带 provider 查询
+		if provider != "" {
+			h.logger.Warn("带provider查不到ECS实例，尝试不带provider查询",
+				elog.String("asset_id", assetID))
+			ecsFilter.Provider = ""
+			ecsInstances, _, err = h.instanceSvc.List(ctx.Request.Context(), ecsFilter)
+			if err == nil {
+				for i, inst := range ecsInstances {
+					if matchAssetType(inst.ModelUID, "ecs") {
+						ecsInstance = &ecsInstances[i]
+						break
+					}
+				}
+			}
+		}
+		if ecsInstance == nil {
+			ctx.JSON(404, ErrorResult(errs.InstanceNotFound))
+			return
+		}
 	}
 
 	// 从 ECS 实例属性中获取 region 和 account_id
@@ -332,6 +380,19 @@ func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
 		region = r
 	}
 	accountID := ecsInstance.AccountID
+	// 使用 ECS 实例自身的 provider（更可靠）
+	instanceProvider := ""
+	if p, ok := ecsInstance.Attributes["provider"].(string); ok {
+		instanceProvider = p
+	}
+
+	h.logger.Info("ECS实例详情",
+		elog.String("model_uid", ecsInstance.ModelUID),
+		elog.String("region", region),
+		elog.Int64("account_id", accountID),
+		elog.String("instance_provider", instanceProvider),
+		elog.Any("security_group_ids", ecsInstance.Attributes["security_group_ids"]),
+		elog.Any("security_groups", ecsInstance.Attributes["security_groups"]))
 
 	// 获取 VPC ID 和 子网 ID
 	vpcID := ""
@@ -351,7 +412,6 @@ func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
 		ModelUID:  "disk",
 		TenantID:  tenantID,
 		AccountID: accountID,
-		Provider:  provider,
 		Attributes: map[string]interface{}{
 			"instance_id": assetID,
 		},
@@ -362,6 +422,7 @@ func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
 	}
 
 	disks, _, _ := h.instanceSvc.List(ctx.Request.Context(), diskFilter)
+	h.logger.Info("查询关联云盘结果", elog.Int("count", len(disks)))
 
 	// 3. 查询关联的快照 (通过云盘ID查询)
 	var snapshots []domain.Instance
@@ -370,7 +431,6 @@ func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
 			ModelUID:  "snapshot",
 			TenantID:  tenantID,
 			AccountID: accountID,
-			Provider:  provider,
 			Attributes: map[string]interface{}{
 				"source_disk_id": disk.AssetID,
 			},
@@ -382,6 +442,23 @@ func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
 		diskSnapshots, _, _ := h.instanceSvc.List(ctx.Request.Context(), snapshotFilter)
 		snapshots = append(snapshots, diskSnapshots...)
 	}
+	// 如果通过磁盘没找到快照，尝试通过 source_instance_id 直接查询
+	if len(snapshots) == 0 {
+		snapshotByInstFilter := domain.InstanceFilter{
+			ModelUID:  "snapshot",
+			TenantID:  tenantID,
+			AccountID: accountID,
+			Attributes: map[string]interface{}{
+				"source_instance_id": assetID,
+			},
+			Limit: 100,
+		}
+		if region != "" {
+			snapshotByInstFilter.Attributes["region"] = region
+		}
+		snapshots, _, _ = h.instanceSvc.List(ctx.Request.Context(), snapshotByInstFilter)
+	}
+	h.logger.Info("查询关联快照结果", elog.Int("count", len(snapshots)))
 
 	// 4. 查询关联的安全组 (通过 ECS 的 security_group_ids 或 security_groups 属性)
 	var securityGroups []domain.Instance
@@ -395,16 +472,36 @@ func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
 		sgIDs = extractSecurityGroupIDs(ecsInstance.Attributes["security_groups"])
 	}
 
+	h.logger.Info("提取安全组ID", elog.Any("sg_ids", sgIDs))
+
 	// 根据安全组 ID 查询安全组实例
 	for _, sgID := range sgIDs {
 		sgFilter := domain.InstanceFilter{
+			ModelUID:  "security_group",
 			AssetID:   sgID,
 			TenantID:  tenantID,
 			AccountID: accountID,
-			Provider:  provider,
 			Limit:     10,
 		}
-		sgInstances, _, _ := h.instanceSvc.List(ctx.Request.Context(), sgFilter)
+		sgInstances, _, sgErr := h.instanceSvc.List(ctx.Request.Context(), sgFilter)
+		h.logger.Info("查询安全组",
+			elog.String("sg_id", sgID),
+			elog.Int("result_count", len(sgInstances)),
+			elog.FieldErr(sgErr))
+		if len(sgInstances) == 0 {
+			// 回退: 不带 AccountID 查询
+			sgFilter2 := domain.InstanceFilter{
+				ModelUID: "security_group",
+				AssetID:  sgID,
+				TenantID: tenantID,
+				Limit:    10,
+			}
+			sgInstances, _, sgErr = h.instanceSvc.List(ctx.Request.Context(), sgFilter2)
+			h.logger.Info("回退查询安全组(不带account_id)",
+				elog.String("sg_id", sgID),
+				elog.Int("result_count", len(sgInstances)),
+				elog.FieldErr(sgErr))
+		}
 		for _, inst := range sgInstances {
 			if matchAssetType(inst.ModelUID, "security_group") {
 				securityGroups = append(securityGroups, inst)
@@ -412,18 +509,81 @@ func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
 			}
 		}
 	}
+	h.logger.Info("查询关联安全组结果", elog.Int("count", len(securityGroups)))
+
+	// 如果数据库中没有找到安全组，从 ECS 实例属性中构建基本信息
+	if len(securityGroups) == 0 && len(sgIDs) > 0 {
+		h.logger.Info("安全组未在数据库中找到，从ECS属性构建基本信息")
+		sgList := ecsInstance.Attributes["security_groups"]
+
+		// 统一转换为 []interface{}
+		var sgItems []interface{}
+		switch arr := sgList.(type) {
+		case []interface{}:
+			sgItems = arr
+		case primitive.A:
+			sgItems = arr
+		}
+
+		for _, item := range sgItems {
+			sgID := ""
+			sgName := ""
+			sgDesc := ""
+
+			switch sgMap := item.(type) {
+			case map[string]interface{}:
+				if id, ok := sgMap["id"].(string); ok {
+					sgID = id
+				}
+				if name, ok := sgMap["name"].(string); ok {
+					sgName = name
+				}
+				if desc, ok := sgMap["description"].(string); ok {
+					sgDesc = desc
+				}
+			case primitive.M:
+				if id, ok := sgMap["id"].(string); ok {
+					sgID = id
+				}
+				if name, ok := sgMap["name"].(string); ok {
+					sgName = name
+				}
+				if desc, ok := sgMap["description"].(string); ok {
+					sgDesc = desc
+				}
+			}
+
+			if sgID != "" {
+				securityGroups = append(securityGroups, domain.Instance{
+					ModelUID:  instanceProvider + "_security_group",
+					AssetID:   sgID,
+					AssetName: sgName,
+					TenantID:  tenantID,
+					AccountID: accountID,
+					Attributes: map[string]interface{}{
+						"provider":    instanceProvider,
+						"region":      region,
+						"description": sgDesc,
+						"_from_ecs":   true,
+					},
+				})
+			}
+		}
+		h.logger.Info("从ECS属性构建安全组", elog.Int("count", len(securityGroups)))
+	}
 
 	// 5. 查询关联的 VPC
 	var vpcInstance *domain.Instance
 	if vpcID != "" {
 		vpcFilter := domain.InstanceFilter{
+			ModelUID:  "vpc",
 			AssetID:   vpcID,
 			TenantID:  tenantID,
 			AccountID: accountID,
-			Provider:  provider,
 			Limit:     10,
 		}
 		vpcInstances, _, _ := h.instanceSvc.List(ctx.Request.Context(), vpcFilter)
+		h.logger.Info("查询关联VPC", elog.String("vpc_id", vpcID), elog.Int("result_count", len(vpcInstances)))
 		for i, inst := range vpcInstances {
 			if matchAssetType(inst.ModelUID, "vpc") {
 				vpcInstance = &vpcInstances[i]
@@ -436,18 +596,53 @@ func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
 	var subnetInstance *domain.Instance
 	if subnetID != "" {
 		subnetFilter := domain.InstanceFilter{
+			ModelUID:  "subnet",
 			AssetID:   subnetID,
 			TenantID:  tenantID,
 			AccountID: accountID,
-			Provider:  provider,
 			Limit:     10,
 		}
 		subnetInstances, _, _ := h.instanceSvc.List(ctx.Request.Context(), subnetFilter)
+		h.logger.Info("查询关联子网", elog.String("subnet_id", subnetID), elog.Int("result_count", len(subnetInstances)))
 		for i, inst := range subnetInstances {
 			if matchAssetType(inst.ModelUID, "subnet") || matchAssetType(inst.ModelUID, "vswitch") {
 				subnetInstance = &subnetInstances[i]
 				break
 			}
+		}
+
+		// 子网兜底: 如果数据库中没有子网数据，从 ECS 实例属性中构建基本信息
+		if subnetInstance == nil {
+			h.logger.Info("子网未在数据库中找到，从ECS属性构建基本信息",
+				elog.String("subnet_id", subnetID))
+			subnetName := ""
+			if n, ok := ecsInstance.Attributes["vswitch_name"].(string); ok {
+				subnetName = n
+			}
+			if subnetName == "" {
+				if n, ok := ecsInstance.Attributes["subnet_name"].(string); ok {
+					subnetName = n
+				}
+			}
+			zone := ""
+			if z, ok := ecsInstance.Attributes["zone"].(string); ok {
+				zone = z
+			}
+			fallbackSubnet := domain.Instance{
+				ModelUID:  instanceProvider + "_subnet",
+				AssetID:   subnetID,
+				AssetName: subnetName,
+				TenantID:  tenantID,
+				AccountID: accountID,
+				Attributes: map[string]interface{}{
+					"provider":  instanceProvider,
+					"region":    region,
+					"zone":      zone,
+					"vpc_id":    vpcID,
+					"_from_ecs": true,
+				},
+			}
+			subnetInstance = &fallbackSubnet
 		}
 	}
 
@@ -753,6 +948,71 @@ func (h *AssetHandler) GetEIP(ctx *gin.Context) {
 	h.getAsset(ctx, "eip")
 }
 
+// ==================== VSwitch 交换机/子网 ====================
+
+// ListVSwitch 获取交换机/子网列表
+func (h *AssetHandler) ListVSwitch(ctx *gin.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	provider := ctx.Query("provider")
+	region := ctx.Query("region")
+	status := ctx.Query("status")
+	name := ctx.Query("name")
+	accountIDStr := ctx.Query("account_id")
+
+	// VSwitch 特有过滤参数
+	vpcID := ctx.Query("vpc_id")
+	zone := ctx.Query("zone")
+
+	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+
+	var accountID int64
+	if accountIDStr != "" {
+		accountID, _ = strconv.ParseInt(accountIDStr, 10, 64)
+	}
+
+	attributes := make(map[string]interface{})
+	if region != "" {
+		attributes["region"] = region
+	}
+	if status != "" {
+		attributes["status"] = status
+	}
+	if vpcID != "" {
+		attributes["vpc_id"] = vpcID
+	}
+	if zone != "" {
+		attributes["zone"] = zone
+	}
+
+	filter := domain.InstanceFilter{
+		ModelUID:   "vswitch",
+		TenantID:   tenantID,
+		AccountID:  accountID,
+		AssetName:  name,
+		Provider:   provider,
+		Attributes: attributes,
+		Offset:     int64(offset),
+		Limit:      int64(limit),
+	}
+
+	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
+	if err != nil {
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
+	}
+
+	ctx.JSON(200, Result(UnifiedAssetListResp{
+		Items: h.toUnifiedAssetVOs(instances),
+		Total: total,
+	}))
+}
+
+// GetVSwitch 获取交换机/子网详情
+func (h *AssetHandler) GetVSwitch(ctx *gin.Context) {
+	h.getAsset(ctx, "vswitch")
+}
+
 // ==================== LB 负载均衡 ====================
 
 // ListLB 获取负载均衡实例列表
@@ -851,6 +1111,124 @@ func (h *AssetHandler) ListLB(ctx *gin.Context) {
 // @Router /cam/assets/lb/{asset_id} [get]
 func (h *AssetHandler) GetLB(ctx *gin.Context) {
 	h.getAsset(ctx, "lb")
+}
+
+// ListCDN 获取CDN加速域名列表
+func (h *AssetHandler) ListCDN(ctx *gin.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	provider := ctx.Query("provider")
+	region := ctx.Query("region")
+	status := ctx.Query("status")
+	name := ctx.Query("name")
+	accountIDStr := ctx.Query("account_id")
+
+	// CDN 特有过滤参数
+	businessType := ctx.Query("business_type")
+
+	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+
+	var accountID int64
+	if accountIDStr != "" {
+		accountID, _ = strconv.ParseInt(accountIDStr, 10, 64)
+	}
+
+	attributes := make(map[string]interface{})
+	if region != "" {
+		attributes["region"] = region
+	}
+	if status != "" {
+		attributes["status"] = status
+	}
+	if businessType != "" {
+		attributes["business_type"] = businessType
+	}
+
+	filter := domain.InstanceFilter{
+		ModelUID:   "cdn",
+		TenantID:   tenantID,
+		AccountID:  accountID,
+		AssetName:  name,
+		Provider:   provider,
+		Attributes: attributes,
+		Offset:     int64(offset),
+		Limit:      int64(limit),
+	}
+
+	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
+	if err != nil {
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
+	}
+
+	ctx.JSON(200, Result(UnifiedAssetListResp{
+		Items: h.toUnifiedAssetVOs(instances),
+		Total: total,
+	}))
+}
+
+// GetCDN 获取CDN加速域名详情
+func (h *AssetHandler) GetCDN(ctx *gin.Context) {
+	h.getAsset(ctx, "cdn")
+}
+
+// ListWAF 获取WAF实例列表
+func (h *AssetHandler) ListWAF(ctx *gin.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	provider := ctx.Query("provider")
+	region := ctx.Query("region")
+	status := ctx.Query("status")
+	name := ctx.Query("name")
+	accountIDStr := ctx.Query("account_id")
+
+	// WAF 特有过滤参数
+	edition := ctx.Query("edition")
+
+	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+
+	var accountID int64
+	if accountIDStr != "" {
+		accountID, _ = strconv.ParseInt(accountIDStr, 10, 64)
+	}
+
+	attributes := make(map[string]interface{})
+	if region != "" {
+		attributes["region"] = region
+	}
+	if status != "" {
+		attributes["status"] = status
+	}
+	if edition != "" {
+		attributes["edition"] = edition
+	}
+
+	filter := domain.InstanceFilter{
+		ModelUID:   "waf",
+		TenantID:   tenantID,
+		AccountID:  accountID,
+		AssetName:  name,
+		Provider:   provider,
+		Attributes: attributes,
+		Offset:     int64(offset),
+		Limit:      int64(limit),
+	}
+
+	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
+	if err != nil {
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
+	}
+
+	ctx.JSON(200, Result(UnifiedAssetListResp{
+		Items: h.toUnifiedAssetVOs(instances),
+		Total: total,
+	}))
+}
+
+// GetWAF 获取WAF实例详情
+func (h *AssetHandler) GetWAF(ctx *gin.Context) {
+	h.getAsset(ctx, "waf")
 }
 
 // ==================== NAS 文件存储 ====================
@@ -1694,6 +2072,20 @@ func matchAssetType(modelUID, assetType string) bool {
 			modelUID == "huawei_elasticsearch" ||
 			modelUID == "tencent_elasticsearch" ||
 			modelUID == "volcano_elasticsearch"
+	case "cdn":
+		return modelUID == "cdn" || modelUID == "cloud_cdn" ||
+			modelUID == "aliyun_cdn" ||
+			modelUID == "aws_cdn" ||
+			modelUID == "huawei_cdn" ||
+			modelUID == "tencent_cdn" ||
+			modelUID == "volcano_cdn"
+	case "waf":
+		return modelUID == "waf" || modelUID == "cloud_waf" ||
+			modelUID == "aliyun_waf" ||
+			modelUID == "aws_waf" ||
+			modelUID == "huawei_waf" ||
+			modelUID == "tencent_waf" ||
+			modelUID == "volcano_waf"
 	}
 	return false
 }
@@ -1788,6 +2180,10 @@ func extractAssetType(modelUID string) string {
 		return "eip"
 	case "cloud_lb", "cloud_slb", "cloud_alb", "cloud_nlb":
 		return "lb"
+	case "cloud_cdn":
+		return "cdn"
+	case "cloud_waf":
+		return "waf"
 	case "cloud_nas":
 		return "nas"
 	case "cloud_oss":
@@ -1798,7 +2194,7 @@ func extractAssetType(modelUID string) string {
 		return "elasticsearch"
 	}
 	// aliyun_ecs -> ecs, aws_rds -> rds, etc.
-	for _, suffix := range []string{"_ecs", "_disk", "_snapshot", "_security_group", "_rds", "_redis", "_mongodb", "_vpc", "_eip", "_lb", "_slb", "_alb", "_nlb", "_nas", "_oss", "_kafka", "_elasticsearch"} {
+	for _, suffix := range []string{"_ecs", "_disk", "_snapshot", "_security_group", "_rds", "_redis", "_mongodb", "_vpc", "_eip", "_lb", "_slb", "_alb", "_nlb", "_cdn", "_waf", "_nas", "_oss", "_kafka", "_elasticsearch"} {
 		if len(modelUID) > len(suffix) && modelUID[len(modelUID)-len(suffix):] == suffix {
 			return suffix[1:] // 去掉前缀下划线
 		}

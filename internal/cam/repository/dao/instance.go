@@ -337,6 +337,16 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 				{"model_uid": bson.M{"$regex": "_subnet$"}},
 				{"model_uid": bson.M{"$regex": "_vswitch$"}},
 			}
+		case "cloud_cdn", "cdn":
+			query["$or"] = []bson.M{
+				{"model_uid": "cloud_cdn"},
+				{"model_uid": bson.M{"$regex": "_cdn$"}},
+			}
+		case "cloud_waf", "waf":
+			query["$or"] = []bson.M{
+				{"model_uid": "cloud_waf"},
+				{"model_uid": bson.M{"$regex": "_waf$"}},
+			}
 		default:
 			query["model_uid"] = filter.ModelUID
 		}

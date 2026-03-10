@@ -200,9 +200,22 @@ func (a *SFSAdapter) convertToNASInstance(share *model.ShareInfo, region string)
 	}
 	if share.ShareType != nil {
 		// ShareType: STANDARD(标准型) / PERFORMANCE(性能型)
+		// StorageType 使用 ShareType 映射为存储类型
+		instance.StorageType = a.convertStorageType(*share.ShareType)
+		// FileSystemType 默认使用 ShareType
 		instance.FileSystemType = *share.ShareType
-		// 同时作为存储类型
-		instance.StorageType = *share.ShareType
+	}
+	if share.ExpandType != nil && *share.ExpandType != "" {
+		// ExpandType 存在时表示增强型/HPC型文件系统
+		shareType := ""
+		if share.ShareType != nil {
+			shareType = *share.ShareType
+		}
+		hpcBw := ""
+		if share.HpcBw != nil {
+			hpcBw = *share.HpcBw
+		}
+		instance.FileSystemType = a.buildFileSystemType(shareType, *share.ExpandType, hpcBw)
 	}
 	if share.ShareProto != nil {
 		instance.ProtocolType = *share.ShareProto // NFS / CIFS
@@ -308,8 +321,19 @@ func (a *SFSAdapter) convertDetailToNASInstance(response *model.ShowShareRespons
 	}
 	if response.ShareType != nil {
 		// ShareType: STANDARD(标准型) / PERFORMANCE(性能型)
+		instance.StorageType = a.convertStorageType(*response.ShareType)
 		instance.FileSystemType = *response.ShareType
-		instance.StorageType = *response.ShareType
+	}
+	if response.ExpandType != nil && *response.ExpandType != "" {
+		shareType := ""
+		if response.ShareType != nil {
+			shareType = *response.ShareType
+		}
+		hpcBw := ""
+		if response.HpcBw != nil {
+			hpcBw = *response.HpcBw
+		}
+		instance.FileSystemType = a.buildFileSystemType(shareType, *response.ExpandType, hpcBw)
 	}
 	if response.ShareProto != nil {
 		instance.ProtocolType = *response.ShareProto // NFS / CIFS
@@ -410,6 +434,36 @@ func (a *SFSAdapter) convertStatus(status string) string {
 		return s
 	}
 	return status
+}
+
+// convertStorageType 将 ShareType 转换为存储类型显示名
+func (a *SFSAdapter) convertStorageType(shareType string) string {
+	switch shareType {
+	case "STANDARD":
+		return "Standard"
+	case "PERFORMANCE":
+		return "Performance"
+	default:
+		return shareType
+	}
+}
+
+// buildFileSystemType 根据 ShareType、ExpandType 和 HpcBw 构建文件系统类型
+// ExpandType: "bandwidth" 表示增强型，"hpc" 表示 HPC 型
+// HpcBw: 带宽规格，如 "40M"、"125M"、"250M" 等
+func (a *SFSAdapter) buildFileSystemType(shareType string, expandType string, hpcBw string) string {
+	if hpcBw != "" {
+		// 有带宽规格时，构建完整的文件系统类型名称
+		// 例如: STANDARD + 40M -> HPC_STANDARD_40M
+		return fmt.Sprintf("HPC_%s_%s", shareType, hpcBw)
+	}
+	if expandType == "bandwidth" {
+		return shareType + "_Enhanced"
+	}
+	if expandType == "hpc" {
+		return "HPC_" + shareType
+	}
+	return shareType
 }
 
 func containsString(slice []string, s string) bool {

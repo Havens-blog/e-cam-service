@@ -53,8 +53,17 @@ type CloudAdapter interface {
 	// EIP 获取EIP适配器 (弹性公网IP)
 	EIP() EIPAdapter
 
+	// VSwitch 获取交换机/子网适配器
+	VSwitch() VSwitchAdapter
+
 	// LB 获取负载均衡适配器 (SLB/ALB/NLB)
 	LB() LBAdapter
+
+	// CDN 获取CDN适配器 (内容分发网络)
+	CDN() CDNAdapter
+
+	// WAF 获取WAF适配器 (Web应用防火墙)
+	WAF() WAFAdapter
 
 	// ========== 存储资源 ==========
 
@@ -325,6 +334,29 @@ type EIPAdapter interface {
 }
 
 // ============================================================================
+// VSwitchAdapter - 交换机/子网适配器接口
+// ============================================================================
+
+// VSwitchAdapter 交换机/子网适配器接口
+// 用于阿里云VSwitch、华为云Subnet、腾讯云Subnet、AWS Subnet、火山引擎Subnet
+type VSwitchAdapter interface {
+	// ListInstances 获取交换机列表
+	ListInstances(ctx context.Context, region string) ([]types.VSwitchInstance, error)
+
+	// GetInstance 获取单个交换机详情
+	GetInstance(ctx context.Context, region, vswitchID string) (*types.VSwitchInstance, error)
+
+	// ListInstancesByIDs 批量获取交换机
+	ListInstancesByIDs(ctx context.Context, region string, vswitchIDs []string) ([]types.VSwitchInstance, error)
+
+	// GetInstanceStatus 获取交换机状态
+	GetInstanceStatus(ctx context.Context, region, vswitchID string) (string, error)
+
+	// ListInstancesWithFilter 带过滤条件获取交换机列表
+	ListInstancesWithFilter(ctx context.Context, region string, filter *types.VSwitchInstanceFilter) ([]types.VSwitchInstance, error)
+}
+
+// ============================================================================
 // LBAdapter - 负载均衡适配器接口
 // ============================================================================
 
@@ -531,4 +563,50 @@ type SnapshotAdapter interface {
 
 	// ListByInstanceID 获取实例的快照列表 (系统盘+数据盘)
 	ListByInstanceID(ctx context.Context, region, instanceID string) ([]types.SnapshotInstance, error)
+}
+
+// ============================================================================
+// CDNAdapter - CDN内容分发网络适配器接口
+// ============================================================================
+
+// CDNAdapter CDN内容分发网络适配器接口
+// 用于阿里云CDN、华为云CDN、腾讯云CDN、AWS CloudFront、火山引擎CDN等
+type CDNAdapter interface {
+	// ListInstances 获取CDN加速域名列表
+	ListInstances(ctx context.Context, region string) ([]types.CDNInstance, error)
+
+	// GetInstance 获取单个CDN加速域名详情
+	GetInstance(ctx context.Context, region, domainName string) (*types.CDNInstance, error)
+
+	// ListInstancesByIDs 批量获取CDN加速域名
+	ListInstancesByIDs(ctx context.Context, region string, domainNames []string) ([]types.CDNInstance, error)
+
+	// GetInstanceStatus 获取域名状态
+	GetInstanceStatus(ctx context.Context, region, domainName string) (string, error)
+
+	// ListInstancesWithFilter 带过滤条件获取域名列表
+	ListInstancesWithFilter(ctx context.Context, region string, filter *types.CDNInstanceFilter) ([]types.CDNInstance, error)
+}
+
+// ============================================================================
+// WAFAdapter - WAF Web应用防火墙适配器接口
+// ============================================================================
+
+// WAFAdapter WAF Web应用防火墙适配器接口
+// 用于阿里云WAF、华为云WAF、腾讯云WAF、AWS WAF、火山引擎WAF等
+type WAFAdapter interface {
+	// ListInstances 获取WAF实例列表
+	ListInstances(ctx context.Context, region string) ([]types.WAFInstance, error)
+
+	// GetInstance 获取单个WAF实例详情
+	GetInstance(ctx context.Context, region, instanceID string) (*types.WAFInstance, error)
+
+	// ListInstancesByIDs 批量获取WAF实例
+	ListInstancesByIDs(ctx context.Context, region string, instanceIDs []string) ([]types.WAFInstance, error)
+
+	// GetInstanceStatus 获取实例状态
+	GetInstanceStatus(ctx context.Context, region, instanceID string) (string, error)
+
+	// ListInstancesWithFilter 带过滤条件获取实例列表
+	ListInstancesWithFilter(ctx context.Context, region string, filter *types.WAFInstanceFilter) ([]types.WAFInstance, error)
 }

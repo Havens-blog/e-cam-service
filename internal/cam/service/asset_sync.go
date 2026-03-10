@@ -127,7 +127,7 @@ func (s *assetSyncService) SyncAssets(ctx context.Context, tenantID, provider st
 		assetTypes = []string{
 			"ecs", "disk", "snapshot", "security_group",
 			"rds", "redis", "mongodb",
-			"vpc", "eip", "lb",
+			"vpc", "eip", "lb", "cdn", "waf",
 			"nas", "oss",
 		}
 	}
@@ -192,7 +192,7 @@ func (s *assetSyncService) SyncAccountAssets(ctx context.Context, tenantID strin
 		assetTypes = []string{
 			"ecs", "disk", "snapshot", "security_group",
 			"rds", "redis", "mongodb",
-			"vpc", "eip", "lb",
+			"vpc", "eip", "lb", "cdn", "waf",
 			"nas", "oss",
 		}
 	}
@@ -356,6 +356,15 @@ func (s *assetSyncService) syncRegion(
 			}
 			result.ByAssetType["eip"] += synced.TotalSynced
 
+		case "vswitch", "cloud_vswitch", "subnet":
+			synced, err = s.syncVSwitchInstances(ctx, tenantID, adapter, account, region)
+			if err != nil {
+				s.logger.Error("同步VSwitch失败", elog.String("region", region), elog.FieldErr(err))
+				result.Failed++
+				continue
+			}
+			result.ByAssetType["vswitch"] += synced.TotalSynced
+
 		case "lb", "cloud_lb", "slb", "alb", "nlb":
 			synced, err = s.syncLBInstances(ctx, tenantID, adapter, account, region)
 			if err != nil {
@@ -364,6 +373,24 @@ func (s *assetSyncService) syncRegion(
 				continue
 			}
 			result.ByAssetType["lb"] += synced.TotalSynced
+
+		case "cdn", "cloud_cdn":
+			synced, err = s.syncCDNInstances(ctx, tenantID, adapter, account, region)
+			if err != nil {
+				s.logger.Error("同步CDN失败", elog.String("region", region), elog.FieldErr(err))
+				result.Failed++
+				continue
+			}
+			result.ByAssetType["cdn"] += synced.TotalSynced
+
+		case "waf", "cloud_waf":
+			synced, err = s.syncWAFInstances(ctx, tenantID, adapter, account, region)
+			if err != nil {
+				s.logger.Error("同步WAF失败", elog.String("region", region), elog.FieldErr(err))
+				result.Failed++
+				continue
+			}
+			result.ByAssetType["waf"] += synced.TotalSynced
 
 		case "nas", "cloud_nas":
 			synced, err = s.syncNASInstances(ctx, tenantID, adapter, account, region)
@@ -422,7 +449,7 @@ func (s *assetSyncService) syncRegion(
 
 		case "network":
 			// 聚合类型：同步所有网络资源
-			for _, netType := range []string{"vpc", "eip", "lb"} {
+			for _, netType := range []string{"vpc", "eip", "lb", "cdn", "waf"} {
 				netResult, _ := s.syncRegion(ctx, tenantID, adapter, account, region, []string{netType})
 				if netResult != nil {
 					s.mergeResult(result, netResult)
@@ -780,6 +807,65 @@ func (s *assetSyncService) syncEIPInstances(
 	return result, nil
 }
 
+// syncVSwitchInstances 同步交换机/子网实例
+func (s *assetSyncService) syncVSwitchInstances(
+	ctx context.Context,
+	tenantID string,
+	adapter cloudx.CloudAdapter,
+	account *shareddomain.CloudAccount,
+	region string,
+) (*SyncResult, error) {
+	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+
+	instances, err := adapter.VSwitch().ListInstances(ctx, region)
+	if err != nil {
+		return nil, fmt.Errorf("获取VSwitch失败: %w", err)
+	}
+
+	for _, inst := range instances {
+		attrs := map[string]interface{}{
+			"provider":           string(account.Provider),
+			"cloud_account_id":   account.ID,
+			"region":             inst.Region,
+			"zone":               inst.Zone,
+			"vswitch_id":         inst.VSwitchID,
+			"status":             inst.Status,
+			"cidr_block":         inst.CidrBlock,
+			"ipv6_cidr_block":    inst.IPv6CidrBlock,
+			"enable_ipv6":        inst.EnableIPv6,
+			"is_default":         inst.IsDefault,
+			"gateway_ip":         inst.GatewayIP,
+			"vpc_id":             inst.VPCID,
+			"vpc_name":           inst.VPCName,
+			"available_ip_count": inst.AvailableIPCount,
+			"total_ip_count":     inst.TotalIPCount,
+			"route_table_id":     inst.RouteTableID,
+			"create_time":        inst.CreationTime,
+			"resource_group_id":  inst.ResourceGroupID,
+			"tags":               inst.Tags,
+			"description":        inst.Description,
+		}
+		assetName := inst.VSwitchName
+		if assetName == "" {
+			assetName = inst.VSwitchID
+		}
+		cmdbInstance := domain.Instance{
+			ModelUID:   "cloud_vswitch",
+			AssetID:    inst.VSwitchID,
+			AssetName:  assetName,
+			TenantID:   tenantID,
+			AccountID:  account.ID,
+			Attributes: attrs,
+		}
+		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
+			result.Failed++
+			continue
+		}
+		result.TotalSynced++
+	}
+	return result, nil
+}
+
 // syncLBInstances 同步负载均衡实例
 func (s *assetSyncService) syncLBInstances(
 	ctx context.Context,
@@ -1115,11 +1201,12 @@ func (s *assetSyncService) syncNASInstances(
 			"region": inst.Region, "zone": inst.Zone, "file_system_id": inst.FileSystemID,
 			"status": inst.Status, "file_system_type": inst.FileSystemType,
 			"protocol_type": inst.ProtocolType, "storage_type": inst.StorageType,
-			"capacity": inst.Capacity, "metered_size": inst.MeteredSize,
+			"capacity": inst.Capacity, "used_capacity": inst.UsedCapacity, "metered_size": inst.MeteredSize,
 			"vpc_id": inst.VPCID, "vswitch_id": inst.VSwitchID,
 			"charge_type": inst.ChargeType, "encrypt_type": inst.EncryptType,
 			"kms_key_id": inst.KMSKeyID, "mount_targets": inst.MountTargets,
-			"create_time": inst.CreationTime, "tags": inst.Tags, "description": inst.Description,
+			"mount_target_count": len(inst.MountTargets),
+			"create_time":        inst.CreationTime, "tags": inst.Tags, "description": inst.Description,
 		}
 		assetName := inst.Description
 		if assetName == "" {
@@ -1344,6 +1431,116 @@ func (s *assetSyncService) syncSecurityGroupInstances(
 		}
 		cmdbInstance := domain.Instance{
 			ModelUID: "cloud_security_group", AssetID: inst.SecurityGroupID, AssetName: assetName,
+			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
+		}
+		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
+			result.Failed++
+			continue
+		}
+		result.TotalSynced++
+	}
+	return result, nil
+}
+
+// ==================== CDN 同步 ====================
+
+func (s *assetSyncService) syncCDNInstances(
+	ctx context.Context,
+	tenantID string,
+	adapter cloudx.CloudAdapter,
+	account *shareddomain.CloudAccount,
+	region string,
+) (*SyncResult, error) {
+	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+
+	cdnAdapter := adapter.CDN()
+	if cdnAdapter == nil {
+		s.logger.Warn("CDN适配器不可用", elog.String("provider", string(account.Provider)))
+		return result, nil
+	}
+
+	instances, err := cdnAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return nil, fmt.Errorf("获取CDN失败: %w", err)
+	}
+
+	for _, inst := range instances {
+		attrs := map[string]interface{}{
+			"provider": string(account.Provider), "cloud_account_id": account.ID,
+			"domain_id": inst.DomainID, "domain_name": inst.DomainName,
+			"cname": inst.Cname, "status": inst.Status,
+			"region": inst.Region, "business_type": inst.BusinessType,
+			"service_area": inst.ServiceArea, "origin_type": inst.OriginType,
+			"origin_host": inst.OriginHost, "https_enabled": inst.HTTPSEnabled,
+			"cert_name": inst.CertName, "http2_enabled": inst.HTTP2Enabled,
+			"bandwidth": inst.Bandwidth, "traffic_total": inst.TrafficTotal,
+			"creation_time": inst.CreationTime, "modified_time": inst.ModifiedTime,
+			"resource_group_id": inst.ResourceGroupID,
+			"tags":              inst.Tags, "description": inst.Description,
+		}
+		assetID := inst.DomainName
+		if inst.DomainID != "" {
+			assetID = inst.DomainID
+		}
+		assetName := inst.DomainName
+		cmdbInstance := domain.Instance{
+			ModelUID: "cloud_cdn", AssetID: assetID, AssetName: assetName,
+			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
+		}
+		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
+			result.Failed++
+			continue
+		}
+		result.TotalSynced++
+	}
+	return result, nil
+}
+
+// ==================== WAF 同步 ====================
+
+func (s *assetSyncService) syncWAFInstances(
+	ctx context.Context,
+	tenantID string,
+	adapter cloudx.CloudAdapter,
+	account *shareddomain.CloudAccount,
+	region string,
+) (*SyncResult, error) {
+	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+
+	wafAdapter := adapter.WAF()
+	if wafAdapter == nil {
+		s.logger.Warn("WAF适配器不可用", elog.String("provider", string(account.Provider)))
+		return result, nil
+	}
+
+	instances, err := wafAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return nil, fmt.Errorf("获取WAF失败: %w", err)
+	}
+
+	for _, inst := range instances {
+		attrs := map[string]interface{}{
+			"provider": string(account.Provider), "cloud_account_id": account.ID,
+			"instance_id": inst.InstanceID, "instance_name": inst.InstanceName,
+			"status": inst.Status, "region": inst.Region,
+			"edition": inst.Edition, "domain_count": inst.DomainCount,
+			"domain_limit": inst.DomainLimit, "rule_count": inst.RuleCount,
+			"acl_rule_count": inst.ACLRuleCount, "cc_rule_count": inst.CCRuleCount,
+			"rate_limit_count": inst.RateLimitCount,
+			"waf_enabled":      inst.WAFEnabled, "cc_enabled": inst.CCEnabled,
+			"anti_bot_enabled": inst.AntiBotEnabled,
+			"qps":              inst.QPS, "bandwidth": inst.Bandwidth,
+			"exclusive_ip": inst.ExclusiveIP, "pay_type": inst.PayType,
+			"creation_time": inst.CreationTime, "expired_time": inst.ExpiredTime,
+			"resource_group_id": inst.ResourceGroupID,
+			"tags":              inst.Tags, "description": inst.Description,
+		}
+		assetName := inst.InstanceName
+		if assetName == "" {
+			assetName = inst.InstanceID
+		}
+		cmdbInstance := domain.Instance{
+			ModelUID: "cloud_waf", AssetID: inst.InstanceID, AssetName: assetName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
