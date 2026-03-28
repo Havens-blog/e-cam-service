@@ -80,9 +80,9 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 	// 如果未指定资源类型，默认同步所有支持的类型
 	if len(params.AssetTypes) == 0 {
 		params.AssetTypes = []string{
-			"ecs", "disk", "snapshot", "security_group",
+			"ecs", "disk", "snapshot", "security_group", "image",
 			"rds", "redis", "mongodb",
-			"vpc", "eip", "lb",
+			"vpc", "eip", "lb", "vswitch", "cdn", "waf",
 			"nas", "oss",
 			"kafka", "elasticsearch",
 		}
@@ -91,79 +91,117 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 	// 更新进度: 开始同步
 	e.taskRepo.UpdateProgress(ctx, t.ID, 10, "正在获取云账号信息")
 
-	// 获取云账号
-	account, err := e.accountRepo.GetByID(ctx, params.AccountID)
-	if err != nil {
-		return fmt.Errorf("获取云账号失败: %w", err)
-	}
-
-	// 更新进度
-	e.taskRepo.UpdateProgress(ctx, t.ID, 20, "正在创建云适配器")
-
-	// 创建适配器
-	adapter, err := e.adapterFactory.CreateAdapterFromDomain(&account)
-	if err != nil {
-		return fmt.Errorf("创建适配器失败: %w", err)
-	}
-
-	// 更新进度
-	e.taskRepo.UpdateProgress(ctx, t.ID, 30, "正在获取地域列表")
-
-	// 获取地域列表
-	regions, err := adapter.GetRegions(ctx)
-	if err != nil {
-		return fmt.Errorf("获取地域列表失败: %w", err)
-	}
-
-	// 过滤地域
-	if len(params.Regions) > 0 {
-		regionMap := make(map[string]bool)
-		for _, r := range params.Regions {
-			regionMap[r] = true
-		}
-		filteredRegions := make([]types.Region, 0)
-		for _, r := range regions {
-			if regionMap[r.ID] {
-				filteredRegions = append(filteredRegions, r)
-			}
-		}
-		regions = filteredRegions
-	}
-
-	// 同步资产
-	totalSynced := 0
-	totalRegions := len(regions)
-
-	for i, region := range regions {
-		progress := 30 + (i*60)/totalRegions
-		e.taskRepo.UpdateProgress(ctx, t.ID, progress, fmt.Sprintf("正在同步地域 %s (%d/%d)", region.ID, i+1, totalRegions))
-
-		synced, err := e.syncRegionAssets(ctx, adapter, &account, region.ID, params.AssetTypes)
+	// 获取需要同步的账号列表
+	var accounts []domain.CloudAccount
+	if params.AccountID > 0 {
+		// 指定了账号ID，同步单个账号
+		account, err := e.accountRepo.GetByID(ctx, params.AccountID)
 		if err != nil {
-			e.logger.Error("同步地域资产失败",
-				elog.String("region", region.ID),
+			return fmt.Errorf("获取云账号失败: %w", err)
+		}
+		accounts = append(accounts, account)
+	} else {
+		// 未指定账号ID，查询该云厂商的所有活跃账号
+		filter := domain.CloudAccountFilter{
+			Provider: domain.CloudProvider(params.Provider),
+			Status:   domain.CloudAccountStatusActive,
+			Limit:    100,
+		}
+		accts, _, err := e.accountRepo.List(ctx, filter)
+		if err != nil {
+			return fmt.Errorf("获取云账号列表失败: %w", err)
+		}
+		if len(accts) == 0 {
+			return fmt.Errorf("未找到可用的 %s 云账号", params.Provider)
+		}
+		accounts = accts
+		e.logger.Info("查询到活跃云账号",
+			elog.String("provider", params.Provider),
+			elog.Int("count", len(accounts)))
+	}
+
+	totalSynced := 0
+	totalAccounts := len(accounts)
+
+	for ai, account := range accounts {
+		accountProgress := 20 + (ai*70)/totalAccounts
+		e.taskRepo.UpdateProgress(ctx, t.ID, accountProgress,
+			fmt.Sprintf("正在同步账号 %s (%d/%d)", account.Name, ai+1, totalAccounts))
+
+		// 创建适配器
+		adapter, err := e.adapterFactory.CreateAdapterFromDomain(&account)
+		if err != nil {
+			e.logger.Error("创建适配器失败",
+				elog.String("account", account.Name),
 				elog.FieldErr(err))
 			continue
 		}
-		totalSynced += synced
+
+		// 获取地域列表
+		regions, err := adapter.GetRegions(ctx)
+		if err != nil {
+			e.logger.Error("获取地域列表失败",
+				elog.String("account", account.Name),
+				elog.FieldErr(err))
+			continue
+		}
+
+		// 过滤地域
+		if len(params.Regions) > 0 {
+			regionMap := make(map[string]bool)
+			for _, r := range params.Regions {
+				regionMap[r] = true
+			}
+			filteredRegions := make([]types.Region, 0)
+			for _, r := range regions {
+				if regionMap[r.ID] {
+					filteredRegions = append(filteredRegions, r)
+				}
+			}
+			regions = filteredRegions
+		}
+
+		// 同步该账号的所有地域资产
+		accountSynced := 0
+		totalRegions := len(regions)
+		for i, region := range regions {
+			regionProgress := accountProgress + (i*70/totalAccounts)/totalRegions
+			if regionProgress > 90 {
+				regionProgress = 90
+			}
+			e.taskRepo.UpdateProgress(ctx, t.ID, regionProgress,
+				fmt.Sprintf("账号 %s: 正在同步地域 %s (%d/%d)", account.Name, region.ID, i+1, totalRegions))
+
+			synced, err := e.syncRegionAssets(ctx, adapter, &account, region.ID, params.AssetTypes)
+			if err != nil {
+				e.logger.Error("同步地域资产失败",
+					elog.String("account", account.Name),
+					elog.String("region", region.ID),
+					elog.FieldErr(err))
+				continue
+			}
+			accountSynced += synced
+		}
+
+		// 更新该账号的最后同步时间
+		if err := e.accountRepo.UpdateSyncTime(ctx, account.ID, time.Now(), int64(accountSynced)); err != nil {
+			e.logger.Error("更新同步时间失败",
+				elog.Int64("account_id", account.ID),
+				elog.FieldErr(err))
+		}
+
+		totalSynced += accountSynced
 	}
 
-	// 更新同步时间
+	// 更新进度
 	e.taskRepo.UpdateProgress(ctx, t.ID, 95, "正在更新同步状态")
-
-	// 更新云账号的最后同步时间
-	if err := e.accountRepo.UpdateSyncTime(ctx, params.AccountID, time.Now(), int64(totalSynced)); err != nil {
-		e.logger.Error("更新同步时间失败",
-			elog.Int64("account_id", params.AccountID),
-			elog.FieldErr(err))
-	}
 
 	// 构建结果
 	result := SyncAssetsResult{
 		TotalCount: totalSynced,
 		Details: map[string]any{
-			"regions_synced": len(regions),
-			"asset_types":    params.AssetTypes,
+			"accounts_synced": totalAccounts,
+			"asset_types":     params.AssetTypes,
 		},
 	}
 
@@ -173,7 +211,7 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 
 	t.Result = resultMap
 	t.Progress = 100
-	t.Message = fmt.Sprintf("同步完成，共同步 %d 个资产", totalSynced)
+	t.Message = fmt.Sprintf("同步完成，共同步 %d 个账号 %d 个资产", totalAccounts, totalSynced)
 
 	e.logger.Info("同步资产任务执行完成",
 		elog.String("task_id", t.ID),

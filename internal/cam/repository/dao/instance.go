@@ -347,6 +347,11 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 				{"model_uid": "cloud_waf"},
 				{"model_uid": bson.M{"$regex": "_waf$"}},
 			}
+		case "cloud_image", "image":
+			query["$or"] = []bson.M{
+				{"model_uid": "cloud_image"},
+				{"model_uid": bson.M{"$regex": "_image$"}},
+			}
 		default:
 			query["model_uid"] = filter.ModelUID
 		}
@@ -610,6 +615,10 @@ func (d *instanceDAO) buildSearchQuery(filter SearchFilter) bson.M {
 					bson.M{"model_uid": "cloud_vswitch"},
 					bson.M{"model_uid": bson.M{"$regex": "_subnet$"}},
 					bson.M{"model_uid": bson.M{"$regex": "_vswitch$"}})
+			case "image", "cloud_image":
+				typePatterns = append(typePatterns,
+					bson.M{"model_uid": "cloud_image"},
+					bson.M{"model_uid": bson.M{"$regex": "_image$"}})
 			}
 		}
 		if len(typePatterns) > 0 {

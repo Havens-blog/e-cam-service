@@ -125,7 +125,7 @@ func (s *assetSyncService) SyncAssets(ctx context.Context, tenantID, provider st
 
 	if len(assetTypes) == 0 {
 		assetTypes = []string{
-			"ecs", "disk", "snapshot", "security_group",
+			"ecs", "disk", "snapshot", "security_group", "image",
 			"rds", "redis", "mongodb",
 			"vpc", "eip", "lb", "cdn", "waf",
 			"nas", "oss",
@@ -190,7 +190,7 @@ func (s *assetSyncService) SyncAccountAssets(ctx context.Context, tenantID strin
 
 	if len(assetTypes) == 0 {
 		assetTypes = []string{
-			"ecs", "disk", "snapshot", "security_group",
+			"ecs", "disk", "snapshot", "security_group", "image",
 			"rds", "redis", "mongodb",
 			"vpc", "eip", "lb", "cdn", "waf",
 			"nas", "oss",
@@ -436,6 +436,15 @@ func (s *assetSyncService) syncRegion(
 				continue
 			}
 			result.ByAssetType["security_group"] += synced.TotalSynced
+
+		case "image", "cloud_image":
+			synced, err = s.syncImageInstances(ctx, tenantID, adapter, account, region)
+			if err != nil {
+				s.logger.Error("同步镜像失败", elog.String("region", region), elog.FieldErr(err))
+				result.Failed++
+				continue
+			}
+			result.ByAssetType["image"] += synced.TotalSynced
 
 		case "database":
 			// 聚合类型：同步所有数据库资源
@@ -1431,6 +1440,61 @@ func (s *assetSyncService) syncSecurityGroupInstances(
 		}
 		cmdbInstance := domain.Instance{
 			ModelUID: "cloud_security_group", AssetID: inst.SecurityGroupID, AssetName: assetName,
+			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
+		}
+		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
+			result.Failed++
+			continue
+		}
+		result.TotalSynced++
+	}
+	return result, nil
+}
+
+// ==================== 镜像同步 ====================
+
+func (s *assetSyncService) syncImageInstances(
+	ctx context.Context,
+	tenantID string,
+	adapter cloudx.CloudAdapter,
+	account *shareddomain.CloudAccount,
+	region string,
+) (*SyncResult, error) {
+	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+
+	imageAdapter := adapter.Image()
+	if imageAdapter == nil {
+		s.logger.Warn("Image适配器不可用", elog.String("provider", string(account.Provider)))
+		return result, nil
+	}
+
+	instances, err := imageAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return nil, fmt.Errorf("获取镜像失败: %w", err)
+	}
+
+	for _, inst := range instances {
+		attrs := map[string]interface{}{
+			"provider": string(account.Provider), "cloud_account_id": account.ID,
+			"region": inst.Region, "image_id": inst.ImageID,
+			"image_name": inst.ImageName, "status": inst.Status,
+			"image_owner_alias": inst.ImageOwnerAlias, "os_type": inst.OSType,
+			"os_name": inst.OSName, "platform": inst.Platform,
+			"architecture": inst.Architecture, "size": inst.Size,
+			"description": inst.Description, "creation_time": inst.CreationTime,
+			"source_instance_id":   inst.SourceInstanceID,
+			"source_snapshot_id":   inst.SourceSnapshotID,
+			"disk_device_mappings": inst.DiskDeviceMappings,
+			"boot_mode":            inst.BootMode, "tags": inst.Tags,
+			"instance_count": inst.InstanceCount,
+		}
+		assetName := inst.ImageName
+		if assetName == "" {
+			assetName = inst.ImageID
+		}
+		cmdbInstance := domain.Instance{
+			ModelUID: fmt.Sprintf("%s_image", account.Provider),
+			AssetID:  inst.ImageID, AssetName: assetName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
