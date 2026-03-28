@@ -44,6 +44,11 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 		c.Redirect(302, "/swagger/index.html")
 	})
 
+	// 健康检查路由（不需要认证）
+	server.GET("/api/v1/cam/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"code": 0, "msg": "ok"})
+	})
+
 	// ===== 以下路由需要 ecmdb session 认证 =====
 	// 加固版认证中间件，支持白名单
 	var authCfg middleware.AuthConfig
@@ -129,6 +134,20 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 	if camModule.CollectorHdl != nil {
 		logger.Info("注册采集管理路由")
 		camModule.CollectorHdl.PrivateRoutes(server)
+	}
+
+	// 注册数据字典路由
+	if camModule.DictHdl != nil {
+		logger.Info("注册数据字典路由")
+		camModule.DictHdl.RegisterRoutes(camGroup)
+		logger.Info("数据字典路由注册完成")
+	}
+
+	// 注册主机模板路由
+	if camModule.TemplateHdl != nil {
+		logger.Info("注册主机模板路由")
+		camModule.TemplateHdl.RegisterRoutes(camGroup)
+		logger.Info("主机模板路由注册完成")
 	}
 
 	// 注册CMDB路由（挂在 /api/v1/cam 下，前端请求 /api/v1/cam/cmdb/...）

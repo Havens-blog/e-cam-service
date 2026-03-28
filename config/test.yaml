@@ -89,7 +89,7 @@ frontend:
 # 认证中间件配置
 auth:
   whitelist:
-    - "/health"
+    - "/api/v1/cam/health"
     - "/swagger/*"
     - "/docs"
 

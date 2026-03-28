@@ -1,6 +1,8 @@
 package cam
 
 import (
+	"context"
+
 	// 使用新的独立 IAM 模块
 	"github.com/Havens-blog/e-cam-service/internal/alert"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/allocation"
@@ -12,12 +14,16 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/normalizer"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/optimizer"
 	costdao "github.com/Havens-blog/e-cam-service/internal/cam/cost/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/cam/dictionary"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree"
+	"github.com/Havens-blog/e-cam-service/internal/cam/template"
 	cmdbrepository "github.com/Havens-blog/e-cam-service/internal/cmdb/repository"
 	cmdbdao "github.com/Havens-blog/e-cam-service/internal/cmdb/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
+	shareddomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/redis/go-redis/v9"
@@ -76,6 +82,33 @@ func InitModuleWithIAM(db *mongox.Mongo, redisClient redis.Cmdable, alertModule 
 	logger.Info("服务树模块初始化成功")
 
 	module.ServiceTreeModule = stModule
+
+	// 初始化数据字典模块
+	logger.Info("开始初始化数据字典模块")
+	if err := dictionary.InitIndexes(db); err != nil {
+		logger.Warn("初始化数据字典索引失败", elog.FieldErr(err))
+	}
+	dictDAO := dictionary.NewDictDAO(db)
+	dictSvc := dictionary.NewDictService(dictDAO)
+	module.DictHdl = dictionary.NewDictHandler(dictSvc)
+	logger.Info("数据字典模块初始化成功")
+
+	// 初始化字典种子数据（为所有已有租户）
+	seedCreated, seedSkipped, seedErr := dictionary.SeedDictDataForAllTenants(context.Background(), dictSvc, db)
+	if seedErr != nil {
+		logger.Warn("字典种子数据初始化出现错误", elog.FieldErr(seedErr))
+	}
+	logger.Info("字典种子数据初始化完成",
+		elog.Int("created", seedCreated),
+		elog.Int("skipped", seedSkipped))
+
+	// 初始化主机模板模块
+	logger.Info("开始初始化主机模板模块")
+	if err := initTemplateModule(module, db, logger); err != nil {
+		logger.Warn("初始化主机模板模块失败", elog.FieldErr(err))
+	} else {
+		logger.Info("主机模板模块初始化成功")
+	}
 
 	// 初始化成本管理模块
 	logger.Info("开始初始化成本管理模块")
@@ -151,4 +184,57 @@ func initCostModule(module *Module, db *mongox.Mongo, redisClient redis.Cmdable,
 	module.CostOptimizerSvc = optimizerSvc
 
 	return nil
+}
+
+// initTemplateModule 初始化主机模板子模块
+func initTemplateModule(module *Module, db *mongox.Mongo, logger *elog.Component) error {
+	// 初始化索引
+	if err := template.InitIndexes(db); err != nil {
+		logger.Warn("初始化主机模板索引失败", elog.FieldErr(err))
+	}
+
+	// 初始化 DAO
+	tmplDAO := template.NewTemplateDAO(db)
+	taskDAO := template.NewProvisionTaskDAO(db)
+
+	// 创建账号提供者适配器（复用现有 AccountSvc）
+	accountProvider := &accountProviderAdapter{accountSvc: module.AccountSvc}
+
+	// 创建适配器工厂（复用现有 cloudx 注册机制）
+	adapterFactory := &cloudxAdapterFactory{}
+
+	// 初始化校验器
+	validator := template.NewTemplateValidator(accountProvider, adapterFactory)
+
+	// 初始化服务
+	svc := template.NewTemplateService(tmplDAO, taskDAO, nil)
+
+	// 初始化 HTTP 处理器
+	module.TemplateHdl = template.NewTemplateHandler(svc, accountProvider, adapterFactory)
+
+	// 初始化执行器（注册到任务队列）
+	_ = template.NewCreateECSExecutor(tmplDAO, taskDAO, validator, accountProvider, adapterFactory, nil, logger)
+
+	logger.Info("主机模板模块初始化完成")
+	return nil
+}
+
+// accountProviderAdapter 将 CloudAccountService 适配为 template.AccountProvider
+type accountProviderAdapter struct {
+	accountSvc CloudAccountService
+}
+
+func (a *accountProviderAdapter) GetByID(ctx context.Context, id int64) (*shareddomain.CloudAccount, error) {
+	return a.accountSvc.GetAccountWithCredentials(ctx, id)
+}
+
+// cloudxAdapterFactory 使用 cloudx 全局注册机制创建适配器
+type cloudxAdapterFactory struct{}
+
+func (f *cloudxAdapterFactory) GetAdapter(account *shareddomain.CloudAccount) (cloudx.CloudAdapter, error) {
+	creator, err := cloudx.GetAdapterCreator(account.Provider)
+	if err != nil {
+		return nil, err
+	}
+	return creator(account)
 }

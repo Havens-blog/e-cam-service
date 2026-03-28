@@ -86,6 +86,14 @@ type CloudAdapter interface {
 	// IAM 获取IAM适配器
 	IAM() IAMAdapter
 
+	// ========== 资源创建与查询 ==========
+
+	// ECSCreate 获取 ECS 创建适配器（可选，不支持创建的厂商返回 nil）
+	ECSCreate() ECSCreateAdapter
+
+	// ResourceQuery 获取资源查询适配器（用于模板创建和直接创建时的联动下拉数据）
+	ResourceQuery() ResourceQueryAdapter
+
 	// ValidateCredentials 验证凭证
 	ValidateCredentials(ctx context.Context) error
 }
@@ -609,4 +617,38 @@ type WAFAdapter interface {
 
 	// ListInstancesWithFilter 带过滤条件获取实例列表
 	ListInstancesWithFilter(ctx context.Context, region string, filter *types.WAFInstanceFilter) ([]types.WAFInstance, error)
+}
+
+// ============================================================================
+// ECSCreateAdapter - ECS 实例创建适配器接口
+// ============================================================================
+
+// ECSCreateAdapter ECS 实例创建适配器接口
+// 每个云厂商实现此接口，提供 ECS 实例创建能力
+type ECSCreateAdapter interface {
+	// CreateInstances 创建 ECS 实例，返回创建的实例 ID 列表
+	CreateInstances(ctx context.Context, params types.CreateInstanceParams) (*types.CreateInstanceResult, error)
+}
+
+// ============================================================================
+// ResourceQueryAdapter - 云资源查询适配器接口
+// ============================================================================
+
+// ResourceQueryAdapter 云资源查询适配器接口
+// 用于模板创建和直接创建时查询云厂商可用资源（联动下拉数据）
+type ResourceQueryAdapter interface {
+	// ListAvailableInstanceTypes 查询可用实例规格
+	ListAvailableInstanceTypes(ctx context.Context, region string) ([]types.InstanceTypeInfo, error)
+
+	// ListAvailableImages 查询可用镜像
+	ListAvailableImages(ctx context.Context, region string) ([]types.ImageInfo, error)
+
+	// ListVPCs 查询 VPC 列表
+	ListVPCs(ctx context.Context, region string) ([]types.VPCInfo, error)
+
+	// ListSubnets 查询子网列表
+	ListSubnets(ctx context.Context, region, vpcID string) ([]types.SubnetInfo, error)
+
+	// ListSecurityGroups 查询安全组列表
+	ListSecurityGroups(ctx context.Context, region, vpcID string) ([]types.SecurityGroupInfo, error)
 }

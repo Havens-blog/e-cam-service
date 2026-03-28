@@ -4,6 +4,7 @@ import (
 	"context"
 
 	costhandler "github.com/Havens-blog/e-cam-service/internal/cam/cost/handler"
+	"github.com/Havens-blog/e-cam-service/internal/cam/dictionary"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam"
 	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
@@ -12,6 +13,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/task"
 	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
 	taskweb "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
+	"github.com/Havens-blog/e-cam-service/internal/cam/template"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
@@ -41,6 +43,12 @@ type Module struct {
 	BudgetHdl     *costhandler.BudgetHandler     // 预算管理处理器
 	AllocationHdl *costhandler.AllocationHandler // 成本分摊处理器
 	CollectorHdl  *costhandler.CollectorHandler  // 采集管理处理器
+
+	// 数据字典模块处理器
+	DictHdl *dictionary.DictHandler
+
+	// 主机模板模块处理器
+	TemplateHdl *template.TemplateHandler
 
 	// 成本管理模块服务（供定时任务使用）
 	CostCollectorSvc CostCollectorService
@@ -107,6 +115,14 @@ func (m *Module) RegisterRoutes(r *gin.Engine) {
 	// 注册服务树路由
 	if m.ServiceTreeModule != nil {
 		m.ServiceTreeModule.RegisterRoutes(camGroup)
+	}
+
+	// 注册主机模板路由 (使用租户中间件)
+	if m.TemplateHdl != nil {
+		templateGroup := camGroup.Group("")
+		templateGroup.Use(middleware.TenantMiddleware(m.Logger))
+		templateGroup.Use(middleware.RequireTenant(m.Logger))
+		m.TemplateHdl.RegisterRoutes(templateGroup)
 	}
 }
 

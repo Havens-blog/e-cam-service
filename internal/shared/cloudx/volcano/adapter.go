@@ -235,6 +235,16 @@ func (a *Adapter) VSwitch() cloudx.VSwitchAdapter {
 	return a.vswitch
 }
 
+// ECSCreate 获取 ECS 创建适配器（桩实现，待后续任务完善）
+func (a *Adapter) ECSCreate() cloudx.ECSCreateAdapter {
+	return nil
+}
+
+// ResourceQuery 获取资源查询适配器（桩实现，待后续任务完善）
+func (a *Adapter) ResourceQuery() cloudx.ResourceQueryAdapter {
+	return nil
+}
+
 // ValidateCredentials 验证凭证
 func (a *Adapter) ValidateCredentials(ctx context.Context) error {
 	_, err := a.ecs.GetRegions(ctx)

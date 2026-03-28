@@ -1,4 +1,8 @@
-// Package executor 任务执行器
+// Package executor 任务执行器（旧版/备用，非运行时使用）
+//
+// 重要：这不是生产环境实际运行的执行器！
+// 运行时使用的是 internal/cam/task/executor/sync_assets.go（通过 wire 注入）。
+// 如需修改同步逻辑，请前往 internal/cam/task/executor/ 目录。
 package executor
 
 import (
@@ -183,7 +187,7 @@ func expandAssetTypes(assetTypes []string) []string {
 				}
 			}
 		case "network", "net":
-			for _, netType := range []string{"vpc", "eip", "lb"} {
+			for _, netType := range []string{"vpc", "vswitch", "eip", "lb", "cdn", "waf"} {
 				if !seen[netType] {
 					expanded = append(expanded, netType)
 					seen[netType] = true
@@ -300,6 +304,22 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 			synced, err := e.syncRegionVPC(ctx, cloudxAdapter, account, region)
 			if err != nil {
 				e.logger.Error("同步VPC失败", elog.String("region", region), elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "vswitch", "subnet":
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionVSwitch(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步VSwitch失败", elog.String("region", region), elog.FieldErr(err))
 				continue
 			}
 			totalSynced += synced
@@ -426,6 +446,38 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 			synced, err := e.syncRegionElasticsearch(ctx, cloudxAdapter, account, region)
 			if err != nil {
 				e.logger.Error("同步Elasticsearch失败", elog.String("region", region), elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "cdn":
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionCDN(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步CDN失败", elog.String("region", region), elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "waf":
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionWAF(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步WAF失败", elog.String("region", region), elog.FieldErr(err))
 				continue
 			}
 			totalSynced += synced

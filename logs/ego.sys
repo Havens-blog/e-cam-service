@@ -590,3 +590,302 @@
 {"lv":"info","ts":1773050400,"msg":"cron run","comp":"task.ecron","now":1773050400,"entry":1,"next":1773072000}
 {"lv":"info","ts":1773050400,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
 {"lv":"info","ts":1773051285,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1773125246,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1773125246,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1773125246,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1773125246,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1773125246,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1773125246,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1773125246,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1773125246,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1773125246,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1773125246,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1773125246,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1773125246,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1773125246,"msg":"cron schedule","comp":"task.ecron","now":1773125246,"entry":1,"next":1773187200}
+{"lv":"info","ts":1773125246,"msg":"cron schedule","comp":"task.ecron","now":1773125246,"entry":1,"next":1773183600}
+{"lv":"info","ts":1773125246,"msg":"cron schedule","comp":"task.ecron","now":1773125246,"entry":1,"next":1773180000}
+{"lv":"info","ts":1773125246,"msg":"cron schedule","comp":"task.ecron","now":1773125246,"entry":1,"next":1773136800}
+{"lv":"info","ts":1773130368,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1773130368,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1773130368,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1773130368,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1773130368,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1773130368,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1773130368,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1773130368,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1773130368,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1773130368,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1773130368,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1773130368,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1773130368,"msg":"cron schedule","comp":"task.ecron","now":1773130368,"entry":1,"next":1773187200}
+{"lv":"info","ts":1773130368,"msg":"cron schedule","comp":"task.ecron","now":1773130368,"entry":1,"next":1773136800}
+{"lv":"info","ts":1773130368,"msg":"cron schedule","comp":"task.ecron","now":1773130368,"entry":1,"next":1773180000}
+{"lv":"info","ts":1773130368,"msg":"cron schedule","comp":"task.ecron","now":1773130368,"entry":1,"next":1773183600}
+{"lv":"info","ts":1773136800,"msg":"cron wake","comp":"task.ecron","now":1773136800}
+{"lv":"info","ts":1773136800,"msg":"cron run","comp":"task.ecron","now":1773136800,"entry":1,"next":1773158400}
+{"lv":"info","ts":1773136800,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1773137822,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1773158400,"msg":"cron wake","comp":"task.ecron","now":1773158400}
+{"lv":"info","ts":1773158400,"msg":"cron run","comp":"task.ecron","now":1773158400,"entry":1,"next":1773180000}
+{"lv":"info","ts":1773158400,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1773159333,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1773180000,"msg":"cron wake","comp":"task.ecron","now":1773180000}
+{"lv":"info","ts":1773180000,"msg":"cron run","comp":"task.ecron","now":1773180000,"entry":1,"next":1773201600}
+{"lv":"info","ts":1773180000,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1773180000,"msg":"cron wake","comp":"task.ecron","now":1773180000}
+{"lv":"info","ts":1773180000,"msg":"cron run","comp":"task.ecron","now":1773180000,"entry":1,"next":1773266400}
+{"lv":"info","ts":1773180000,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1773180004,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1773180530,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1773183600,"msg":"cron wake","comp":"task.ecron","now":1773183600}
+{"lv":"info","ts":1773183600,"msg":"cron run","comp":"task.ecron","now":1773183600,"entry":1,"next":1773270000}
+{"lv":"info","ts":1773183600,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1773184013,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1773187201,"msg":"cron wake","comp":"task.ecron","now":1773187201}
+{"lv":"info","ts":1773187201,"msg":"cron run","comp":"task.ecron","now":1773187201,"entry":1,"next":1773273600}
+{"lv":"info","ts":1773187201,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1773187201,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1773201600,"msg":"cron wake","comp":"task.ecron","now":1773201600}
+{"lv":"info","ts":1773201600,"msg":"cron run","comp":"task.ecron","now":1773201600,"entry":1,"next":1773223200}
+{"lv":"info","ts":1773201600,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1773202174,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1773223200,"msg":"cron wake","comp":"task.ecron","now":1773223200}
+{"lv":"info","ts":1773223200,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1773223200,"msg":"cron run","comp":"task.ecron","now":1773223200,"entry":1,"next":1773244800}
+{"lv":"info","ts":1773223808,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774417425,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774417425,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774417425,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774417425,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774417425,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774417425,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774417425,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774417425,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774417425,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774417425,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774417425,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774417425,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774417425,"msg":"cron schedule","comp":"task.ecron","now":1774417425,"entry":1,"next":1774483200}
+{"lv":"info","ts":1774417425,"msg":"cron schedule","comp":"task.ecron","now":1774417425,"entry":1,"next":1774432800}
+{"lv":"info","ts":1774417425,"msg":"cron schedule","comp":"task.ecron","now":1774417425,"entry":1,"next":1774479600}
+{"lv":"info","ts":1774417425,"msg":"cron schedule","comp":"task.ecron","now":1774417425,"entry":1,"next":1774476000}
+{"lv":"info","ts":1774430607,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774430607,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774430607,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774430607,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774430607,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774430607,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774430607,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774430607,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774430607,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774430607,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774430607,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774430607,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774430607,"msg":"cron schedule","comp":"task.ecron","now":1774430607,"entry":1,"next":1774479600}
+{"lv":"info","ts":1774430607,"msg":"cron schedule","comp":"task.ecron","now":1774430607,"entry":1,"next":1774432800}
+{"lv":"info","ts":1774430607,"msg":"cron schedule","comp":"task.ecron","now":1774430607,"entry":1,"next":1774476000}
+{"lv":"info","ts":1774430607,"msg":"cron schedule","comp":"task.ecron","now":1774430607,"entry":1,"next":1774483200}
+{"lv":"info","ts":1774430850,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774430850,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774430850,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774430850,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774430850,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774430850,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774430850,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774430850,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774430850,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774430850,"msg":"cron schedule","comp":"task.ecron","now":1774430850,"entry":1,"next":1774432800}
+{"lv":"info","ts":1774430850,"msg":"cron schedule","comp":"task.ecron","now":1774430850,"entry":1,"next":1774483200}
+{"lv":"info","ts":1774430850,"msg":"cron schedule","comp":"task.ecron","now":1774430850,"entry":1,"next":1774476000}
+{"lv":"info","ts":1774430850,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774430850,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774430850,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774430850,"msg":"cron schedule","comp":"task.ecron","now":1774430850,"entry":1,"next":1774479600}
+{"lv":"info","ts":1774432437,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774432437,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774432437,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774432437,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774432437,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774432437,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774432437,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774432437,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774432437,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774432437,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774432437,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774432437,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774432437,"msg":"cron schedule","comp":"task.ecron","now":1774432437,"entry":1,"next":1774476000}
+{"lv":"info","ts":1774432437,"msg":"cron schedule","comp":"task.ecron","now":1774432437,"entry":1,"next":1774479600}
+{"lv":"info","ts":1774432437,"msg":"cron schedule","comp":"task.ecron","now":1774432437,"entry":1,"next":1774432800}
+{"lv":"info","ts":1774432437,"msg":"cron schedule","comp":"task.ecron","now":1774432437,"entry":1,"next":1774483200}
+{"lv":"info","ts":1774432800,"msg":"cron wake","comp":"task.ecron","now":1774432800}
+{"lv":"info","ts":1774432800,"msg":"cron run","comp":"task.ecron","now":1774432800,"entry":1,"next":1774454400}
+{"lv":"info","ts":1774432800,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774434156,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774514603,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774514603,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774514603,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774514603,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774514603,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774514603,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774514603,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774514603,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774514603,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774514603,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774514603,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774514603,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774514603,"msg":"cron schedule","comp":"task.ecron","now":1774514603,"entry":1,"next":1774519200}
+{"lv":"info","ts":1774514603,"msg":"cron schedule","comp":"task.ecron","now":1774514603,"entry":1,"next":1774562400}
+{"lv":"info","ts":1774514603,"msg":"cron schedule","comp":"task.ecron","now":1774514603,"entry":1,"next":1774569600}
+{"lv":"info","ts":1774514603,"msg":"cron schedule","comp":"task.ecron","now":1774514603,"entry":1,"next":1774566000}
+{"lv":"info","ts":1774519200,"msg":"cron wake","comp":"task.ecron","now":1774519200}
+{"lv":"info","ts":1774519200,"msg":"cron run","comp":"task.ecron","now":1774519200,"entry":1,"next":1774540800}
+{"lv":"info","ts":1774519200,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774520570,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774540800,"msg":"cron wake","comp":"task.ecron","now":1774540800}
+{"lv":"info","ts":1774540800,"msg":"cron run","comp":"task.ecron","now":1774540800,"entry":1,"next":1774562400}
+{"lv":"info","ts":1774540800,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774542170,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774562400,"msg":"cron wake","comp":"task.ecron","now":1774562400}
+{"lv":"info","ts":1774562400,"msg":"cron run","comp":"task.ecron","now":1774562400,"entry":1,"next":1774584000}
+{"lv":"info","ts":1774562400,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774562400,"msg":"cron wake","comp":"task.ecron","now":1774562400}
+{"lv":"info","ts":1774562400,"msg":"cron run","comp":"task.ecron","now":1774562400,"entry":1,"next":1774648800}
+{"lv":"info","ts":1774562400,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774562406,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774563782,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774566000,"msg":"cron wake","comp":"task.ecron","now":1774566000}
+{"lv":"info","ts":1774566000,"msg":"cron run","comp":"task.ecron","now":1774566000,"entry":1,"next":1774652400}
+{"lv":"info","ts":1774566000,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774566401,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774569601,"msg":"cron wake","comp":"task.ecron","now":1774569601}
+{"lv":"info","ts":1774569601,"msg":"cron run","comp":"task.ecron","now":1774569601,"entry":1,"next":1774656000}
+{"lv":"info","ts":1774569601,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774569601,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774584000,"msg":"cron wake","comp":"task.ecron","now":1774584000}
+{"lv":"info","ts":1774584000,"msg":"cron run","comp":"task.ecron","now":1774584000,"entry":1,"next":1774605600}
+{"lv":"info","ts":1774584000,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774585519,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774605600,"msg":"cron wake","comp":"task.ecron","now":1774605600}
+{"lv":"info","ts":1774605600,"msg":"cron run","comp":"task.ecron","now":1774605600,"entry":1,"next":1774627200}
+{"lv":"info","ts":1774605600,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774607031,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774621815,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774621815,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774621815,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774621815,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774621815,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774621815,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774621815,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774621815,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774621815,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774621815,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774621815,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774621815,"msg":"cron schedule","comp":"task.ecron","now":1774621815,"entry":1,"next":1774652400}
+{"lv":"info","ts":1774621815,"msg":"cron schedule","comp":"task.ecron","now":1774621815,"entry":1,"next":1774627200}
+{"lv":"info","ts":1774621815,"msg":"cron schedule","comp":"task.ecron","now":1774621815,"entry":1,"next":1774648800}
+{"lv":"info","ts":1774621815,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774621815,"msg":"cron schedule","comp":"task.ecron","now":1774621815,"entry":1,"next":1774656000}
+{"lv":"info","ts":1774624421,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774624421,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774624421,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774624421,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774624421,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774624421,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774624421,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774624421,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774624421,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774624421,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774624421,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774624421,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774624421,"msg":"cron schedule","comp":"task.ecron","now":1774624421,"entry":1,"next":1774648800}
+{"lv":"info","ts":1774624421,"msg":"cron schedule","comp":"task.ecron","now":1774624421,"entry":1,"next":1774656000}
+{"lv":"info","ts":1774624421,"msg":"cron schedule","comp":"task.ecron","now":1774624421,"entry":1,"next":1774627200}
+{"lv":"info","ts":1774624421,"msg":"cron schedule","comp":"task.ecron","now":1774624421,"entry":1,"next":1774652400}
+{"lv":"info","ts":1774625421,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774625421,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774625421,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774625421,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774625421,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774625421,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774625421,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774625421,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774625421,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774625421,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774625421,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774625421,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774625421,"msg":"cron schedule","comp":"task.ecron","now":1774625421,"entry":1,"next":1774648800}
+{"lv":"info","ts":1774625421,"msg":"cron schedule","comp":"task.ecron","now":1774625421,"entry":1,"next":1774656000}
+{"lv":"info","ts":1774625421,"msg":"cron schedule","comp":"task.ecron","now":1774625421,"entry":1,"next":1774652400}
+{"lv":"info","ts":1774625421,"msg":"cron schedule","comp":"task.ecron","now":1774625421,"entry":1,"next":1774627200}
+{"lv":"info","ts":1774627200,"msg":"cron wake","comp":"task.ecron","now":1774627200}
+{"lv":"info","ts":1774627200,"msg":"cron run","comp":"task.ecron","now":1774627200,"entry":1,"next":1774648800}
+{"lv":"info","ts":1774627200,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774628684,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774648800,"msg":"cron wake","comp":"task.ecron","now":1774648800}
+{"lv":"info","ts":1774648800,"msg":"cron run","comp":"task.ecron","now":1774648800,"entry":1,"next":1774670400}
+{"lv":"info","ts":1774648800,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774648800,"msg":"cron wake","comp":"task.ecron","now":1774648800}
+{"lv":"info","ts":1774648800,"msg":"cron run","comp":"task.ecron","now":1774648800,"entry":1,"next":1774735200}
+{"lv":"info","ts":1774648800,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774648807,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774650276,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774652400,"msg":"cron wake","comp":"task.ecron","now":1774652400}
+{"lv":"info","ts":1774652400,"msg":"cron run","comp":"task.ecron","now":1774652400,"entry":1,"next":1774738800}
+{"lv":"info","ts":1774652400,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774652971,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774656000,"msg":"cron wake","comp":"task.ecron","now":1774656000}
+{"lv":"info","ts":1774656000,"msg":"cron run","comp":"task.ecron","now":1774656000,"entry":1,"next":1774742400}
+{"lv":"info","ts":1774656000,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774656000,"msg":"cron end","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774658441,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774658441,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774658441,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774658441,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774658441,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774658441,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774658441,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774658441,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774658441,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774658441,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774658441,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774658441,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774658441,"msg":"cron schedule","comp":"task.ecron","now":1774658441,"entry":1,"next":1774742400}
+{"lv":"info","ts":1774658441,"msg":"cron schedule","comp":"task.ecron","now":1774658441,"entry":1,"next":1774670400}
+{"lv":"info","ts":1774658441,"msg":"cron schedule","comp":"task.ecron","now":1774658441,"entry":1,"next":1774735200}
+{"lv":"info","ts":1774658441,"msg":"cron schedule","comp":"task.ecron","now":1774658441,"entry":1,"next":1774738800}
+{"lv":"info","ts":1774665713,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774665713,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774665713,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774665713,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774665713,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774665713,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774665713,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774665713,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774665713,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774665713,"msg":"cron schedule","comp":"task.ecron","now":1774665713,"entry":1,"next":1774670400}
+{"lv":"info","ts":1774665713,"msg":"cron schedule","comp":"task.ecron","now":1774665713,"entry":1,"next":1774735200}
+{"lv":"info","ts":1774665713,"msg":"cron schedule","comp":"task.ecron","now":1774665713,"entry":1,"next":1774742400}
+{"lv":"info","ts":1774665713,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774665713,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774665713,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774665713,"msg":"cron schedule","comp":"task.ecron","now":1774665713,"entry":1,"next":1774738800}
+{"lv":"info","ts":1774668068,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}
+{"lv":"info","ts":1774668068,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func2"}
+{"lv":"info","ts":1774668068,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774668068,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774668068,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func3"}
+{"lv":"info","ts":1774668068,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774668068,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774668068,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774668068,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774668068,"msg":"add job","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func4"}
+{"lv":"info","ts":1774668068,"msg":"add cron","comp":"task.ecron","number of scheduled jobs":1}
+{"lv":"info","ts":1774668068,"msg":"cron start","comp":"task.ecron"}
+{"lv":"info","ts":1774668068,"msg":"cron schedule","comp":"task.ecron","now":1774668068,"entry":1,"next":1774738800}
+{"lv":"info","ts":1774668068,"msg":"cron schedule","comp":"task.ecron","now":1774668068,"entry":1,"next":1774670400}
+{"lv":"info","ts":1774668068,"msg":"cron schedule","comp":"task.ecron","now":1774668068,"entry":1,"next":1774742400}
+{"lv":"info","ts":1774668068,"msg":"cron schedule","comp":"task.ecron","now":1774668068,"entry":1,"next":1774735200}
+{"lv":"info","ts":1774670400,"msg":"cron wake","comp":"task.ecron","now":1774670400}
+{"lv":"info","ts":1774670400,"msg":"cron run","comp":"task.ecron","now":1774670400,"entry":1,"next":1774692000}
+{"lv":"info","ts":1774670400,"msg":"cron start","comp":"task.ecron","name":"github.com/Havens-blog/e-cam-service/ioc.InitJobs.func1"}

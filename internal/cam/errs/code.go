@@ -102,9 +102,9 @@ var (
 
 // IAM权限组相关错误码 (404xxx, 409xxx, 400xxx)
 var (
-	PermissionGroupNotFound     = ErrorCode{Code: 404011, Msg: "permission group not found"}
-	PermissionGroupAlreadyExist = ErrorCode{Code: 409009, Msg: "permission group already exists"}
-	PermissionGroupHasUsers     = ErrorCode{Code: 400009, Msg: "permission group has users, cannot delete"}
+	PermissionGroupNotFound      = ErrorCode{Code: 404011, Msg: "permission group not found"}
+	PermissionGroupAlreadyExist  = ErrorCode{Code: 409009, Msg: "permission group already exists"}
+	PermissionGroupHasUsers      = ErrorCode{Code: 400009, Msg: "permission group has users, cannot delete"}
 	PermissionGroupPolicyInvalid = ErrorCode{Code: 400010, Msg: "permission policy invalid"}
 )
 
@@ -134,8 +134,17 @@ var (
 
 // IAM标准错误
 var (
-	ErrInvalidUserType       = errors.New("invalid user type")
+	ErrInvalidUserType         = errors.New("invalid user type")
 	ErrInvalidPermissionPolicy = errors.New("invalid permission policy")
-	ErrSyncTaskNotRetryable  = errors.New("sync task not retryable")
-	ErrTemplateNotEditable   = errors.New("template not editable")
+	ErrSyncTaskNotRetryable    = errors.New("sync task not retryable")
+	ErrTemplateNotEditable     = errors.New("template not editable")
+)
+
+// 数据字典相关错误码 (404xxx, 409xxx, 400xxx)
+var (
+	DictTypeNotFound    = ErrorCode{Code: 404020, Msg: "dictionary type not found"}
+	DictTypeCodeExists  = ErrorCode{Code: 409020, Msg: "dictionary type code already exists"}
+	DictTypeHasItems    = ErrorCode{Code: 400020, Msg: "dictionary type has items, cannot delete"}
+	DictItemNotFound    = ErrorCode{Code: 404021, Msg: "dictionary item not found"}
+	DictItemValueExists = ErrorCode{Code: 409021, Msg: "dictionary item value already exists"}
 )

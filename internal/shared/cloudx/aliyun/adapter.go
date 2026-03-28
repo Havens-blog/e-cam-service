@@ -40,6 +40,8 @@ type Adapter struct {
 	elasticsearch *ElasticsearchAdapter
 	iam           *IAMAdapter
 	vswitch       *VSwitchAdapter
+	ecsCreate     *ECSCreateAdapterImpl
+	resourceQuery *ResourceQueryAdapterImpl
 }
 
 // NewAdapter 创建阿里云适配器
@@ -219,6 +221,22 @@ func NewAdapter(account *domain.CloudAccount) (*Adapter, error) {
 		logger,
 	)
 
+	// 创建ECS创建适配器
+	adapter.ecsCreate = NewECSCreateAdapter(
+		account.AccessKeyID,
+		account.AccessKeySecret,
+		defaultRegion,
+		logger,
+	)
+
+	// 创建资源查询适配器
+	adapter.resourceQuery = NewResourceQueryAdapter(
+		account.AccessKeyID,
+		account.AccessKeySecret,
+		defaultRegion,
+		logger,
+	)
+
 	return adapter, nil
 }
 
@@ -326,6 +344,16 @@ func (a *Adapter) IAM() cloudx.IAMAdapter {
 // VSwitch 获取交换机适配器
 func (a *Adapter) VSwitch() cloudx.VSwitchAdapter {
 	return a.vswitch
+}
+
+// ECSCreate 获取 ECS 创建适配器
+func (a *Adapter) ECSCreate() cloudx.ECSCreateAdapter {
+	return a.ecsCreate
+}
+
+// ResourceQuery 获取资源查询适配器
+func (a *Adapter) ResourceQuery() cloudx.ResourceQueryAdapter {
+	return a.resourceQuery
 }
 
 // ValidateCredentials 验证凭证

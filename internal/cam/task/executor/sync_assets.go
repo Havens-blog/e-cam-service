@@ -1,3 +1,8 @@
+// Package executor 同步资产任务执行器（运行时实际使用）
+//
+// 重要：这是生产环境实际运行的执行器，位于 internal/cam/task/executor/
+// 另一个 internal/task/executor/ 下的同名文件是旧版/备用实现，不会被 wire 注入。
+// 新增或修改同步逻辑时，请确保修改的是本文件。
 package executor
 
 import (
@@ -193,8 +198,8 @@ func expandAssetTypes(assetTypes []string) []string {
 				}
 			}
 		case "network", "net":
-			// network 展开为 vpc, eip, lb
-			for _, netType := range []string{"vpc", "eip", "lb"} {
+			// network 展开为 vpc, vswitch, eip, lb, cdn, waf
+			for _, netType := range []string{"vpc", "vswitch", "eip", "lb", "cdn", "waf"} {
 				if !seen[netType] {
 					expanded = append(expanded, netType)
 					seen[netType] = true
@@ -523,6 +528,63 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 			synced, err := e.syncRegionImage(ctx, cloudxAdapter, account, region)
 			if err != nil {
 				e.logger.Error("同步镜像失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "vswitch", "subnet":
+			// 懒加载 cloudx 适配器
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionVSwitch(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步VSwitch失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "cdn":
+			// 懒加载 cloudx 适配器
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionCDN(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步CDN失败",
+					elog.String("region", region),
+					elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "waf":
+			// 懒加载 cloudx 适配器
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionWAF(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步WAF失败",
 					elog.String("region", region),
 					elog.FieldErr(err))
 				continue
@@ -2685,6 +2747,345 @@ func (e *SyncAssetsExecutor) convertImageToInstance(inst types.ImageInstance, ac
 		ModelUID:   modelUID,
 		AssetID:    inst.ImageID,
 		AssetName:  inst.ImageName,
+		TenantID:   account.TenantID,
+		AccountID:  account.ID,
+		Attributes: attributes,
+	}
+}
+
+// syncRegionVSwitch 同步单个地域的交换机/子网
+func (e *SyncAssetsExecutor) syncRegionVSwitch(
+	ctx context.Context,
+	adapter cloudx.CloudAdapter,
+	account *domain.CloudAccount,
+	region string,
+) (int, error) {
+	modelUID := fmt.Sprintf("%s_vswitch", account.Provider)
+
+	vswitchAdapter := adapter.VSwitch()
+	if vswitchAdapter == nil {
+		return 0, fmt.Errorf("VSwitch适配器不可用")
+	}
+
+	cloudInstances, err := vswitchAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取VSwitch列表失败: %w", err)
+	}
+
+	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	if err != nil {
+		localAssetIDs = []string{}
+	}
+
+	cloudAssetIDSet := make(map[string]bool)
+	for _, inst := range cloudInstances {
+		cloudAssetIDSet[inst.VSwitchID] = true
+	}
+
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
+		if err != nil {
+			e.logger.Error("删除过期VSwitch失败", elog.FieldErr(err))
+		} else {
+			e.logger.Info("删除过期VSwitch", elog.Int64("deleted", deleted))
+		}
+	}
+
+	synced := 0
+	for _, inst := range cloudInstances {
+		instance := e.convertVSwitchToInstance(inst, account)
+		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
+			e.logger.Error("保存VSwitch失败", elog.String("asset_id", inst.VSwitchID), elog.FieldErr(err))
+			continue
+		}
+		synced++
+	}
+
+	e.logger.Info("同步地域VSwitch完成",
+		elog.String("region", region),
+		elog.Int("synced", synced),
+		elog.Int("deleted", len(toDelete)))
+
+	return synced, nil
+}
+
+// convertVSwitchToInstance 将 VSwitch 转换为 Instance 领域模型
+func (e *SyncAssetsExecutor) convertVSwitchToInstance(inst types.VSwitchInstance, account *domain.CloudAccount) camdomain.Instance {
+	modelUID := fmt.Sprintf("%s_vswitch", account.Provider)
+
+	attributes := map[string]any{
+		"status":      inst.Status,
+		"region":      inst.Region,
+		"zone":        inst.Zone,
+		"provider":    inst.Provider,
+		"description": inst.Description,
+
+		"cidr_block":      inst.CidrBlock,
+		"ipv6_cidr_block": inst.IPv6CidrBlock,
+		"enable_ipv6":     inst.EnableIPv6,
+		"is_default":      inst.IsDefault,
+		"gateway_ip":      inst.GatewayIP,
+
+		"vpc_id":   inst.VPCID,
+		"vpc_name": inst.VPCName,
+
+		"available_ip_count": inst.AvailableIPCount,
+		"total_ip_count":     inst.TotalIPCount,
+		"route_table_id":     inst.RouteTableID,
+
+		"creation_time":     inst.CreationTime,
+		"project_id":        inst.ProjectID,
+		"project_name":      inst.ProjectName,
+		"resource_group_id": inst.ResourceGroupID,
+
+		"cloud_account_id":   account.ID,
+		"cloud_account_name": account.Name,
+		"tags":               inst.Tags,
+	}
+
+	return camdomain.Instance{
+		ModelUID:   modelUID,
+		AssetID:    inst.VSwitchID,
+		AssetName:  inst.VSwitchName,
+		TenantID:   account.TenantID,
+		AccountID:  account.ID,
+		Attributes: attributes,
+	}
+}
+
+// syncRegionCDN 同步单个地域的 CDN 加速域名
+func (e *SyncAssetsExecutor) syncRegionCDN(
+	ctx context.Context,
+	adapter cloudx.CloudAdapter,
+	account *domain.CloudAccount,
+	region string,
+) (int, error) {
+	modelUID := fmt.Sprintf("%s_cdn", account.Provider)
+
+	cdnAdapter := adapter.CDN()
+	if cdnAdapter == nil {
+		return 0, fmt.Errorf("CDN适配器不可用")
+	}
+
+	cloudInstances, err := cdnAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取CDN域名列表失败: %w", err)
+	}
+
+	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	if err != nil {
+		localAssetIDs = []string{}
+	}
+
+	cloudAssetIDSet := make(map[string]bool)
+	for _, inst := range cloudInstances {
+		id := inst.DomainName
+		if id == "" {
+			id = inst.DomainID
+		}
+		cloudAssetIDSet[id] = true
+	}
+
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
+		if err != nil {
+			e.logger.Error("删除过期CDN域名失败", elog.FieldErr(err))
+		} else {
+			e.logger.Info("删除过期CDN域名", elog.Int64("deleted", deleted))
+		}
+	}
+
+	synced := 0
+	for _, inst := range cloudInstances {
+		instance := e.convertCDNToInstance(inst, account)
+		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
+			e.logger.Error("保存CDN域名失败", elog.String("domain", inst.DomainName), elog.FieldErr(err))
+			continue
+		}
+		synced++
+	}
+
+	e.logger.Info("同步地域CDN完成",
+		elog.String("region", region),
+		elog.Int("synced", synced),
+		elog.Int("deleted", len(toDelete)))
+
+	return synced, nil
+}
+
+// convertCDNToInstance 将 CDN 域名转换为 Instance 领域模型
+func (e *SyncAssetsExecutor) convertCDNToInstance(inst types.CDNInstance, account *domain.CloudAccount) camdomain.Instance {
+	modelUID := fmt.Sprintf("%s_cdn", account.Provider)
+
+	assetID := inst.DomainName
+	if assetID == "" {
+		assetID = inst.DomainID
+	}
+
+	attributes := map[string]any{
+		"status":      inst.Status,
+		"region":      inst.Region,
+		"provider":    inst.Provider,
+		"description": inst.Description,
+
+		"domain_id":     inst.DomainID,
+		"domain_name":   inst.DomainName,
+		"cname":         inst.Cname,
+		"business_type": inst.BusinessType,
+		"service_area":  inst.ServiceArea,
+
+		"origins":     inst.Origins,
+		"origin_type": inst.OriginType,
+		"origin_host": inst.OriginHost,
+
+		"https_enabled": inst.HTTPSEnabled,
+		"cert_name":     inst.CertName,
+		"http2_enabled": inst.HTTP2Enabled,
+
+		"bandwidth":     inst.Bandwidth,
+		"traffic_total": inst.TrafficTotal,
+		"creation_time": inst.CreationTime,
+		"modified_time": inst.ModifiedTime,
+
+		"project_id":        inst.ProjectID,
+		"resource_group_id": inst.ResourceGroupID,
+
+		"cloud_account_id":   account.ID,
+		"cloud_account_name": account.Name,
+		"tags":               inst.Tags,
+	}
+
+	return camdomain.Instance{
+		ModelUID:   modelUID,
+		AssetID:    assetID,
+		AssetName:  inst.DomainName,
+		TenantID:   account.TenantID,
+		AccountID:  account.ID,
+		Attributes: attributes,
+	}
+}
+
+// syncRegionWAF 同步单个地域的 WAF 实例
+func (e *SyncAssetsExecutor) syncRegionWAF(
+	ctx context.Context,
+	adapter cloudx.CloudAdapter,
+	account *domain.CloudAccount,
+	region string,
+) (int, error) {
+	modelUID := fmt.Sprintf("%s_waf", account.Provider)
+
+	wafAdapter := adapter.WAF()
+	if wafAdapter == nil {
+		return 0, fmt.Errorf("WAF适配器不可用")
+	}
+
+	cloudInstances, err := wafAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取WAF实例列表失败: %w", err)
+	}
+
+	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	if err != nil {
+		localAssetIDs = []string{}
+	}
+
+	cloudAssetIDSet := make(map[string]bool)
+	for _, inst := range cloudInstances {
+		cloudAssetIDSet[inst.InstanceID] = true
+	}
+
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
+		if err != nil {
+			e.logger.Error("删除过期WAF实例失败", elog.FieldErr(err))
+		} else {
+			e.logger.Info("删除过期WAF实例", elog.Int64("deleted", deleted))
+		}
+	}
+
+	synced := 0
+	for _, inst := range cloudInstances {
+		instance := e.convertWAFToInstance(inst, account)
+		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
+			e.logger.Error("保存WAF实例失败", elog.String("instance_id", inst.InstanceID), elog.FieldErr(err))
+			continue
+		}
+		synced++
+	}
+
+	e.logger.Info("同步地域WAF完成",
+		elog.String("region", region),
+		elog.Int("synced", synced),
+		elog.Int("deleted", len(toDelete)))
+
+	return synced, nil
+}
+
+// convertWAFToInstance 将 WAF 实例转换为 Instance 领域模型
+func (e *SyncAssetsExecutor) convertWAFToInstance(inst types.WAFInstance, account *domain.CloudAccount) camdomain.Instance {
+	modelUID := fmt.Sprintf("%s_waf", account.Provider)
+
+	attributes := map[string]any{
+		"status":      inst.Status,
+		"region":      inst.Region,
+		"provider":    inst.Provider,
+		"description": inst.Description,
+		"edition":     inst.Edition,
+
+		"domain_count":    inst.DomainCount,
+		"domain_limit":    inst.DomainLimit,
+		"protected_hosts": inst.ProtectedHosts,
+
+		"rule_count":       inst.RuleCount,
+		"acl_rule_count":   inst.ACLRuleCount,
+		"cc_rule_count":    inst.CCRuleCount,
+		"rate_limit_count": inst.RateLimitCount,
+
+		"waf_enabled":      inst.WAFEnabled,
+		"cc_enabled":       inst.CCEnabled,
+		"anti_bot_enabled": inst.AntiBotEnabled,
+
+		"qps":          inst.QPS,
+		"bandwidth":    inst.Bandwidth,
+		"exclusive_ip": inst.ExclusiveIP,
+		"pay_type":     inst.PayType,
+
+		"creation_time": inst.CreationTime,
+		"expired_time":  inst.ExpiredTime,
+
+		"project_id":        inst.ProjectID,
+		"resource_group_id": inst.ResourceGroupID,
+
+		"cloud_account_id":   account.ID,
+		"cloud_account_name": account.Name,
+		"tags":               inst.Tags,
+	}
+
+	return camdomain.Instance{
+		ModelUID:   modelUID,
+		AssetID:    inst.InstanceID,
+		AssetName:  inst.InstanceName,
 		TenantID:   account.TenantID,
 		AccountID:  account.ID,
 		Attributes: attributes,
