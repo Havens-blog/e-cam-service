@@ -42,6 +42,7 @@ type Adapter struct {
 	elasticsearch *ElasticsearchAdapter
 	iam           cloudx.IAMAdapter
 	vswitch       *VSwitchAdapter
+	tag           *TagAdapterImpl
 }
 
 // NewAdapter 创建火山引擎适配器
@@ -125,6 +126,9 @@ func NewAdapter(account *domain.CloudAccount) (*Adapter, error) {
 
 	// 创建VSwitch适配器
 	adapter.vswitch = NewVSwitchAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建标签适配器
+	adapter.tag = NewTagAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
 
 	return adapter, nil
 }
@@ -240,9 +244,15 @@ func (a *Adapter) ECSCreate() cloudx.ECSCreateAdapter {
 	return nil
 }
 
-// ResourceQuery 获取资源查询适配器（桩实现，待后续任务完善）
+// ResourceQuery 获取资源查询适配器（真实实现：实例规格通过 API 查询）
 func (a *Adapter) ResourceQuery() cloudx.ResourceQueryAdapter {
-	return nil
+	return NewResourceQueryAdapter(a.account.AccessKeyID, a.account.AccessKeySecret,
+		a.ecs.defaultRegion, a.logger, a)
+}
+
+// Tag 获取标签适配器
+func (a *Adapter) Tag() cloudx.TagAdapter {
+	return a.tag
 }
 
 // ValidateCredentials 验证凭证

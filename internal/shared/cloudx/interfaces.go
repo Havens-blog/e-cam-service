@@ -86,6 +86,11 @@ type CloudAdapter interface {
 	// IAM 获取IAM适配器
 	IAM() IAMAdapter
 
+	// ========== 标签管理 ==========
+
+	// Tag 获取标签适配器
+	Tag() TagAdapter
+
 	// ========== 资源创建与查询 ==========
 
 	// ECSCreate 获取 ECS 创建适配器（可选，不支持创建的厂商返回 nil）
@@ -651,4 +656,37 @@ type ResourceQueryAdapter interface {
 
 	// ListSecurityGroups 查询安全组列表
 	ListSecurityGroups(ctx context.Context, region, vpcID string) ([]types.SecurityGroupInfo, error)
+}
+
+// ============================================================================
+// TagAdapter - 标签适配器接口
+// ============================================================================
+
+// TagAdapter 标签适配器接口
+// 用于阿里云 Tag API、AWS Resource Groups Tagging API、华为云 TMS、腾讯云标签 API、火山引擎标签 API
+type TagAdapter interface {
+	// ListTagKeys 查询标签键列表
+	ListTagKeys(ctx context.Context, region string) ([]string, error)
+
+	// ListTagValues 查询指定标签键的值列表
+	ListTagValues(ctx context.Context, region, key string) ([]string, error)
+
+	// GetResourceTags 查询资源绑定的标签
+	GetResourceTags(ctx context.Context, region, resourceType, resourceID string) (map[string]string, error)
+
+	// TagResource 为资源绑定标签
+	TagResource(ctx context.Context, region, resourceType, resourceID string, tags map[string]string) error
+
+	// UntagResource 解绑资源标签
+	UntagResource(ctx context.Context, region, resourceType, resourceID string, tagKeys []string) error
+
+	// ListResourcesByTag 按标签查询资源列表
+	ListResourcesByTag(ctx context.Context, region, key, value string) ([]TaggedResource, error)
+}
+
+// TaggedResource 标签关联的资源
+type TaggedResource struct {
+	ResourceType string `json:"resource_type"`
+	ResourceID   string `json:"resource_id"`
+	Region       string `json:"region"`
 }

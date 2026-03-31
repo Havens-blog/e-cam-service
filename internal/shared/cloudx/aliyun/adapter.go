@@ -40,6 +40,7 @@ type Adapter struct {
 	elasticsearch *ElasticsearchAdapter
 	iam           *IAMAdapter
 	vswitch       *VSwitchAdapter
+	tag           *TagAdapterImpl
 	ecsCreate     *ECSCreateAdapterImpl
 	resourceQuery *ResourceQueryAdapterImpl
 }
@@ -221,6 +222,14 @@ func NewAdapter(account *domain.CloudAccount) (*Adapter, error) {
 		logger,
 	)
 
+	// 创建标签适配器
+	adapter.tag = NewTagAdapter(
+		account.AccessKeyID,
+		account.AccessKeySecret,
+		defaultRegion,
+		logger,
+	)
+
 	// 创建ECS创建适配器
 	adapter.ecsCreate = NewECSCreateAdapter(
 		account.AccessKeyID,
@@ -354,6 +363,11 @@ func (a *Adapter) ECSCreate() cloudx.ECSCreateAdapter {
 // ResourceQuery 获取资源查询适配器
 func (a *Adapter) ResourceQuery() cloudx.ResourceQueryAdapter {
 	return a.resourceQuery
+}
+
+// Tag 获取标签适配器
+func (a *Adapter) Tag() cloudx.TagAdapter {
+	return a.tag
 }
 
 // ValidateCredentials 验证凭证
