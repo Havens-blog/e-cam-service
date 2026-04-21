@@ -3,6 +3,7 @@ package huawei
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/gotomicro/ego/core/elog"
@@ -13,6 +14,7 @@ import (
 )
 
 // WAFAdapter 华为云WAF适配器
+// 同步的是 Web 应用防火墙的防护域名（ListHost），不是独享引擎实例（ListInstance）
 type WAFAdapter struct {
 	accessKeyID     string
 	accessKeySecret string
@@ -46,7 +48,7 @@ func (a *WAFAdapter) createClient(reg string) (*wafv1.WafClient, error) {
 
 	r, err := wafregion.SafeValueOf(reg)
 	if err != nil {
-		return nil, fmt.Errorf("无效的地域: %s", reg)
+		return nil, fmt.Errorf("无效的WAF地域: %s", reg)
 	}
 
 	client, err := wafv1.WafClientBuilder().
@@ -60,38 +62,32 @@ func (a *WAFAdapter) createClient(reg string) (*wafv1.WafClient, error) {
 	return wafv1.NewWafClient(client), nil
 }
 
-// ListInstances 获取WAF实例列表
+// ListInstances 获取WAF防护域名列表
 func (a *WAFAdapter) ListInstances(ctx context.Context, region string) ([]types.WAFInstance, error) {
 	return a.ListInstancesWithFilter(ctx, region, nil)
 }
 
-// GetInstance 获取单个WAF实例详情
+// GetInstance 获取单个WAF防护域名详情
 func (a *WAFAdapter) GetInstance(ctx context.Context, region, instanceID string) (*types.WAFInstance, error) {
-	client, err := a.createClient(region)
+	instances, err := a.ListInstances(ctx, region)
 	if err != nil {
 		return nil, err
 	}
-
-	request := &wafmodel.ShowInstanceRequest{
-		InstanceId: instanceID,
+	for _, inst := range instances {
+		if inst.InstanceID == instanceID {
+			return &inst, nil
+		}
 	}
-
-	response, err := client.ShowInstance(request)
-	if err != nil {
-		return nil, fmt.Errorf("获取WAF实例详情失败: %w", err)
-	}
-
-	instance := a.convertDetailToInstance(response, region)
-	return &instance, nil
+	return nil, fmt.Errorf("WAF防护域名不存在: %s", instanceID)
 }
 
-// ListInstancesByIDs 批量获取WAF实例
+// ListInstancesByIDs 批量获取WAF防护域名
 func (a *WAFAdapter) ListInstancesByIDs(ctx context.Context, region string, instanceIDs []string) ([]types.WAFInstance, error) {
 	var result []types.WAFInstance
 	for _, id := range instanceIDs {
 		inst, err := a.GetInstance(ctx, region, id)
 		if err != nil {
-			a.logger.Warn("获取WAF实例失败", elog.String("instance_id", id), elog.FieldErr(err))
+			a.logger.Warn("获取WAF防护域名失败", elog.String("instance_id", id), elog.FieldErr(err))
 			continue
 		}
 		result = append(result, *inst)
@@ -99,7 +95,7 @@ func (a *WAFAdapter) ListInstancesByIDs(ctx context.Context, region string, inst
 	return result, nil
 }
 
-// GetInstanceStatus 获取实例状态
+// GetInstanceStatus 获取防护域名状态
 func (a *WAFAdapter) GetInstanceStatus(ctx context.Context, region, instanceID string) (string, error) {
 	inst, err := a.GetInstance(ctx, region, instanceID)
 	if err != nil {
@@ -108,7 +104,8 @@ func (a *WAFAdapter) GetInstanceStatus(ctx context.Context, region, instanceID s
 	return inst.Status, nil
 }
 
-// ListInstancesWithFilter 带过滤条件获取实例列表
+// ListInstancesWithFilter 带过滤条件获取WAF防护域名列表
+// 使用 ListHost API 查询云模式下的防护域名
 func (a *WAFAdapter) ListInstancesWithFilter(ctx context.Context, region string, filter *types.WAFInstanceFilter) ([]types.WAFInstance, error) {
 	client, err := a.createClient(region)
 	if err != nil {
@@ -124,18 +121,21 @@ func (a *WAFAdapter) ListInstancesWithFilter(ctx context.Context, region string,
 	}
 
 	for {
-		request := &wafmodel.ListInstanceRequest{
-			Page:     &page,
-			Pagesize: &pageSize,
+		// enterprise_project_id 设为 "all_granted_eps" 查询所有企业项目的防护域名
+		allProjects := "all_granted_eps"
+		request := &wafmodel.ListHostRequest{
+			Page:                &page,
+			Pagesize:            &pageSize,
+			EnterpriseProjectId: &allProjects,
 		}
 
 		if filter != nil && filter.InstanceName != "" {
-			request.Instancename = &filter.InstanceName
+			request.Hostname = &filter.InstanceName
 		}
 
-		response, err := client.ListInstance(request)
+		response, err := client.ListHost(request)
 		if err != nil {
-			return nil, fmt.Errorf("获取WAF实例列表失败: %w", err)
+			return nil, fmt.Errorf("获取WAF防护域名列表失败: %w", err)
 		}
 
 		if response.Items == nil || len(*response.Items) == 0 {
@@ -143,7 +143,7 @@ func (a *WAFAdapter) ListInstancesWithFilter(ctx context.Context, region string,
 		}
 
 		for _, item := range *response.Items {
-			allInstances = append(allInstances, a.convertToInstance(item, region))
+			allInstances = append(allInstances, a.convertHostToInstance(item, region))
 		}
 
 		if len(*response.Items) < int(pageSize) {
@@ -152,50 +152,130 @@ func (a *WAFAdapter) ListInstancesWithFilter(ctx context.Context, region string,
 		page++
 	}
 
-	a.logger.Info("获取华为云WAF实例列表成功",
+	a.logger.Info("获取华为云WAF防护域名列表成功",
 		elog.String("region", region),
 		elog.Int("count", len(allInstances)))
 	return allInstances, nil
 }
 
-// convertToInstance 转换列表项为通用WAF实例
-func (a *WAFAdapter) convertToInstance(item wafmodel.ListInstance, region string) types.WAFInstance {
-	instanceID := ""
+// convertHostToInstance 将华为云 WAF 防护域名转换为通用 WAFInstance
+func (a *WAFAdapter) convertHostToInstance(item wafmodel.CloudWafHostItem, region string) types.WAFInstance {
+	hostID := ""
 	if item.Id != nil {
-		instanceID = *item.Id
+		hostID = *item.Id
 	}
-	instanceName := ""
-	if item.Instancename != nil {
-		instanceName = *item.Instancename
+	hostname := ""
+	if item.Hostname != nil {
+		hostname = *item.Hostname
+	}
+	description := ""
+	if item.Description != nil {
+		description = *item.Description
+	}
+	itemRegion := region
+	if item.Region != nil && *item.Region != "" {
+		itemRegion = *item.Region
+	}
+
+	// 防护状态: -1=bypass, 0=暂停防护, 1=开启防护
+	status := "active"
+	wafEnabled := true
+	if item.ProtectStatus != nil {
+		switch *item.ProtectStatus {
+		case -1:
+			status = "bypass"
+			wafEnabled = false
+		case 0:
+			status = "suspended"
+			wafEnabled = false
+		case 1:
+			status = "active"
+			wafEnabled = true
+		}
+	}
+
+	// 接入状态: 0=未接入, 1=已接入
+	accessStatus := ""
+	if item.AccessStatus != nil {
+		if *item.AccessStatus == 1 {
+			accessStatus = "connected"
+		} else {
+			accessStatus = "disconnected"
+		}
+	}
+
+	exclusiveIP := false
+	if item.ExclusiveIp != nil {
+		exclusiveIP = *item.ExclusiveIp
+	}
+
+	creationTime := ""
+	if item.Timestamp != nil {
+		creationTime = time.UnixMilli(*item.Timestamp).Format("2006-01-02T15:04:05Z")
+	}
+
+	payType := ""
+	if item.PaidType != nil {
+		payType = string(item.PaidType.Value())
+	}
+
+	webTag := ""
+	if item.WebTag != nil {
+		webTag = *item.WebTag
+	}
+
+	policyID := ""
+	if item.Policyid != nil {
+		policyID = *item.Policyid
+	}
+
+	accessCode := ""
+	if item.AccessCode != nil {
+		accessCode = *item.AccessCode
+	}
+
+	enterpriseProjectID := ""
+	if item.EnterpriseProjectId != nil {
+		enterpriseProjectID = *item.EnterpriseProjectId
+	}
+
+	// 提取源站 IP
+	var sourceIPs []string
+	if item.Server != nil {
+		for _, srv := range *item.Server {
+			if srv.Address != "" {
+				sourceIPs = append(sourceIPs, srv.Address)
+			}
+		}
+	}
+
+	// 构建 CNAME: 华为云 WAF 有两套 CNAME，始终两个都存
+	// old: {accessCode}.waf.huaweicloud.com
+	// new: {accessCode}.vip1.huaweicloudwaf.com
+	cname := ""
+	if accessCode != "" {
+		cnameOld := fmt.Sprintf("%s.waf.huaweicloud.com", accessCode)
+		cnameNew := fmt.Sprintf("%s.vip1.huaweicloudwaf.com", accessCode)
+		cname = cnameOld + ";" + cnameNew
 	}
 
 	return types.WAFInstance{
-		InstanceID:   instanceID,
-		InstanceName: instanceName,
-		Status:       "active",
-		Region:       region,
-		Provider:     "huawei",
-		Tags:         make(map[string]string),
-	}
-}
-
-// convertDetailToInstance 转换详情为通用WAF实例
-func (a *WAFAdapter) convertDetailToInstance(resp *wafmodel.ShowInstanceResponse, region string) types.WAFInstance {
-	instanceID := ""
-	if resp.Id != nil {
-		instanceID = *resp.Id
-	}
-	instanceName := ""
-	if resp.Instancename != nil {
-		instanceName = *resp.Instancename
-	}
-
-	return types.WAFInstance{
-		InstanceID:   instanceID,
-		InstanceName: instanceName,
-		Status:       "active",
-		Region:       region,
-		Provider:     "huawei",
-		Tags:         make(map[string]string),
+		InstanceID:      hostID,
+		InstanceName:    hostname,
+		Status:          status,
+		Region:          itemRegion,
+		DomainCount:     1,
+		ProtectedHosts:  []string{hostname},
+		SourceIPs:       sourceIPs,
+		Cname:           cname,
+		WAFEnabled:      wafEnabled,
+		ExclusiveIP:     exclusiveIP,
+		PayType:         payType,
+		CreationTime:    creationTime,
+		ProjectID:       enterpriseProjectID,
+		ResourceGroupID: enterpriseProjectID,
+		Description:     fmt.Sprintf("%s access=%s web_tag=%s policy=%s", description, accessStatus, webTag, policyID),
+		Provider:        "huawei",
+		Tags:            make(map[string]string),
 	}
 }

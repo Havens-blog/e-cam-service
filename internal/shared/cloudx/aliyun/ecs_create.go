@@ -43,10 +43,17 @@ func (a *ECSCreateAdapterImpl) CreateInstances(ctx context.Context, params types
 	request.InstanceType = params.InstanceType
 	request.ImageId = params.ImageID
 	request.VSwitchId = params.SubnetID
-	request.SecurityGroupIds = &params.SecurityGroupIDs
 	request.InstanceName = params.InstanceName
 	request.HostName = params.HostName
 	request.Amount = requests.NewInteger(params.Count)
+
+	// 安全组：优先使用单数形式（兼容不支持 ENI 的老旧实例规格）
+	// SecurityGroupIds（复数）需要 ENI 支持，第一代实例会报 InvalidInstanceType.ElasticNetworkInterfaceNotSupported
+	if len(params.SecurityGroupIDs) == 1 {
+		request.SecurityGroupId = params.SecurityGroupIDs[0]
+	} else if len(params.SecurityGroupIDs) > 1 {
+		request.SecurityGroupIds = &params.SecurityGroupIDs
+	}
 
 	// 系统盘
 	if params.SystemDiskType != "" {

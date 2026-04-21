@@ -2,11 +2,12 @@ package volcano
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/volcengine/volcengine-go-sdk/service/waf"
 	"github.com/volcengine/volcengine-go-sdk/volcengine"
 	"github.com/volcengine/volcengine-go-sdk/volcengine/credentials"
 	"github.com/volcengine/volcengine-go-sdk/volcengine/session"
@@ -30,8 +31,8 @@ func NewWAFAdapter(accessKeyID, accessKeySecret, defaultRegion string, logger *e
 	}
 }
 
-// createSession 创建会话
-func (a *WAFAdapter) createSession(region string) (*session.Session, error) {
+// createClient 创建WAF客户端
+func (a *WAFAdapter) createClient(region string) (*waf.WAF, error) {
 	if region == "" {
 		region = a.defaultRegion
 	}
@@ -39,15 +40,19 @@ func (a *WAFAdapter) createSession(region string) (*session.Session, error) {
 		WithCredentials(credentials.NewStaticCredentials(a.accessKeyID, a.accessKeySecret, "")).
 		WithRegion(region)
 
-	return session.NewSession(config)
+	sess, err := session.NewSession(config)
+	if err != nil {
+		return nil, fmt.Errorf("创建会话失败: %w", err)
+	}
+	return waf.New(sess), nil
 }
 
-// ListInstances 获取WAF实例列表
+// ListInstances 获取WAF防护域名列表
 func (a *WAFAdapter) ListInstances(ctx context.Context, region string) ([]types.WAFInstance, error) {
 	return a.ListInstancesWithFilter(ctx, region, nil)
 }
 
-// GetInstance 获取单个WAF实例详情
+// GetInstance 获取单个WAF防护域名详情
 func (a *WAFAdapter) GetInstance(ctx context.Context, region, instanceID string) (*types.WAFInstance, error) {
 	instances, err := a.ListInstances(ctx, region)
 	if err != nil {
@@ -61,7 +66,7 @@ func (a *WAFAdapter) GetInstance(ctx context.Context, region, instanceID string)
 	return nil, fmt.Errorf("WAF实例不存在: %s", instanceID)
 }
 
-// ListInstancesByIDs 批量获取WAF实例
+// ListInstancesByIDs 批量获取WAF防护域名
 func (a *WAFAdapter) ListInstancesByIDs(ctx context.Context, region string, instanceIDs []string) ([]types.WAFInstance, error) {
 	var result []types.WAFInstance
 	for _, id := range instanceIDs {
@@ -84,38 +89,144 @@ func (a *WAFAdapter) GetInstanceStatus(ctx context.Context, region, instanceID s
 	return inst.Status, nil
 }
 
-// ListInstancesWithFilter 带过滤条件获取实例列表
-// 火山引擎WAF暂无专用Go SDK，使用通用API调用方式
+// ListInstancesWithFilter 带过滤条件获取WAF防护域名列表
 func (a *WAFAdapter) ListInstancesWithFilter(ctx context.Context, region string, filter *types.WAFInstanceFilter) ([]types.WAFInstance, error) {
-	_, err := a.createSession(region)
+	if region == "" {
+		region = a.defaultRegion
+	}
+
+	client, err := a.createClient(region)
 	if err != nil {
-		return nil, fmt.Errorf("创建会话失败: %w", err)
+		return nil, fmt.Errorf("创建WAF客户端失败: %w", err)
 	}
 
-	// 火山引擎WAF目前没有专用的Go SDK包
-	// 使用通用API调用方式，通过JSON解析返回结果
-	params := map[string]interface{}{
-		"PageNumber": 1,
-		"PageSize":   100,
-	}
-
-	if filter != nil {
-		if filter.PageSize > 0 {
-			params["PageSize"] = filter.PageSize
-		}
-		if filter.InstanceName != "" {
-			params["InstanceName"] = filter.InstanceName
-		}
-	}
-
-	// 序列化参数（预留给后续通用API调用）
-	_, _ = json.Marshal(params)
-
-	// WAF可能未开通，返回空列表
 	var allInstances []types.WAFInstance
+	page := int32(1)
+	pageSize := int32(100)
 
-	a.logger.Info("获取火山引擎WAF实例列表成功",
+	if filter != nil && filter.PageSize > 0 {
+		pageSize = int32(filter.PageSize)
+	}
+
+	for {
+		input := &waf.ListDomainInput{}
+		input.SetPage(page)
+		input.SetPageSize(pageSize)
+		input.SetRegion(region)
+
+		if filter != nil && filter.InstanceName != "" {
+			input.SetDomain(filter.InstanceName)
+		}
+
+		output, err := client.ListDomain(input)
+		if err != nil {
+			// WAF 可能未开通
+			a.logger.Debug("获取WAF域名列表失败(可能未开通)", elog.String("region", region), elog.FieldErr(err))
+			return nil, nil
+		}
+
+		if output.Data == nil || len(output.Data) == 0 {
+			break
+		}
+
+		for _, d := range output.Data {
+			allInstances = append(allInstances, a.convertToInstance(d, region))
+		}
+
+		total := int32(0)
+		if output.TotalCount != nil {
+			total = *output.TotalCount
+		}
+		if int32(len(allInstances)) >= total {
+			break
+		}
+		page++
+	}
+
+	a.logger.Info("获取火山引擎WAF域名列表成功",
 		elog.String("region", region),
 		elog.Int("count", len(allInstances)))
 	return allInstances, nil
+}
+
+// convertToInstance 转换火山引擎WAF域名为通用WAF实例
+func (a *WAFAdapter) convertToInstance(d *waf.DataForListDomainOutput, region string) types.WAFInstance {
+	domain := ""
+	if d.Domain != nil {
+		domain = *d.Domain
+	}
+	cname := ""
+	if d.Cname != nil {
+		cname = *d.Cname
+	}
+
+	// 防护模式: 0=关闭 1=拦截 2=观察
+	wafEnabled := false
+	ccEnabled := false
+	antiBotEnabled := false
+	status := "active"
+
+	if d.DefenceMode != nil && *d.DefenceMode > 0 {
+		wafEnabled = true
+	}
+	if d.CcEnable != nil && *d.CcEnable > 0 {
+		ccEnabled = true
+	}
+	if d.CustomBotEnable != nil && *d.CustomBotEnable > 0 {
+		antiBotEnabled = true
+	}
+
+	// 统计防护域名数
+	domainCount := 0
+	var protectedHosts []string
+	if domain != "" {
+		domainCount = 1
+		protectedHosts = []string{domain}
+	}
+
+	updateTime := ""
+	if d.UpdateTime != nil {
+		updateTime = *d.UpdateTime
+	}
+
+	// 提取源站 IP（从 BackendGroups 和 ServerIps 中提取）
+	var sourceIPs []string
+	if d.BackendGroups != nil {
+		for _, bg := range d.BackendGroups {
+			if bg.Backends != nil {
+				for _, b := range bg.Backends {
+					if b.IP != nil && *b.IP != "" {
+						sourceIPs = append(sourceIPs, *b.IP)
+					}
+				}
+			}
+		}
+	}
+	// 如果 BackendGroups 没有，尝试从 ServerIps 提取（逗号分隔）
+	if len(sourceIPs) == 0 && d.ServerIps != nil && *d.ServerIps != "" {
+		for _, ip := range strings.Split(*d.ServerIps, ",") {
+			ip = strings.TrimSpace(ip)
+			if ip != "" {
+				sourceIPs = append(sourceIPs, ip)
+			}
+		}
+	}
+
+	// 使用域名作为实例ID（火山引擎WAF以域名为粒度）
+	return types.WAFInstance{
+		InstanceID:     domain,
+		InstanceName:   domain,
+		Status:         status,
+		Region:         region,
+		DomainCount:    domainCount,
+		ProtectedHosts: protectedHosts,
+		SourceIPs:      sourceIPs,
+		Cname:          cname,
+		WAFEnabled:     wafEnabled,
+		CCEnabled:      ccEnabled,
+		AntiBotEnabled: antiBotEnabled,
+		CreationTime:   updateTime,
+		Provider:       "volcano",
+		Tags:           make(map[string]string),
+	}
 }

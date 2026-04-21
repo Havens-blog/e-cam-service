@@ -2,6 +2,7 @@
 
 //go:generate go run -mod=mod github.com/google/wire/cmd/wire
 //go:build !wireinject
+// +build !wireinject
 
 package ioc
 
@@ -10,7 +11,9 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cmdb"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
 	"github.com/google/wire"
+)
 
+import (
 	_ "github.com/Havens-blog/e-cam-service/docs"
 )
 
@@ -21,39 +24,33 @@ func InitApp() (*App, error) {
 	cmdable := InitRedis()
 	provider := InitSessionProvider(cmdable)
 	v := InitGinMiddlewares()
+	client := InitEtcdClient()
+	policyServiceClient := InitEcmdbPolicyClient(client)
+	checkPolicyMiddleware := InitCheckPolicyMiddleware(policyServiceClient)
 	mongo := InitMongoDB()
-	module, err := endpoint.InitModule(mongo)
+	module := InitAuditModule(mongo)
+	auditMiddleware := InitAuditMiddleware(module)
+	endpointServiceClient := InitEcmdbEndpointClient(client)
+	endpointModule, err := endpoint.InitModule(mongo)
 	if err != nil {
 		return nil, err
 	}
-	handler := module.Hdl
+	v2 := endpointModule.Hdl
 	alertModule := InitAlertModule(mongo)
 	camModule, err := cam.InitModuleWithIAM(mongo, cmdable, alertModule)
 	if err != nil {
 		return nil, err
 	}
 	cmdbModule := cmdb.InitModule(mongo)
-	auditModule := InitAuditModule(mongo)
-	auditMiddleware := InitAuditMiddleware(auditModule)
-
-	// 将变更追踪器注入到资产同步服务
-	WireChangeTracker(camModule, auditModule)
-
-	// ecmdb 集成：初始化 etcd 客户端和 gRPC 客户端
-	etcdClient := InitEtcdClient()
-	policyClient := InitEcmdbPolicyClient(etcdClient)
-	endpointClient := InitEcmdbEndpointClient(etcdClient)
-	checkPolicyMiddleware := InitCheckPolicyMiddleware(policyClient)
-
-	engine := InitWebServer(provider, v, checkPolicyMiddleware, auditMiddleware, auditModule, endpointClient, handler, camModule, cmdbModule, alertModule)
-	server := InitGrpcServer(etcdClient)
-	v2 := InitJobs(camModule)
+	engine := InitWebServer(provider, v, checkPolicyMiddleware, auditMiddleware, module, endpointServiceClient, v2, camModule, cmdbModule, alertModule, mongo)
+	server := InitGrpcServer(client)
+	v3 := InitJobs(camModule)
 	app := &App{
 		Logger:    logger,
 		Web:       engine,
 		Grpc:      server,
-		Jobs:      v2,
-		EndModule: module,
+		Jobs:      v3,
+		EndModule: endpointModule,
 		CamModule: camModule,
 	}
 	return app, nil
@@ -75,11 +72,5 @@ var BaseSet = wire.NewSet(
 	InitAuditModule,
 	InitAuditMiddleware,
 	InitWebServer,
-	InitJobs,
-	endpoint.InitModule,
-	cam.InitModuleWithIAM,
-	cmdb.InitModule,
-	InitAlertModule,
-	wire.FieldsOf(new(*endpoint.Module), "Hdl"),
-	wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
+	InitJobs, endpoint.InitModule, cam.InitModuleWithIAM, cmdb.InitModule, InitAlertModule, wire.FieldsOf(new(*endpoint.Module), "Hdl"), wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
 )

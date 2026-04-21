@@ -24,6 +24,8 @@ type AutoSyncScheduler struct {
 	wg            sync.WaitGroup
 	running       bool
 	mu            sync.Mutex
+	syncing       map[int64]bool // 正在同步的账号ID，防止重复提交
+	syncingMu     sync.Mutex
 }
 
 // NewAutoSyncScheduler 创建自动同步调度器
@@ -41,6 +43,7 @@ func NewAutoSyncScheduler(
 		logger:        logger,
 		checkInterval: 1 * time.Minute, // 每分钟检查一次
 		stopCh:        make(chan struct{}),
+		syncing:       make(map[int64]bool),
 	}
 }
 
@@ -116,15 +119,37 @@ func (s *AutoSyncScheduler) checkAndSync() {
 	triggered := 0
 
 	for i := range accounts {
+		accountID := accounts[i].ID
+
 		if s.shouldSync(&accounts[i], now) {
+			// 检查是否已有正在执行的同步任务
+			s.syncingMu.Lock()
+			if s.syncing[accountID] {
+				s.syncingMu.Unlock()
+				s.logger.Debug("账号已有同步任务在执行，跳过",
+					elog.Int64("account_id", accountID),
+					elog.String("account_name", accounts[i].Name))
+				continue
+			}
+			s.syncing[accountID] = true
+			s.syncingMu.Unlock()
+
 			if err := s.triggerSync(ctx, &accounts[i]); err != nil {
+				s.syncingMu.Lock()
+				delete(s.syncing, accountID)
+				s.syncingMu.Unlock()
 				s.logger.Error("触发自动同步失败",
-					elog.Int64("account_id", accounts[i].ID),
+					elog.Int64("account_id", accountID),
 					elog.String("account_name", accounts[i].Name),
 					elog.FieldErr(err))
 				continue
 			}
 			triggered++
+		} else {
+			// 任务已完成（LastSyncTime 已更新），清除同步标记
+			s.syncingMu.Lock()
+			delete(s.syncing, accountID)
+			s.syncingMu.Unlock()
 		}
 	}
 
@@ -195,7 +220,13 @@ func (s *AutoSyncScheduler) triggerSync(ctx context.Context, account *domain.Clo
 	// 获取要同步的资产类型
 	assetTypes := account.Config.SupportedAssetTypes
 	if len(assetTypes) == 0 {
-		assetTypes = []string{"ecs"} // 默认同步 ECS
+		assetTypes = []string{
+			"ecs", "disk", "snapshot", "security_group", "image",
+			"rds", "redis", "mongodb",
+			"vpc", "vswitch", "eip", "lb", "cdn", "waf",
+			"nas", "oss",
+			"kafka", "elasticsearch",
+		}
 	}
 
 	// 构建任务参数

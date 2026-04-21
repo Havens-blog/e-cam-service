@@ -1,0 +1,6 @@
+﻿feat(缃戠粶): 鏂板浜ゆ崲鏈?瀛愮綉(VSwitch)璧勬簮閫傞厤鍣紝鏀寔鍏ㄩ儴5鏈典簯
+
+- 鏂板 VSwitchAdapter 鎺ュ彛鍜?VSwitchInstance 绫诲瀷瀹氫箟
+- 瀹炵幇闃块噷浜戙€佸崕涓轰簯銆佽吘璁簯銆丄WS銆佺伀灞卞紩鎿庣殑 VSwitch 閫傞厤鍣?- 鎵€鏈?涓簯鍘傚晢 adapter.go 娣诲姞 VSwitch() 鏂规硶
+- asset_sync.go 鏂板 syncVSwitchInstances 鍚屾鍑芥暟鍙?switch case
+- asset_handler.go 鏂板 ListVSwitch/GetVSwitch 鎺ュ彛鍙婅矾鐢辨敞鍐?

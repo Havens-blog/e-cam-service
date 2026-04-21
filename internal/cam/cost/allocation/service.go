@@ -531,7 +531,7 @@ func (s *AllocationService) buildTreeFromBills(ctx context.Context, tenantID, di
 		field = "provider"
 	}
 
-	results, err := s.billDAO.AggregateByField(ctx, tenantID, field, startDate, endDate)
+	results, err := s.billDAO.AggregateByField(ctx, tenantID, field, startDate, endDate, repository.UnifiedBillFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("aggregate bills by field: %w", err)
 	}

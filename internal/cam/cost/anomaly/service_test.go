@@ -68,7 +68,7 @@ type mockBillDAO struct {
 	sumAmountFn        func(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error)
 }
 
-func (m *mockBillDAO) AggregateByField(ctx context.Context, tenantID, field, startDate, endDate string) ([]repository.AggregateResult, error) {
+func (m *mockBillDAO) AggregateByField(ctx context.Context, tenantID, field, startDate, endDate string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
 	if m.aggregateByFieldFn != nil {
 		return m.aggregateByFieldFn(ctx, tenantID, field, startDate, endDate)
 	}

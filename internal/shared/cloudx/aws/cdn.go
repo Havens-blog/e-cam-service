@@ -142,8 +142,44 @@ func (a *CDNAdapter) ListInstancesWithFilter(ctx context.Context, region string,
 		marker = output.DistributionList.NextMarker
 	}
 
+	// 批量获取标签
+	if len(allInstances) > 0 {
+		a.fillTags(ctx, client, allInstances)
+	}
+
 	a.logger.Info("获取AWS CloudFront分配列表成功", elog.Int("count", len(allInstances)))
 	return allInstances, nil
+}
+
+// fillTags 批量获取CloudFront分配的标签
+func (a *CDNAdapter) fillTags(ctx context.Context, client *cloudfront.Client, instances []types.CDNInstance) {
+	for i := range instances {
+		if instances[i].DomainID == "" {
+			continue
+		}
+		arn := fmt.Sprintf("arn:aws:cloudfront::%s:distribution/%s", "", instances[i].DomainID)
+		// 尝试用 ListTagsForResource
+		tagOutput, err := client.ListTagsForResource(ctx, &cloudfront.ListTagsForResourceInput{
+			Resource: awssdk.String(arn),
+		})
+		if err != nil {
+			a.logger.Debug("获取CloudFront标签失败", elog.String("id", instances[i].DomainID), elog.FieldErr(err))
+			continue
+		}
+		if tagOutput.Tags != nil && tagOutput.Tags.Items != nil {
+			tags := make(map[string]string)
+			for _, t := range tagOutput.Tags.Items {
+				if t.Key != nil {
+					val := ""
+					if t.Value != nil {
+						val = *t.Value
+					}
+					tags[*t.Key] = val
+				}
+			}
+			instances[i].Tags = tags
+		}
+	}
 }
 
 // convertDistributionToInstance 转换Distribution为通用CDN实例
@@ -182,6 +218,8 @@ func (a *CDNAdapter) convertDistributionToInstance(dist *cftypes.Distribution) t
 		Region:       "global",
 		ServiceArea:  "global",
 		Origins:      origins,
+		OriginType:   a.inferOriginType(origins),
+		OriginHost:   a.inferOriginHost(origins),
 		HTTPSEnabled: httpsEnabled,
 		CreationTime: createTime,
 		Provider:     "aws",
@@ -225,9 +263,27 @@ func (a *CDNAdapter) convertSummaryToInstance(item cftypes.DistributionSummary) 
 		Region:       "global",
 		ServiceArea:  "global",
 		Origins:      origins,
+		OriginType:   a.inferOriginType(origins),
+		OriginHost:   a.inferOriginHost(origins),
 		HTTPSEnabled: httpsEnabled,
 		CreationTime: createTime,
 		Provider:     "aws",
 		Tags:         make(map[string]string),
 	}
+}
+
+// inferOriginType 推断源站类型
+func (a *CDNAdapter) inferOriginType(origins []types.CDNOrigin) string {
+	if len(origins) > 0 {
+		return origins[0].Type
+	}
+	return ""
+}
+
+// inferOriginHost 推断源站地址
+func (a *CDNAdapter) inferOriginHost(origins []types.CDNOrigin) string {
+	if len(origins) > 0 {
+		return origins[0].Address
+	}
+	return ""
 }

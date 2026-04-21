@@ -14,6 +14,10 @@ type WAFInstance struct {
 	DomainLimit    int      `json:"domain_limit"`    // 域名配额
 	ProtectedHosts []string `json:"protected_hosts"` // 防护域名列表
 
+	// 源站信息
+	SourceIPs []string `json:"source_ips"` // 源站IP列表（回源地址）
+	Cname     string   `json:"cname"`      // WAF分配的CNAME地址
+
 	// 规则信息
 	RuleCount      int `json:"rule_count"`       // 自定义规则数
 	ACLRuleCount   int `json:"acl_rule_count"`   // ACL规则数

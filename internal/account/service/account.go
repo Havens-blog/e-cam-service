@@ -308,7 +308,13 @@ func (s *cloudAccountService) SyncAccount(ctx context.Context, id int64, req *do
 
 	assetTypes := req.AssetTypes
 	if len(assetTypes) == 0 {
-		assetTypes = []string{"ecs"}
+		assetTypes = []string{
+			"ecs", "disk", "snapshot", "security_group", "image",
+			"rds", "redis", "mongodb",
+			"vpc", "vswitch", "eip", "lb", "cdn", "waf",
+			"nas", "oss",
+			"kafka", "elasticsearch",
+		}
 	}
 
 	paramsMap := map[string]any{

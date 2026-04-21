@@ -40,6 +40,7 @@ type Adapter struct {
 	elasticsearch *ElasticsearchAdapter
 	iam           *IAMAdapter
 	vswitch       *VSwitchAdapter
+	dns           *DNSAdapter
 	tag           *TagAdapterImpl
 	ecsCreate     *ECSCreateAdapterImpl
 	resourceQuery *ResourceQueryAdapterImpl
@@ -246,6 +247,14 @@ func NewAdapter(account *domain.CloudAccount) (*Adapter, error) {
 		logger,
 	)
 
+	// 创建DNS适配器
+	adapter.dns = NewDNSAdapter(
+		account.AccessKeyID,
+		account.AccessKeySecret,
+		defaultRegion,
+		logger,
+	)
+
 	return adapter, nil
 }
 
@@ -323,6 +332,11 @@ func (a *Adapter) CDN() cloudx.CDNAdapter {
 // WAF 获取WAF适配器
 func (a *Adapter) WAF() cloudx.WAFAdapter {
 	return a.waf
+}
+
+// DNS 获取DNS适配器
+func (a *Adapter) DNS() cloudx.DNSAdapter {
+	return a.dns
 }
 
 // NAS 获取NAS适配器

@@ -65,6 +65,9 @@ type CloudAdapter interface {
 	// WAF 获取WAF适配器 (Web应用防火墙)
 	WAF() WAFAdapter
 
+	// DNS 获取DNS适配器 (域名解析管理)
+	DNS() DNSAdapter
+
 	// ========== 存储资源 ==========
 
 	// NAS 获取NAS适配器 (文件存储)
@@ -622,6 +625,32 @@ type WAFAdapter interface {
 
 	// ListInstancesWithFilter 带过滤条件获取实例列表
 	ListInstancesWithFilter(ctx context.Context, region string, filter *types.WAFInstanceFilter) ([]types.WAFInstance, error)
+}
+
+// ============================================================================
+// DNSAdapter - DNS 域名解析管理适配器接口
+// ============================================================================
+
+// DNSAdapter DNS 解析管理适配器接口
+// 用于阿里云 Alidns、AWS Route53、华为云 DNS、腾讯云 DNSPod、火山引擎 TrafficRoute 等
+type DNSAdapter interface {
+	// ListDomains 查询托管域名列表
+	ListDomains(ctx context.Context) ([]types.DNSDomain, error)
+
+	// ListRecords 查询域名下解析记录列表
+	ListRecords(ctx context.Context, domain string) ([]types.DNSRecord, error)
+
+	// GetRecord 查询单条解析记录详情
+	GetRecord(ctx context.Context, domain, recordID string) (*types.DNSRecord, error)
+
+	// CreateRecord 创建解析记录
+	CreateRecord(ctx context.Context, domain string, req types.CreateDNSRecordRequest) (*types.DNSRecord, error)
+
+	// UpdateRecord 修改解析记录
+	UpdateRecord(ctx context.Context, domain, recordID string, req types.UpdateDNSRecordRequest) (*types.DNSRecord, error)
+
+	// DeleteRecord 删除解析记录
+	DeleteRecord(ctx context.Context, domain, recordID string) error
 }
 
 // ============================================================================

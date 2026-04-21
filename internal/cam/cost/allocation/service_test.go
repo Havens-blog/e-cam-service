@@ -161,7 +161,7 @@ func (m *mockBillDAO) GetUnifiedBillByID(_ context.Context, _ int64) (costdomain
 func (m *mockBillDAO) CountUnifiedBills(_ context.Context, _ repository.UnifiedBillFilter) (int64, error) {
 	return 0, nil
 }
-func (m *mockBillDAO) AggregateByField(_ context.Context, _ string, _ string, _, _ string) ([]repository.AggregateResult, error) {
+func (m *mockBillDAO) AggregateByField(_ context.Context, _ string, _ string, _, _ string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
 	return nil, nil
 }
 func (m *mockBillDAO) AggregateDailyAmount(_ context.Context, _ string, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {

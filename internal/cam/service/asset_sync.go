@@ -1,3 +1,21 @@
+// Package service 资产同步服务（API 触发的同步路径）
+//
+// 文件：internal/cam/service/asset_sync.go
+//
+// 作用：提供 AssetSyncService 接口，供 HTTP API（如 /cam/assets/sync）和
+//
+//	SyncAccountAssets 等服务层方法调用，将云资产同步写入 CMDB c_instance 表。
+//	同时负责同步资产关系（ECS→VPC、EIP→ECS 等）。
+//
+// 与其他同步文件的关系：
+//   - internal/cam/task/executor/sync_assets.go  ← 异步任务执行器（定时任务/手动触发任务队列），
+//     通过 wire 注入，是生产环境主要的同步入口。
+//   - internal/task/executor/sync_assets.go       ← 旧版/备用执行器，不参与运行时。
+//   - 本文件（asset_sync.go）                      ← API 直接调用的同步服务。
+//
+// 注意：两条同步路径写入同一个 c_instance 集合，model_uid 必须保持一致，
+//
+//	统一使用 fmt.Sprintf("%s_xxx", account.Provider) 格式（如 aliyun_ecs）。
 package service
 
 import (
@@ -13,6 +31,9 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	shareddomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // AssetSyncService 资产同步服务 - 同步到 CMDB c_instance
@@ -25,6 +46,8 @@ type AssetSyncService interface {
 	SyncRelations(ctx context.Context, tenantID string) (*RelationSyncResult, error)
 	// SetChangeTracker 设置变更追踪器（可选）
 	SetChangeTracker(ct *auditservice.ChangeTracker)
+	// SetDNSCollections 设置 DNS 专用集合（可选）
+	SetDNSCollections(domainColl, recordColl *mongo.Collection)
 }
 
 // SyncResult 同步结果
@@ -58,6 +81,8 @@ type assetSyncService struct {
 	accountRepo    repository.CloudAccountRepository
 	adapterFactory *cloudx.AdapterFactory
 	changeTracker  *auditservice.ChangeTracker // 资产变更追踪器（可选）
+	dnsDomainColl  *mongo.Collection           // DNS 域名集合
+	dnsRecordColl  *mongo.Collection           // DNS 记录集合
 	logger         *elog.Component
 }
 
@@ -81,6 +106,12 @@ func NewAssetSyncService(
 // SetChangeTracker 设置变更追踪器（可选注入，不影响原有构造函数签名）
 func (s *assetSyncService) SetChangeTracker(ct *auditservice.ChangeTracker) {
 	s.changeTracker = ct
+}
+
+// SetDNSCollections 设置 DNS 专用集合（可选注入）
+func (s *assetSyncService) SetDNSCollections(domainColl, recordColl *mongo.Collection) {
+	s.dnsDomainColl = domainColl
+	s.dnsRecordColl = recordColl
 }
 
 // trackAndUpsert 在 Upsert 前追踪变更，然后执行 Upsert
@@ -117,6 +148,48 @@ func (s *assetSyncService) trackAndUpsert(ctx context.Context, instance domain.I
 	return s.instanceRepo.Upsert(ctx, instance)
 }
 
+// cleanupStaleInstances 清理云端已不存在的本地实例
+func (s *assetSyncService) cleanupStaleInstances(
+	ctx context.Context,
+	tenantID, modelUID string,
+	accountID int64,
+	region string,
+	cloudAssetIDs map[string]bool,
+) int {
+	var localAssetIDs []string
+	var err error
+	if region != "" {
+		localAssetIDs, err = s.instanceRepo.ListAssetIDsByRegion(ctx, tenantID, modelUID, accountID, region)
+	} else {
+		localAssetIDs, err = s.instanceRepo.ListAssetIDsByModelUID(ctx, tenantID, modelUID, accountID)
+	}
+	if err != nil {
+		s.logger.Warn("获取本地实例列表失败", elog.FieldErr(err))
+		return 0
+	}
+
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDs[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		deleted, err := s.instanceRepo.DeleteByAssetIDs(ctx, tenantID, modelUID, toDelete)
+		if err != nil {
+			s.logger.Error("删除过期实例失败", elog.String("model_uid", modelUID), elog.FieldErr(err))
+			return 0
+		}
+		s.logger.Info("删除过期实例",
+			elog.String("model_uid", modelUID),
+			elog.String("region", region),
+			elog.Int64("deleted", deleted))
+		return int(deleted)
+	}
+	return 0
+}
+
 // SyncAssets 同步云资产到 CMDB
 func (s *assetSyncService) SyncAssets(ctx context.Context, tenantID, provider string, assetTypes []string) (*SyncResult, error) {
 	if tenantID == "" {
@@ -127,7 +200,7 @@ func (s *assetSyncService) SyncAssets(ctx context.Context, tenantID, provider st
 		assetTypes = []string{
 			"ecs", "disk", "snapshot", "security_group", "image",
 			"rds", "redis", "mongodb",
-			"vpc", "eip", "lb", "cdn", "waf",
+			"vpc", "eip", "lb", "cdn", "waf", "dns",
 			"nas", "oss",
 		}
 	}
@@ -192,7 +265,7 @@ func (s *assetSyncService) SyncAccountAssets(ctx context.Context, tenantID strin
 		assetTypes = []string{
 			"ecs", "disk", "snapshot", "security_group", "image",
 			"rds", "redis", "mongodb",
-			"vpc", "eip", "lb", "cdn", "waf",
+			"vpc", "eip", "lb", "cdn", "waf", "dns",
 			"nas", "oss",
 		}
 	}
@@ -456,9 +529,28 @@ func (s *assetSyncService) syncRegion(
 			}
 			continue
 
+		case "dns", "cloud_dns":
+			// DNS 是全局服务，先同步域名再同步记录
+			synced, err = s.syncDNSDomains(ctx, tenantID, adapter, account, region)
+			if err != nil {
+				s.logger.Error("同步DNS域名失败", elog.String("region", region), elog.FieldErr(err))
+				result.Failed++
+				continue
+			}
+			result.ByAssetType["dns_domain"] += synced.TotalSynced
+
+			recordsSynced, recordsErr := s.syncDNSRecords(ctx, tenantID, adapter, account, region)
+			if recordsErr != nil {
+				s.logger.Error("同步DNS记录失败", elog.String("region", region), elog.FieldErr(recordsErr))
+			} else if recordsSynced != nil {
+				result.ByAssetType["dns_record"] += recordsSynced.TotalSynced
+				synced.TotalSynced += recordsSynced.TotalSynced
+				synced.Failed += recordsSynced.Failed
+			}
+
 		case "network":
 			// 聚合类型：同步所有网络资源
-			for _, netType := range []string{"vpc", "eip", "lb", "cdn", "waf"} {
+			for _, netType := range []string{"vpc", "eip", "lb", "cdn", "waf", "dns"} {
 				netResult, _ := s.syncRegion(ctx, tenantID, adapter, account, region, []string{netType})
 				if netResult != nil {
 					s.mergeResult(result, netResult)
@@ -505,10 +597,19 @@ func (s *assetSyncService) syncECSInstances(
 		ByRegion:    make(map[string]int),
 	}
 
+	modelUID := fmt.Sprintf("%s_ecs", account.Provider)
+
 	instances, err := adapter.ECS().ListInstances(ctx, region)
 	if err != nil {
 		return nil, fmt.Errorf("获取ECS实例失败: %w", err)
 	}
+
+	// 构建云端 AssetID 集合并清理过期实例
+	cloudAssetIDs := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		cloudAssetIDs[inst.InstanceID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, region, cloudAssetIDs)
 
 	if len(instances) == 0 {
 		return result, nil
@@ -577,7 +678,7 @@ func (s *assetSyncService) convertECSToCMDBInstance(
 	}
 
 	return domain.Instance{
-		ModelUID:   "cloud_vm",
+		ModelUID:   fmt.Sprintf("%s_ecs", account.Provider),
 		AssetID:    inst.InstanceID,
 		AssetName:  inst.InstanceName,
 		TenantID:   tenantID,
@@ -611,11 +712,18 @@ func (s *assetSyncService) syncRDSInstances(
 	region string,
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+	modelUID := fmt.Sprintf("%s_rds", account.Provider)
 
 	instances, err := adapter.RDS().ListInstances(ctx, region)
 	if err != nil {
 		return nil, fmt.Errorf("获取RDS实例失败: %w", err)
 	}
+
+	cloudAssetIDs := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		cloudAssetIDs[inst.InstanceID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, region, cloudAssetIDs)
 
 	for _, inst := range instances {
 		attrs := map[string]interface{}{
@@ -633,7 +741,7 @@ func (s *assetSyncService) syncRDSInstances(
 			"tags": inst.Tags, "description": inst.Description,
 		}
 		cmdbInstance := domain.Instance{
-			ModelUID: "cloud_rds", AssetID: inst.InstanceID, AssetName: inst.InstanceName,
+			ModelUID: fmt.Sprintf("%s_rds", account.Provider), AssetID: inst.InstanceID, AssetName: inst.InstanceName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
@@ -655,11 +763,18 @@ func (s *assetSyncService) syncRedisInstances(
 	region string,
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+	modelUID := fmt.Sprintf("%s_redis", account.Provider)
 
 	instances, err := adapter.Redis().ListInstances(ctx, region)
 	if err != nil {
 		return nil, fmt.Errorf("获取Redis实例失败: %w", err)
 	}
+
+	cloudAssetIDs := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		cloudAssetIDs[inst.InstanceID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, region, cloudAssetIDs)
 
 	for _, inst := range instances {
 		attrs := map[string]interface{}{
@@ -676,7 +791,7 @@ func (s *assetSyncService) syncRedisInstances(
 			"tags": inst.Tags, "description": inst.Description,
 		}
 		cmdbInstance := domain.Instance{
-			ModelUID: "cloud_redis", AssetID: inst.InstanceID, AssetName: inst.InstanceName,
+			ModelUID: fmt.Sprintf("%s_redis", account.Provider), AssetID: inst.InstanceID, AssetName: inst.InstanceName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
@@ -698,11 +813,18 @@ func (s *assetSyncService) syncMongoDBInstances(
 	region string,
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+	modelUID := fmt.Sprintf("%s_mongodb", account.Provider)
 
 	instances, err := adapter.MongoDB().ListInstances(ctx, region)
 	if err != nil {
 		return nil, fmt.Errorf("获取MongoDB实例失败: %w", err)
 	}
+
+	cloudAssetIDs := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		cloudAssetIDs[inst.InstanceID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, region, cloudAssetIDs)
 
 	for _, inst := range instances {
 		attrs := map[string]interface{}{
@@ -719,7 +841,7 @@ func (s *assetSyncService) syncMongoDBInstances(
 			"expire_time": inst.ExpiredTime, "tags": inst.Tags, "description": inst.Description,
 		}
 		cmdbInstance := domain.Instance{
-			ModelUID: "cloud_mongodb", AssetID: inst.InstanceID, AssetName: inst.InstanceName,
+			ModelUID: fmt.Sprintf("%s_mongodb", account.Provider), AssetID: inst.InstanceID, AssetName: inst.InstanceName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
@@ -741,11 +863,18 @@ func (s *assetSyncService) syncVPCInstances(
 	region string,
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+	modelUID := fmt.Sprintf("%s_vpc", account.Provider)
 
 	instances, err := adapter.VPC().ListInstances(ctx, region)
 	if err != nil {
 		return nil, fmt.Errorf("获取VPC失败: %w", err)
 	}
+
+	cloudAssetIDs := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		cloudAssetIDs[inst.VPCID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, region, cloudAssetIDs)
 
 	for _, inst := range instances {
 		attrs := map[string]interface{}{
@@ -759,7 +888,7 @@ func (s *assetSyncService) syncVPCInstances(
 			"create_time": inst.CreationTime, "tags": inst.Tags, "description": inst.Description,
 		}
 		cmdbInstance := domain.Instance{
-			ModelUID: "cloud_vpc", AssetID: inst.VPCID, AssetName: inst.VPCName,
+			ModelUID: fmt.Sprintf("%s_vpc", account.Provider), AssetID: inst.VPCID, AssetName: inst.VPCName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
@@ -781,11 +910,18 @@ func (s *assetSyncService) syncEIPInstances(
 	region string,
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+	modelUID := fmt.Sprintf("%s_eip", account.Provider)
 
 	instances, err := adapter.EIP().ListInstances(ctx, region)
 	if err != nil {
 		return nil, fmt.Errorf("获取EIP失败: %w", err)
 	}
+
+	cloudAssetIDs := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		cloudAssetIDs[inst.AllocationID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, region, cloudAssetIDs)
 
 	for _, inst := range instances {
 		attrs := map[string]interface{}{
@@ -804,7 +940,7 @@ func (s *assetSyncService) syncEIPInstances(
 			assetName = inst.IPAddress
 		}
 		cmdbInstance := domain.Instance{
-			ModelUID: "cloud_eip", AssetID: inst.AllocationID, AssetName: assetName,
+			ModelUID: fmt.Sprintf("%s_eip", account.Provider), AssetID: inst.AllocationID, AssetName: assetName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
@@ -825,11 +961,18 @@ func (s *assetSyncService) syncVSwitchInstances(
 	region string,
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+	modelUID := fmt.Sprintf("%s_vswitch", account.Provider)
 
 	instances, err := adapter.VSwitch().ListInstances(ctx, region)
 	if err != nil {
 		return nil, fmt.Errorf("获取VSwitch失败: %w", err)
 	}
+
+	cloudAssetIDs := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		cloudAssetIDs[inst.VSwitchID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, region, cloudAssetIDs)
 
 	for _, inst := range instances {
 		attrs := map[string]interface{}{
@@ -859,7 +1002,7 @@ func (s *assetSyncService) syncVSwitchInstances(
 			assetName = inst.VSwitchID
 		}
 		cmdbInstance := domain.Instance{
-			ModelUID:   "cloud_vswitch",
+			ModelUID:   fmt.Sprintf("%s_vswitch", account.Provider),
 			AssetID:    inst.VSwitchID,
 			AssetName:  assetName,
 			TenantID:   tenantID,
@@ -885,6 +1028,8 @@ func (s *assetSyncService) syncLBInstances(
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
 
+	modelUID := fmt.Sprintf("%s_lb", account.Provider)
+
 	lbAdapter := adapter.LB()
 	if lbAdapter == nil {
 		s.logger.Warn("LB适配器不可用", elog.String("provider", string(account.Provider)))
@@ -896,12 +1041,19 @@ func (s *assetSyncService) syncLBInstances(
 		return nil, fmt.Errorf("获取LB失败: %w", err)
 	}
 
+	cloudAssetIDs := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		cloudAssetIDs[inst.LoadBalancerID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, region, cloudAssetIDs)
+
 	for _, inst := range instances {
 		attrs := map[string]interface{}{
 			"provider": string(account.Provider), "cloud_account_id": account.ID,
 			"region": inst.Region, "load_balancer_id": inst.LoadBalancerID,
 			"load_balancer_name": inst.LoadBalancerName, "load_balancer_type": inst.LoadBalancerType,
 			"status": inst.Status, "address": inst.Address,
+			"vip":          inst.Address, // VIP 地址，用于拓扑链路匹配
 			"address_type": inst.AddressType, "address_ip_version": inst.AddressIPVersion,
 			"vpc_id": inst.VPCID, "vswitch_id": inst.VSwitchID,
 			"network_type": inst.NetworkType, "load_balancer_spec": inst.LoadBalancerSpec,
@@ -918,7 +1070,7 @@ func (s *assetSyncService) syncLBInstances(
 			assetName = inst.LoadBalancerID
 		}
 		cmdbInstance := domain.Instance{
-			ModelUID: "cloud_lb", AssetID: inst.LoadBalancerID, AssetName: assetName,
+			ModelUID: fmt.Sprintf("%s_lb", account.Provider), AssetID: inst.LoadBalancerID, AssetName: assetName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
@@ -1198,11 +1350,18 @@ func (s *assetSyncService) syncNASInstances(
 	region string,
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+	modelUID := fmt.Sprintf("%s_nas", account.Provider)
 
 	instances, err := adapter.NAS().ListInstances(ctx, region)
 	if err != nil {
 		return nil, fmt.Errorf("获取NAS文件系统失败: %w", err)
 	}
+
+	cloudAssetIDs := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		cloudAssetIDs[inst.FileSystemID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, region, cloudAssetIDs)
 
 	for _, inst := range instances {
 		attrs := map[string]interface{}{
@@ -1222,7 +1381,7 @@ func (s *assetSyncService) syncNASInstances(
 			assetName = inst.FileSystemID
 		}
 		cmdbInstance := domain.Instance{
-			ModelUID: "cloud_nas", AssetID: inst.FileSystemID, AssetName: assetName,
+			ModelUID: fmt.Sprintf("%s_nas", account.Provider), AssetID: inst.FileSystemID, AssetName: assetName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
@@ -1244,11 +1403,20 @@ func (s *assetSyncService) syncOSSBuckets(
 	region string,
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+	modelUID := fmt.Sprintf("%s_oss", account.Provider)
 
 	buckets, err := adapter.OSS().ListBuckets(ctx, region)
 	if err != nil {
 		return nil, fmt.Errorf("获取OSS存储桶失败: %w", err)
 	}
+
+	cloudAssetIDs := make(map[string]bool, len(buckets))
+	for _, bucket := range buckets {
+		if region == "" || bucket.Region == region {
+			cloudAssetIDs[bucket.BucketName] = true
+		}
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, "", cloudAssetIDs)
 
 	for _, bucket := range buckets {
 		// 如果指定了region，只同步该region的bucket
@@ -1264,7 +1432,7 @@ func (s *assetSyncService) syncOSSBuckets(
 			"create_time": bucket.CreationTime, "tags": bucket.Tags,
 		}
 		cmdbInstance := domain.Instance{
-			ModelUID: "cloud_oss", AssetID: bucket.BucketName, AssetName: bucket.BucketName,
+			ModelUID: fmt.Sprintf("%s_oss", account.Provider), AssetID: bucket.BucketName, AssetName: bucket.BucketName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
@@ -1286,6 +1454,7 @@ func (s *assetSyncService) syncDiskInstances(
 	region string,
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+	modelUID := fmt.Sprintf("%s_disk", account.Provider)
 
 	diskAdapter := adapter.Disk()
 	if diskAdapter == nil {
@@ -1297,6 +1466,12 @@ func (s *assetSyncService) syncDiskInstances(
 	if err != nil {
 		return nil, fmt.Errorf("获取云盘失败: %w", err)
 	}
+
+	cloudAssetIDs := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		cloudAssetIDs[inst.DiskID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, region, cloudAssetIDs)
 
 	for _, inst := range instances {
 		attrs := map[string]interface{}{
@@ -1327,7 +1502,7 @@ func (s *assetSyncService) syncDiskInstances(
 			assetName = inst.DiskID
 		}
 		cmdbInstance := domain.Instance{
-			ModelUID: "cloud_disk", AssetID: inst.DiskID, AssetName: assetName,
+			ModelUID: fmt.Sprintf("%s_disk", account.Provider), AssetID: inst.DiskID, AssetName: assetName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
@@ -1349,6 +1524,7 @@ func (s *assetSyncService) syncSnapshotInstances(
 	region string,
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+	modelUID := fmt.Sprintf("%s_snapshot", account.Provider)
 
 	snapshotAdapter := adapter.Snapshot()
 	if snapshotAdapter == nil {
@@ -1360,6 +1536,12 @@ func (s *assetSyncService) syncSnapshotInstances(
 	if err != nil {
 		return nil, fmt.Errorf("获取快照失败: %w", err)
 	}
+
+	cloudAssetIDs := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		cloudAssetIDs[inst.SnapshotID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, region, cloudAssetIDs)
 
 	for _, inst := range instances {
 		attrs := map[string]interface{}{
@@ -1384,7 +1566,7 @@ func (s *assetSyncService) syncSnapshotInstances(
 			assetName = inst.SnapshotID
 		}
 		cmdbInstance := domain.Instance{
-			ModelUID: "cloud_snapshot", AssetID: inst.SnapshotID, AssetName: assetName,
+			ModelUID: fmt.Sprintf("%s_snapshot", account.Provider), AssetID: inst.SnapshotID, AssetName: assetName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
@@ -1406,6 +1588,7 @@ func (s *assetSyncService) syncSecurityGroupInstances(
 	region string,
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+	modelUID := fmt.Sprintf("%s_security_group", account.Provider)
 
 	sgAdapter := adapter.SecurityGroup()
 	if sgAdapter == nil {
@@ -1417,6 +1600,12 @@ func (s *assetSyncService) syncSecurityGroupInstances(
 	if err != nil {
 		return nil, fmt.Errorf("获取安全组失败: %w", err)
 	}
+
+	cloudAssetIDs := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		cloudAssetIDs[inst.SecurityGroupID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, region, cloudAssetIDs)
 
 	for _, inst := range instances {
 		attrs := map[string]interface{}{
@@ -1439,7 +1628,7 @@ func (s *assetSyncService) syncSecurityGroupInstances(
 			assetName = inst.SecurityGroupID
 		}
 		cmdbInstance := domain.Instance{
-			ModelUID: "cloud_security_group", AssetID: inst.SecurityGroupID, AssetName: assetName,
+			ModelUID: fmt.Sprintf("%s_security_group", account.Provider), AssetID: inst.SecurityGroupID, AssetName: assetName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
@@ -1461,6 +1650,7 @@ func (s *assetSyncService) syncImageInstances(
 	region string,
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+	modelUID := fmt.Sprintf("%s_image", account.Provider)
 
 	imageAdapter := adapter.Image()
 	if imageAdapter == nil {
@@ -1472,6 +1662,12 @@ func (s *assetSyncService) syncImageInstances(
 	if err != nil {
 		return nil, fmt.Errorf("获取镜像失败: %w", err)
 	}
+
+	cloudAssetIDs := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		cloudAssetIDs[inst.ImageID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, region, cloudAssetIDs)
 
 	for _, inst := range instances {
 		attrs := map[string]interface{}{
@@ -1516,6 +1712,7 @@ func (s *assetSyncService) syncCDNInstances(
 	region string,
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+	modelUID := fmt.Sprintf("%s_cdn", account.Provider)
 
 	cdnAdapter := adapter.CDN()
 	if cdnAdapter == nil {
@@ -1528,7 +1725,25 @@ func (s *assetSyncService) syncCDNInstances(
 		return nil, fmt.Errorf("获取CDN失败: %w", err)
 	}
 
+	cloudAssetIDs := make(map[string]bool, len(instances))
 	for _, inst := range instances {
+		assetID := inst.DomainName
+		if inst.DomainID != "" {
+			assetID = inst.DomainID
+		}
+		cloudAssetIDs[assetID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, "", cloudAssetIDs)
+
+	for _, inst := range instances {
+		// 提取源站地址列表（用于拓扑链路匹配）
+		var originAddrs []string
+		for _, o := range inst.Origins {
+			if o.Address != "" {
+				originAddrs = append(originAddrs, o.Address)
+			}
+		}
+
 		attrs := map[string]interface{}{
 			"provider": string(account.Provider), "cloud_account_id": account.ID,
 			"domain_id": inst.DomainID, "domain_name": inst.DomainName,
@@ -1540,6 +1755,7 @@ func (s *assetSyncService) syncCDNInstances(
 			"bandwidth": inst.Bandwidth, "traffic_total": inst.TrafficTotal,
 			"creation_time": inst.CreationTime, "modified_time": inst.ModifiedTime,
 			"resource_group_id": inst.ResourceGroupID,
+			"origins":           originAddrs, // 回源地址列表，用于拓扑链路级联匹配
 			"tags":              inst.Tags, "description": inst.Description,
 		}
 		assetID := inst.DomainName
@@ -1548,7 +1764,7 @@ func (s *assetSyncService) syncCDNInstances(
 		}
 		assetName := inst.DomainName
 		cmdbInstance := domain.Instance{
-			ModelUID: "cloud_cdn", AssetID: assetID, AssetName: assetName,
+			ModelUID: fmt.Sprintf("%s_cdn", account.Provider), AssetID: assetID, AssetName: assetName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
@@ -1570,6 +1786,7 @@ func (s *assetSyncService) syncWAFInstances(
 	region string,
 ) (*SyncResult, error) {
 	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+	modelUID := fmt.Sprintf("%s_waf", account.Provider)
 
 	wafAdapter := adapter.WAF()
 	if wafAdapter == nil {
@@ -1582,10 +1799,17 @@ func (s *assetSyncService) syncWAFInstances(
 		return nil, fmt.Errorf("获取WAF失败: %w", err)
 	}
 
+	cloudAssetIDs := make(map[string]bool, len(instances))
+	for _, inst := range instances {
+		cloudAssetIDs[inst.InstanceID] = true
+	}
+	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, region, cloudAssetIDs)
+
 	for _, inst := range instances {
 		attrs := map[string]interface{}{
 			"provider": string(account.Provider), "cloud_account_id": account.ID,
-			"instance_id": inst.InstanceID, "instance_name": inst.InstanceName,
+			"cloud_account_name": account.Name,
+			"instance_id":        inst.InstanceID, "instance_name": inst.InstanceName,
 			"status": inst.Status, "region": inst.Region,
 			"edition": inst.Edition, "domain_count": inst.DomainCount,
 			"domain_limit": inst.DomainLimit, "rule_count": inst.RuleCount,
@@ -1597,14 +1821,16 @@ func (s *assetSyncService) syncWAFInstances(
 			"exclusive_ip": inst.ExclusiveIP, "pay_type": inst.PayType,
 			"creation_time": inst.CreationTime, "expired_time": inst.ExpiredTime,
 			"resource_group_id": inst.ResourceGroupID,
-			"tags":              inst.Tags, "description": inst.Description,
+			"protected_hosts":   inst.ProtectedHosts, "source_ips": inst.SourceIPs,
+			"cname": inst.Cname,
+			"tags":  inst.Tags, "description": inst.Description,
 		}
 		assetName := inst.InstanceName
 		if assetName == "" {
 			assetName = inst.InstanceID
 		}
 		cmdbInstance := domain.Instance{
-			ModelUID: "cloud_waf", AssetID: inst.InstanceID, AssetName: assetName,
+			ModelUID: fmt.Sprintf("%s_waf", account.Provider), AssetID: inst.InstanceID, AssetName: assetName,
 			TenantID: tenantID, AccountID: account.ID, Attributes: attrs,
 		}
 		if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
@@ -1612,6 +1838,230 @@ func (s *assetSyncService) syncWAFInstances(
 			continue
 		}
 		result.TotalSynced++
+	}
+	return result, nil
+}
+
+// ==================== DNS 域名同步 ====================
+
+// syncDNSDomains 同步 DNS 域名到 c_dns_domain
+func (s *assetSyncService) syncDNSDomains(
+	ctx context.Context,
+	tenantID string,
+	adapter cloudx.CloudAdapter,
+	account *shareddomain.CloudAccount,
+	region string,
+) (*SyncResult, error) {
+	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+
+	dnsAdapter := adapter.DNS()
+	if dnsAdapter == nil {
+		s.logger.Warn("DNS适配器不可用", elog.String("provider", string(account.Provider)))
+		return result, nil
+	}
+
+	domains, err := dnsAdapter.ListDomains(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("获取DNS域名失败: %w", err)
+	}
+
+	if s.dnsDomainColl != nil {
+		// 写入 c_dns_domain 集合
+		now := time.Now().Unix()
+		var currentNames []string
+		for _, d := range domains {
+			currentNames = append(currentNames, d.DomainName)
+			filter := bson.M{
+				"tenant_id":   tenantID,
+				"domain_name": d.DomainName,
+				"account_id":  account.ID,
+			}
+			update := bson.M{
+				"$set": bson.M{
+					"domain_id":    d.DomainID,
+					"domain_name":  d.DomainName,
+					"provider":     string(account.Provider),
+					"account_id":   account.ID,
+					"account_name": account.Name,
+					"tenant_id":    tenantID,
+					"record_count": d.RecordCount,
+					"status":       d.Status,
+					"utime":        now,
+				},
+				"$setOnInsert": bson.M{
+					"ctime": now,
+				},
+			}
+			opts := options.Update().SetUpsert(true)
+			if _, err := s.dnsDomainColl.UpdateOne(ctx, filter, update, opts); err != nil {
+				s.logger.Error("保存DNS域名失败", elog.String("domain", d.DomainName), elog.FieldErr(err))
+				result.Failed++
+				continue
+			}
+			result.TotalSynced++
+		}
+		// 清理不再存在的域名
+		deleteFilter := bson.M{
+			"tenant_id":  tenantID,
+			"account_id": account.ID,
+		}
+		if len(currentNames) > 0 {
+			deleteFilter["domain_name"] = bson.M{"$nin": currentNames}
+		}
+		_, _ = s.dnsDomainColl.DeleteMany(ctx, deleteFilter)
+	} else {
+		// 回退：写入 c_instance（兼容旧逻辑）
+		for _, d := range domains {
+			attrs := map[string]interface{}{
+				"provider":         string(account.Provider),
+				"cloud_account_id": account.ID,
+				"domain_id":        d.DomainID,
+				"domain_name":      d.DomainName,
+				"record_count":     d.RecordCount,
+				"status":           d.Status,
+			}
+			assetID := d.DomainName
+			if d.DomainID != "" {
+				assetID = d.DomainID
+			}
+			cmdbInstance := domain.Instance{
+				ModelUID:   "cloud_dns_domain",
+				AssetID:    assetID,
+				AssetName:  d.DomainName,
+				TenantID:   tenantID,
+				AccountID:  account.ID,
+				Attributes: attrs,
+			}
+			if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
+				result.Failed++
+				continue
+			}
+			result.TotalSynced++
+		}
+	}
+	return result, nil
+}
+
+// ==================== DNS 解析记录同步 ====================
+
+// syncDNSRecords 同步 DNS 解析记录到 c_dns_record
+func (s *assetSyncService) syncDNSRecords(
+	ctx context.Context,
+	tenantID string,
+	adapter cloudx.CloudAdapter,
+	account *shareddomain.CloudAccount,
+	region string,
+) (*SyncResult, error) {
+	result := &SyncResult{ByAssetType: make(map[string]int), ByRegion: make(map[string]int)}
+
+	dnsAdapter := adapter.DNS()
+	if dnsAdapter == nil {
+		return result, nil
+	}
+
+	// 先获取所有域名，再逐个同步记录
+	domains, err := dnsAdapter.ListDomains(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("获取DNS域名列表失败: %w", err)
+	}
+
+	for _, d := range domains {
+		records, err := dnsAdapter.ListRecords(ctx, d.DomainName)
+		if err != nil {
+			s.logger.Warn("获取DNS记录失败",
+				elog.String("domain", d.DomainName),
+				elog.FieldErr(err))
+			continue
+		}
+
+		if s.dnsRecordColl != nil {
+			// 写入 c_dns_record 集合
+			now := time.Now().Unix()
+			var currentIDs []string
+			for _, r := range records {
+				recordID := r.RecordID
+				if recordID == "" {
+					recordID = fmt.Sprintf("%s_%s_%s", r.Domain, r.RR, r.Type)
+				}
+				currentIDs = append(currentIDs, recordID)
+				filter := bson.M{
+					"tenant_id":  tenantID,
+					"record_id":  recordID,
+					"account_id": account.ID,
+				}
+				update := bson.M{
+					"$set": bson.M{
+						"record_id":  recordID,
+						"domain":     r.Domain,
+						"rr":         r.RR,
+						"type":       r.Type,
+						"value":      r.Value,
+						"ttl":        r.TTL,
+						"priority":   r.Priority,
+						"line":       r.Line,
+						"status":     r.Status,
+						"provider":   string(account.Provider),
+						"account_id": account.ID,
+						"tenant_id":  tenantID,
+						"utime":      now,
+					},
+					"$setOnInsert": bson.M{
+						"ctime": now,
+					},
+				}
+				opts := options.Update().SetUpsert(true)
+				if _, err := s.dnsRecordColl.UpdateOne(ctx, filter, update, opts); err != nil {
+					s.logger.Error("保存DNS记录失败", elog.String("record_id", recordID), elog.FieldErr(err))
+					result.Failed++
+					continue
+				}
+				result.TotalSynced++
+			}
+			// 清理不再存在的记录
+			deleteFilter := bson.M{
+				"tenant_id":  tenantID,
+				"account_id": account.ID,
+				"domain":     d.DomainName,
+			}
+			if len(currentIDs) > 0 {
+				deleteFilter["record_id"] = bson.M{"$nin": currentIDs}
+			}
+			_, _ = s.dnsRecordColl.DeleteMany(ctx, deleteFilter)
+		} else {
+			// 回退：写入 c_instance（兼容旧逻辑）
+			for _, r := range records {
+				attrs := map[string]interface{}{
+					"provider":         string(account.Provider),
+					"cloud_account_id": account.ID,
+					"domain":           r.Domain,
+					"rr":               r.RR,
+					"type":             r.Type,
+					"value":            r.Value,
+					"ttl":              r.TTL,
+					"priority":         r.Priority,
+					"line":             r.Line,
+					"status":           r.Status,
+				}
+				assetID := r.RecordID
+				if assetID == "" {
+					assetID = fmt.Sprintf("%s_%s_%s", r.Domain, r.RR, r.Type)
+				}
+				assetName := fmt.Sprintf("%s.%s", r.RR, r.Domain)
+				cmdbInstance := domain.Instance{
+					ModelUID:   "cloud_dns_record",
+					AssetID:    assetID,
+					AssetName:  assetName,
+					TenantID:   tenantID,
+					AccountID:  account.ID,
+					Attributes: attrs,
+				}
+				if err := s.trackAndUpsert(ctx, cmdbInstance); err != nil {
+					result.Failed++
+					continue
+				}
+				result.TotalSynced++
+			}
+		}
 	}
 	return result, nil
 }

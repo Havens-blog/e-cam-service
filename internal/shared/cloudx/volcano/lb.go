@@ -6,6 +6,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/volcengine/volcengine-go-sdk/service/alb"
 	"github.com/volcengine/volcengine-go-sdk/service/clb"
 	"github.com/volcengine/volcengine-go-sdk/volcengine"
 	"github.com/volcengine/volcengine-go-sdk/volcengine/credentials"
@@ -46,6 +47,24 @@ func (a *LBAdapter) createClient(region string) (*clb.CLB, error) {
 	}
 
 	return clb.New(sess), nil
+}
+
+// createALBClient 创建ALB客户端
+func (a *LBAdapter) createALBClient(region string) (*alb.ALB, error) {
+	if region == "" {
+		region = a.defaultRegion
+	}
+
+	config := volcengine.NewConfig().
+		WithCredentials(credentials.NewStaticCredentials(a.accessKeyID, a.accessKeySecret, "")).
+		WithRegion(region)
+
+	sess, err := session.NewSession(config)
+	if err != nil {
+		return nil, fmt.Errorf("创建ALB会话失败: %w", err)
+	}
+
+	return alb.New(sess), nil
 }
 
 // ListInstances 获取负载均衡实例列表
@@ -182,11 +201,114 @@ func (a *LBAdapter) ListInstancesWithFilter(ctx context.Context, region string, 
 		pageNumber++
 	}
 
+	// 查询ALB实例
+	albInstances, err := a.listALBInstances(ctx, region, filter)
+	if err != nil {
+		a.logger.Warn("获取ALB实例列表失败，跳过ALB",
+			elog.String("region", region),
+			elog.FieldErr(err))
+	} else {
+		allInstances = append(allInstances, albInstances...)
+	}
+
 	a.logger.Info("获取火山引擎负载均衡列表成功",
 		elog.String("region", region),
 		elog.Int("count", len(allInstances)))
 
 	return allInstances, nil
+}
+
+// listALBInstances 查询ALB实例列表
+func (a *LBAdapter) listALBInstances(ctx context.Context, region string, filter *types.LBInstanceFilter) ([]types.LBInstance, error) {
+	albClient, err := a.createALBClient(region)
+	if err != nil {
+		return nil, fmt.Errorf("创建ALB客户端失败: %w", err)
+	}
+
+	var albInstances []types.LBInstance
+	pageNumber := int64(1)
+	pageSize := int64(100)
+
+	if filter != nil && filter.PageSize > 0 {
+		pageSize = int64(filter.PageSize)
+	}
+
+	for {
+		input := &alb.DescribeLoadBalancersInput{
+			PageNumber: &pageNumber,
+			PageSize:   &pageSize,
+		}
+
+		if filter != nil {
+			if len(filter.LoadBalancerIDs) > 0 {
+				idPtrs := make([]*string, len(filter.LoadBalancerIDs))
+				for i, id := range filter.LoadBalancerIDs {
+					idPtrs[i] = volcengine.String(id)
+				}
+				input.LoadBalancerIds = idPtrs
+			}
+			if filter.LoadBalancerName != "" {
+				input.LoadBalancerName = volcengine.String(filter.LoadBalancerName)
+			}
+			if filter.VPCID != "" {
+				input.VpcId = volcengine.String(filter.VPCID)
+			}
+		}
+
+		output, err := albClient.DescribeLoadBalancers(input)
+		if err != nil {
+			return nil, fmt.Errorf("获取ALB列表失败: %w", err)
+		}
+
+		if len(output.LoadBalancers) == 0 {
+			break
+		}
+
+		for _, lb := range output.LoadBalancers {
+			instance := a.convertALBToLBInstance(lb, region)
+
+			// 客户端过滤: AddressType
+			if filter != nil && filter.AddressType != "" {
+				if filter.AddressType != instance.AddressType {
+					continue
+				}
+			}
+
+			albInstances = append(albInstances, instance)
+		}
+
+		if len(output.LoadBalancers) < int(pageSize) {
+			break
+		}
+		pageNumber++
+	}
+
+	// 补充每个 ALB 的监听器数量
+	for i := range albInstances {
+		listenerCount := a.getALBListenerCount(albClient, albInstances[i].LoadBalancerID)
+		albInstances[i].ListenerCount = listenerCount
+	}
+
+	return albInstances, nil
+}
+
+// getALBListenerCount 获取 ALB 监听器数量
+func (a *LBAdapter) getALBListenerCount(client *alb.ALB, lbID string) int {
+	pageSize := int64(1)
+	input := &alb.DescribeListenersInput{
+		LoadBalancerId: volcengine.String(lbID),
+		PageSize:       &pageSize,
+	}
+
+	output, err := client.DescribeListeners(input)
+	if err != nil {
+		return 0
+	}
+
+	if output.TotalCount != nil {
+		return int(*output.TotalCount)
+	}
+	return 0
 }
 
 // convertToLBInstance 转换为通用LB实例
@@ -201,7 +323,7 @@ func (a *LBAdapter) convertToLBInstance(lb *clb.LoadBalancerForDescribeLoadBalan
 		lbName = *lb.LoadBalancerName
 	}
 
-	lbType := "slb"
+	lbType := "clb"
 
 	status := ""
 	if lb.Status != nil {
@@ -277,7 +399,7 @@ func (a *LBAdapter) convertDetailToLBInstance(output *clb.DescribeLoadBalancerAt
 		lbName = *output.LoadBalancerName
 	}
 
-	lbType := "slb"
+	lbType := "clb"
 
 	status := ""
 	if output.Status != nil {
@@ -344,5 +466,93 @@ func (a *LBAdapter) convertDetailToLBInstance(output *clb.DescribeLoadBalancerAt
 		Description:      description,
 		Tags:             tags,
 		Provider:         "volcano",
+	}
+}
+
+// convertALBToLBInstance 将ALB实例转换为通用LB实例
+func (a *LBAdapter) convertALBToLBInstance(lb *alb.LoadBalancerForDescribeLoadBalancersOutput, region string) types.LBInstance {
+	lbID := ""
+	if lb.LoadBalancerId != nil {
+		lbID = *lb.LoadBalancerId
+	}
+
+	lbName := ""
+	if lb.LoadBalancerName != nil {
+		lbName = *lb.LoadBalancerName
+	}
+
+	lbType := "alb"
+
+	status := ""
+	if lb.Status != nil {
+		status = *lb.Status
+	}
+
+	address := ""
+	if lb.EniAddress != nil {
+		address = *lb.EniAddress
+	}
+
+	addressType := "intranet"
+	if lb.Type != nil && *lb.Type == "public" {
+		addressType = "internet"
+	}
+
+	addressIPVersion := ""
+	if lb.AddressIpVersion != nil {
+		addressIPVersion = *lb.AddressIpVersion
+	}
+
+	vpcID := ""
+	if lb.VpcId != nil {
+		vpcID = *lb.VpcId
+	}
+
+	subnetID := ""
+	if lb.SubnetId != nil {
+		subnetID = *lb.SubnetId
+	}
+
+	createTime := ""
+	if lb.CreateTime != nil {
+		createTime = *lb.CreateTime
+	}
+
+	description := ""
+	if lb.Description != nil {
+		description = *lb.Description
+	}
+
+	lbEdition := ""
+	if lb.LoadBalancerEdition != nil {
+		lbEdition = *lb.LoadBalancerEdition
+	}
+
+	// 提取标签
+	tags := make(map[string]string)
+	if lb.Tags != nil {
+		for _, tag := range lb.Tags {
+			if tag.Key != nil && tag.Value != nil {
+				tags[*tag.Key] = *tag.Value
+			}
+		}
+	}
+
+	return types.LBInstance{
+		LoadBalancerID:      lbID,
+		LoadBalancerName:    lbName,
+		LoadBalancerType:    lbType,
+		LoadBalancerEdition: lbEdition,
+		Status:              status,
+		Region:              region,
+		Address:             address,
+		AddressType:         addressType,
+		AddressIPVersion:    addressIPVersion,
+		VPCID:               vpcID,
+		VSwitchID:           subnetID,
+		CreationTime:        createTime,
+		Description:         description,
+		Tags:                tags,
+		Provider:            "volcano",
 	}
 }

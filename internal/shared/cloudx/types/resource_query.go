@@ -9,14 +9,16 @@ type InstanceTypeInfo struct {
 	InstanceType string  `json:"instance_type"` // 规格名称
 	CPU          int     `json:"cpu"`           // CPU 核数
 	MemoryGB     float64 `json:"memory_gb"`     // 内存大小 (GB)
+	Architecture string  `json:"architecture"`  // 架构 (x86_64/arm64)
 }
 
 // ImageInfo 镜像信息
 type ImageInfo struct {
-	ImageID  string `json:"image_id"` // 镜像 ID
-	Name     string `json:"name"`     // 镜像名称
-	OSType   string `json:"os_type"`  // 操作系统类型 (linux/windows)
-	Platform string `json:"platform"` // 平台 (CentOS/Ubuntu/Windows Server 等)
+	ImageID      string `json:"image_id"`     // 镜像 ID
+	Name         string `json:"name"`         // 镜像名称
+	OSType       string `json:"os_type"`      // 操作系统类型 (linux/windows)
+	Platform     string `json:"platform"`     // 平台 (CentOS/Ubuntu/Windows Server 等)
+	Architecture string `json:"architecture"` // 架构 (x86_64/arm64/i386)
 }
 
 // VPCInfo VPC 信息（轻量版，用于下拉选择）

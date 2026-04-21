@@ -166,12 +166,24 @@ func (d *billDAO) CountUnifiedBills(ctx context.Context, filter repository.Unifi
 	return d.db.Collection(UnifiedBillCollection).CountDocuments(ctx, query)
 }
 
-func (d *billDAO) AggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string) ([]repository.AggregateResult, error) {
+func (d *billDAO) AggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
 	match := bson.M{
 		"billing_date": bson.M{"$gte": startDate, "$lte": endDate},
 	}
 	if tenantID != "" {
 		match["tenant_id"] = tenantID
+	}
+	if filter.Provider != "" {
+		match["provider"] = filter.Provider
+	}
+	if filter.AccountID > 0 {
+		match["account_id"] = filter.AccountID
+	}
+	if filter.ServiceType != "" {
+		match["service_type"] = filter.ServiceType
+	}
+	if filter.Region != "" {
+		match["region"] = filter.Region
 	}
 
 	pipeline := bson.A{

@@ -9,6 +9,7 @@ import (
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/global"
 	cdnv2 "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cdn/v2"
 	cdnmodel "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cdn/v2/model"
+	cdnregion "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cdn/v2/region"
 )
 
 // CDNAdapter 华为云CDN适配器
@@ -30,6 +31,7 @@ func NewCDNAdapter(accessKeyID, accessKeySecret, defaultRegion string, logger *e
 }
 
 // createClient 创建CDN客户端
+// CDN 是全局服务，使用全局凭证 + cn-north-1 region（endpoint: cdn.myhuaweicloud.com）
 func (a *CDNAdapter) createClient() (*cdnv2.CdnClient, error) {
 	auth, err := global.NewCredentialsBuilder().
 		WithAk(a.accessKeyID).
@@ -40,6 +42,7 @@ func (a *CDNAdapter) createClient() (*cdnv2.CdnClient, error) {
 	}
 
 	client, err := cdnv2.CdnClientBuilder().
+		WithRegion(cdnregion.CN_NORTH_1).
 		WithCredential(auth).
 		SafeBuild()
 	if err != nil {
@@ -118,9 +121,13 @@ func (a *CDNAdapter) ListInstancesWithFilter(ctx context.Context, region string,
 	}
 
 	for {
+		// enterprise_project_id 设为 "all" 查询所有企业项目的域名
+		// 华为云子账号调用时此参数必传
+		allProjects := "all"
 		request := &cdnmodel.ListDomainsRequest{
-			PageNumber: &page,
-			PageSize:   &pageSize,
+			PageNumber:          &page,
+			PageSize:            &pageSize,
+			EnterpriseProjectId: &allProjects,
 		}
 
 		if filter != nil {
@@ -221,6 +228,8 @@ func (a *CDNAdapter) convertToInstance(d cdnmodel.Domains) types.CDNInstance {
 		BusinessType: businessType,
 		ServiceArea:  serviceArea,
 		Origins:      origins,
+		OriginType:   a.inferOriginType(origins),
+		OriginHost:   a.inferOriginHost(origins),
 		HTTPSEnabled: httpsEnabled,
 		CreationTime: createTime,
 		ModifiedTime: modifyTime,
@@ -283,9 +292,27 @@ func (a *CDNAdapter) convertDetailToInstance(d *cdnmodel.DomainsDetail) types.CD
 		BusinessType: businessType,
 		ServiceArea:  serviceArea,
 		Origins:      origins,
+		OriginType:   a.inferOriginType(origins),
+		OriginHost:   a.inferOriginHost(origins),
 		HTTPSEnabled: httpsEnabled,
 		CreationTime: createTime,
 		Provider:     "huawei",
 		Tags:         make(map[string]string),
 	}
+}
+
+// inferOriginType 推断源站类型
+func (a *CDNAdapter) inferOriginType(origins []types.CDNOrigin) string {
+	if len(origins) > 0 {
+		return origins[0].Type
+	}
+	return ""
+}
+
+// inferOriginHost 推断源站地址
+func (a *CDNAdapter) inferOriginHost(origins []types.CDNOrigin) string {
+	if len(origins) > 0 {
+		return origins[0].Address
+	}
+	return ""
 }

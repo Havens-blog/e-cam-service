@@ -366,7 +366,21 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 		query["asset_id"] = filter.AssetID
 	}
 	if filter.AssetName != "" {
-		query["asset_name"] = bson.M{"$regex": filter.AssetName, "$options": "i"}
+		// 模糊搜索：同时匹配 asset_name 和 asset_id
+		nameOr := []bson.M{
+			{"asset_name": bson.M{"$regex": filter.AssetName, "$options": "i"}},
+			{"asset_id": bson.M{"$regex": filter.AssetName, "$options": "i"}},
+		}
+		// 如果已有 $or（来自 model_uid 匹配），用 $and 组合
+		if existing, ok := query["$or"]; ok {
+			query["$and"] = []bson.M{
+				{"$or": existing.([]bson.M)},
+				{"$or": nameOr},
+			}
+			delete(query, "$or")
+		} else {
+			query["$or"] = nameOr
+		}
 	}
 	// 按云平台过滤 (查询 attributes.provider)
 	if filter.Provider != "" {

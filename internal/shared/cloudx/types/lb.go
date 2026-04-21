@@ -36,8 +36,10 @@ type LBInstance struct {
 	BandwidthPackageID  string `json:"bandwidth_package_id"`  // 带宽包ID
 
 	// 监听器和后端信息
-	ListenerCount      int `json:"listener_count"`       // 监听器数量
-	BackendServerCount int `json:"backend_server_count"` // 后端服务器数量
+	ListenerCount      int               `json:"listener_count"`       // 监听器数量
+	BackendServerCount int               `json:"backend_server_count"` // 后端服务器数量
+	Listeners          []LBListener      `json:"listeners"`            // 监听器详情列表
+	BackendServers     []LBBackendServer `json:"backend_servers"`      // 后端服务器详情列表
 
 	// 计费信息
 	ChargeType         string `json:"charge_type"`          // 付费类型: PrePaid/PostPaid

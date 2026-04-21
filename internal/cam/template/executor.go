@@ -96,9 +96,16 @@ func (e *CreateECSExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 	// 5. 校验参数
 	validationErrs := e.validator.ValidateParams(ctx, accountID, createParams)
 	if len(validationErrs) > 0 {
-		msg := fmt.Sprintf("参数校验失败: %d 项错误", len(validationErrs))
+		details := ""
+		for _, ve := range validationErrs {
+			details += fmt.Sprintf("[%s: %s] ", ve.Field, ve.Reason)
+		}
+		msg := fmt.Sprintf("参数校验失败: %s", details)
+		e.logger.Warn("创建任务参数校验失败",
+			elog.String("task_id", task.ID),
+			elog.String("details", details))
 		_ = e.taskDAO.UpdateStatus(ctx, task.ID, TaskStatusFailed, msg)
-		return fmt.Errorf("参数校验失败: %d 项错误", len(validationErrs))
+		return fmt.Errorf("%s", msg)
 	}
 
 	// 6. 获取适配器

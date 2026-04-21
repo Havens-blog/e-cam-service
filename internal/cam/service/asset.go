@@ -285,10 +285,11 @@ func (s *service) SyncAssets(ctx context.Context, accountID int64, assetTypes []
 	// 如果未指定资源类型，默认同步所有支持的类型
 	if len(assetTypes) == 0 {
 		assetTypes = []string{
-			"ecs", "disk", "snapshot", "security_group",
+			"ecs", "disk", "snapshot", "security_group", "image",
 			"rds", "redis", "mongodb",
-			"vpc", "eip", "lb",
+			"vpc", "vswitch", "eip", "lb", "cdn", "waf",
 			"nas", "oss",
+			"kafka", "elasticsearch",
 		}
 	}
 

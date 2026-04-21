@@ -1,8 +1,20 @@
-// Package executor 同步资产任务执行器（运行时实际使用）
+// Package executor 同步资产任务执行器（异步任务队列，生产环境主入口）
 //
-// 重要：这是生产环境实际运行的执行器，位于 internal/cam/task/executor/
-// 另一个 internal/task/executor/ 下的同名文件是旧版/备用实现，不会被 wire 注入。
-// 新增或修改同步逻辑时，请确保修改的是本文件。
+// 文件：internal/cam/task/executor/sync_assets.go
+//
+// 作用：实现 SyncAssetsExecutor，由异步任务队列（定时任务/手动触发）调度执行，
+//
+//	通过 wire 注入到运行时。负责按账号、地域遍历云资产并写入 CMDB c_instance 表，
+//	包含完整的"获取云端列表 → 对比本地 → 删除过期 → Upsert 新增/更新"清理逻辑。
+//
+// 与其他同步文件的关系：
+//   - internal/cam/service/asset_sync.go          ← API 直接调用的同步服务（AssetSyncService）。
+//   - internal/task/executor/sync_assets.go       ← 旧版/备用执行器，不参与运行时。
+//   - 本文件（sync_assets.go）                     ← 生产环境实际运行的任务执行器。
+//
+// 注意：两条同步路径写入同一个 c_instance 集合，model_uid 必须保持一致，
+//
+//	统一使用 fmt.Sprintf("%s_xxx", account.Provider) 格式（如 aliyun_ecs）。
 package executor
 
 import (
@@ -19,6 +31,9 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/gotomicro/ego/core/elog"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // 定义任务类型常量
@@ -33,6 +48,8 @@ type SyncAssetsExecutor struct {
 	adapterFactory *asset.AdapterFactory
 	cloudxFactory  *cloudx.AdapterFactory
 	taskRepo       taskx.TaskRepository
+	dnsDomainColl  *mongo.Collection // DNS 域名集合 (c_dns_domain)
+	dnsRecordColl  *mongo.Collection // DNS 记录集合 (c_dns_record)
 	logger         *elog.Component
 }
 
@@ -59,6 +76,12 @@ func (e *SyncAssetsExecutor) GetType() taskx.TaskType {
 	return TaskTypeSyncAssets
 }
 
+// SetDNSCollections 设置 DNS 专用集合（可选注入）
+func (e *SyncAssetsExecutor) SetDNSCollections(domainColl, recordColl *mongo.Collection) {
+	e.dnsDomainColl = domainColl
+	e.dnsRecordColl = recordColl
+}
+
 // Execute 执行任务
 func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 	e.logger.Info("开始执行同步资产任务", elog.String("task_id", t.ID))
@@ -82,7 +105,7 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 		params.AssetTypes = []string{
 			"ecs", "disk", "snapshot", "security_group", "image",
 			"rds", "redis", "mongodb",
-			"vpc", "eip", "lb", "vswitch", "cdn", "waf",
+			"vpc", "eip", "lb", "vswitch", "cdn", "waf", "dns",
 			"nas", "oss",
 			"kafka", "elasticsearch",
 		}
@@ -183,6 +206,27 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 			accountSynced += synced
 		}
 
+		// DNS 是全局服务，在账号级别同步（不按地域）
+		expandedTypes := expandAssetTypes(params.AssetTypes)
+		for _, at := range expandedTypes {
+			if at == "dns" {
+				cloudxAdapter, cloudxErr := e.cloudxFactory.CreateAdapter(&account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败(DNS)", elog.FieldErr(cloudxErr))
+					break
+				}
+				synced, err := e.syncDNS(ctx, cloudxAdapter, &account)
+				if err != nil {
+					e.logger.Error("同步DNS失败",
+						elog.String("account", account.Name),
+						elog.FieldErr(err))
+				} else {
+					accountSynced += synced
+				}
+				break
+			}
+		}
+
 		// 更新该账号的最后同步时间
 		if err := e.accountRepo.UpdateSyncTime(ctx, account.ID, time.Now(), int64(accountSynced)); err != nil {
 			e.logger.Error("更新同步时间失败",
@@ -236,8 +280,8 @@ func expandAssetTypes(assetTypes []string) []string {
 				}
 			}
 		case "network", "net":
-			// network 展开为 vpc, vswitch, eip, lb, cdn, waf
-			for _, netType := range []string{"vpc", "vswitch", "eip", "lb", "cdn", "waf"} {
+			// network 展开为 vpc, vswitch, eip, lb, cdn, waf, dns
+			for _, netType := range []string{"vpc", "vswitch", "eip", "lb", "cdn", "waf", "dns"} {
 				if !seen[netType] {
 					expanded = append(expanded, netType)
 					seen[netType] = true
@@ -628,6 +672,10 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 				continue
 			}
 			totalSynced += synced
+		case "dns":
+			// DNS 是全局服务，在 syncRegionAssets 中跳过
+			// DNS 同步在账号级别处理（见 Execute 方法中的 syncDNS 调用）
+			continue
 		default:
 			e.logger.Warn("不支持的资源类型", elog.String("asset_type", assetType))
 		}
@@ -1546,6 +1594,7 @@ func (e *SyncAssetsExecutor) convertLBToInstance(inst types.LBInstance, account 
 		"description":           inst.Description,
 		"load_balancer_type":    inst.LoadBalancerType,
 		"address":               inst.Address,
+		"vip":                   inst.Address, // VIP 地址，用于拓扑链路匹配
 		"address_type":          inst.AddressType,
 		"address_ip_version":    inst.AddressIPVersion,
 		"vpc_id":                inst.VPCID,
@@ -1558,6 +1607,8 @@ func (e *SyncAssetsExecutor) convertLBToInstance(inst types.LBInstance, account 
 		"bandwidth_package_id":  inst.BandwidthPackageID,
 		"listener_count":        inst.ListenerCount,
 		"backend_server_count":  inst.BackendServerCount,
+		"listeners":             inst.Listeners,
+		"backend_servers":       inst.BackendServers,
 		"charge_type":           inst.ChargeType,
 		"internet_charge_type":  inst.InternetChargeType,
 		"creation_time":         inst.CreationTime,
@@ -3094,6 +3145,8 @@ func (e *SyncAssetsExecutor) convertWAFToInstance(inst types.WAFInstance, accoun
 		"domain_count":    inst.DomainCount,
 		"domain_limit":    inst.DomainLimit,
 		"protected_hosts": inst.ProtectedHosts,
+		"source_ips":      inst.SourceIPs,
+		"cname":           inst.Cname,
 
 		"rule_count":       inst.RuleCount,
 		"acl_rule_count":   inst.ACLRuleCount,
@@ -3128,4 +3181,142 @@ func (e *SyncAssetsExecutor) convertWAFToInstance(inst types.WAFInstance, accoun
 		AccountID:  account.ID,
 		Attributes: attributes,
 	}
+}
+
+// syncDNS 同步 DNS 域名和解析记录到专用集合
+func (e *SyncAssetsExecutor) syncDNS(
+	ctx context.Context,
+	adapter cloudx.CloudAdapter,
+	account *domain.CloudAccount,
+) (int, error) {
+	if e.dnsDomainColl == nil || e.dnsRecordColl == nil {
+		e.logger.Warn("DNS集合未设置，跳过DNS同步")
+		return 0, nil
+	}
+
+	dnsAdapter := adapter.DNS()
+	if dnsAdapter == nil {
+		e.logger.Warn("DNS适配器不可用", elog.String("provider", string(account.Provider)))
+		return 0, nil
+	}
+
+	// 1. 同步域名
+	domains, err := dnsAdapter.ListDomains(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("获取DNS域名列表失败: %w", err)
+	}
+
+	e.logger.Info("获取DNS域名列表成功",
+		elog.String("provider", string(account.Provider)),
+		elog.Int("count", len(domains)))
+
+	now := time.Now().Unix()
+	synced := 0
+	var domainNames []string
+
+	for _, d := range domains {
+		domainNames = append(domainNames, d.DomainName)
+
+		filter := bson.M{
+			"tenant_id":   account.TenantID,
+			"domain_name": d.DomainName,
+			"account_id":  account.ID,
+		}
+		update := bson.M{
+			"$set": bson.M{
+				"domain_id":    d.DomainID,
+				"domain_name":  d.DomainName,
+				"provider":     string(account.Provider),
+				"account_id":   account.ID,
+				"account_name": account.Name,
+				"tenant_id":    account.TenantID,
+				"record_count": d.RecordCount,
+				"status":       d.Status,
+				"utime":        now,
+			},
+			"$setOnInsert": bson.M{"ctime": now},
+		}
+		opts := options.Update().SetUpsert(true)
+		if _, err := e.dnsDomainColl.UpdateOne(ctx, filter, update, opts); err != nil {
+			e.logger.Error("保存DNS域名失败", elog.String("domain", d.DomainName), elog.FieldErr(err))
+			continue
+		}
+		synced++
+
+		// 2. 同步该域名下的解析记录
+		records, err := dnsAdapter.ListRecords(ctx, d.DomainName)
+		if err != nil {
+			e.logger.Error("获取DNS记录失败", elog.String("domain", d.DomainName), elog.FieldErr(err))
+			continue
+		}
+
+		var recordIDs []string
+		for _, r := range records {
+			recordIDs = append(recordIDs, r.RecordID)
+
+			rFilter := bson.M{
+				"tenant_id":  account.TenantID,
+				"record_id":  r.RecordID,
+				"account_id": account.ID,
+			}
+			rUpdate := bson.M{
+				"$set": bson.M{
+					"record_id":  r.RecordID,
+					"domain":     d.DomainName,
+					"rr":         r.RR,
+					"type":       r.Type,
+					"value":      r.Value,
+					"ttl":        r.TTL,
+					"priority":   r.Priority,
+					"line":       r.Line,
+					"status":     r.Status,
+					"provider":   string(account.Provider),
+					"account_id": account.ID,
+					"tenant_id":  account.TenantID,
+					"utime":      now,
+				},
+				"$setOnInsert": bson.M{"ctime": now},
+			}
+			rOpts := options.Update().SetUpsert(true)
+			if _, err := e.dnsRecordColl.UpdateOne(ctx, rFilter, rUpdate, rOpts); err != nil {
+				e.logger.Error("保存DNS记录失败",
+					elog.String("domain", d.DomainName),
+					elog.String("record_id", r.RecordID),
+					elog.FieldErr(err))
+			}
+			synced++
+		}
+
+		// 清理已删除的记录
+		if len(recordIDs) > 0 {
+			delFilter := bson.M{
+				"tenant_id":  account.TenantID,
+				"account_id": account.ID,
+				"domain":     d.DomainName,
+				"record_id":  bson.M{"$nin": recordIDs},
+			}
+			if _, err := e.dnsRecordColl.DeleteMany(ctx, delFilter); err != nil {
+				e.logger.Error("清理过期DNS记录失败", elog.String("domain", d.DomainName), elog.FieldErr(err))
+			}
+		}
+	}
+
+	// 清理已删除的域名
+	if len(domainNames) > 0 {
+		delFilter := bson.M{
+			"tenant_id":   account.TenantID,
+			"account_id":  account.ID,
+			"domain_name": bson.M{"$nin": domainNames},
+		}
+		if _, err := e.dnsDomainColl.DeleteMany(ctx, delFilter); err != nil {
+			e.logger.Error("清理过期DNS域名失败", elog.FieldErr(err))
+		}
+	}
+
+	e.logger.Info("同步DNS完成",
+		elog.String("account", account.Name),
+		elog.String("provider", string(account.Provider)),
+		elog.Int("synced", synced))
+
+	return synced, nil
 }

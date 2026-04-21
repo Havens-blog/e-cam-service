@@ -188,11 +188,24 @@ func (a *CDNAdapter) convertToInstance(d *tencentcdn.DetailDomain) types.CDNInst
 	}
 
 	origins := make([]types.CDNOrigin, 0)
-	if d.Origin != nil && d.Origin.Origins != nil {
-		for _, o := range d.Origin.Origins {
-			if o != nil {
-				origins = append(origins, types.CDNOrigin{Address: *o})
+	originType := ""
+	originHost := ""
+	if d.Origin != nil {
+		if d.Origin.Origins != nil {
+			for _, o := range d.Origin.Origins {
+				if o != nil {
+					origins = append(origins, types.CDNOrigin{Address: *o, Type: "domain"})
+				}
 			}
+		}
+		if d.Origin.OriginType != nil {
+			originType = *d.Origin.OriginType
+			for i := range origins {
+				origins[i].Type = originType
+			}
+		}
+		if d.Origin.ServerName != nil {
+			originHost = *d.Origin.ServerName
 		}
 	}
 
@@ -206,13 +219,21 @@ func (a *CDNAdapter) convertToInstance(d *tencentcdn.DetailDomain) types.CDNInst
 		projectID = fmt.Sprintf("%d", *d.ProjectId)
 	}
 
+	domainID := ""
+	if d.ResourceId != nil {
+		domainID = *d.ResourceId
+	}
+
 	return types.CDNInstance{
+		DomainID:     domainID,
 		DomainName:   domainName,
 		Cname:        cname,
 		Status:       status,
 		BusinessType: serviceType,
 		ServiceArea:  area,
 		Origins:      origins,
+		OriginType:   originType,
+		OriginHost:   originHost,
 		HTTPSEnabled: httpsEnabled,
 		CreationTime: createTime,
 		ModifiedTime: updateTime,
@@ -257,12 +278,47 @@ func (a *CDNAdapter) convertBriefToInstance(d *tencentcdn.BriefDomain) types.CDN
 		projectID = fmt.Sprintf("%d", *d.ProjectId)
 	}
 
+	// 提取源站信息
+	origins := make([]types.CDNOrigin, 0)
+	originType := ""
+	originHost := ""
+	if d.Origin != nil {
+		if d.Origin.Origins != nil {
+			for _, o := range d.Origin.Origins {
+				if o != nil {
+					origins = append(origins, types.CDNOrigin{Address: *o, Type: "domain"})
+				}
+			}
+		}
+		if d.Origin.OriginType != nil {
+			originType = *d.Origin.OriginType
+			// 更新源站类型
+			for i := range origins {
+				origins[i].Type = originType
+			}
+		}
+		if d.Origin.ServerName != nil {
+			originHost = *d.Origin.ServerName
+		}
+	}
+
+	httpsEnabled := false
+	domainID := ""
+	if d.ResourceId != nil {
+		domainID = *d.ResourceId
+	}
+
 	return types.CDNInstance{
+		DomainID:     domainID,
 		DomainName:   domainName,
 		Cname:        cname,
 		Status:       status,
 		BusinessType: serviceType,
 		ServiceArea:  area,
+		Origins:      origins,
+		OriginType:   originType,
+		OriginHost:   originHost,
+		HTTPSEnabled: httpsEnabled,
 		CreationTime: createTime,
 		ModifiedTime: updateTime,
 		ProjectID:    projectID,

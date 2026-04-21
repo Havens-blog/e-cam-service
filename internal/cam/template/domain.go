@@ -148,15 +148,15 @@ type DirectProvisionParams struct {
 type CreateTemplateReq struct {
 	Name               string            `json:"name" binding:"required"`
 	Description        string            `json:"description"`
-	Provider           string            `json:"provider" binding:"required"`
-	CloudAccountID     int64             `json:"cloud_account_id" binding:"required"`
-	Region             string            `json:"region" binding:"required"`
-	Zone               string            `json:"zone" binding:"required"`
-	InstanceType       string            `json:"instance_type" binding:"required"`
-	ImageID            string            `json:"image_id" binding:"required"`
-	VPCID              string            `json:"vpc_id" binding:"required"`
-	SubnetID           string            `json:"subnet_id" binding:"required"`
-	SecurityGroupIDs   []string          `json:"security_group_ids" binding:"required,min=1"`
+	Provider           string            `json:"provider"`
+	CloudAccountID     int64             `json:"cloud_account_id"`
+	Region             string            `json:"region"`
+	Zone               string            `json:"zone"`
+	InstanceType       string            `json:"instance_type"`
+	ImageID            string            `json:"image_id"`
+	VPCID              string            `json:"vpc_id"`
+	SubnetID           string            `json:"subnet_id"`
+	SecurityGroupIDs   []string          `json:"security_group_ids"`
 	InstanceNamePrefix string            `json:"instance_name_prefix"`
 	HostNamePrefix     string            `json:"host_name_prefix"`
 	SystemDiskType     string            `json:"system_disk_type"`
@@ -204,12 +204,12 @@ type DirectProvisionReq struct {
 	Provider           string            `json:"provider" binding:"required"`
 	CloudAccountID     int64             `json:"cloud_account_id" binding:"required"`
 	Region             string            `json:"region" binding:"required"`
-	Zone               string            `json:"zone" binding:"required"`
+	Zone               string            `json:"zone"`
 	InstanceType       string            `json:"instance_type" binding:"required"`
-	ImageID            string            `json:"image_id" binding:"required"`
-	VPCID              string            `json:"vpc_id" binding:"required"`
-	SubnetID           string            `json:"subnet_id" binding:"required"`
-	SecurityGroupIDs   []string          `json:"security_group_ids" binding:"required,min=1"`
+	ImageID            string            `json:"image_id"`
+	VPCID              string            `json:"vpc_id"`
+	SubnetID           string            `json:"subnet_id"`
+	SecurityGroupIDs   []string          `json:"security_group_ids"`
 	Count              int               `json:"count" binding:"required,min=1,max=20"`
 	InstanceNamePrefix string            `json:"instance_name_prefix"`
 	HostNamePrefix     string            `json:"host_name_prefix"`

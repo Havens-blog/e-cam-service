@@ -245,7 +245,12 @@ func (s *CostService) GetCostDistribution(ctx context.Context, filter CostFilter
 		filter.StartDate = start.Format("2006-01-02")
 	}
 
-	results, err := s.billDAO.AggregateByField(ctx, filter.TenantID, dimension, filter.StartDate, filter.EndDate)
+	results, err := s.billDAO.AggregateByField(ctx, filter.TenantID, dimension, filter.StartDate, filter.EndDate, repository.UnifiedBillFilter{
+		Provider:    filter.Provider,
+		AccountID:   filter.AccountID,
+		ServiceType: filter.ServiceType,
+		Region:      filter.Region,
+	})
 	if err != nil {
 		s.logger.Error("failed to aggregate by field",
 			elog.String("dimension", dimension),

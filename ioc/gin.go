@@ -11,6 +11,8 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cmdb"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/Havens-blog/e-cam-service/internal/topology"
+	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -20,7 +22,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *middleware.CheckPolicyMiddleware, auditMdl *middleware.AuditMiddleware, auditModule *audit.Module, endpointClient endpointv1.EndpointServiceClient, endpointHdl *endpoint.Handler, camModule *cam.Module, cmdbModule *cmdb.Module, alertModule *alert.Module) *gin.Engine {
+func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *middleware.CheckPolicyMiddleware, auditMdl *middleware.AuditMiddleware, auditModule *audit.Module, endpointClient endpointv1.EndpointServiceClient, endpointHdl *endpoint.Handler, camModule *cam.Module, cmdbModule *cmdb.Module, alertModule *alert.Module, db *mongox.Mongo) *gin.Engine {
 	logger := elog.DefaultLogger
 	logger.Info("开始初始化Web服务器")
 	session.SetDefaultProvider(sp)
@@ -150,6 +152,20 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 		logger.Info("主机模板路由注册完成")
 	}
 
+	// 注册标签管理路由
+	if camModule.TagHdl != nil {
+		logger.Info("注册标签管理路由")
+		camModule.TagHdl.RegisterRoutes(camGroup)
+		logger.Info("标签管理路由注册完成")
+	}
+
+	// 注册 DNS 管理路由
+	if camModule.DNSHdl != nil {
+		logger.Info("注册 DNS 管理路由")
+		camModule.DNSHdl.RegisterRoutes(camGroup)
+		logger.Info("DNS 管理路由注册完成")
+	}
+
 	// 注册CMDB路由（挂在 /api/v1/cam 下，前端请求 /api/v1/cam/cmdb/...）
 	logger.Info("注册CMDB路由")
 	cmdbModule.RegisterRoutes(camGroup)
@@ -164,6 +180,12 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 	} else {
 		logger.Warn("告警模块未初始化，跳过告警路由注册")
 	}
+
+	// 注册拓扑模块路由
+	topoModule := topology.NewModule(db)
+	logger.Info("注册拓扑模块路由")
+	topoModule.RegisterRoutes(server)
+	logger.Info("拓扑模块路由注册完成")
 
 	// 注册审计模块路由
 	if auditModule != nil {

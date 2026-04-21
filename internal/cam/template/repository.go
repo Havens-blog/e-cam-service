@@ -267,7 +267,10 @@ func (d *provisionTaskDAO) UpdateSyncStatus(ctx context.Context, taskID, syncSta
 
 func (d *provisionTaskDAO) GetByID(ctx context.Context, tenantID, taskID string) (ProvisionTask, error) {
 	var task ProvisionTask
-	filter := bson.M{"_id": taskID, "tenant_id": tenantID}
+	filter := bson.M{"_id": taskID}
+	if tenantID != "" {
+		filter["tenant_id"] = tenantID
+	}
 	err := d.db.Collection(ProvisionTaskCollection).FindOne(ctx, filter).Decode(&task)
 	return task, err
 }

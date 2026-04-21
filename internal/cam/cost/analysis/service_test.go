@@ -27,7 +27,7 @@ func (m *mockBillDAO) SumAmount(ctx context.Context, filter repository.UnifiedBi
 	return 0, nil
 }
 
-func (m *mockBillDAO) AggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string) ([]repository.AggregateResult, error) {
+func (m *mockBillDAO) AggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
 	if m.aggregateByFieldFn != nil {
 		return m.aggregateByFieldFn(ctx, tenantID, field, startDate, endDate)
 	}

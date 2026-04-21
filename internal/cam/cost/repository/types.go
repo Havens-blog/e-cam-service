@@ -31,7 +31,7 @@ type BillDAO interface {
 	// CountUnifiedBills 统计统一账单数量
 	CountUnifiedBills(ctx context.Context, filter UnifiedBillFilter) (int64, error)
 	// AggregateByField 按指定字段聚合统一账单金额
-	AggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string) ([]AggregateResult, error)
+	AggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string, filter UnifiedBillFilter) ([]AggregateResult, error)
 	// AggregateDailyAmount 按日聚合统一账单金额
 	AggregateDailyAmount(ctx context.Context, tenantID string, startDate, endDate string, filter UnifiedBillFilter) ([]DailyAmount, error)
 	// SumAmount 汇总指定筛选条件下的总金额

@@ -5,11 +5,13 @@ import (
 
 	costhandler "github.com/Havens-blog/e-cam-service/internal/cam/cost/handler"
 	"github.com/Havens-blog/e-cam-service/internal/cam/dictionary"
+	"github.com/Havens-blog/e-cam-service/internal/cam/dns"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam"
 	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree"
+	"github.com/Havens-blog/e-cam-service/internal/cam/tag"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task"
 	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
 	taskweb "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
@@ -49,6 +51,12 @@ type Module struct {
 
 	// 主机模板模块处理器
 	TemplateHdl *template.TemplateHandler
+
+	// 标签管理模块处理器
+	TagHdl *tag.TagHandler
+
+	// DNS 管理模块处理器
+	DNSHdl *dns.DNSHandler
 
 	// 成本管理模块服务（供定时任务使用）
 	CostCollectorSvc CostCollectorService
@@ -123,6 +131,22 @@ func (m *Module) RegisterRoutes(r *gin.Engine) {
 		templateGroup.Use(middleware.TenantMiddleware(m.Logger))
 		templateGroup.Use(middleware.RequireTenant(m.Logger))
 		m.TemplateHdl.RegisterRoutes(templateGroup)
+	}
+
+	// 注册标签管理路由 (使用租户中间件)
+	if m.TagHdl != nil {
+		tagGroup := camGroup.Group("")
+		tagGroup.Use(middleware.TenantMiddleware(m.Logger))
+		tagGroup.Use(middleware.RequireTenant(m.Logger))
+		m.TagHdl.RegisterRoutes(tagGroup)
+	}
+
+	// 注册 DNS 管理路由 (使用租户中间件)
+	if m.DNSHdl != nil {
+		dnsGroup := camGroup.Group("")
+		dnsGroup.Use(middleware.TenantMiddleware(m.Logger))
+		dnsGroup.Use(middleware.RequireTenant(m.Logger))
+		m.DNSHdl.RegisterRoutes(dnsGroup)
 	}
 }
 

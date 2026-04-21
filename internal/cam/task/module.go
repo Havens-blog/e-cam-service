@@ -13,12 +13,14 @@ import (
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // Module 任务模块
 type Module struct {
-	Queue    *taskx.Queue
-	TaskRepo taskx.TaskRepository
+	Queue              *taskx.Queue
+	TaskRepo           taskx.TaskRepository
+	syncAssetsExecutor *executor.SyncAssetsExecutor
 }
 
 // InitModule 初始化任务模块
@@ -52,9 +54,17 @@ func InitModule(
 	taskQueue.Start()
 
 	return &Module{
-		Queue:    taskQueue,
-		TaskRepo: taskRepo,
+		Queue:              taskQueue,
+		TaskRepo:           taskRepo,
+		syncAssetsExecutor: syncAssetsExecutor,
 	}, nil
+}
+
+// SetDNSCollections 设置 DNS 专用集合（在 DNS 模块初始化后调用）
+func (m *Module) SetDNSCollections(domainColl, recordColl *mongo.Collection) {
+	if m.syncAssetsExecutor != nil {
+		m.syncAssetsExecutor.SetDNSCollections(domainColl, recordColl)
+	}
 }
 
 // RegisterBillingExecutor 注册账单采集执行器（在成本模块初始化后调用）

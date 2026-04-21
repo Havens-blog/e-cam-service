@@ -1,8 +1,14 @@
-// Package executor 任务执行器（旧版/备用，非运行时使用）
+// Package executor 任务执行器（旧版/备用，不参与运行时）
 //
-// 重要：这不是生产环境实际运行的执行器！
-// 运行时使用的是 internal/cam/task/executor/sync_assets.go（通过 wire 注入）。
-// 如需修改同步逻辑，请前往 internal/cam/task/executor/ 目录。
+// 文件：internal/task/executor/sync_assets.go
+//
+// 作用：旧版同步资产执行器，已被 internal/cam/task/executor/sync_assets.go 替代。
+//
+//	本文件不会被 wire 注入，不参与生产环境运行。保留仅为兼容参考。
+//
+// 如需修改同步逻辑，请前往：
+//   - internal/cam/task/executor/sync_assets.go  ← 异步任务执行器（生产环境主入口）
+//   - internal/cam/service/asset_sync.go          ← API 直接调用的同步服务
 package executor
 
 import (
@@ -367,6 +373,7 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 				attrs := map[string]any{
 					"status": inst.Status, "region": inst.Region, "provider": inst.Provider,
 					"load_balancer_type": inst.LoadBalancerType, "address": inst.Address,
+					"vip":          inst.Address, // VIP 地址，用于拓扑链路匹配
 					"address_type": inst.AddressType, "vpc_id": inst.VPCID,
 					"bandwidth": inst.Bandwidth, "zone": inst.Zone,
 					"load_balancer_spec": inst.LoadBalancerSpec,

@@ -117,7 +117,7 @@ func (s *AnomalyService) detectForDimension(
 	}
 
 	// 获取当日按维度聚合的成本
-	currentCosts, err := s.billDAO.AggregateByField(ctx, tenantID, dimension, date, date)
+	currentCosts, err := s.billDAO.AggregateByField(ctx, tenantID, dimension, date, date, repository.UnifiedBillFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("aggregate current costs: %w", err)
 	}
@@ -172,7 +172,7 @@ func (s *AnomalyService) computeBaseline(
 	ctx context.Context,
 	tenantID, dimension, startDate, endDate string,
 ) (map[string]float64, error) {
-	results, err := s.billDAO.AggregateByField(ctx, tenantID, dimension, startDate, endDate)
+	results, err := s.billDAO.AggregateByField(ctx, tenantID, dimension, startDate, endDate, repository.UnifiedBillFilter{})
 	if err != nil {
 		return nil, err
 	}

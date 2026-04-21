@@ -40,7 +40,9 @@ type Adapter struct {
 	elasticsearch *CSSAdapter
 	iam           cloudx.IAMAdapter
 	vswitch       *VSwitchAdapter
+	dns           *DNSAdapter
 	tag           *TagAdapterImpl
+	ecsCreate     *ECSCreateAdapterImpl
 }
 
 // NewAdapter 创建华为云适配器
@@ -128,6 +130,12 @@ func NewAdapter(account *domain.CloudAccount) (*Adapter, error) {
 	// 创建标签适配器
 	adapter.tag = NewTagAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
 
+	// 创建DNS适配器
+	adapter.dns = NewDNSAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
+	// 创建ECS创建适配器
+	adapter.ecsCreate = NewECSCreateAdapter(account.AccessKeyID, account.AccessKeySecret, defaultRegion, logger)
+
 	return adapter, nil
 }
 
@@ -207,6 +215,11 @@ func (a *Adapter) WAF() cloudx.WAFAdapter {
 	return a.waf
 }
 
+// DNS 获取DNS适配器
+func (a *Adapter) DNS() cloudx.DNSAdapter {
+	return a.dns
+}
+
 // NAS 获取NAS适配器
 func (a *Adapter) NAS() cloudx.NASAdapter {
 	return a.nas
@@ -237,9 +250,9 @@ func (a *Adapter) VSwitch() cloudx.VSwitchAdapter {
 	return a.vswitch
 }
 
-// ECSCreate 获取 ECS 创建适配器（桩实现，待后续任务完善）
+// ECSCreate 获取 ECS 创建适配器
 func (a *Adapter) ECSCreate() cloudx.ECSCreateAdapter {
-	return nil
+	return a.ecsCreate
 }
 
 // ResourceQuery 获取资源查询适配器（真实实现：实例规格通过 API 查询）

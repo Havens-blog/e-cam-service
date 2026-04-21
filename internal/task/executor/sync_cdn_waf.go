@@ -171,6 +171,8 @@ func (e *SyncAssetsExecutor) convertWAFToInstance(inst types.WAFInstance, accoun
 		"edition":      inst.Edition,
 		"domain_count": inst.DomainCount, "domain_limit": inst.DomainLimit,
 		"protected_hosts": inst.ProtectedHosts,
+		"source_ips":      inst.SourceIPs, // 回源 IP/域名列表，用于拓扑链路级联匹配
+		"cname":           inst.Cname,     // WAF 分配的 CNAME
 		"rule_count":      inst.RuleCount, "acl_rule_count": inst.ACLRuleCount,
 		"cc_rule_count": inst.CCRuleCount, "rate_limit_count": inst.RateLimitCount,
 		"waf_enabled": inst.WAFEnabled, "cc_enabled": inst.CCEnabled, "anti_bot_enabled": inst.AntiBotEnabled,

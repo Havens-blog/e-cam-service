@@ -37,12 +37,17 @@ func (a *GenericResourceQueryAdapter) ListAvailableInstanceTypes(ctx context.Con
 }
 
 // ListAvailableImages 查询可用镜像（复用 ImageAdapter）
+// 查询公共镜像（系统镜像），用于创建实例时的镜像选择
 func (a *GenericResourceQueryAdapter) ListAvailableImages(ctx context.Context, region string) ([]types.ImageInfo, error) {
 	if a.imageAdapter == nil {
 		return []types.ImageInfo{}, nil
 	}
 
-	images, err := a.imageAdapter.ListInstances(ctx, region)
+	// 使用 filter 查询公共镜像（系统镜像），而非默认的私有镜像
+	images, err := a.imageAdapter.ListInstancesWithFilter(ctx, region, &types.ImageFilter{
+		ImageOwnerAlias: "system",
+		Status:          "Available",
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -50,10 +55,11 @@ func (a *GenericResourceQueryAdapter) ListAvailableImages(ctx context.Context, r
 	result := make([]types.ImageInfo, 0, len(images))
 	for _, img := range images {
 		result = append(result, types.ImageInfo{
-			ImageID:  img.ImageID,
-			Name:     img.ImageName,
-			OSType:   img.OSType,
-			Platform: img.Platform,
+			ImageID:      img.ImageID,
+			Name:         img.ImageName,
+			OSType:       img.OSType,
+			Platform:     img.Platform,
+			Architecture: img.Architecture,
 		})
 	}
 	return result, nil

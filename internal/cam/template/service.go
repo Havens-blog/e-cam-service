@@ -63,6 +63,11 @@ func NewTemplateService(tmplDAO TemplateDAO, taskDAO ProvisionTaskDAO, submitter
 // ==================== 模板 CRUD ====================
 
 func (s *templateService) CreateTemplate(ctx context.Context, tenantID string, req CreateTemplateReq) (*VMTemplate, error) {
+	// 参数校验：只有 name 是必填的，其他字段允许为空（模板可以部分填写后续补充）
+	if req.Name == "" {
+		return nil, fmt.Errorf("%w: name is required", ErrValidationFailed)
+	}
+
 	// 校验名称唯一性
 	_, err := s.tmplDAO.GetByName(ctx, tenantID, req.Name)
 	if err == nil {

@@ -11,7 +11,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/aliyun/alibaba-cloud-sdk-go v1.63.107
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
-	github.com/aws/aws-sdk-go-v2 v1.41.3
+	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.7
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.7
 	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.60.2
@@ -25,6 +25,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/kafka v1.46.7
 	github.com/aws/aws-sdk-go-v2/service/opensearch v1.57.1
 	github.com/aws/aws-sdk-go-v2/service/rds v1.114.0
+	github.com/aws/aws-sdk-go-v2/service/route53 v1.62.5
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.96.0
 	github.com/aws/aws-sdk-go-v2/service/wafv2 v1.71.1
 	github.com/aws/smithy-go v1.24.2
@@ -39,7 +40,7 @@ require (
 	github.com/google/wire v0.7.0
 	github.com/gotomicro/ego v1.2.5
 	github.com/huaweicloud/huaweicloud-sdk-go-obs v3.25.9+incompatible
-	github.com/huaweicloud/huaweicloud-sdk-go-v3 v0.1.184
+	github.com/huaweicloud/huaweicloud-sdk-go-v3 v0.1.190
 	github.com/purpleclay/gitz v0.11.2
 	github.com/redis/go-redis/v9 v9.12.1
 	github.com/spf13/cobra v1.10.1
@@ -56,11 +57,13 @@ require (
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cfs v1.3.38
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ckafka v1.3.16
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/clb v1.1.55
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.52
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.82
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.3.30
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/dnspod v1.3.64
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/es v1.3.44
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/mongodb v1.3.40
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/redis v1.3.36
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/teo v1.3.82
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc v1.3.40
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/waf v1.3.52
 	github.com/tencentyun/cos-go-sdk-v5 v0.7.72
@@ -87,8 +90,8 @@ require (
 	github.com/aliyun/credentials-go v1.4.5 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.4 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.17 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.19 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.19 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.21 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.4 // indirect

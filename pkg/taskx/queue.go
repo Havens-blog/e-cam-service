@@ -107,18 +107,19 @@ func (q *Queue) Submit(task *Task) error {
 		task.CreatedAt = time.Now()
 	}
 
-	// 保存任务到数据库
-	if err := q.repo.Create(context.Background(), *task); err != nil {
-		return fmt.Errorf("保存任务失败: %w", err)
-	}
-
-	q.logger.Info("提交任务",
-		elog.String("task_id", task.ID),
-		elog.String("task_type", string(task.Type)))
-
-	// 将任务放入队列
+	// 先尝试入队列，避免队列满时仍写入DB产生垃圾数据
 	select {
 	case q.taskChan <- task:
+		// 入队成功，再持久化到数据库
+		if err := q.repo.Create(context.Background(), *task); err != nil {
+			q.logger.Error("保存任务到数据库失败（任务已入队列）",
+				elog.String("task_id", task.ID),
+				elog.FieldErr(err))
+		}
+
+		q.logger.Info("提交任务",
+			elog.String("task_id", task.ID),
+			elog.String("task_type", string(task.Type)))
 		return nil
 	case <-q.ctx.Done():
 		return fmt.Errorf("任务队列已关闭")

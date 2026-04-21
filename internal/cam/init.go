@@ -2,6 +2,7 @@ package cam
 
 import (
 	"context"
+	"fmt"
 
 	// 使用新的独立 IAM 模块
 	"github.com/Havens-blog/e-cam-service/internal/alert"
@@ -15,16 +16,19 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/optimizer"
 	costdao "github.com/Havens-blog/e-cam-service/internal/cam/cost/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/dictionary"
+	"github.com/Havens-blog/e-cam-service/internal/cam/dns"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree"
+	"github.com/Havens-blog/e-cam-service/internal/cam/tag"
 	"github.com/Havens-blog/e-cam-service/internal/cam/template"
 	cmdbrepository "github.com/Havens-blog/e-cam-service/internal/cmdb/repository"
 	cmdbdao "github.com/Havens-blog/e-cam-service/internal/cmdb/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
 	shareddomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/redis/go-redis/v9"
 
@@ -92,6 +96,38 @@ func InitModuleWithIAM(db *mongox.Mongo, redisClient redis.Cmdable, alertModule 
 	dictSvc := dictionary.NewDictService(dictDAO)
 	module.DictHdl = dictionary.NewDictHandler(dictSvc)
 	logger.Info("数据字典模块初始化成功")
+
+	// 初始化标签管理模块
+	logger.Info("开始初始化标签管理模块")
+	if err := tag.InitIndexes(db); err != nil {
+		logger.Warn("初始化标签管理索引失败", elog.FieldErr(err))
+	}
+	tagDAO := tag.NewTagDAO(db)
+	instanceColl := db.Collection(tag.InstanceCollection)
+	adapterFactory := cloudx.NewAdapterFactory(logger)
+	tagSvc := tag.NewTagService(tagDAO, instanceColl, module.AccountSvc, adapterFactory)
+	module.TagHdl = tag.NewTagHandler(tagSvc)
+	logger.Info("标签管理模块初始化成功")
+
+	// 初始化 DNS 管理模块
+	logger.Info("开始初始化 DNS 管理模块")
+	if err := dns.InitIndexes(db); err != nil {
+		logger.Warn("初始化 DNS 索引失败", elog.FieldErr(err))
+	}
+	dnsDomainColl := db.Collection(dns.DomainCollection)
+	dnsRecordColl := db.Collection(dns.RecordCollection)
+	domainDAO := dns.NewDnsDomainDAO(dnsDomainColl)
+	recordDAO := dns.NewDnsRecordDAO(dnsRecordColl)
+	dnsSvc := dns.NewDNSService(module.AccountSvc, adapterFactory, domainDAO, recordDAO)
+	module.DNSHdl = dns.NewDNSHandler(dnsSvc)
+	// 注入 DNS 集合到任务执行器
+	if module.TaskModule != nil {
+		module.TaskModule.SetDNSCollections(dnsDomainColl, dnsRecordColl)
+		logger.Info("DNS 集合已注入到任务执行器")
+	} else {
+		logger.Warn("TaskModule 为 nil，DNS 集合未注入到任务执行器")
+	}
+	logger.Info("DNS 管理模块初始化成功")
 
 	// 初始化字典种子数据（为所有已有租户）
 	seedCreated, seedSkipped, seedErr := dictionary.SeedDictDataForAllTenants(context.Background(), dictSvc, db)
@@ -206,14 +242,17 @@ func initTemplateModule(module *Module, db *mongox.Mongo, logger *elog.Component
 	// 初始化校验器
 	validator := template.NewTemplateValidator(accountProvider, adapterFactory)
 
-	// 初始化服务
-	svc := template.NewTemplateService(tmplDAO, taskDAO, nil)
+	// 初始化执行器
+	executor := template.NewCreateECSExecutor(tmplDAO, taskDAO, validator, accountProvider, adapterFactory, nil, logger)
+
+	// 创建任务提交器（在后台 goroutine 中执行任务）
+	submitter := &asyncTaskSubmitter{executor: executor, logger: logger}
+
+	// 初始化服务（传入真正的 submitter）
+	svc := template.NewTemplateService(tmplDAO, taskDAO, submitter)
 
 	// 初始化 HTTP 处理器
 	module.TemplateHdl = template.NewTemplateHandler(svc, accountProvider, adapterFactory)
-
-	// 初始化执行器（注册到任务队列）
-	_ = template.NewCreateECSExecutor(tmplDAO, taskDAO, validator, accountProvider, adapterFactory, nil, logger)
 
 	logger.Info("主机模板模块初始化完成")
 	return nil
@@ -237,4 +276,46 @@ func (f *cloudxAdapterFactory) GetAdapter(account *shareddomain.CloudAccount) (c
 		return nil, err
 	}
 	return creator(account)
+}
+
+// asyncTaskSubmitter 异步任务提交器，在后台 goroutine 中执行创建任务
+type asyncTaskSubmitter struct {
+	executor *template.CreateECSExecutor
+	logger   *elog.Component
+}
+
+func (s *asyncTaskSubmitter) Submit(ctx context.Context, taskType string, payload interface{}) error {
+	// 从 payload 中提取 task_id
+	payloadMap, ok := payload.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("invalid payload type")
+	}
+
+	taskID, _ := payloadMap["task_id"].(string)
+	if taskID == "" {
+		return fmt.Errorf("task_id is required")
+	}
+
+	s.logger.Info("提交异步创建任务",
+		elog.String("task_type", taskType),
+		elog.String("task_id", taskID))
+
+	// 在后台 goroutine 中执行
+	go func() {
+		t := &taskx.Task{
+			ID:     taskID,
+			Type:   taskx.TaskType(taskType),
+			Params: payloadMap,
+		}
+		if err := s.executor.Execute(context.Background(), t); err != nil {
+			s.logger.Error("异步创建任务执行失败",
+				elog.String("task_id", taskID),
+				elog.FieldErr(err))
+		} else {
+			s.logger.Info("异步创建任务执行完成",
+				elog.String("task_id", taskID))
+		}
+	}()
+
+	return nil
 }
