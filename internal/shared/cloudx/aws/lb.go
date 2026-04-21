@@ -175,6 +175,11 @@ func (a *LBAdapter) ListInstancesWithFilter(ctx context.Context, region string, 
 		marker = output.NextMarker
 	}
 
+	// 当LB数量不超过50时，获取监听器和后端服务器详情，避免过多API调用
+	if len(allInstances) > 0 && len(allInstances) <= 50 {
+		a.enrichLBDetails(ctx, client, allInstances)
+	}
+
 	a.logger.Info("获取AWS负载均衡列表成功",
 		elog.String("region", region),
 		elog.Int("count", len(allInstances)))
@@ -224,7 +229,7 @@ func (a *LBAdapter) convertToLBInstance(lb elbv2types.LoadBalancer, region strin
 
 	// 可用区
 	zone := ""
-	if lb.AvailabilityZones != nil && len(lb.AvailabilityZones) > 0 {
+	if len(lb.AvailabilityZones) > 0 {
 		zone = aws.ToString(lb.AvailabilityZones[0].ZoneName)
 	}
 
@@ -259,4 +264,59 @@ func (a *LBAdapter) convertToLBInstance(lb elbv2types.LoadBalancer, region strin
 		Tags:             tags,
 		Provider:         "aws",
 	}
+}
+
+// enrichLBDetails 为LB实例补充监听器和后端服务器详情
+func (a *LBAdapter) enrichLBDetails(ctx context.Context, client *elbv2.Client, instances []types.LBInstance) {
+	for i := range instances {
+		lbARN := instances[i].LoadBalancerID
+
+		// 获取监听器
+		listeners, listenerCount := a.fetchListeners(ctx, client, lbARN)
+		instances[i].Listeners = listeners
+		instances[i].ListenerCount = listenerCount
+
+		// 获取后端服务器数量 (通过目标组)
+		backendServerCount := a.fetchTargetGroupCount(ctx, client, lbARN)
+		instances[i].BackendServerCount = backendServerCount
+	}
+}
+
+// fetchListeners 获取ELBv2监听器列表
+func (a *LBAdapter) fetchListeners(ctx context.Context, client *elbv2.Client, lbARN string) ([]types.LBListener, int) {
+	input := &elbv2.DescribeListenersInput{
+		LoadBalancerArn: aws.String(lbARN),
+	}
+
+	output, err := client.DescribeListeners(ctx, input)
+	if err != nil {
+		a.logger.Warn("获取AWS监听器列表失败", elog.String("lb_arn", lbARN), elog.FieldErr(err))
+		return nil, 0
+	}
+
+	var listeners []types.LBListener
+	for _, l := range output.Listeners {
+		listeners = append(listeners, types.LBListener{
+			ListenerID:       aws.ToString(l.ListenerArn),
+			ListenerPort:     int(aws.ToInt32(l.Port)),
+			ListenerProtocol: string(l.Protocol),
+		})
+	}
+
+	return listeners, len(listeners)
+}
+
+// fetchTargetGroupCount 获取LB关联的目标组数量作为后端服务器计数
+func (a *LBAdapter) fetchTargetGroupCount(ctx context.Context, client *elbv2.Client, lbARN string) int {
+	input := &elbv2.DescribeTargetGroupsInput{
+		LoadBalancerArn: aws.String(lbARN),
+	}
+
+	output, err := client.DescribeTargetGroups(ctx, input)
+	if err != nil {
+		a.logger.Warn("获取AWS目标组列表失败", elog.String("lb_arn", lbARN), elog.FieldErr(err))
+		return 0
+	}
+
+	return len(output.TargetGroups)
 }

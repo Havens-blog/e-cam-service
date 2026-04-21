@@ -166,6 +166,19 @@ func (a *LBAdapter) ListInstancesWithFilter(ctx context.Context, region string, 
 		offset += limit
 	}
 
+	// 为每个CLB实例获取监听器和后端服务器详情（仅在实例数量较少时，避免过多API调用）
+	if len(allInstances) > 0 && len(allInstances) < 50 {
+		for i := range allInstances {
+			listeners, listenerCount := a.fetchListenerDetails(client, allInstances[i].LoadBalancerID)
+			allInstances[i].Listeners = listeners
+			allInstances[i].ListenerCount = listenerCount
+
+			backendServers, backendServerCount := a.fetchBackendServers(client, allInstances[i].LoadBalancerID)
+			allInstances[i].BackendServers = backendServers
+			allInstances[i].BackendServerCount = backendServerCount
+		}
+	}
+
 	a.logger.Info("获取腾讯云负载均衡列表成功",
 		elog.String("region", region),
 		elog.Int("count", len(allInstances)))
@@ -283,4 +296,104 @@ func (a *LBAdapter) convertToLBInstance(lb *clb.LoadBalancer, region string) typ
 		Tags:             tags,
 		Provider:         "tencent",
 	}
+}
+
+// fetchListenerDetails 获取CLB监听器详情
+func (a *LBAdapter) fetchListenerDetails(client *clb.Client, lbID string) ([]types.LBListener, int) {
+	request := clb.NewDescribeListenersRequest()
+	request.LoadBalancerId = common.StringPtr(lbID)
+
+	response, err := client.DescribeListeners(request)
+	if err != nil {
+		a.logger.Warn("获取CLB监听器列表失败",
+			elog.String("lb_id", lbID),
+			elog.FieldErr(err))
+		return nil, 0
+	}
+
+	if response.Response.Listeners == nil {
+		return nil, 0
+	}
+
+	var listeners []types.LBListener
+	for _, l := range response.Response.Listeners {
+		listener := types.LBListener{}
+
+		if l.ListenerId != nil {
+			listener.ListenerID = *l.ListenerId
+		}
+		if l.Port != nil {
+			listener.ListenerPort = int(*l.Port)
+		}
+		if l.Protocol != nil {
+			listener.ListenerProtocol = *l.Protocol
+		}
+		if l.ListenerName != nil {
+			listener.Description = *l.ListenerName
+		}
+
+		listeners = append(listeners, listener)
+	}
+
+	return listeners, len(listeners)
+}
+
+// fetchBackendServers 获取CLB后端服务器详情
+func (a *LBAdapter) fetchBackendServers(client *clb.Client, lbID string) ([]types.LBBackendServer, int) {
+	request := clb.NewDescribeTargetsRequest()
+	request.LoadBalancerId = common.StringPtr(lbID)
+
+	response, err := client.DescribeTargets(request)
+	if err != nil {
+		a.logger.Warn("获取CLB后端服务器列表失败",
+			elog.String("lb_id", lbID),
+			elog.FieldErr(err))
+		return nil, 0
+	}
+
+	if response.Response.Listeners == nil {
+		return nil, 0
+	}
+
+	// 使用 map 去重，同一个后端服务器可能绑定到多个监听器
+	serverMap := make(map[string]types.LBBackendServer)
+	for _, listener := range response.Response.Listeners {
+		if listener.Targets == nil {
+			continue
+		}
+		for _, target := range listener.Targets {
+			serverID := ""
+			if target.InstanceId != nil {
+				serverID = *target.InstanceId
+			}
+
+			// 用 instanceID + port 作为唯一键
+			port := 0
+			if target.Port != nil {
+				port = int(*target.Port)
+			}
+			key := fmt.Sprintf("%s:%d", serverID, port)
+
+			if _, exists := serverMap[key]; !exists {
+				server := types.LBBackendServer{
+					ServerID: serverID,
+					Port:     port,
+				}
+				if target.Weight != nil {
+					server.Weight = int(*target.Weight)
+				}
+				if target.Type != nil {
+					server.Type = *target.Type
+				}
+				serverMap[key] = server
+			}
+		}
+	}
+
+	var backendServers []types.LBBackendServer
+	for _, server := range serverMap {
+		backendServers = append(backendServers, server)
+	}
+
+	return backendServers, len(backendServers)
 }

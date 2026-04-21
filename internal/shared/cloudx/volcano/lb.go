@@ -201,6 +201,11 @@ func (a *LBAdapter) ListInstancesWithFilter(ctx context.Context, region string, 
 		pageNumber++
 	}
 
+	// CLB实例数量较少时，补充监听器和后端服务器详情
+	if len(allInstances) > 0 && len(allInstances) <= 50 {
+		a.enrichCLBDetails(client, allInstances)
+	}
+
 	// 查询ALB实例
 	albInstances, err := a.listALBInstances(ctx, region, filter)
 	if err != nil {
@@ -283,32 +288,294 @@ func (a *LBAdapter) listALBInstances(ctx context.Context, region string, filter 
 		pageNumber++
 	}
 
-	// 补充每个 ALB 的监听器数量
+	// 补充每个 ALB 的监听器详情和后端服务器
 	for i := range albInstances {
-		listenerCount := a.getALBListenerCount(albClient, albInstances[i].LoadBalancerID)
+		listeners, serverGroupIDs, listenerCount := a.getALBListenerDetailsAndServerGroups(albClient, albInstances[i].LoadBalancerID)
 		albInstances[i].ListenerCount = listenerCount
+		albInstances[i].Listeners = listeners
+
+		// 通过 ServerGroupId 获取后端服务器
+		backendServers := a.getALBBackendServers(albClient, serverGroupIDs)
+		albInstances[i].BackendServers = backendServers
+		albInstances[i].BackendServerCount = len(backendServers)
 	}
 
 	return albInstances, nil
 }
 
-// getALBListenerCount 获取 ALB 监听器数量
-func (a *LBAdapter) getALBListenerCount(client *alb.ALB, lbID string) int {
-	pageSize := int64(1)
-	input := &alb.DescribeListenersInput{
+// getALBListenerDetailsAndServerGroups 获取 ALB 监听器详情和关联的 ServerGroupID
+func (a *LBAdapter) getALBListenerDetailsAndServerGroups(client *alb.ALB, lbID string) ([]types.LBListener, []string, int) {
+	var allListeners []types.LBListener
+	serverGroupIDSet := make(map[string]bool)
+	pageNumber := int64(1)
+	pageSize := int64(100)
+	totalCount := 0
+
+	for {
+		input := &alb.DescribeListenersInput{
+			LoadBalancerId: volcengine.String(lbID),
+			PageNumber:     &pageNumber,
+			PageSize:       &pageSize,
+		}
+
+		output, err := client.DescribeListeners(input)
+		if err != nil {
+			a.logger.Warn("获取ALB监听器列表失败",
+				elog.String("lb_id", lbID),
+				elog.FieldErr(err))
+			return nil, nil, 0
+		}
+
+		if output.TotalCount != nil {
+			totalCount = int(*output.TotalCount)
+		}
+
+		if len(output.Listeners) == 0 {
+			break
+		}
+
+		for _, l := range output.Listeners {
+			listener := types.LBListener{}
+			if l.ListenerId != nil {
+				listener.ListenerID = *l.ListenerId
+			}
+			if l.Port != nil {
+				listener.ListenerPort = int(*l.Port)
+			}
+			if l.Protocol != nil {
+				listener.ListenerProtocol = *l.Protocol
+			}
+			if l.Status != nil {
+				listener.Status = *l.Status
+			}
+			if l.Description != nil {
+				listener.Description = *l.Description
+			}
+			allListeners = append(allListeners, listener)
+
+			// 收集 ServerGroupId
+			if l.ServerGroupId != nil && *l.ServerGroupId != "" {
+				serverGroupIDSet[*l.ServerGroupId] = true
+			}
+		}
+
+		if len(output.Listeners) < int(pageSize) {
+			break
+		}
+		pageNumber++
+	}
+
+	var serverGroupIDs []string
+	for sgID := range serverGroupIDSet {
+		serverGroupIDs = append(serverGroupIDs, sgID)
+	}
+
+	return allListeners, serverGroupIDs, totalCount
+}
+
+// getALBBackendServers 通过 ServerGroupId 列表获取 ALB 后端服务器
+func (a *LBAdapter) getALBBackendServers(client *alb.ALB, serverGroupIDs []string) []types.LBBackendServer {
+	var allServers []types.LBBackendServer
+	seen := make(map[string]bool)
+
+	for _, sgID := range serverGroupIDs {
+		input := &alb.DescribeServerGroupBackendServersInput{
+			ServerGroupId: volcengine.String(sgID),
+		}
+
+		output, err := client.DescribeServerGroupBackendServers(input)
+		if err != nil {
+			a.logger.Warn("获取ALB后端服务器失败",
+				elog.String("server_group_id", sgID),
+				elog.FieldErr(err))
+			continue
+		}
+
+		for _, s := range output.Servers {
+			serverID := ""
+			if s.ServerId != nil {
+				serverID = *s.ServerId
+			}
+			if seen[serverID] {
+				continue
+			}
+			seen[serverID] = true
+
+			server := types.LBBackendServer{
+				ServerID: serverID,
+			}
+			if s.InstanceId != nil {
+				server.ServerName = *s.InstanceId
+			}
+			if s.Port != nil {
+				server.Port = int(*s.Port)
+			}
+			if s.Weight != nil {
+				server.Weight = int(*s.Weight)
+			}
+			if s.Type != nil {
+				server.Type = *s.Type
+			}
+			if s.Description != nil {
+				server.Description = *s.Description
+			}
+			allServers = append(allServers, server)
+		}
+	}
+
+	return allServers
+}
+
+// enrichCLBDetails 为CLB实例补充监听器和后端服务器详情
+func (a *LBAdapter) enrichCLBDetails(client *clb.CLB, instances []types.LBInstance) {
+	for i := range instances {
+		if instances[i].LoadBalancerType != "clb" {
+			continue
+		}
+		lbID := instances[i].LoadBalancerID
+
+		// 获取监听器详情
+		listeners := a.getCLBListenerDetails(client, lbID)
+		instances[i].Listeners = listeners
+		instances[i].ListenerCount = len(listeners)
+
+		// 通过 DescribeLoadBalancerAttributes 获取 ServerGroup 列表，再查询后端服务器
+		backendServers := a.getCLBBackendServers(client, lbID)
+		instances[i].BackendServers = backendServers
+		instances[i].BackendServerCount = len(backendServers)
+	}
+}
+
+// getCLBListenerDetails 获取 CLB 监听器详情列表
+func (a *LBAdapter) getCLBListenerDetails(client *clb.CLB, lbID string) []types.LBListener {
+	var allListeners []types.LBListener
+	pageNumber := int64(1)
+	pageSize := int64(100)
+
+	for {
+		input := &clb.DescribeListenersInput{
+			LoadBalancerId: volcengine.String(lbID),
+			PageNumber:     &pageNumber,
+			PageSize:       &pageSize,
+		}
+
+		output, err := client.DescribeListeners(input)
+		if err != nil {
+			a.logger.Warn("获取CLB监听器列表失败",
+				elog.String("lb_id", lbID),
+				elog.FieldErr(err))
+			return nil
+		}
+
+		if len(output.Listeners) == 0 {
+			break
+		}
+
+		for _, l := range output.Listeners {
+			listener := types.LBListener{}
+			if l.ListenerId != nil {
+				listener.ListenerID = *l.ListenerId
+			}
+			if l.Port != nil {
+				listener.ListenerPort = int(*l.Port)
+			}
+			if l.Protocol != nil {
+				listener.ListenerProtocol = *l.Protocol
+			}
+			if l.Bandwidth != nil {
+				listener.Bandwidth = int(*l.Bandwidth)
+			}
+			if l.Status != nil {
+				listener.Status = *l.Status
+			}
+			if l.Description != nil {
+				listener.Description = *l.Description
+			}
+			allListeners = append(allListeners, listener)
+		}
+
+		if len(output.Listeners) < int(pageSize) {
+			break
+		}
+		pageNumber++
+	}
+
+	return allListeners
+}
+
+// getCLBBackendServers 获取 CLB 后端服务器列表 (通过 DescribeLoadBalancerAttributes 获取 ServerGroup，再查询后端)
+func (a *LBAdapter) getCLBBackendServers(client *clb.CLB, lbID string) []types.LBBackendServer {
+	// 先获取 LB 的 ServerGroup 列表
+	attrInput := &clb.DescribeLoadBalancerAttributesInput{
 		LoadBalancerId: volcengine.String(lbID),
-		PageSize:       &pageSize,
 	}
-
-	output, err := client.DescribeListeners(input)
+	attrOutput, err := client.DescribeLoadBalancerAttributes(attrInput)
 	if err != nil {
-		return 0
+		a.logger.Warn("获取CLB属性失败，跳过后端服务器查询",
+			elog.String("lb_id", lbID),
+			elog.FieldErr(err))
+		return nil
 	}
 
-	if output.TotalCount != nil {
-		return int(*output.TotalCount)
+	if len(attrOutput.ServerGroups) == 0 {
+		return nil
 	}
-	return 0
+
+	var allServers []types.LBBackendServer
+	seen := make(map[string]struct{})
+
+	for _, sg := range attrOutput.ServerGroups {
+		if sg.ServerGroupId == nil {
+			continue
+		}
+		sgID := *sg.ServerGroupId
+
+		sgInput := &clb.DescribeServerGroupAttributesInput{
+			ServerGroupId: volcengine.String(sgID),
+		}
+		sgOutput, err := client.DescribeServerGroupAttributes(sgInput)
+		if err != nil {
+			a.logger.Warn("获取CLB服务器组详情失败",
+				elog.String("lb_id", lbID),
+				elog.String("server_group_id", sgID),
+				elog.FieldErr(err))
+			continue
+		}
+
+		for _, s := range sgOutput.Servers {
+			serverID := ""
+			if s.ServerId != nil {
+				serverID = *s.ServerId
+			}
+			// 去重: 同一后端可能出现在多个 ServerGroup 中
+			if _, exists := seen[serverID]; exists {
+				continue
+			}
+			seen[serverID] = struct{}{}
+
+			server := types.LBBackendServer{
+				ServerID: serverID,
+			}
+			if s.InstanceId != nil {
+				server.ServerName = *s.InstanceId
+			}
+			if s.Port != nil {
+				server.Port = int(*s.Port)
+			}
+			if s.Weight != nil {
+				server.Weight = int(*s.Weight)
+			}
+			if s.Type != nil {
+				server.Type = *s.Type
+			}
+			if s.Description != nil {
+				server.Description = *s.Description
+			}
+			allServers = append(allServers, server)
+		}
+	}
+
+	return allServers
 }
 
 // convertToLBInstance 转换为通用LB实例
@@ -441,6 +708,21 @@ func (a *LBAdapter) convertDetailToLBInstance(output *clb.DescribeLoadBalancerAt
 		listenerCount = len(output.Listeners)
 	}
 
+	// 提取监听器详情 (DescribeLoadBalancerAttributes 只返回 ListenerId 和 ListenerName)
+	var listeners []types.LBListener
+	if output.Listeners != nil {
+		for _, l := range output.Listeners {
+			listener := types.LBListener{}
+			if l.ListenerId != nil {
+				listener.ListenerID = *l.ListenerId
+			}
+			if l.ListenerName != nil {
+				listener.Description = *l.ListenerName
+			}
+			listeners = append(listeners, listener)
+		}
+	}
+
 	// 提取标签
 	tags := make(map[string]string)
 	if output.Tags != nil {
@@ -462,6 +744,7 @@ func (a *LBAdapter) convertDetailToLBInstance(output *clb.DescribeLoadBalancerAt
 		VPCID:            vpcID,
 		VSwitchID:        subnetID,
 		ListenerCount:    listenerCount,
+		Listeners:        listeners,
 		CreationTime:     createTime,
 		Description:      description,
 		Tags:             tags,

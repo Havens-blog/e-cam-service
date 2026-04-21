@@ -280,6 +280,68 @@ type albInstance struct {
 	AddressIPVersion     string `json:"AddressIpVersion"`
 }
 
+// albListListenersResponse ALB ListListeners 响应
+type albListListenersResponse struct {
+	RequestID  string        `json:"RequestId"`
+	Listeners  []albListener `json:"Listeners"`
+	TotalCount int           `json:"TotalCount"`
+	NextToken  string        `json:"NextToken"`
+}
+
+// albListener ALB 监听器
+type albListener struct {
+	ListenerID       string `json:"ListenerId"`
+	ListenerPort     int    `json:"ListenerPort"`
+	ListenerProtocol string `json:"ListenerProtocol"`
+	ListenerStatus   string `json:"ListenerStatus"`
+}
+
+// albListServerGroupsResponse ALB ListServerGroups 响应
+type albListServerGroupsResponse struct {
+	RequestID    string           `json:"RequestId"`
+	ServerGroups []albServerGroup `json:"ServerGroups"`
+	TotalCount   int              `json:"TotalCount"`
+	NextToken    string           `json:"NextToken"`
+}
+
+// albServerGroup ALB 服务器组
+type albServerGroup struct {
+	ServerGroupID   string `json:"ServerGroupId"`
+	ServerGroupName string `json:"ServerGroupName"`
+	ServerCount     int    `json:"ServerCount"`
+}
+
+// nlbListListenersResponse NLB ListListeners 响应
+type nlbListListenersResponse struct {
+	RequestID  string        `json:"RequestId"`
+	Listeners  []nlbListener `json:"Listeners"`
+	TotalCount int           `json:"TotalCount"`
+	NextToken  string        `json:"NextToken"`
+}
+
+// nlbListener NLB 监听器
+type nlbListener struct {
+	ListenerID       string `json:"ListenerId"`
+	ListenerPort     int    `json:"ListenerPort"`
+	ListenerProtocol string `json:"ListenerProtocol"`
+	ListenerStatus   string `json:"ListenerStatus"`
+}
+
+// nlbListServerGroupsResponse NLB ListServerGroups 响应
+type nlbListServerGroupsResponse struct {
+	RequestID    string           `json:"RequestId"`
+	ServerGroups []nlbServerGroup `json:"ServerGroups"`
+	TotalCount   int              `json:"TotalCount"`
+	NextToken    string           `json:"NextToken"`
+}
+
+// nlbServerGroup NLB 服务器组
+type nlbServerGroup struct {
+	ServerGroupID   string `json:"ServerGroupId"`
+	ServerGroupName string `json:"ServerGroupName"`
+	ServerCount     int    `json:"ServerCount"`
+}
+
 // createCommonClient 创建通用SDK客户端
 func (a *LBAdapter) createCommonClient(region string) (*sdk.Client, error) {
 	if region == "" {
@@ -342,7 +404,83 @@ func (a *LBAdapter) listALBInstances(region string) ([]types.LBInstance, error) 
 		nextToken = resp.NextToken
 	}
 
+	// 为每个ALB实例获取监听器和后端服务器组信息
+	for i := range allInstances {
+		listeners, listenerCount := a.fetchALBListeners(client, region, allInstances[i].LoadBalancerID)
+		allInstances[i].Listeners = listeners
+		allInstances[i].ListenerCount = listenerCount
+
+		backendServerCount := a.fetchALBServerGroupCount(client, region, allInstances[i].LoadBalancerID)
+		allInstances[i].BackendServerCount = backendServerCount
+	}
+
 	return allInstances, nil
+}
+
+// fetchALBListeners 获取ALB监听器列表
+func (a *LBAdapter) fetchALBListeners(client *sdk.Client, region, lbID string) ([]types.LBListener, int) {
+	request := requests.NewCommonRequest()
+	request.Method = "POST"
+	request.Scheme = "https"
+	request.Domain = fmt.Sprintf("alb.%s.aliyuncs.com", region)
+	request.Version = "2020-06-16"
+	request.ApiName = "ListListeners"
+	request.QueryParams["LoadBalancerIds.1"] = lbID
+
+	response, err := client.ProcessCommonRequest(request)
+	if err != nil {
+		a.logger.Warn("获取ALB监听器列表失败", elog.String("lb_id", lbID), elog.FieldErr(err))
+		return nil, 0
+	}
+
+	var resp albListListenersResponse
+	if err := json.Unmarshal(response.GetHttpContentBytes(), &resp); err != nil {
+		a.logger.Warn("解析ALB监听器响应失败", elog.String("lb_id", lbID), elog.FieldErr(err))
+		return nil, 0
+	}
+
+	var listeners []types.LBListener
+	for _, l := range resp.Listeners {
+		listeners = append(listeners, types.LBListener{
+			ListenerID:       l.ListenerID,
+			ListenerPort:     l.ListenerPort,
+			ListenerProtocol: l.ListenerProtocol,
+			Status:           l.ListenerStatus,
+		})
+	}
+
+	return listeners, resp.TotalCount
+}
+
+// fetchALBServerGroupCount 获取ALB服务器组数量作为后端服务器计数
+func (a *LBAdapter) fetchALBServerGroupCount(client *sdk.Client, region, lbID string) int {
+	request := requests.NewCommonRequest()
+	request.Method = "POST"
+	request.Scheme = "https"
+	request.Domain = fmt.Sprintf("alb.%s.aliyuncs.com", region)
+	request.Version = "2020-06-16"
+	request.ApiName = "ListServerGroups"
+	request.QueryParams["LoadBalancerId"] = lbID // 注意：此参数可能不被直接支持，仅获取总数
+
+	response, err := client.ProcessCommonRequest(request)
+	if err != nil {
+		a.logger.Warn("获取ALB服务器组列表失败", elog.String("lb_id", lbID), elog.FieldErr(err))
+		return 0
+	}
+
+	var resp albListServerGroupsResponse
+	if err := json.Unmarshal(response.GetHttpContentBytes(), &resp); err != nil {
+		a.logger.Warn("解析ALB服务器组响应失败", elog.String("lb_id", lbID), elog.FieldErr(err))
+		return 0
+	}
+
+	// 累加所有服务器组中的服务器数量
+	totalServers := 0
+	for _, sg := range resp.ServerGroups {
+		totalServers += sg.ServerCount
+	}
+
+	return totalServers
 }
 
 // convertALBToLBInstance 将ALB实例转换为通用LB实例
@@ -437,7 +575,83 @@ func (a *LBAdapter) listNLBInstances(region string) ([]types.LBInstance, error) 
 		nextToken = resp.NextToken
 	}
 
+	// 为每个NLB实例获取监听器和后端服务器组信息
+	for i := range allInstances {
+		listeners, listenerCount := a.fetchNLBListeners(client, region, allInstances[i].LoadBalancerID)
+		allInstances[i].Listeners = listeners
+		allInstances[i].ListenerCount = listenerCount
+
+		backendServerCount := a.fetchNLBServerGroupCount(client, region, allInstances[i].LoadBalancerID)
+		allInstances[i].BackendServerCount = backendServerCount
+	}
+
 	return allInstances, nil
+}
+
+// fetchNLBListeners 获取NLB监听器列表
+func (a *LBAdapter) fetchNLBListeners(client *sdk.Client, region, lbID string) ([]types.LBListener, int) {
+	request := requests.NewCommonRequest()
+	request.Method = "POST"
+	request.Scheme = "https"
+	request.Domain = fmt.Sprintf("nlb.%s.aliyuncs.com", region)
+	request.Version = "2022-04-30"
+	request.ApiName = "ListListeners"
+	request.QueryParams["LoadBalancerIds.1"] = lbID
+
+	response, err := client.ProcessCommonRequest(request)
+	if err != nil {
+		a.logger.Warn("获取NLB监听器列表失败", elog.String("lb_id", lbID), elog.FieldErr(err))
+		return nil, 0
+	}
+
+	var resp nlbListListenersResponse
+	if err := json.Unmarshal(response.GetHttpContentBytes(), &resp); err != nil {
+		a.logger.Warn("解析NLB监听器响应失败", elog.String("lb_id", lbID), elog.FieldErr(err))
+		return nil, 0
+	}
+
+	var listeners []types.LBListener
+	for _, l := range resp.Listeners {
+		listeners = append(listeners, types.LBListener{
+			ListenerID:       l.ListenerID,
+			ListenerPort:     l.ListenerPort,
+			ListenerProtocol: l.ListenerProtocol,
+			Status:           l.ListenerStatus,
+		})
+	}
+
+	return listeners, resp.TotalCount
+}
+
+// fetchNLBServerGroupCount 获取NLB服务器组数量作为后端服务器计数
+func (a *LBAdapter) fetchNLBServerGroupCount(client *sdk.Client, region, lbID string) int {
+	request := requests.NewCommonRequest()
+	request.Method = "POST"
+	request.Scheme = "https"
+	request.Domain = fmt.Sprintf("nlb.%s.aliyuncs.com", region)
+	request.Version = "2022-04-30"
+	request.ApiName = "ListServerGroups"
+	request.QueryParams["LoadBalancerIds.1"] = lbID
+
+	response, err := client.ProcessCommonRequest(request)
+	if err != nil {
+		a.logger.Warn("获取NLB服务器组列表失败", elog.String("lb_id", lbID), elog.FieldErr(err))
+		return 0
+	}
+
+	var resp nlbListServerGroupsResponse
+	if err := json.Unmarshal(response.GetHttpContentBytes(), &resp); err != nil {
+		a.logger.Warn("解析NLB服务器组响应失败", elog.String("lb_id", lbID), elog.FieldErr(err))
+		return 0
+	}
+
+	// 累加所有服务器组中的服务器数量
+	totalServers := 0
+	for _, sg := range resp.ServerGroups {
+		totalServers += sg.ServerCount
+	}
+
+	return totalServers
 }
 
 // convertNLBToLBInstance 将NLB实例转换为通用LB实例

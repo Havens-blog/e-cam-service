@@ -423,6 +423,14 @@ func extractAddrsFromSlice(items []interface{}) []string {
 					addrs = append(addrs, ip)
 				}
 			}
+		case primitive.M:
+			// MongoDB driver 的 map 类型
+			m := map[string]interface{}(it)
+			for _, ipKey := range []string{"ip", "server_ip", "address", "server_id", "instance_id"} {
+				if ip := getStr(m, ipKey); ip != "" {
+					addrs = append(addrs, ip)
+				}
+			}
 		}
 	}
 	return addrs

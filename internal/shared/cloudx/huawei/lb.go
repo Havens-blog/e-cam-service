@@ -85,7 +85,7 @@ func (a *LBAdapter) GetInstance(ctx context.Context, reg, lbID string) (*types.L
 		return nil, fmt.Errorf("负载均衡不存在: %s", lbID)
 	}
 
-	instance := a.convertToLBInstance(*response.Loadbalancer, reg)
+	instance := a.convertToLBInstance(*response.Loadbalancer, reg, client)
 	return &instance, nil
 }
 
@@ -157,7 +157,7 @@ func (a *LBAdapter) ListInstancesWithFilter(ctx context.Context, reg string, fil
 		}
 
 		for _, lb := range *response.Loadbalancers {
-			allInstances = append(allInstances, a.convertToLBInstance(lb, reg))
+			allInstances = append(allInstances, a.convertToLBInstance(lb, reg, client))
 		}
 
 		if len(*response.Loadbalancers) < int(limit) {
@@ -176,7 +176,7 @@ func (a *LBAdapter) ListInstancesWithFilter(ctx context.Context, reg string, fil
 }
 
 // convertToLBInstance 转换为通用LB实例
-func (a *LBAdapter) convertToLBInstance(lb model.LoadBalancer, reg string) types.LBInstance {
+func (a *LBAdapter) convertToLBInstance(lb model.LoadBalancer, reg string, client *v3.ElbClient) types.LBInstance {
 	tags := make(map[string]string)
 	for _, tag := range lb.Tags {
 		if tag.Key != nil && tag.Value != nil {
@@ -199,6 +199,12 @@ func (a *LBAdapter) convertToLBInstance(lb model.LoadBalancer, reg string) types
 		zone = lb.AvailabilityZoneList[0]
 	}
 
+	// 获取监听器详情
+	listeners := a.fetchListenerDetails(client, lb.Id)
+
+	// 获取后端服务器详情
+	backendServers := a.fetchBackendServers(client, lb.Pools)
+
 	return types.LBInstance{
 		LoadBalancerID:     lb.Id,
 		LoadBalancerName:   lb.Name,
@@ -212,10 +218,83 @@ func (a *LBAdapter) convertToLBInstance(lb model.LoadBalancer, reg string) types
 		VSwitchID:          lb.VipSubnetCidrId,
 		ListenerCount:      len(lb.Listeners),
 		BackendServerCount: len(lb.Pools),
+		Listeners:          listeners,
+		BackendServers:     backendServers,
 		CreationTime:       lb.CreatedAt,
 		ProjectID:          lb.ProjectId,
 		Description:        lb.Description,
 		Tags:               tags,
 		Provider:           "huawei",
 	}
+}
+
+// fetchListenerDetails 获取负载均衡器的监听器详情
+func (a *LBAdapter) fetchListenerDetails(client *v3.ElbClient, lbID string) []types.LBListener {
+	if client == nil {
+		return nil
+	}
+
+	request := &model.ListListenersRequest{
+		LoadbalancerId: &[]string{lbID},
+	}
+
+	response, err := client.ListListeners(request)
+	if err != nil {
+		a.logger.Warn("获取监听器详情失败",
+			elog.String("lb_id", lbID),
+			elog.FieldErr(err))
+		return nil
+	}
+
+	if response.Listeners == nil {
+		return nil
+	}
+
+	var listeners []types.LBListener
+	for _, l := range *response.Listeners {
+		listeners = append(listeners, types.LBListener{
+			ListenerID:       l.Id,
+			ListenerPort:     int(l.ProtocolPort),
+			ListenerProtocol: l.Protocol,
+			Description:      l.Description,
+		})
+	}
+	return listeners
+}
+
+// fetchBackendServers 获取后端服务器组中的成员详情
+func (a *LBAdapter) fetchBackendServers(client *v3.ElbClient, pools []model.PoolRef) []types.LBBackendServer {
+	if client == nil || len(pools) == 0 {
+		return nil
+	}
+
+	var backendServers []types.LBBackendServer
+	for _, pool := range pools {
+		request := &model.ListMembersRequest{
+			PoolId: pool.Id,
+		}
+
+		response, err := client.ListMembers(request)
+		if err != nil {
+			a.logger.Warn("获取后端服务器列表失败",
+				elog.String("pool_id", pool.Id),
+				elog.FieldErr(err))
+			continue
+		}
+
+		if response.Members == nil {
+			continue
+		}
+
+		for _, m := range *response.Members {
+			backendServers = append(backendServers, types.LBBackendServer{
+				ServerID:   m.Id,
+				ServerName: m.Name,
+				Port:       int(m.ProtocolPort),
+				Weight:     int(m.Weight),
+				Status:     m.OperatingStatus,
+			})
+		}
+	}
+	return backendServers
 }
