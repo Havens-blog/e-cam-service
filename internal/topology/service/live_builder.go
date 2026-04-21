@@ -324,29 +324,91 @@ func (b *LiveTopologyBuilder) traceDownstream(
 		}
 	}
 
-	// 遍历所有下游
+	// 遍历所有下游 — 同类型实例聚合显示（如 LB 的多个 ECS 后端聚合为一个节点）
+	// 按类型分组
+	typeGroups := make(map[string][]int64) // nodeType → []instanceID
 	for targetID := range downstreamInstances {
 		target := idIndex[targetID]
 		if target == nil {
 			continue
 		}
-		targetNodeID := fmt.Sprintf("inst-%d", target.ID)
-		if !seen[targetNodeID] {
-			seen[targetNodeID] = true
-			*nodes = append(*nodes, instanceToTopoNode(target, now))
+		nodeType, _ := modelUIDToType(target.ModelUID)
+		typeGroups[nodeType] = append(typeGroups[nodeType], targetID)
+	}
+
+	for nodeType, targetIDs := range typeGroups {
+		// 同类型超过 2 个实例时聚合显示
+		if len(targetIDs) > 2 && (nodeType == domain.NodeTypeECS || nodeType == domain.NodeTypeRDS || nodeType == domain.NodeTypeRedis) {
+			// 聚合节点
+			aggID := fmt.Sprintf("agg-%s-%s", parentNodeID, nodeType)
+			if !seen[aggID] {
+				seen[aggID] = true
+				provider := ""
+				var sampleNames []string
+				for _, tid := range targetIDs {
+					t := idIndex[tid]
+					if t != nil {
+						if provider == "" {
+							provider = extractProvider(t.ModelUID)
+						}
+						name := t.AssetName
+						if name == "" {
+							name = t.AssetID
+						}
+						if len(sampleNames) < 3 {
+							sampleNames = append(sampleNames, name)
+						}
+					}
+				}
+				aggName := fmt.Sprintf("%s × %d", strings.ToUpper(nodeType), len(targetIDs))
+				*nodes = append(*nodes, domain.TopoNode{
+					ID: aggID, Name: aggName, Type: nodeType,
+					Category: domain.CategoryCompute, Provider: provider,
+					Status: domain.StatusActive, SourceCollector: domain.SourceCloudAPI,
+					TenantID: tenantID, UpdatedAt: now,
+					Attributes: map[string]interface{}{
+						"is_aggregated": true,
+						"count":         len(targetIDs),
+						"sample_names":  sampleNames,
+					},
+				})
+			}
+			edgeID := fmt.Sprintf("e-%s-%s", parentNodeID, aggID)
+			if !seen[edgeID] {
+				seen[edgeID] = true
+				*edges = append(*edges, domain.TopoEdge{
+					ID: edgeID, SourceID: parentNodeID, TargetID: aggID,
+					Relation: domain.RelationRoute, Direction: domain.DirectionOutbound,
+					SourceCollector: domain.SourceCloudAPI, Status: domain.EdgeStatusActive,
+					TenantID: tenantID, UpdatedAt: now,
+				})
+			}
+		} else {
+			// 少量实例逐个显示
+			for _, targetID := range targetIDs {
+				target := idIndex[targetID]
+				if target == nil {
+					continue
+				}
+				targetNodeID := fmt.Sprintf("inst-%d", target.ID)
+				if !seen[targetNodeID] {
+					seen[targetNodeID] = true
+					*nodes = append(*nodes, instanceToTopoNode(target, now))
+				}
+				edgeID := fmt.Sprintf("e-%s-%s", parentNodeID, targetNodeID)
+				if !seen[edgeID] {
+					seen[edgeID] = true
+					*edges = append(*edges, domain.TopoEdge{
+						ID: edgeID, SourceID: parentNodeID, TargetID: targetNodeID,
+						Relation: domain.RelationRoute, Direction: domain.DirectionOutbound,
+						SourceCollector: domain.SourceCloudAPI, Status: domain.EdgeStatusActive,
+						TenantID: tenantID, UpdatedAt: now,
+					})
+				}
+				// 递归
+				b.traceDownstream(target.ID, targetNodeID, idIndex, downstreamMap, ipIndex, cnameIndex, wafDomainIndex, nodes, edges, seen, tenantID, now, depth+1, maxDepth)
+			}
 		}
-		edgeID := fmt.Sprintf("e-%s-%s", parentNodeID, targetNodeID)
-		if !seen[edgeID] {
-			seen[edgeID] = true
-			*edges = append(*edges, domain.TopoEdge{
-				ID: edgeID, SourceID: parentNodeID, TargetID: targetNodeID,
-				Relation: domain.RelationRoute, Direction: domain.DirectionOutbound,
-				SourceCollector: domain.SourceCloudAPI, Status: domain.EdgeStatusActive,
-				TenantID: tenantID, UpdatedAt: now,
-			})
-		}
-		// 递归
-		b.traceDownstream(target.ID, targetNodeID, idIndex, downstreamMap, ipIndex, cnameIndex, wafDomainIndex, nodes, edges, seen, tenantID, now, depth+1, maxDepth)
 	}
 }
 
@@ -417,20 +479,26 @@ func extractAddrsFromSlice(items []interface{}) []string {
 				addrs = append(addrs, it)
 			}
 		case map[string]interface{}:
-			// 后端服务器列表可能是 [{server_id: "xxx", ip: "1.2.3.4"}, ...]
-			for _, ipKey := range []string{"ip", "server_ip", "address", "server_id", "instance_id"} {
-				if ip := getStr(it, ipKey); ip != "" {
-					addrs = append(addrs, ip)
-				}
-			}
+			addrs = append(addrs, extractAddrFromMap(it)...)
 		case primitive.M:
-			// MongoDB driver 的 map 类型
-			m := map[string]interface{}(it)
-			for _, ipKey := range []string{"ip", "server_ip", "address", "server_id", "instance_id"} {
-				if ip := getStr(m, ipKey); ip != "" {
-					addrs = append(addrs, ip)
-				}
-			}
+			addrs = append(addrs, extractAddrFromMap(map[string]interface{}(it))...)
+		}
+	}
+	return addrs
+}
+
+// extractAddrFromMap 从 map 中提取地址（支持多种 key 命名风格）
+func extractAddrFromMap(m map[string]interface{}) []string {
+	var addrs []string
+	// 优先用 ECS 实例 ID（servername/server_name/instance_id）匹配 CMDB 实例
+	for _, key := range []string{
+		"servername", "server_name", "instance_id", "instanceid",
+		"ip", "server_ip", "address",
+		"serverid", "server_id",
+	} {
+		if v := getStr(m, key); v != "" {
+			addrs = append(addrs, v)
+			return addrs // 找到第一个有效值就返回，避免重复
 		}
 	}
 	return addrs
