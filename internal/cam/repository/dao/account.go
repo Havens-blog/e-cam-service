@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const AccountsCollection = "cloud_accounts"
+const AccountsCollection = "ecam_cloud_account"
 
 // CloudAccountStatus 云账号状态枚举
 type CloudAccountStatus string

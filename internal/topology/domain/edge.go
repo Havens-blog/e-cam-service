@@ -13,6 +13,7 @@ const (
 	RelationDependsOn = "depends_on"
 	RelationRoute     = "route"
 	RelationResolve   = "resolve"
+	RelationCalls     = "calls"
 )
 
 // 流量方向常量
@@ -32,6 +33,7 @@ const (
 var ValidRelations = map[string]bool{
 	RelationBelongsTo: true, RelationBindTo: true, RelationConnects: true,
 	RelationDependsOn: true, RelationRoute: true, RelationResolve: true,
+	RelationCalls: true,
 }
 
 // ValidDirections 所有合法的流量方向
@@ -42,18 +44,19 @@ var ValidDirections = map[string]bool{
 
 // TopoEdge 拓扑连线领域模型
 type TopoEdge struct {
-	ID              string     `bson:"_id" json:"id"`
-	SourceID        string     `bson:"source_id" json:"source_id"`
-	TargetID        string     `bson:"target_id" json:"target_id"`
-	Relation        string     `bson:"relation" json:"relation"`
-	Direction       string     `bson:"direction" json:"direction"`
-	SourceCollector string     `bson:"source_collector" json:"source_collector"`
-	Status          string     `bson:"status" json:"status"`
-	LastSeenAt      *time.Time `bson:"last_seen_at,omitempty" json:"last_seen_at,omitempty"`
-	RequestCount    *int64     `bson:"request_count,omitempty" json:"request_count,omitempty"`
-	LatencyP99      *float64   `bson:"latency_p99,omitempty" json:"latency_p99,omitempty"`
-	TenantID        string     `bson:"tenant_id" json:"tenant_id"`
-	UpdatedAt       time.Time  `bson:"updated_at" json:"updated_at"`
+	ID              string                 `bson:"_id" json:"id"`
+	SourceID        string                 `bson:"source_id" json:"source_id"`
+	TargetID        string                 `bson:"target_id" json:"target_id"`
+	Relation        string                 `bson:"relation" json:"relation"`
+	Direction       string                 `bson:"direction" json:"direction"`
+	SourceCollector string                 `bson:"source_collector" json:"source_collector"`
+	Status          string                 `bson:"status" json:"status"`
+	LastSeenAt      *time.Time             `bson:"last_seen_at,omitempty" json:"last_seen_at,omitempty"`
+	RequestCount    *int64                 `bson:"request_count,omitempty" json:"request_count,omitempty"`
+	LatencyP99      *float64               `bson:"latency_p99,omitempty" json:"latency_p99,omitempty"`
+	Attributes      map[string]interface{} `bson:"attributes,omitempty" json:"attributes,omitempty"`
+	TenantID        string                 `bson:"tenant_id" json:"tenant_id"`
+	UpdatedAt       time.Time              `bson:"updated_at" json:"updated_at"`
 }
 
 // Validate 校验边字段合法性

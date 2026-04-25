@@ -193,7 +193,7 @@ func expandAssetTypes(assetTypes []string) []string {
 				}
 			}
 		case "network", "net":
-			for _, netType := range []string{"vpc", "vswitch", "eip", "lb", "cdn", "waf"} {
+			for _, netType := range []string{"vpc", "vswitch", "eip", "eni", "lb", "cdn", "waf"} {
 				if !seen[netType] {
 					expanded = append(expanded, netType)
 					seen[netType] = true
@@ -342,6 +342,22 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 			synced, err := e.syncRegionEIP(ctx, cloudxAdapter, account, region)
 			if err != nil {
 				e.logger.Error("同步EIP失败", elog.String("region", region), elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+		case "eni":
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				continue
+			}
+			synced, err := e.syncRegionENI(ctx, cloudxAdapter, account, region)
+			if err != nil {
+				e.logger.Error("同步ENI失败", elog.String("region", region), elog.FieldErr(err))
 				continue
 			}
 			totalSynced += synced

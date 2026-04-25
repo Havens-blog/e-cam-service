@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-const CollectionModelGroup = "c_model_group"
+const CollectionModelGroup = "ecam_model_group"
 
 type ModelGroupDAO struct {
 	db *mongox.Mongo

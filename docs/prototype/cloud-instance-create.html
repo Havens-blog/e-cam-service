@@ -1,0 +1,2994 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多云平台 - 主机模板创建服务器</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            min-height: 100vh;
+            color: #e2e8f0;
+            overflow-x: hidden;
+        }
+
+        /* 背景动效 */
+        .bg-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(rgba(56, 189, 248, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(56, 189, 248, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-glow {
+            position: fixed;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.15;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-glow-1 {
+            top: -200px;
+            left: -200px;
+            background: #3b82f6;
+        }
+
+        .bg-glow-2 {
+            bottom: -200px;
+            right: -200px;
+            background: #8b5cf6;
+        }
+
+        .bg-glow-3 {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #06b6d4;
+            opacity: 0.1;
+        }
+
+        /* 头部 */
+        .header {
+            position: relative;
+            z-index: 10;
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            backdrop-filter: blur(10px);
+            background: rgba(15, 23, 42, 0.8);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .logo-text {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav {
+            display: flex;
+            gap: 8px;
+        }
+
+        .nav-item {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-item:hover {
+            color: #e2e8f0;
+            background: rgba(148, 163, 184, 0.1);
+        }
+
+        .nav-item.active {
+            color: #fff;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(139, 92, 246, 0.3));
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #f472b6, #c084fc);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        /* 主内容区 */
+        .main {
+            position: relative;
+            z-index: 10;
+            padding: 30px 40px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #fff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .page-subtitle {
+            color: #64748b;
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+
+        /* 布局 */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 16px;
+            backdrop-filter: blur(20px);
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-title-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .card-body {
+            padding: 24px;
+        }
+
+        /* 云账号选择器 */
+        .cloud-account-selector {
+            margin-bottom: 30px;
+        }
+
+        .selector-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .selector-tabs {
+            display: flex;
+            gap: 4px;
+            padding: 4px;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 10px;
+        }
+
+        .selector-tab {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .selector-tab:hover {
+            color: #94a3b8;
+        }
+
+        .selector-tab.active {
+            color: #fff;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(139, 92, 246, 0.3));
+        }
+
+        .selector-search {
+            position: relative;
+        }
+
+        .selector-search input {
+            padding: 10px 14px 10px 40px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #e2e8f0;
+            font-size: 13px;
+            width: 280px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .selector-search input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .selector-search input::placeholder {
+            color: #64748b;
+        }
+
+        .selector-search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        /* 已选账号展示 */
+        .selected-account {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 20px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            margin-bottom: 20px;
+        }
+
+        .selected-account-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .selected-account-info {
+            flex: 1;
+        }
+
+        .selected-account-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #e2e8f0;
+            margin-bottom: 4px;
+        }
+
+        .selected-account-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .selected-account-meta span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .selected-account-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .account-action-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+        }
+
+        .account-action-btn.switch {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .account-action-btn.switch:hover {
+            background: rgba(59, 130, 246, 0.25);
+        }
+
+        .account-action-btn.manage {
+            background: rgba(148, 163, 184, 0.1);
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .account-action-btn.manage:hover {
+            background: rgba(148, 163, 184, 0.2);
+            color: #e2e8f0;
+        }
+
+        /* 云厂商图标颜色 */
+        .cloud-icon-aliyun { background: linear-gradient(135deg, #ff6a00, #ee0a6b); color: #fff; }
+        .cloud-icon-aws { background: linear-gradient(135deg, #ff9900, #ffb84d); color: #fff; }
+        .cloud-icon-huawei { background: linear-gradient(135deg, #c7000b, #ff4d4d); color: #fff; }
+        .cloud-icon-tencent { background: linear-gradient(135deg, #00a3ff, #00d4ff); color: #fff; }
+        .cloud-icon-volcano { background: linear-gradient(135deg, #f53f3f, #ff7a7a); color: #fff; }
+
+        /* 账号选择面板 */
+        .account-panel {
+            display: none;
+            padding: 20px;
+            border-radius: 14px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .account-panel.show {
+            display: block;
+        }
+
+        /* 云厂商分组 */
+        .cloud-vendor-group {
+            margin-bottom: 20px;
+        }
+
+        .cloud-vendor-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .vendor-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .vendor-header:hover {
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .vendor-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .vendor-name {
+            flex: 1;
+            font-size: 14px;
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+
+        .vendor-account-count {
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .vendor-expand {
+            color: #64748b;
+            transition: transform 0.3s ease;
+        }
+
+        .cloud-vendor-group.expanded .vendor-expand {
+            transform: rotate(180deg);
+        }
+
+        /* 账号列表 */
+        .account-list {
+            display: none;
+            padding: 12px 0 0 52px;
+        }
+
+        .cloud-vendor-group.expanded .account-list {
+            display: block;
+        }
+
+        .account-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            margin-bottom: 8px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            background: rgba(15, 23, 42, 0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .account-item:hover {
+            border-color: rgba(59, 130, 246, 0.3);
+            background: rgba(59, 130, 246, 0.05);
+            transform: translateX(4px);
+        }
+
+        .account-item.active {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .account-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .account-status.normal { background: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
+        .account-status.warning { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.5); }
+        .account-status.error { background: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.5); }
+
+        .account-info {
+            flex: 1;
+        }
+
+        .account-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: #e2e8f0;
+            margin-bottom: 2px;
+        }
+
+        .account-detail {
+            font-size: 11px;
+            color: #64748b;
+        }
+
+        .account-tags {
+            display: flex;
+            gap: 6px;
+        }
+
+        .account-tag {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 500;
+        }
+
+        .account-tag.company { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+        .account-tag.env { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+        .account-tag.primary { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+
+        /* 快速账号选择 (网格模式) */
+        .quick-account-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px;
+        }
+
+        .quick-account-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            background: rgba(15, 23, 42, 0.4);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .quick-account-card:hover {
+            border-color: rgba(59, 130, 246, 0.3);
+            background: rgba(59, 130, 246, 0.05);
+            transform: translateY(-2px);
+        }
+
+        .quick-account-card.active {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
+        }
+
+        .quick-card-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .quick-card-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .quick-card-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e2e8f0;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .quick-card-desc {
+            font-size: 11px;
+            color: #64748b;
+        }
+
+        .quick-card-check {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid rgba(148, 163, 184, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: transparent;
+            transition: all 0.3s ease;
+        }
+
+        .quick-account-card.active .quick-card-check {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: #fff;
+        }
+
+        /* 表单 */
+        .form-section {
+            margin-bottom: 24px;
+        }
+
+        .form-section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #94a3b8;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-section-title::before {
+            content: '';
+            width: 3px;
+            height: 14px;
+            background: linear-gradient(180deg, #3b82f6, #8b5cf6);
+            border-radius: 2px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-group.full {
+            grid-column: 1 / -1;
+        }
+
+        .form-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #94a3b8;
+        }
+
+        .form-input, .form-select {
+            padding: 12px 16px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #e2e8f0;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .form-input:focus, .form-select:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .form-select {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 40px;
+        }
+
+        .form-select option {
+            background: #1e293b;
+            color: #e2e8f0;
+        }
+
+        /* 实例规格选择器 */
+        .instance-selector {
+            position: relative;
+        }
+
+        .instance-selector-header {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .instance-search {
+            position: relative;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .instance-search input {
+            width: 100%;
+            padding: 10px 14px 10px 38px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #e2e8f0;
+            font-size: 13px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .instance-search input:focus {
+            border-color: #3b82f6;
+        }
+
+        .instance-search input::placeholder {
+            color: #64748b;
+        }
+
+        .instance-search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #64748b;
+        }
+
+        .instance-filters {
+            display: flex;
+            gap: 8px;
+        }
+
+        .instance-filter-select {
+            padding: 10px 32px 10px 14px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #e2e8f0;
+            font-size: 13px;
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+        }
+
+        .instance-filter-select option {
+            background: #1e293b;
+        }
+
+        /* 已选规格展示 */
+        .selected-instance {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px 20px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            margin-bottom: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .selected-instance:hover {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(139, 92, 246, 0.15));
+        }
+
+        .selected-instance-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .selected-instance-info {
+            flex: 1;
+        }
+
+        .selected-instance-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: #e2e8f0;
+            margin-bottom: 4px;
+        }
+
+        .selected-instance-specs {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        .selected-instance-specs span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .selected-instance-change {
+            padding: 8px 16px;
+            border-radius: 8px;
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            font-size: 13px;
+            font-weight: 500;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        /* 规格类型标签 */
+        .instance-category-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            overflow-x: auto;
+        }
+
+        .instance-category-tab {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #64748b;
+            background: rgba(148, 163, 184, 0.08);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.3s ease;
+        }
+
+        .instance-category-tab:hover {
+            color: #94a3b8;
+            background: rgba(148, 163, 184, 0.15);
+        }
+
+        .instance-category-tab.active {
+            color: #3b82f6;
+            background: rgba(59, 130, 246, 0.15);
+        }
+
+        .instance-category-tab .count {
+            padding: 2px 6px;
+            border-radius: 8px;
+            background: rgba(148, 163, 184, 0.1);
+            font-size: 10px;
+        }
+
+        .instance-category-tab.active .count {
+            background: rgba(59, 130, 246, 0.2);
+        }
+
+        /* 推荐规格 */
+        .recommended-section {
+            margin-bottom: 20px;
+        }
+
+        .section-label {
+            font-size: 12px;
+            color: #64748b;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .section-label::before {
+            content: '⭐';
+        }
+
+        /* 规格列表 */
+        .instance-list-container {
+            max-height: 400px;
+            overflow-y: auto;
+            padding-right: 8px;
+        }
+
+        .instance-group {
+            margin-bottom: 16px;
+        }
+
+        .instance-group-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 8px;
+        }
+
+        .instance-group-header:hover {
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .instance-group-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .instance-group-icon.general { background: rgba(59, 130, 246, 0.2); }
+        .instance-group-icon.compute { background: rgba(239, 68, 68, 0.2); }
+        .instance-group-icon.memory { background: rgba(168, 85, 247, 0.2); }
+        .instance-group-icon.storage { background: rgba(34, 197, 94, 0.2); }
+        .instance-group-icon.gpu { background: rgba(251, 191, 36, 0.2); }
+
+        .instance-group-name {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 500;
+            color: #e2e8f0;
+        }
+
+        .instance-group-count {
+            font-size: 11px;
+            color: #64748b;
+        }
+
+        .instance-group-expand {
+            color: #64748b;
+            font-size: 10px;
+            transition: transform 0.3s ease;
+        }
+
+        .instance-group.expanded .instance-group-expand {
+            transform: rotate(180deg);
+        }
+
+        .instance-group-items {
+            display: none;
+            padding-left: 12px;
+        }
+
+        .instance-group.expanded .instance-group-items {
+            display: block;
+        }
+
+        /* 规格卡片 - 表格样式 */
+        .instance-type-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 8px;
+        }
+
+        .instance-type-card {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            grid-template-rows: auto auto;
+            gap: 4px 12px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            background: rgba(15, 23, 42, 0.4);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .instance-type-card:hover {
+            border-color: rgba(59, 130, 246, 0.3);
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .instance-type-card.active {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .instance-type-card.active .instance-check {
+            opacity: 1;
+        }
+
+        .instance-card-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+
+        .instance-card-spec {
+            font-size: 11px;
+            color: #64748b;
+            grid-column: 1;
+        }
+
+        .instance-card-price {
+            font-size: 12px;
+            color: #10b981;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .instance-check {
+            grid-row: span 2;
+            align-self: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 2px solid rgba(148, 163, 184, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: transparent;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+
+        .instance-type-card:hover .instance-check {
+            opacity: 1;
+        }
+
+        .instance-type-card.active .instance-check {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: #fff;
+            opacity: 1;
+        }
+
+        /* 推荐标签 */
+        .instance-badge {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .instance-badge.hot {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+
+        .instance-badge.new {
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+        }
+
+        .instance-badge.cost {
+            background: rgba(251, 191, 36, 0.2);
+            color: #fbbf24;
+        }
+
+        /* 规格详情面板 */
+        .instance-detail-panel {
+            position: absolute;
+            top: 0;
+            right: -320px;
+            width: 300px;
+            background: rgba(30, 41, 59, 0.98);
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+            display: none;
+        }
+
+        .instance-detail-panel.show {
+            display: block;
+        }
+
+        .instance-detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .instance-detail-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+
+        .instance-detail-close {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            background: rgba(148, 163, 184, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        .instance-detail-close:hover {
+            background: rgba(148, 163, 184, 0.2);
+            color: #e2e8f0;
+        }
+
+        .instance-detail-specs {
+            margin-bottom: 16px;
+        }
+
+        .spec-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+        }
+
+        .spec-label {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .spec-value {
+            font-size: 13px;
+            color: #e2e8f0;
+            font-weight: 500;
+        }
+
+        .instance-detail-price {
+            padding: 16px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 10px;
+            margin-bottom: 16px;
+        }
+
+        .price-label {
+            font-size: 11px;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+
+        .price-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #10b981;
+        }
+
+        .price-unit {
+            font-size: 12px;
+            color: #64748b;
+            font-weight: 400;
+        }
+
+        .instance-detail-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .detail-btn {
+            flex: 1;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.3s ease;
+        }
+
+        .detail-btn.primary {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            color: #fff;
+        }
+
+        .detail-btn.primary:hover {
+            transform: translateY(-1px);
+        }
+
+        .detail-btn.secondary {
+            background: rgba(148, 163, 184, 0.1);
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .detail-btn.secondary:hover {
+            background: rgba(148, 163, 184, 0.2);
+            color: #e2e8f0;
+        }
+
+        /* 存储配置 */
+        .disk-config {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .disk-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            background: rgba(15, 23, 42, 0.4);
+        }
+
+        .disk-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .disk-info {
+            flex: 1;
+        }
+
+        .disk-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: #e2e8f0;
+        }
+
+        .disk-desc {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .disk-size {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .size-input {
+            width: 80px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #e2e8f0;
+            font-size: 13px;
+            text-align: center;
+            outline: none;
+        }
+
+        .size-input:focus {
+            border-color: #3b82f6;
+        }
+
+        .size-unit {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        /* 网络配置 */
+        .network-card {
+            padding: 16px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            background: rgba(15, 23, 42, 0.4);
+            margin-bottom: 12px;
+        }
+
+        .network-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+        }
+
+        .network-item:not(:last-child) {
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .network-label {
+            font-size: 13px;
+            color: #94a3b8;
+        }
+
+        .network-value {
+            font-size: 13px;
+            color: #e2e8f0;
+            font-weight: 500;
+        }
+
+        /* 数量选择 */
+        .quantity-selector {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .quantity-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #e2e8f0;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .quantity-btn:hover {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .quantity-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: #e2e8f0;
+            min-width: 50px;
+            text-align: center;
+        }
+
+        /* 模板面板 */
+        .template-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .template-item {
+            padding: 16px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            background: rgba(15, 23, 42, 0.4);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .template-item:hover {
+            border-color: rgba(59, 130, 246, 0.3);
+            background: rgba(59, 130, 246, 0.05);
+            transform: translateX(4px);
+        }
+
+        .template-item.active {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .template-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .template-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+
+        .template-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .template-badge.aliyun { background: rgba(255, 106, 0, 0.2); color: #ff9500; }
+        .template-badge.aws { background: rgba(255, 153, 0, 0.2); color: #ffb84d; }
+        .template-badge.huawei { background: rgba(199, 0, 11, 0.2); color: #ff6b6b; }
+
+        .template-desc {
+            font-size: 12px;
+            color: #64748b;
+            margin-bottom: 12px;
+        }
+
+        .template-specs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .template-spec {
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: rgba(148, 163, 184, 0.1);
+            font-size: 11px;
+            color: #94a3b8;
+        }
+
+        /* 订单摘要 */
+        .order-summary {
+            margin-top: 24px;
+            padding: 20px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
+            border: 1px solid rgba(59, 130, 246, 0.2);
+        }
+
+        .order-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e2e8f0;
+            margin-bottom: 16px;
+        }
+
+        .order-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 13px;
+        }
+
+        .order-item-label {
+            color: #94a3b8;
+        }
+
+        .order-item-value {
+            color: #e2e8f0;
+            font-weight: 500;
+        }
+
+        .order-divider {
+            height: 1px;
+            background: rgba(148, 163, 184, 0.2);
+            margin: 12px 0;
+        }
+
+        .order-total {
+            display: flex;
+            justify-content: space-between;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .order-total-label {
+            color: #e2e8f0;
+        }
+
+        .order-total-value {
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* 操作按钮 */
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 14px 24px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-secondary {
+            background: rgba(148, 163, 184, 0.1);
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(148, 163, 184, 0.2);
+            color: #e2e8f0;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+        }
+
+        /* 流程图 */
+        .flow-diagram {
+            margin-top: 30px;
+            padding: 24px;
+            border-radius: 16px;
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .flow-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #94a3b8;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .flow-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .flow-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .flow-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+        }
+
+        .flow-icon.active {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            border: none;
+        }
+
+        .flow-label {
+            font-size: 12px;
+            color: #64748b;
+            text-align: center;
+        }
+
+        .flow-step.active .flow-label {
+            color: #3b82f6;
+            font-weight: 500;
+        }
+
+        .flow-arrow {
+            width: 60px;
+            height: 2px;
+            background: linear-gradient(90deg, rgba(59, 130, 246, 0.5), rgba(139, 92, 246, 0.5));
+            position: relative;
+        }
+
+        .flow-arrow::after {
+            content: '';
+            position: absolute;
+            right: 0;
+            top: -4px;
+            border: 5px solid transparent;
+            border-left-color: rgba(139, 92, 246, 0.5);
+        }
+
+        /* 滚动条美化 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.3);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.5);
+        }
+
+        /* 标签选择 */
+        .tags-input {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            min-height: 46px;
+        }
+
+        .tag-chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            font-size: 12px;
+            color: #93c5fd;
+        }
+
+        .tag-remove {
+            cursor: pointer;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .tag-remove:hover {
+            opacity: 1;
+        }
+
+        .tag-input {
+            border: none;
+            background: transparent;
+            color: #e2e8f0;
+            font-size: 13px;
+            outline: none;
+            flex: 1;
+            min-width: 100px;
+        }
+
+        /* 安全组选择 */
+        .security-groups {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .sg-chip {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.4);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .sg-chip:hover {
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+
+        .sg-chip.selected {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .sg-checkbox {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            border: 2px solid rgba(148, 163, 184, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: transparent;
+            transition: all 0.2s ease;
+        }
+
+        .sg-chip.selected .sg-checkbox {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: #fff;
+        }
+
+        .sg-name {
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        .sg-chip.selected .sg-name {
+            color: #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+    <div class="bg-glow bg-glow-3"></div>
+
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">☁️</div>
+            <span class="logo-text">CloudHub</span>
+        </div>
+        <nav class="nav">
+            <div class="nav-item">仪表盘</div>
+            <div class="nav-item active">云主机</div>
+            <div class="nav-item">网络</div>
+            <div class="nav-item">存储</div>
+            <div class="nav-item">数据库</div>
+            <div class="nav-item">费用中心</div>
+        </nav>
+        <div class="user-info">
+            <span style="font-size: 13px; color: #94a3b8;">管理员</span>
+            <div class="avatar">A</div>
+        </div>
+    </header>
+
+    <main class="main">
+        <h1 class="page-title">🚀 创建云服务器</h1>
+        <p class="page-subtitle">通过主机模板快速创建多云服务器实例</p>
+
+        <div class="content-grid">
+            <!-- 左侧配置区 -->
+            <div class="config-panel">
+                <!-- 云厂商选择 -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <div class="card-title-icon" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));">🌐</div>
+                            选择云厂商
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="cloud-account-selector">
+                            <!-- 顶部标签和搜索 -->
+                            <div class="selector-header">
+                                <div class="selector-tabs">
+                                    <div class="selector-tab active" onclick="switchAccountTab('quick')">快速选择</div>
+                                    <div class="selector-tab" onclick="switchAccountTab('group')">按厂商分组</div>
+                                    <div class="selector-tab" onclick="switchAccountTab('recent')">最近使用</div>
+                                </div>
+                                <div class="selector-search">
+                                    <span class="selector-search-icon">🔍</span>
+                                    <input type="text" placeholder="搜索云账号..." id="accountSearchInput" oninput="searchAccount(this.value)">
+                                </div>
+                            </div>
+
+                            <!-- 已选账号展示 -->
+                            <div class="selected-account" id="selectedAccount">
+                                <div class="selected-account-icon cloud-icon-aliyun">阿里</div>
+                                <div class="selected-account-info">
+                                    <div class="selected-account-name">总公司-阿里云-生产账号</div>
+                                    <div class="selected-account-meta">
+                                        <span>🏢 总公司</span>
+                                        <span>🌍 华东1、华东2、华北2</span>
+                                        <span>📊 128 台实例</span>
+                                    </div>
+                                </div>
+                                <div class="selected-account-actions">
+                                    <button class="account-action-btn manage" onclick="openAccountManager()">账号管理</button>
+                                    <button class="account-action-btn switch" onclick="toggleAccountPanel()">切换账号</button>
+                                </div>
+                            </div>
+
+                            <!-- 账号选择面板 -->
+                            <div class="account-panel" id="accountPanel">
+                                <!-- 快速选择模式 -->
+                                <div class="quick-select-mode" id="quickMode">
+                                    <div class="quick-account-grid">
+                                        <!-- 阿里云账号 -->
+                                        <div class="quick-account-card active" onclick="selectAccount(this, 'aliyun', '总公司-阿里云-生产账号')">
+                                            <div class="quick-card-icon cloud-icon-aliyun">阿里</div>
+                                            <div class="quick-card-info">
+                                                <div class="quick-card-name">总公司-阿里云-生产账号</div>
+                                                <div class="quick-card-desc">华东1 · 128台实例 · 主账号</div>
+                                            </div>
+                                            <div class="quick-card-check">✓</div>
+                                        </div>
+                                        <div class="quick-account-card" onclick="selectAccount(this, 'aliyun', '上海分公司-阿里云')">
+                                            <div class="quick-card-icon cloud-icon-aliyun">阿里</div>
+                                            <div class="quick-card-info">
+                                                <div class="quick-card-name">上海分公司-阿里云</div>
+                                                <div class="quick-card-desc">华东2 · 56台实例</div>
+                                            </div>
+                                            <div class="quick-card-check">✓</div>
+                                        </div>
+                                        <div class="quick-account-card" onclick="selectAccount(this, 'aliyun', '深圳分公司-阿里云')">
+                                            <div class="quick-card-icon cloud-icon-aliyun">阿里</div>
+                                            <div class="quick-card-info">
+                                                <div class="quick-card-name">深圳分公司-阿里云</div>
+                                                <div class="quick-card-desc">华南1 · 32台实例</div>
+                                            </div>
+                                            <div class="quick-card-check">✓</div>
+                                        </div>
+                                        <!-- 腾讯云账号 -->
+                                        <div class="quick-account-card" onclick="selectAccount(this, 'tencent', '总公司-腾讯云')">
+                                            <div class="quick-card-icon cloud-icon-tencent">腾讯</div>
+                                            <div class="quick-card-info">
+                                                <div class="quick-card-name">总公司-腾讯云</div>
+                                                <div class="quick-card-desc">上海 · 64台实例 · 主账号</div>
+                                            </div>
+                                            <div class="quick-card-check">✓</div>
+                                        </div>
+                                        <div class="quick-account-card" onclick="selectAccount(this, 'tencent', '北京分公司-腾讯云')">
+                                            <div class="quick-card-icon cloud-icon-tencent">腾讯</div>
+                                            <div class="quick-card-info">
+                                                <div class="quick-card-name">北京分公司-腾讯云</div>
+                                                <div class="quick-card-desc">北京 · 24台实例</div>
+                                            </div>
+                                            <div class="quick-card-check">✓</div>
+                                        </div>
+                                        <!-- 华为云账号 -->
+                                        <div class="quick-account-card" onclick="selectAccount(this, 'huawei', '总公司-华为云')">
+                                            <div class="quick-card-icon cloud-icon-huawei">华为</div>
+                                            <div class="quick-card-info">
+                                                <div class="quick-card-name">总公司-华为云</div>
+                                                <div class="quick-card-desc">华北-北京四 · 48台实例</div>
+                                            </div>
+                                            <div class="quick-card-check">✓</div>
+                                        </div>
+                                        <!-- AWS账号 -->
+                                        <div class="quick-account-card" onclick="selectAccount(this, 'aws', '海外业务-AWS')">
+                                            <div class="quick-card-icon cloud-icon-aws">AWS</div>
+                                            <div class="quick-card-info">
+                                                <div class="quick-card-name">海外业务-AWS</div>
+                                                <div class="quick-card-desc">ap-southeast-1 · 16台实例</div>
+                                            </div>
+                                            <div class="quick-card-check">✓</div>
+                                        </div>
+                                        <!-- 火山引擎账号 -->
+                                        <div class="quick-account-card" onclick="selectAccount(this, 'volcano', '研发测试-火山引擎')">
+                                            <div class="quick-card-icon cloud-icon-volcano">火山</div>
+                                            <div class="quick-card-info">
+                                                <div class="quick-card-name">研发测试-火山引擎</div>
+                                                <div class="quick-card-desc">cn-beijing · 8台实例</div>
+                                            </div>
+                                            <div class="quick-card-check">✓</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 按厂商分组模式 -->
+                                <div class="group-mode" id="groupMode" style="display: none;">
+                                    <!-- 阿里云 -->
+                                    <div class="cloud-vendor-group expanded">
+                                        <div class="vendor-header" onclick="toggleVendorGroup(this)">
+                                            <div class="vendor-icon cloud-icon-aliyun">阿里</div>
+                                            <div class="vendor-name">阿里云</div>
+                                            <div class="vendor-account-count">3 个账号</div>
+                                            <div class="vendor-expand">▼</div>
+                                        </div>
+                                        <div class="account-list">
+                                            <div class="account-item active" onclick="selectAccountItem(this)">
+                                                <div class="account-status normal"></div>
+                                                <div class="account-info">
+                                                    <div class="account-name">总公司-阿里云-生产账号</div>
+                                                    <div class="account-detail">ID: LTAI5t*** · 华东1、华东2、华北2 · 128台实例</div>
+                                                </div>
+                                                <div class="account-tags">
+                                                    <span class="account-tag company">总公司</span>
+                                                    <span class="account-tag primary">主账号</span>
+                                                </div>
+                                            </div>
+                                            <div class="account-item" onclick="selectAccountItem(this)">
+                                                <div class="account-status normal"></div>
+                                                <div class="account-info">
+                                                    <div class="account-name">上海分公司-阿里云</div>
+                                                    <div class="account-detail">ID: LTAI8t*** · 华东2 · 56台实例</div>
+                                                </div>
+                                                <div class="account-tags">
+                                                    <span class="account-tag company">上海分公司</span>
+                                                    <span class="account-tag env">生产</span>
+                                                </div>
+                                            </div>
+                                            <div class="account-item" onclick="selectAccountItem(this)">
+                                                <div class="account-status warning"></div>
+                                                <div class="account-info">
+                                                    <div class="account-name">深圳分公司-阿里云</div>
+                                                    <div class="account-detail">ID: LTAI9t*** · 华南1 · 32台实例</div>
+                                                </div>
+                                                <div class="account-tags">
+                                                    <span class="account-tag company">深圳分公司</span>
+                                                    <span class="account-tag env">生产</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 腾讯云 -->
+                                    <div class="cloud-vendor-group">
+                                        <div class="vendor-header" onclick="toggleVendorGroup(this)">
+                                            <div class="vendor-icon cloud-icon-tencent">腾讯</div>
+                                            <div class="vendor-name">腾讯云</div>
+                                            <div class="vendor-account-count">2 个账号</div>
+                                            <div class="vendor-expand">▼</div>
+                                        </div>
+                                        <div class="account-list">
+                                            <div class="account-item" onclick="selectAccountItem(this)">
+                                                <div class="account-status normal"></div>
+                                                <div class="account-info">
+                                                    <div class="account-name">总公司-腾讯云</div>
+                                                    <div class="account-detail">ID: AKIDz*** · 上海、广州 · 64台实例</div>
+                                                </div>
+                                                <div class="account-tags">
+                                                    <span class="account-tag company">总公司</span>
+                                                    <span class="account-tag primary">主账号</span>
+                                                </div>
+                                            </div>
+                                            <div class="account-item" onclick="selectAccountItem(this)">
+                                                <div class="account-status normal"></div>
+                                                <div class="account-info">
+                                                    <div class="account-name">北京分公司-腾讯云</div>
+                                                    <div class="account-detail">ID: AKIDy*** · 北京 · 24台实例</div>
+                                                </div>
+                                                <div class="account-tags">
+                                                    <span class="account-tag company">北京分公司</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 华为云 -->
+                                    <div class="cloud-vendor-group">
+                                        <div class="vendor-header" onclick="toggleVendorGroup(this)">
+                                            <div class="vendor-icon cloud-icon-huawei">华为</div>
+                                            <div class="vendor-name">华为云</div>
+                                            <div class="vendor-account-count">1 个账号</div>
+                                            <div class="vendor-expand">▼</div>
+                                        </div>
+                                        <div class="account-list">
+                                            <div class="account-item" onclick="selectAccountItem(this)">
+                                                <div class="account-status normal"></div>
+                                                <div class="account-info">
+                                                    <div class="account-name">总公司-华为云</div>
+                                                    <div class="account-detail">ID: HWPu*** · 华北-北京四 · 48台实例</div>
+                                                </div>
+                                                <div class="account-tags">
+                                                    <span class="account-tag company">总公司</span>
+                                                    <span class="account-tag primary">主账号</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- AWS -->
+                                    <div class="cloud-vendor-group">
+                                        <div class="vendor-header" onclick="toggleVendorGroup(this)">
+                                            <div class="vendor-icon cloud-icon-aws">AWS</div>
+                                            <div class="vendor-name">AWS</div>
+                                            <div class="vendor-account-count">1 个账号</div>
+                                            <div class="vendor-expand">▼</div>
+                                        </div>
+                                        <div class="account-list">
+                                            <div class="account-item" onclick="selectAccountItem(this)">
+                                                <div class="account-status normal"></div>
+                                                <div class="account-info">
+                                                    <div class="account-name">海外业务-AWS</div>
+                                                    <div class="account-detail">ID: AKIA*** · ap-southeast-1 · 16台实例</div>
+                                                </div>
+                                                <div class="account-tags">
+                                                    <span class="account-tag company">海外事业部</span>
+                                                    <span class="account-tag env">生产</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 火山引擎 -->
+                                    <div class="cloud-vendor-group">
+                                        <div class="vendor-header" onclick="toggleVendorGroup(this)">
+                                            <div class="vendor-icon cloud-icon-volcano">火山</div>
+                                            <div class="vendor-name">火山引擎</div>
+                                            <div class="vendor-account-count">1 个账号</div>
+                                            <div class="vendor-expand">▼</div>
+                                        </div>
+                                        <div class="account-list">
+                                            <div class="account-item" onclick="selectAccountItem(this)">
+                                                <div class="account-status normal"></div>
+                                                <div class="account-info">
+                                                    <div class="account-name">研发测试-火山引擎</div>
+                                                    <div class="account-detail">ID: AKLTM*** · cn-beijing · 8台实例</div>
+                                                </div>
+                                                <div class="account-tags">
+                                                    <span class="account-tag company">研发中心</span>
+                                                    <span class="account-tag env">测试</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 最近使用模式 -->
+                                <div class="recent-mode" id="recentMode" style="display: none;">
+                                    <div class="quick-account-grid">
+                                        <div class="quick-account-card active" onclick="selectAccount(this, 'aliyun', '总公司-阿里云-生产账号')">
+                                            <div class="quick-card-icon cloud-icon-aliyun">阿里</div>
+                                            <div class="quick-card-info">
+                                                <div class="quick-card-name">总公司-阿里云-生产账号</div>
+                                                <div class="quick-card-desc">最后使用: 10分钟前</div>
+                                            </div>
+                                            <div class="quick-card-check">✓</div>
+                                        </div>
+                                        <div class="quick-account-card" onclick="selectAccount(this, 'tencent', '总公司-腾讯云')">
+                                            <div class="quick-card-icon cloud-icon-tencent">腾讯</div>
+                                            <div class="quick-card-info">
+                                                <div class="quick-card-name">总公司-腾讯云</div>
+                                                <div class="quick-card-desc">最后使用: 2小时前</div>
+                                            </div>
+                                            <div class="quick-card-check">✓</div>
+                                        </div>
+                                        <div class="quick-account-card" onclick="selectAccount(this, 'aws', '海外业务-AWS')">
+                                            <div class="quick-card-icon cloud-icon-aws">AWS</div>
+                                            <div class="quick-card-info">
+                                                <div class="quick-card-name">海外业务-AWS</div>
+                                                <div class="quick-card-desc">最后使用: 昨天</div>
+                                            </div>
+                                            <div class="quick-card-check">✓</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 基础配置 -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <div class="card-title-icon" style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.2));">⚙️</div>
+                            基础配置
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-section">
+                            <div class="form-section-title">地域与可用区</div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">地域 Region</label>
+                                    <select class="form-select">
+                                        <option>华东1（杭州）</option>
+                                        <option>华东2（上海）</option>
+                                        <option>华北2（北京）</option>
+                                        <option>华南1（深圳）</option>
+                                        <option>香港</option>
+                                        <option>新加坡</option>
+                                        <option>日本东京</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">可用区 Zone</label>
+                                    <select class="form-select">
+                                        <option>可用区 A（推荐）</option>
+                                        <option>可用区 B</option>
+                                        <option>可用区 C</option>
+                                        <option>随机分配</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <div class="form-section-title">实例规格</div>
+                            <div class="instance-selector">
+                                <!-- 搜索和筛选 -->
+                                <div class="instance-selector-header">
+                                    <div class="instance-search">
+                                        <span class="instance-search-icon">🔍</span>
+                                        <input type="text" placeholder="搜索规格名称、vCPU、内存..." id="instanceSearch" oninput="filterInstances(this.value)">
+                                    </div>
+                                    <div class="instance-filters">
+                                        <select class="instance-filter-select" onchange="filterByCpu(this.value)">
+                                            <option value="">vCPU 核数</option>
+                                            <option value="1">1 核</option>
+                                            <option value="2">2 核</option>
+                                            <option value="4">4 核</option>
+                                            <option value="8">8 核</option>
+                                            <option value="16">16 核</option>
+                                            <option value="32">32 核</option>
+                                            <option value="64">64 核</option>
+                                        </select>
+                                        <select class="instance-filter-select" onchange="filterByMemory(this.value)">
+                                            <option value="">内存大小</option>
+                                            <option value="1">1 GB</option>
+                                            <option value="2">2 GB</option>
+                                            <option value="4">4 GB</option>
+                                            <option value="8">8 GB</option>
+                                            <option value="16">16 GB</option>
+                                            <option value="32">32 GB</option>
+                                            <option value="64">64 GB</option>
+                                            <option value="128">128 GB</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- 已选规格 -->
+                                <div class="selected-instance" onclick="toggleInstancePanel()">
+                                    <div class="selected-instance-icon">💻</div>
+                                    <div class="selected-instance-info">
+                                        <div class="selected-instance-name" id="selectedInstanceName">ecs.g6.xlarge</div>
+                                        <div class="selected-instance-specs">
+                                            <span>🖥️ 4 vCPU</span>
+                                            <span>🧠 16 GB</span>
+                                            <span>💨 10 Gbps</span>
+                                            <span>💰 ¥0.48/时</span>
+                                        </div>
+                                    </div>
+                                    <div class="selected-instance-change">更换规格</div>
+                                </div>
+
+                                <!-- 规格选择面板 -->
+                                <div class="account-panel" id="instancePanel">
+                                    <!-- 规格类型标签 -->
+                                    <div class="instance-category-tabs">
+                                        <div class="instance-category-tab active" onclick="filterByCategory('all')">
+                                            全部 <span class="count">124</span>
+                                        </div>
+                                        <div class="instance-category-tab" onclick="filterByCategory('general')">
+                                            📦 通用型 <span class="count">32</span>
+                                        </div>
+                                        <div class="instance-category-tab" onclick="filterByCategory('compute')">
+                                            ⚡ 计算型 <span class="count">28</span>
+                                        </div>
+                                        <div class="instance-category-tab" onclick="filterByCategory('memory')">
+                                            🧠 内存型 <span class="count">24</span>
+                                        </div>
+                                        <div class="instance-category-tab" onclick="filterByCategory('storage')">
+                                            💾 存储型 <span class="count">20</span>
+                                        </div>
+                                        <div class="instance-category-tab" onclick="filterByCategory('gpu')">
+                                            🎮 GPU型 <span class="count">12</span>
+                                        </div>
+                                        <div class="instance-category-tab" onclick="filterByCategory('burst')">
+                                            🎯 突发型 <span class="count">8</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- 推荐规格 -->
+                                    <div class="recommended-section">
+                                        <div class="section-label">推荐规格</div>
+                                        <div class="instance-type-grid">
+                                            <div class="instance-type-card active" onclick="selectInstance(this, 'ecs.g6.xlarge', 4, 16, 0.48)" data-cpu="4" data-memory="16" data-category="general">
+                                                <div class="instance-card-name">ecs.g6.xlarge</div>
+                                                <div class="instance-card-spec">4核 16GB</div>
+                                                <div class="instance-card-price">¥0.48/时</div>
+                                                <div class="instance-check">✓</div>
+                                            </div>
+                                            <div class="instance-type-card" onclick="selectInstance(this, 'ecs.c6.xlarge', 4, 8, 0.39)" data-cpu="4" data-memory="8" data-category="compute">
+                                                <div class="instance-card-name">ecs.c6.xlarge <span class="instance-badge hot">HOT</span></div>
+                                                <div class="instance-card-spec">4核 8GB</div>
+                                                <div class="instance-card-price">¥0.39/时</div>
+                                                <div class="instance-check">✓</div>
+                                            </div>
+                                            <div class="instance-type-card" onclick="selectInstance(this, 'ecs.g6.2xlarge', 8, 32, 0.96)" data-cpu="8" data-memory="32" data-category="general">
+                                                <div class="instance-card-name">ecs.g6.2xlarge</div>
+                                                <div class="instance-card-spec">8核 32GB</div>
+                                                <div class="instance-card-price">¥0.96/时</div>
+                                                <div class="instance-check">✓</div>
+                                            </div>
+                                            <div class="instance-type-card" onclick="selectInstance(this, 'ecs.t6-c1m2.large', 2, 4, 0.12)" data-cpu="2" data-memory="4" data-category="burst">
+                                                <div class="instance-card-name">ecs.t6-c1m2.large <span class="instance-badge cost">性价比</span></div>
+                                                <div class="instance-card-spec">2核 4GB</div>
+                                                <div class="instance-card-price">¥0.12/时</div>
+                                                <div class="instance-check">✓</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 规格分组列表 -->
+                                    <div class="instance-list-container" id="instanceList">
+                                        <!-- 通用型 -->
+                                        <div class="instance-group expanded" data-category="general">
+                                            <div class="instance-group-header" onclick="toggleInstanceGroup(this)">
+                                                <div class="instance-group-icon general">📦</div>
+                                                <div class="instance-group-name">通用型 (g系列)</div>
+                                                <div class="instance-group-count">32款规格</div>
+                                                <div class="instance-group-expand">▼</div>
+                                            </div>
+                                            <div class="instance-group-items">
+                                                <div class="instance-type-grid">
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.g6.small', 1, 2, 0.06)" data-cpu="1" data-memory="2" data-category="general">
+                                                        <div class="instance-card-name">ecs.g6.small</div>
+                                                        <div class="instance-card-spec">1核 2GB</div>
+                                                        <div class="instance-card-price">¥0.06/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.g6.medium', 2, 4, 0.12)" data-cpu="2" data-memory="4" data-category="general">
+                                                        <div class="instance-card-name">ecs.g6.medium</div>
+                                                        <div class="instance-card-spec">2核 4GB</div>
+                                                        <div class="instance-card-price">¥0.12/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.g6.large', 2, 8, 0.24)" data-cpu="2" data-memory="8" data-category="general">
+                                                        <div class="instance-card-name">ecs.g6.large</div>
+                                                        <div class="instance-card-spec">2核 8GB</div>
+                                                        <div class="instance-card-price">¥0.24/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.g6.xlarge', 4, 16, 0.48)" data-cpu="4" data-memory="16" data-category="general">
+                                                        <div class="instance-card-name">ecs.g6.xlarge</div>
+                                                        <div class="instance-card-spec">4核 16GB</div>
+                                                        <div class="instance-card-price">¥0.48/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.g6.2xlarge', 8, 32, 0.96)" data-cpu="8" data-memory="32" data-category="general">
+                                                        <div class="instance-card-name">ecs.g6.2xlarge</div>
+                                                        <div class="instance-card-spec">8核 32GB</div>
+                                                        <div class="instance-card-price">¥0.96/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.g6.4xlarge', 16, 64, 1.92)" data-cpu="16" data-memory="64" data-category="general">
+                                                        <div class="instance-card-name">ecs.g6.4xlarge</div>
+                                                        <div class="instance-card-spec">16核 64GB</div>
+                                                        <div class="instance-card-price">¥1.92/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.g7.small', 1, 2, 0.07)" data-cpu="1" data-memory="2" data-category="general">
+                                                        <div class="instance-card-name">ecs.g7.small <span class="instance-badge new">NEW</span></div>
+                                                        <div class="instance-card-spec">1核 2GB</div>
+                                                        <div class="instance-card-price">¥0.07/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.g7.xlarge', 4, 16, 0.52)" data-cpu="4" data-memory="16" data-category="general">
+                                                        <div class="instance-card-name">ecs.g7.xlarge <span class="instance-badge new">NEW</span></div>
+                                                        <div class="instance-card-spec">4核 16GB</div>
+                                                        <div class="instance-card-price">¥0.52/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 计算型 -->
+                                        <div class="instance-group" data-category="compute">
+                                            <div class="instance-group-header" onclick="toggleInstanceGroup(this)">
+                                                <div class="instance-group-icon compute">⚡</div>
+                                                <div class="instance-group-name">计算型 (c系列)</div>
+                                                <div class="instance-group-count">28款规格</div>
+                                                <div class="instance-group-expand">▼</div>
+                                            </div>
+                                            <div class="instance-group-items">
+                                                <div class="instance-type-grid">
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.c6.large', 2, 4, 0.20)" data-cpu="2" data-memory="4" data-category="compute">
+                                                        <div class="instance-card-name">ecs.c6.large</div>
+                                                        <div class="instance-card-spec">2核 4GB</div>
+                                                        <div class="instance-card-price">¥0.20/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.c6.xlarge', 4, 8, 0.39)" data-cpu="4" data-memory="8" data-category="compute">
+                                                        <div class="instance-card-name">ecs.c6.xlarge <span class="instance-badge hot">HOT</span></div>
+                                                        <div class="instance-card-spec">4核 8GB</div>
+                                                        <div class="instance-card-price">¥0.39/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.c6.2xlarge', 8, 16, 0.78)" data-cpu="8" data-memory="16" data-category="compute">
+                                                        <div class="instance-card-name">ecs.c6.2xlarge</div>
+                                                        <div class="instance-card-spec">8核 16GB</div>
+                                                        <div class="instance-card-price">¥0.78/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.c7.xlarge', 4, 8, 0.42)" data-cpu="4" data-memory="8" data-category="compute">
+                                                        <div class="instance-card-name">ecs.c7.xlarge <span class="instance-badge new">NEW</span></div>
+                                                        <div class="instance-card-spec">4核 8GB</div>
+                                                        <div class="instance-card-price">¥0.42/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 内存型 -->
+                                        <div class="instance-group" data-category="memory">
+                                            <div class="instance-group-header" onclick="toggleInstanceGroup(this)">
+                                                <div class="instance-group-icon memory">🧠</div>
+                                                <div class="instance-group-name">内存型 (r系列)</div>
+                                                <div class="instance-group-count">24款规格</div>
+                                                <div class="instance-group-expand">▼</div>
+                                            </div>
+                                            <div class="instance-group-items">
+                                                <div class="instance-type-grid">
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.r6.large', 2, 16, 0.28)" data-cpu="2" data-memory="16" data-category="memory">
+                                                        <div class="instance-card-name">ecs.r6.large</div>
+                                                        <div class="instance-card-spec">2核 16GB</div>
+                                                        <div class="instance-card-price">¥0.28/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.r6.xlarge', 4, 32, 0.56)" data-cpu="4" data-memory="32" data-category="memory">
+                                                        <div class="instance-card-name">ecs.r6.xlarge</div>
+                                                        <div class="instance-card-spec">4核 32GB</div>
+                                                        <div class="instance-card-price">¥0.56/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.r6.2xlarge', 8, 64, 1.12)" data-cpu="8" data-memory="64" data-category="memory">
+                                                        <div class="instance-card-name">ecs.r6.2xlarge</div>
+                                                        <div class="instance-card-spec">8核 64GB</div>
+                                                        <div class="instance-card-price">¥1.12/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 存储型 -->
+                                        <div class="instance-group" data-category="storage">
+                                            <div class="instance-group-header" onclick="toggleInstanceGroup(this)">
+                                                <div class="instance-group-icon storage">💾</div>
+                                                <div class="instance-group-name">存储型 (i/d系列)</div>
+                                                <div class="instance-group-count">20款规格</div>
+                                                <div class="instance-group-expand">▼</div>
+                                            </div>
+                                            <div class="instance-group-items">
+                                                <div class="instance-type-grid">
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.i2.xlarge', 4, 32, 0.88)" data-cpu="4" data-memory="32" data-category="storage">
+                                                        <div class="instance-card-name">ecs.i2.xlarge</div>
+                                                        <div class="instance-card-spec">4核 32GB · NVMe</div>
+                                                        <div class="instance-card-price">¥0.88/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.d1.xlarge', 4, 16, 0.65)" data-cpu="4" data-memory="16" data-category="storage">
+                                                        <div class="instance-card-name">ecs.d1.xlarge</div>
+                                                        <div class="instance-card-spec">4核 16GB · 本地盘</div>
+                                                        <div class="instance-card-price">¥0.65/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- GPU型 -->
+                                        <div class="instance-group" data-category="gpu">
+                                            <div class="instance-group-header" onclick="toggleInstanceGroup(this)">
+                                                <div class="instance-group-icon gpu">🎮</div>
+                                                <div class="instance-group-name">GPU型 (gn/vgn系列)</div>
+                                                <div class="instance-group-count">12款规格</div>
+                                                <div class="instance-group-expand">▼</div>
+                                            </div>
+                                            <div class="instance-group-items">
+                                                <div class="instance-type-grid">
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.gn6i.xlarge', 4, 16, 2.88)" data-cpu="4" data-memory="16" data-category="gpu">
+                                                        <div class="instance-card-name">ecs.gn6i.xlarge</div>
+                                                        <div class="instance-card-spec">4核 16GB · T4</div>
+                                                        <div class="instance-card-price">¥2.88/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.gn7.xlarge', 4, 30, 4.50)" data-cpu="4" data-memory="30" data-category="gpu">
+                                                        <div class="instance-card-name">ecs.gn7.xlarge <span class="instance-badge new">NEW</span></div>
+                                                        <div class="instance-card-spec">4核 30GB · A10</div>
+                                                        <div class="instance-card-price">¥4.50/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 突发型 -->
+                                        <div class="instance-group" data-category="burst">
+                                            <div class="instance-group-header" onclick="toggleInstanceGroup(this)">
+                                                <div class="instance-group-icon general">🎯</div>
+                                                <div class="instance-group-name">突发性能型 (t系列)</div>
+                                                <div class="instance-group-count">8款规格</div>
+                                                <div class="instance-group-expand">▼</div>
+                                            </div>
+                                            <div class="instance-group-items">
+                                                <div class="instance-type-grid">
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.t6-c1m1.small', 1, 1, 0.05)" data-cpu="1" data-memory="1" data-category="burst">
+                                                        <div class="instance-card-name">ecs.t6-c1m1.small</div>
+                                                        <div class="instance-card-spec">1核 1GB</div>
+                                                        <div class="instance-card-price">¥0.05/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                    <div class="instance-type-card" onclick="selectInstance(this, 'ecs.t6-c1m2.large', 2, 4, 0.12)" data-cpu="2" data-memory="4" data-category="burst">
+                                                        <div class="instance-card-name">ecs.t6-c1m2.large <span class="instance-badge cost">性价比</span></div>
+                                                        <div class="instance-card-spec">2核 4GB</div>
+                                                        <div class="instance-card-price">¥0.12/时</div>
+                                                        <div class="instance-check">✓</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <div class="form-section-title">操作系统镜像</div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">镜像类型</label>
+                                    <select class="form-select">
+                                        <option>公共镜像</option>
+                                        <option>自定义镜像</option>
+                                        <option>共享镜像</option>
+                                        <option>镜像市场</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">操作系统</label>
+                                    <select class="form-select">
+                                        <option>CentOS 7.9 64位</option>
+                                        <option>Ubuntu 22.04 LTS</option>
+                                        <option>Debian 11</option>
+                                        <option>Rocky Linux 8</option>
+                                        <option>Windows Server 2022</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 存储配置 -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <div class="card-title-icon" style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.2));">💾</div>
+                            存储配置
+                        </div>
+                        <button class="btn btn-secondary" style="padding: 8px 16px; font-size: 12px;">+ 添加数据盘</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="disk-config">
+                            <div class="disk-item">
+                                <div class="disk-icon">💿</div>
+                                <div class="disk-info">
+                                    <div class="disk-name">系统盘</div>
+                                    <div class="disk-desc">高效云盘 · 不可卸载</div>
+                                </div>
+                                <div class="disk-size">
+                                    <input type="text" class="size-input" value="40">
+                                    <span class="size-unit">GB</span>
+                                </div>
+                            </div>
+                            <div class="disk-item">
+                                <div class="disk-icon">📀</div>
+                                <div class="disk-info">
+                                    <div class="disk-name">数据盘 1</div>
+                                    <div class="disk-desc">SSD云盘 · 可卸载</div>
+                                </div>
+                                <div class="disk-size">
+                                    <input type="text" class="size-input" value="100">
+                                    <span class="size-unit">GB</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 网络配置 -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <div class="card-title-icon" style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(192, 132, 252, 0.2));">🔗</div>
+                            网络配置
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">网络类型</label>
+                                <select class="form-select">
+                                    <option>专有网络 VPC</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">VPC</label>
+                                <select class="form-select">
+                                    <option>vpc-prod-01 (10.0.0.0/16)</option>
+                                    <option>vpc-dev-01 (172.16.0.0/16)</option>
+                                    <option>vpc-test-01 (192.168.0.0/16)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">交换机 / 子网</label>
+                                <select class="form-select">
+                                    <option>vsw-hz-a-01 (10.0.1.0/24)</option>
+                                    <option>vsw-hz-b-01 (10.0.2.0/24)</option>
+                                    <option>vsw-hz-c-01 (10.0.3.0/24)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">公网带宽</label>
+                                <select class="form-select">
+                                    <option>按使用流量 · 10 Mbps</option>
+                                    <option>按使用流量 · 20 Mbps</option>
+                                    <option>按固定带宽 · 5 Mbps</option>
+                                    <option>不分配公网IP</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 8px;">
+                            <label class="form-label">安全组</label>
+                            <div class="security-groups">
+                                <div class="sg-chip selected" onclick="toggleSecurityGroup(this)">
+                                    <div class="sg-checkbox">✓</div>
+                                    <span class="sg-name">sg-default</span>
+                                </div>
+                                <div class="sg-chip selected" onclick="toggleSecurityGroup(this)">
+                                    <div class="sg-checkbox">✓</div>
+                                    <span class="sg-name">sg-web</span>
+                                </div>
+                                <div class="sg-chip" onclick="toggleSecurityGroup(this)">
+                                    <div class="sg-checkbox">✓</div>
+                                    <span class="sg-name">sg-ssh</span>
+                                </div>
+                                <div class="sg-chip" onclick="toggleSecurityGroup(this)">
+                                    <div class="sg-checkbox">✓</div>
+                                    <span class="sg-name">sg-mysql</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 其他配置 -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <div class="card-title-icon" style="background: linear-gradient(135deg, rgba(236, 72, 153, 0.2), rgba(244, 114, 182, 0.2));">📝</div>
+                            其他配置
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">实例名称</label>
+                                <input type="text" class="form-input" placeholder="web-server-001" value="prod-web-001">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">主机名</label>
+                                <input type="text" class="form-input" placeholder="hostname" value="prod-web-001">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">密钥对</label>
+                                <select class="form-select">
+                                    <option>prod-key-2024</option>
+                                    <option>dev-key-2024</option>
+                                    <option>test-key-2024</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">计费方式</label>
+                                <select class="form-select">
+                                    <option>按量付费</option>
+                                    <option>包年包月</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">标签 Tags</label>
+                            <div class="tags-input">
+                                <span class="tag-chip">
+                                    env: production
+                                    <span class="tag-remove">×</span>
+                                </span>
+                                <span class="tag-chip">
+                                    team: ops
+                                    <span class="tag-remove">×</span>
+                                </span>
+                                <input type="text" class="tag-input" placeholder="输入标签 key:value">
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 16px;">
+                            <label class="form-label">购买数量</label>
+                            <div class="quantity-selector">
+                                <button class="quantity-btn" onclick="changeQuantity(-1)">−</button>
+                                <span class="quantity-value" id="quantity">3</span>
+                                <button class="quantity-btn" onclick="changeQuantity(1)">+</button>
+                                <span style="color: #64748b; font-size: 12px; margin-left: 8px;">台 (最多20台)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧模板和摘要 -->
+            <div class="sidebar">
+                <!-- 模板选择 -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <div class="card-title-icon" style="background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(34, 211, 238, 0.2));">📋</div>
+                            主机模板
+                        </div>
+                        <button class="btn btn-secondary" style="padding: 8px 16px; font-size: 12px;">+ 新建模板</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="template-list">
+                            <div class="template-item" onclick="selectTemplate(this)">
+                                <div class="template-header">
+                                    <span class="template-name">🖥️ Web服务器标准模板</span>
+                                    <span class="template-badge aliyun">阿里云</span>
+                                </div>
+                                <div class="template-desc">适用于生产环境Web应用服务器，4核8GB配置</div>
+                                <div class="template-specs">
+                                    <span class="template-spec">4核8GB</span>
+                                    <span class="template-spec">CentOS 7.9</span>
+                                    <span class="template-spec">100GB SSD</span>
+                                </div>
+                            </div>
+                            <div class="template-item active" onclick="selectTemplate(this)">
+                                <div class="template-header">
+                                    <span class="template-name">🗄️ 数据库服务器模板</span>
+                                    <span class="template-badge aliyun">阿里云</span>
+                                </div>
+                                <div class="template-desc">高IO数据库服务器，8核16GB配置，高性能SSD</div>
+                                <div class="template-specs">
+                                    <span class="template-spec">8核16GB</span>
+                                    <span class="template-spec">Ubuntu 22.04</span>
+                                    <span class="template-spec">500GB SSD</span>
+                                </div>
+                            </div>
+                            <div class="template-item" onclick="selectTemplate(this)">
+                                <div class="template-header">
+                                    <span class="template-name">🧪 测试环境模板</span>
+                                    <span class="template-badge aws">AWS</span>
+                                </div>
+                                <div class="template-desc">开发测试环境，低成本配置</div>
+                                <div class="template-specs">
+                                    <span class="template-spec">2核4GB</span>
+                                    <span class="template-spec">Debian 11</span>
+                                    <span class="template-spec">50GB</span>
+                                </div>
+                            </div>
+                            <div class="template-item" onclick="selectTemplate(this)">
+                                <div class="template-header">
+                                    <span class="template-name">⚡ 高性能计算模板</span>
+                                    <span class="template-badge huawei">华为云</span>
+                                </div>
+                                <div class="template-desc">GPU加速计算场景，深度学习训练</div>
+                                <div class="template-specs">
+                                    <span class="template-spec">32核128GB</span>
+                                    <span class="template-spec">GPU T4</span>
+                                    <span class="template-spec">1TB NVMe</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 订单摘要 -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <div class="card-title-icon" style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(74, 222, 128, 0.2));">📊</div>
+                            配置摘要
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="order-summary">
+                            <div class="order-item">
+                                <span class="order-item-label">云厂商</span>
+                                <span class="order-item-value">阿里云</span>
+                            </div>
+                            <div class="order-item">
+                                <span class="order-item-label">地域</span>
+                                <span class="order-item-value">华东1（杭州）</span>
+                            </div>
+                            <div class="order-item">
+                                <span class="order-item-label">实例规格</span>
+                                <span class="order-item-value">ecs.medium (4核8GB)</span>
+                            </div>
+                            <div class="order-item">
+                                <span class="order-item-label">操作系统</span>
+                                <span class="order-item-value">CentOS 7.9</span>
+                            </div>
+                            <div class="order-item">
+                                <span class="order-item-label">系统盘</span>
+                                <span class="order-item-value">40GB 高效云盘</span>
+                            </div>
+                            <div class="order-item">
+                                <span class="order-item-label">数据盘</span>
+                                <span class="order-item-value">100GB SSD</span>
+                            </div>
+                            <div class="order-item">
+                                <span class="order-item-label">公网带宽</span>
+                                <span class="order-item-value">10 Mbps</span>
+                            </div>
+                            <div class="order-item">
+                                <span class="order-item-label">安全组</span>
+                                <span class="order-item-value">sg-default, sg-web</span>
+                            </div>
+                            <div class="order-divider"></div>
+                            <div class="order-item">
+                                <span class="order-item-label">购买数量</span>
+                                <span class="order-item-value">3 台</span>
+                            </div>
+                            <div class="order-item">
+                                <span class="order-item-label">计费方式</span>
+                                <span class="order-item-value">按量付费</span>
+                            </div>
+                            <div class="order-divider"></div>
+                            <div class="order-total">
+                                <span class="order-total-label">预估费用</span>
+                                <span class="order-total-value">¥ 2.16 / 小时</span>
+                            </div>
+                            <div style="font-size: 11px; color: #64748b; text-align: right; margin-top: 4px;">
+                                约 ¥ 1,555 / 月
+                            </div>
+                        </div>
+
+                        <div class="actions">
+                            <button class="btn btn-secondary">保存为模板</button>
+                            <button class="btn btn-primary">🚀 立即创建</button>
+                        </div>
+
+                        <!-- 流程图 -->
+                        <div class="flow-diagram">
+                            <div class="flow-title">创建流程</div>
+                            <div class="flow-steps">
+                                <div class="flow-step active">
+                                    <div class="flow-icon active">📝</div>
+                                    <div class="flow-label">配置参数</div>
+                                </div>
+                                <div class="flow-arrow"></div>
+                                <div class="flow-step">
+                                    <div class="flow-icon">⏳</div>
+                                    <div class="flow-label">创建中</div>
+                                </div>
+                                <div class="flow-arrow"></div>
+                                <div class="flow-step">
+                                    <div class="flow-icon">🔄</div>
+                                    <div class="flow-label">初始化</div>
+                                </div>
+                                <div class="flow-arrow"></div>
+                                <div class="flow-step">
+                                    <div class="flow-icon">✅</div>
+                                    <div class="flow-label">运行中</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // 账号选择相关
+        let currentAccount = {
+            vendor: 'aliyun',
+            name: '总公司-阿里云-生产账号',
+            icon: '阿里'
+        };
+
+        function toggleAccountPanel() {
+            const panel = document.getElementById('accountPanel');
+            panel.classList.toggle('show');
+        }
+
+        function switchAccountTab(tab) {
+            // 更新标签状态
+            document.querySelectorAll('.selector-tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // 切换显示模式
+            document.getElementById('quickMode').style.display = tab === 'quick' ? 'block' : 'none';
+            document.getElementById('groupMode').style.display = tab === 'group' ? 'block' : 'none';
+            document.getElementById('recentMode').style.display = tab === 'recent' ? 'block' : 'none';
+        }
+
+        function selectAccount(el, vendor, name) {
+            // 更新选中状态
+            document.querySelectorAll('.quick-account-card').forEach(card => card.classList.remove('active'));
+            el.classList.add('active');
+
+            // 更新当前账号
+            currentAccount = { vendor, name, icon: getVendorIcon(vendor) };
+            updateSelectedAccount();
+
+            // 关闭面板
+            document.getElementById('accountPanel').classList.remove('show');
+        }
+
+        function selectAccountItem(el) {
+            // 更新选中状态
+            document.querySelectorAll('.account-item').forEach(item => item.classList.remove('active'));
+            el.classList.add('active');
+
+            // 获取账号信息
+            const name = el.querySelector('.account-name').textContent;
+            const vendorGroup = el.closest('.cloud-vendor-group');
+            const vendor = vendorGroup.querySelector('.vendor-icon').className.includes('aliyun') ? 'aliyun' :
+                          vendorGroup.querySelector('.vendor-icon').className.includes('tencent') ? 'tencent' :
+                          vendorGroup.querySelector('.vendor-icon').className.includes('huawei') ? 'huawei' :
+                          vendorGroup.querySelector('.vendor-icon').className.includes('aws') ? 'aws' : 'volcano';
+
+            currentAccount = { vendor, name, icon: getVendorIcon(vendor) };
+            updateSelectedAccount();
+
+            // 关闭面板
+            document.getElementById('accountPanel').classList.remove('show');
+        }
+
+        function getVendorIcon(vendor) {
+            const icons = {
+                'aliyun': '阿里',
+                'tencent': '腾讯',
+                'huawei': '华为',
+                'aws': 'AWS',
+                'volcano': '火山'
+            };
+            return icons[vendor] || vendor;
+        }
+
+        function updateSelectedAccount() {
+            const container = document.getElementById('selectedAccount');
+            const iconClass = `cloud-icon-${currentAccount.vendor}`;
+            container.querySelector('.selected-account-icon').className = `selected-account-icon ${iconClass}`;
+            container.querySelector('.selected-account-icon').textContent = currentAccount.icon;
+            container.querySelector('.selected-account-name').textContent = currentAccount.name;
+        }
+
+        function toggleVendorGroup(header) {
+            const group = header.parentElement;
+            group.classList.toggle('expanded');
+        }
+
+        function searchAccount(keyword) {
+            const lowerKeyword = keyword.toLowerCase();
+
+            // 搜索快速选择卡片
+            document.querySelectorAll('.quick-account-card').forEach(card => {
+                const name = card.querySelector('.quick-card-name').textContent.toLowerCase();
+                card.style.display = name.includes(lowerKeyword) ? 'flex' : 'none';
+            });
+
+            // 搜索分组账号
+            document.querySelectorAll('.account-item').forEach(item => {
+                const name = item.querySelector('.account-name').textContent.toLowerCase();
+                item.style.display = name.includes(lowerKeyword) ? 'flex' : 'none';
+            });
+
+            // 展开所有分组
+            if (keyword) {
+                document.querySelectorAll('.cloud-vendor-group').forEach(g => g.classList.add('expanded'));
+            }
+        }
+
+        function openAccountManager() {
+            alert('跳转到云账号管理页面');
+        }
+
+        // 原有功能
+        function toggleInstancePanel() {
+            const panel = document.getElementById('instancePanel');
+            panel.classList.toggle('show');
+        }
+
+        function selectInstance(el, name, cpu, memory, price) {
+            // 更新选中状态
+            document.querySelectorAll('.instance-type-card').forEach(card => card.classList.remove('active'));
+            el.classList.add('active');
+
+            // 更新已选规格显示
+            document.getElementById('selectedInstanceName').textContent = name;
+            const specs = document.querySelector('.selected-instance-specs');
+            specs.innerHTML = `
+                <span>🖥️ ${cpu} vCPU</span>
+                <span>🧠 ${memory} GB</span>
+                <span>💨 10 Gbps</span>
+                <span>💰 ¥${price.toFixed(2)}/时</span>
+            `;
+
+            // 关闭面板
+            document.getElementById('instancePanel').classList.remove('show');
+        }
+
+        function toggleInstanceGroup(header) {
+            const group = header.parentElement;
+            group.classList.toggle('expanded');
+        }
+
+        function filterByCategory(category) {
+            // 更新标签状态
+            document.querySelectorAll('.instance-category-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+
+            const groups = document.querySelectorAll('.instance-group');
+            groups.forEach(group => {
+                if (category === 'all') {
+                    group.style.display = 'block';
+                } else {
+                    group.style.display = group.dataset.category === category ? 'block' : 'none';
+                }
+            });
+
+            // 如果是具体分类，自动展开
+            if (category !== 'all') {
+                groups.forEach(group => {
+                    if (group.dataset.category === category) {
+                        group.classList.add('expanded');
+                    }
+                });
+            }
+        }
+
+        function filterInstances(keyword) {
+            const lowerKeyword = keyword.toLowerCase();
+            const cards = document.querySelectorAll('.instance-type-card');
+
+            cards.forEach(card => {
+                const name = card.querySelector('.instance-card-name').textContent.toLowerCase();
+                const spec = card.querySelector('.instance-card-spec').textContent.toLowerCase();
+                card.style.display = (name.includes(lowerKeyword) || spec.includes(lowerKeyword)) ? 'grid' : 'none';
+            });
+
+            // 展开所有分组
+            if (keyword) {
+                document.querySelectorAll('.instance-group').forEach(g => g.classList.add('expanded'));
+            }
+        }
+
+        function filterByCpu(cpu) {
+            if (!cpu) {
+                document.querySelectorAll('.instance-type-card').forEach(card => card.style.display = 'grid');
+                return;
+            }
+
+            document.querySelectorAll('.instance-type-card').forEach(card => {
+                const cardCpu = card.dataset.cpu;
+                card.style.display = cardCpu === cpu ? 'grid' : 'none';
+            });
+
+            document.querySelectorAll('.instance-group').forEach(g => g.classList.add('expanded'));
+        }
+
+        function filterByMemory(memory) {
+            if (!memory) {
+                document.querySelectorAll('.instance-type-card').forEach(card => card.style.display = 'grid');
+                return;
+            }
+
+            document.querySelectorAll('.instance-type-card').forEach(card => {
+                const cardMemory = card.dataset.memory;
+                card.style.display = cardMemory === memory ? 'grid' : 'none';
+            });
+
+            document.querySelectorAll('.instance-group').forEach(g => g.classList.add('expanded'));
+        }
+
+        // 原有功能
+        function selectInstanceType(el) {
+            document.querySelectorAll('.instance-type').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
+        }
+
+        function selectTemplate(el) {
+            document.querySelectorAll('.template-item').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
+        }
+
+        function toggleSecurityGroup(el) {
+            el.classList.toggle('selected');
+        }
+
+        function changeQuantity(delta) {
+            const el = document.getElementById('quantity');
+            let value = parseInt(el.textContent) + delta;
+            if (value < 1) value = 1;
+            if (value > 20) value = 20;
+            el.textContent = value;
+        }
+
+        // 添加标签功能
+        document.querySelector('.tag-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && this.value.trim()) {
+                const chip = document.createElement('span');
+                chip.className = 'tag-chip';
+                chip.innerHTML = `${this.value.trim()}<span class="tag-remove" onclick="this.parentElement.remove()">×</span>`;
+                this.parentElement.insertBefore(chip, this);
+                this.value = '';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -11,7 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const TopoEdgesCollection = "topo_edges"
+const TopoEdgesCollection = "ecam_topo_edge"
 
 // EdgeDAO 拓扑连线 MongoDB 数据访问对象
 type EdgeDAO struct {
@@ -210,6 +210,14 @@ func (d *EdgeDAO) InitIndexes(ctx context.Context) error {
 		{Keys: bson.D{{Key: "tenant_id", Value: 1}, {Key: "target_id", Value: 1}}},
 		{Keys: bson.D{{Key: "tenant_id", Value: 1}, {Key: "status", Value: 1}}},
 		{Keys: bson.D{{Key: "last_seen_at", Value: 1}}},
+		// 支持按 source_collector 过滤 APM 边（如查询所有 apm 来源的边）
+		{Keys: bson.D{{Key: "tenant_id", Value: 1}, {Key: "source_collector", Value: 1}}},
+		// 支持按 attributes.domains 筛选域名关联的 APM 边
+		// 稀疏索引：仅对包含 domains 字段的文档建立索引，节省存储空间
+		{
+			Keys:    bson.D{{Key: "attributes.domains", Value: 1}},
+			Options: options.Index().SetSparse(true),
+		},
 	}
 	_, err := d.col().Indexes().CreateMany(ctx, indexes)
 	return err

@@ -61,6 +61,25 @@ func (a *LBAdapter) GetInstance(ctx context.Context, region, lbID string) (*type
 	}
 
 	instance := a.convertDetailToLBInstance(response, region)
+
+	// 获取虚拟服务器组（VServer Group）的后端服务器
+	vsgServers := a.fetchVServerGroupBackendServers(client, region, lbID)
+	if len(vsgServers) > 0 {
+		// 用默认服务器组已有的 ServerID:Port 去重
+		seen := make(map[string]bool)
+		for _, bs := range instance.BackendServers {
+			seen[fmt.Sprintf("%s:%d", bs.ServerID, bs.Port)] = true
+		}
+		for _, bs := range vsgServers {
+			key := fmt.Sprintf("%s:%d", bs.ServerID, bs.Port)
+			if !seen[key] {
+				instance.BackendServers = append(instance.BackendServers, bs)
+				seen[key] = true
+			}
+		}
+		instance.BackendServerCount = len(instance.BackendServers)
+	}
+
 	return &instance, nil
 }
 
@@ -140,6 +159,19 @@ func (a *LBAdapter) ListInstancesWithFilter(ctx context.Context, region string, 
 		pageNumber++
 	}
 
+	// CLB 列表接口不返回监听器和后端服务器，需要逐个调用详情接口补充
+	for i, inst := range allInstances {
+		detail, err := a.GetInstance(ctx, region, inst.LoadBalancerID)
+		if err != nil {
+			a.logger.Warn("获取CLB详情失败", elog.String("lb_id", inst.LoadBalancerID), elog.FieldErr(err))
+			continue
+		}
+		allInstances[i].Listeners = detail.Listeners
+		allInstances[i].ListenerCount = detail.ListenerCount
+		allInstances[i].BackendServers = detail.BackendServers
+		allInstances[i].BackendServerCount = detail.BackendServerCount
+	}
+
 	// 查询 ALB 实例
 	albInstances, err := a.listALBInstances(region)
 	if err != nil {
@@ -168,9 +200,9 @@ func (a *LBAdapter) convertToLBInstance(lb slb.LoadBalancer, region string) type
 	tags := make(map[string]string)
 
 	// 判断LB类型
-	lbType := "slb"
+	lbType := "clb"
 	if lb.LoadBalancerSpec != "" {
-		lbType = "slb"
+		lbType = "clb"
 	}
 
 	return types.LBInstance{
@@ -202,7 +234,7 @@ func (a *LBAdapter) convertToLBInstance(lb slb.LoadBalancer, region string) type
 func (a *LBAdapter) convertDetailToLBInstance(resp *slb.DescribeLoadBalancerAttributeResponse, region string) types.LBInstance {
 	tags := make(map[string]string)
 
-	lbType := "slb"
+	lbType := "clb"
 
 	// 提取监听器详情
 	var listeners []types.LBListener
@@ -219,6 +251,7 @@ func (a *LBAdapter) convertDetailToLBInstance(resp *slb.DescribeLoadBalancerAttr
 	for _, bs := range resp.BackendServers.BackendServer {
 		backendServers = append(backendServers, types.LBBackendServer{
 			ServerID:    bs.ServerId,
+			IP:          bs.ServerIp,
 			Weight:      bs.Weight,
 			Type:        bs.Type,
 			Description: bs.Description,
@@ -253,6 +286,71 @@ func (a *LBAdapter) convertDetailToLBInstance(resp *slb.DescribeLoadBalancerAttr
 		Description:        resp.LoadBalancerName,
 		Provider:           "aliyun",
 	}
+}
+
+// fetchVServerGroupBackendServers 获取 CLB 虚拟服务器组的后端服务器
+// 阿里云 CLB 的后端服务器分两种：默认服务器组（DescribeLoadBalancerAttribute 返回）和虚拟服务器组（需要额外查询）
+func (a *LBAdapter) fetchVServerGroupBackendServers(client *slb.Client, region, lbID string) []types.LBBackendServer {
+	// 1. 获取虚拟服务器组列表
+	vsgRequest := slb.CreateDescribeVServerGroupsRequest()
+	vsgRequest.RegionId = region
+	vsgRequest.LoadBalancerId = lbID
+
+	vsgResponse, err := client.DescribeVServerGroups(vsgRequest)
+	if err != nil {
+		a.logger.Debug("获取虚拟服务器组列表失败",
+			elog.String("lb_id", lbID),
+			elog.FieldErr(err))
+		return nil
+	}
+
+	if len(vsgResponse.VServerGroups.VServerGroup) == 0 {
+		return nil
+	}
+
+	// 2. 逐个获取虚拟服务器组的后端服务器
+	var allServers []types.LBBackendServer
+	seen := make(map[string]bool) // 去重：同一个 ServerID+Port 只保留一次
+
+	for _, vsg := range vsgResponse.VServerGroups.VServerGroup {
+		attrRequest := slb.CreateDescribeVServerGroupAttributeRequest()
+		attrRequest.RegionId = region
+		attrRequest.VServerGroupId = vsg.VServerGroupId
+
+		attrResponse, err := client.DescribeVServerGroupAttribute(attrRequest)
+		if err != nil {
+			a.logger.Debug("获取虚拟服务器组详情失败",
+				elog.String("vsg_id", vsg.VServerGroupId),
+				elog.FieldErr(err))
+			continue
+		}
+
+		for _, bs := range attrResponse.BackendServers.BackendServer {
+			key := fmt.Sprintf("%s:%d", bs.ServerId, bs.Port)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+
+			allServers = append(allServers, types.LBBackendServer{
+				ServerID:    bs.ServerId,
+				IP:          bs.ServerIp,
+				Port:        bs.Port,
+				Weight:      bs.Weight,
+				Type:        bs.Type,
+				Description: bs.Description,
+			})
+		}
+	}
+
+	if len(allServers) > 0 {
+		a.logger.Debug("获取虚拟服务器组后端服务器",
+			elog.String("lb_id", lbID),
+			elog.Int("vsg_count", len(vsgResponse.VServerGroups.VServerGroup)),
+			elog.Int("server_count", len(allServers)))
+	}
+
+	return allServers
 }
 
 // ==================== ALB (Application Load Balancer) ====================
@@ -290,10 +388,25 @@ type albListListenersResponse struct {
 
 // albListener ALB 监听器
 type albListener struct {
-	ListenerID       string `json:"ListenerId"`
-	ListenerPort     int    `json:"ListenerPort"`
-	ListenerProtocol string `json:"ListenerProtocol"`
-	ListenerStatus   string `json:"ListenerStatus"`
+	ListenerID       string             `json:"ListenerId"`
+	ListenerPort     int                `json:"ListenerPort"`
+	ListenerProtocol string             `json:"ListenerProtocol"`
+	ListenerStatus   string             `json:"ListenerStatus"`
+	DefaultActions   []albDefaultAction `json:"DefaultActions"`
+}
+
+// albDefaultAction ALB 监听器默认动作
+type albDefaultAction struct {
+	ForwardGroupConfig *albForwardGroupConfig `json:"ForwardGroupConfig"`
+	Type               string                 `json:"Type"`
+}
+
+type albForwardGroupConfig struct {
+	ServerGroupTuples []albServerGroupTuple `json:"ServerGroupTuples"`
+}
+
+type albServerGroupTuple struct {
+	ServerGroupID string `json:"ServerGroupId"`
 }
 
 // albListServerGroupsResponse ALB ListServerGroups 响应
@@ -325,6 +438,7 @@ type nlbListener struct {
 	ListenerPort     int    `json:"ListenerPort"`
 	ListenerProtocol string `json:"ListenerProtocol"`
 	ListenerStatus   string `json:"ListenerStatus"`
+	ServerGroupID    string `json:"ServerGroupId"`
 }
 
 // nlbListServerGroupsResponse NLB ListServerGroups 响应
@@ -406,19 +520,21 @@ func (a *LBAdapter) listALBInstances(region string) ([]types.LBInstance, error) 
 
 	// 为每个ALB实例获取监听器和后端服务器组信息
 	for i := range allInstances {
-		listeners, listenerCount := a.fetchALBListeners(client, region, allInstances[i].LoadBalancerID)
+		listeners, sgIDs, listenerCount := a.fetchALBListeners(client, region, allInstances[i].LoadBalancerID)
 		allInstances[i].Listeners = listeners
 		allInstances[i].ListenerCount = listenerCount
 
-		backendServerCount := a.fetchALBServerGroupCount(client, region, allInstances[i].LoadBalancerID)
-		allInstances[i].BackendServerCount = backendServerCount
+		// 只查当前 ALB 监听器关联的服务器组，不查全量
+		backendServers := a.fetchALBBackendServersByGroups(client, region, sgIDs)
+		allInstances[i].BackendServers = backendServers
+		allInstances[i].BackendServerCount = len(backendServers)
 	}
 
 	return allInstances, nil
 }
 
-// fetchALBListeners 获取ALB监听器列表
-func (a *LBAdapter) fetchALBListeners(client *sdk.Client, region, lbID string) ([]types.LBListener, int) {
+// fetchALBListeners 获取ALB监听器列表，同时提取关联的 ServerGroupId
+func (a *LBAdapter) fetchALBListeners(client *sdk.Client, region, lbID string) ([]types.LBListener, []string, int) {
 	request := requests.NewCommonRequest()
 	request.Method = "POST"
 	request.Scheme = "https"
@@ -430,16 +546,18 @@ func (a *LBAdapter) fetchALBListeners(client *sdk.Client, region, lbID string) (
 	response, err := client.ProcessCommonRequest(request)
 	if err != nil {
 		a.logger.Warn("获取ALB监听器列表失败", elog.String("lb_id", lbID), elog.FieldErr(err))
-		return nil, 0
+		return nil, nil, 0
 	}
 
 	var resp albListListenersResponse
 	if err := json.Unmarshal(response.GetHttpContentBytes(), &resp); err != nil {
 		a.logger.Warn("解析ALB监听器响应失败", elog.String("lb_id", lbID), elog.FieldErr(err))
-		return nil, 0
+		return nil, nil, 0
 	}
 
 	var listeners []types.LBListener
+	sgIDSet := make(map[string]bool)
+
 	for _, l := range resp.Listeners {
 		listeners = append(listeners, types.LBListener{
 			ListenerID:       l.ListenerID,
@@ -447,40 +565,216 @@ func (a *LBAdapter) fetchALBListeners(client *sdk.Client, region, lbID string) (
 			ListenerProtocol: l.ListenerProtocol,
 			Status:           l.ListenerStatus,
 		})
+		// 从 DefaultActions 提取关联的 ServerGroupId
+		for _, action := range l.DefaultActions {
+			if action.ForwardGroupConfig != nil {
+				for _, tuple := range action.ForwardGroupConfig.ServerGroupTuples {
+					if tuple.ServerGroupID != "" {
+						sgIDSet[tuple.ServerGroupID] = true
+					}
+				}
+			}
+		}
+		// 从转发规则(Rules)中提取 ServerGroupId（ACK Ingress 场景）
+		if l.ListenerID != "" {
+			ruleSGIDs := a.fetchALBRuleServerGroupIDs(client, region, l.ListenerID)
+			for _, id := range ruleSGIDs {
+				sgIDSet[id] = true
+			}
+		}
 	}
 
-	return listeners, resp.TotalCount
+	var sgIDs []string
+	for id := range sgIDSet {
+		sgIDs = append(sgIDs, id)
+	}
+
+	a.logger.Info("ALB 提取到的 ServerGroupId",
+		elog.String("lb_id", lbID),
+		elog.Int("sg_count", len(sgIDs)))
+
+	return listeners, sgIDs, resp.TotalCount
 }
 
-// fetchALBServerGroupCount 获取ALB服务器组数量作为后端服务器计数
-func (a *LBAdapter) fetchALBServerGroupCount(client *sdk.Client, region, lbID string) int {
-	request := requests.NewCommonRequest()
-	request.Method = "POST"
-	request.Scheme = "https"
-	request.Domain = fmt.Sprintf("alb.%s.aliyuncs.com", region)
-	request.Version = "2020-06-16"
-	request.ApiName = "ListServerGroups"
-	request.QueryParams["LoadBalancerId"] = lbID // 注意：此参数可能不被直接支持，仅获取总数
+// ==================== ALB 转发规则 ====================
 
-	response, err := client.ProcessCommonRequest(request)
-	if err != nil {
-		a.logger.Warn("获取ALB服务器组列表失败", elog.String("lb_id", lbID), elog.FieldErr(err))
-		return 0
+// albListRulesResponse ALB ListRules 响应
+type albListRulesResponse struct {
+	RequestID  string    `json:"RequestId"`
+	Rules      []albRule `json:"Rules"`
+	TotalCount int       `json:"TotalCount"`
+	NextToken  string    `json:"NextToken"`
+}
+
+// albRule ALB 转发规则
+type albRule struct {
+	RuleID      string          `json:"RuleId"`
+	RuleName    string          `json:"RuleName"`
+	RuleActions []albRuleAction `json:"RuleActions"`
+}
+
+// albRuleAction ALB 规则动作
+type albRuleAction struct {
+	Type               string                 `json:"Type"`
+	ForwardGroupConfig *albForwardGroupConfig `json:"ForwardGroupConfig"`
+}
+
+// fetchALBRuleServerGroupIDs 从 ALB 监听器的转发规则中提取 ServerGroupId
+// ACK Ingress 场景下，后端服务器组配置在转发规则里而不是 DefaultActions
+func (a *LBAdapter) fetchALBRuleServerGroupIDs(client *sdk.Client, region, listenerID string) []string {
+	sgIDSet := make(map[string]bool)
+	nextToken := ""
+
+	for {
+		request := requests.NewCommonRequest()
+		request.Method = "POST"
+		request.Scheme = "https"
+		request.Domain = fmt.Sprintf("alb.%s.aliyuncs.com", region)
+		request.Version = "2020-06-16"
+		request.ApiName = "ListRules"
+		request.QueryParams["ListenerId"] = listenerID
+		request.QueryParams["MaxResults"] = "100"
+
+		if nextToken != "" {
+			request.QueryParams["NextToken"] = nextToken
+		}
+
+		response, err := client.ProcessCommonRequest(request)
+		if err != nil {
+			// 某些监听器可能没有规则，不需要报警
+			return nil
+		}
+
+		var resp albListRulesResponse
+		if err := json.Unmarshal(response.GetHttpContentBytes(), &resp); err != nil {
+			return nil
+		}
+
+		for _, rule := range resp.Rules {
+			for _, action := range rule.RuleActions {
+				if action.ForwardGroupConfig != nil {
+					for _, tuple := range action.ForwardGroupConfig.ServerGroupTuples {
+						if tuple.ServerGroupID != "" {
+							sgIDSet[tuple.ServerGroupID] = true
+						}
+					}
+				}
+			}
+		}
+
+		if resp.NextToken == "" || len(resp.Rules) == 0 {
+			break
+		}
+		nextToken = resp.NextToken
 	}
 
-	var resp albListServerGroupsResponse
-	if err := json.Unmarshal(response.GetHttpContentBytes(), &resp); err != nil {
-		a.logger.Warn("解析ALB服务器组响应失败", elog.String("lb_id", lbID), elog.FieldErr(err))
-		return 0
+	var sgIDs []string
+	for id := range sgIDSet {
+		sgIDs = append(sgIDs, id)
+	}
+	return sgIDs
+}
+
+// albListServerGroupServersResponse ALB ListServerGroupServers 响应
+type albListServerGroupServersResponse struct {
+	RequestID  string          `json:"RequestId"`
+	Servers    []albServerItem `json:"Servers"`
+	TotalCount int             `json:"TotalCount"`
+	NextToken  string          `json:"NextToken"`
+}
+
+// albServerItem ALB 服务器组中的后端服务器
+type albServerItem struct {
+	ServerID    string `json:"ServerId"`    // 后端服务器 ID（ECS 实例 ID / ENI ID / Pod IP）
+	ServerIP    string `json:"ServerIp"`    // 后端服务器 IP
+	ServerType  string `json:"ServerType"`  // Ecs / Eni / Ip / Fc
+	Port        int    `json:"Port"`        // 端口
+	Weight      int    `json:"Weight"`      // 权重
+	Status      string `json:"Status"`      // Available / Unavailable
+	Description string `json:"Description"` // 描述
+}
+
+// fetchALBBackendServersByGroups 根据指定的 ServerGroupId 列表获取后端服务器
+// 只查当前 ALB 监听器关联的服务器组，避免查全量导致数据错乱
+func (a *LBAdapter) fetchALBBackendServersByGroups(client *sdk.Client, region string, serverGroupIDs []string) []types.LBBackendServer {
+	if len(serverGroupIDs) == 0 {
+		return nil
 	}
 
-	// 累加所有服务器组中的服务器数量
-	totalServers := 0
-	for _, sg := range resp.ServerGroups {
-		totalServers += sg.ServerCount
+	var allServers []types.LBBackendServer
+	seen := make(map[string]bool)
+
+	for _, sgID := range serverGroupIDs {
+		servers := a.fetchServerGroupServers(client, region, sgID)
+		for _, s := range servers {
+			key := fmt.Sprintf("%s:%d", s.ServerID, s.Port)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			allServers = append(allServers, s)
+		}
 	}
 
-	return totalServers
+	return allServers
+}
+
+// fetchServerGroupServers 获取单个服务器组中的后端服务器
+func (a *LBAdapter) fetchServerGroupServers(client *sdk.Client, region, serverGroupID string) []types.LBBackendServer {
+	var allServers []types.LBBackendServer
+	nextToken := ""
+
+	for {
+		request := requests.NewCommonRequest()
+		request.Method = "POST"
+		request.Scheme = "https"
+		request.Domain = fmt.Sprintf("alb.%s.aliyuncs.com", region)
+		request.Version = "2020-06-16"
+		request.ApiName = "ListServerGroupServers"
+		request.QueryParams["ServerGroupId"] = serverGroupID
+		request.QueryParams["MaxResults"] = "100"
+
+		if nextToken != "" {
+			request.QueryParams["NextToken"] = nextToken
+		}
+
+		response, err := client.ProcessCommonRequest(request)
+		if err != nil {
+			a.logger.Warn("获取ALB服务器组后端失败",
+				elog.String("server_group_id", serverGroupID),
+				elog.FieldErr(err))
+			return allServers
+		}
+
+		var resp albListServerGroupServersResponse
+		if err := json.Unmarshal(response.GetHttpContentBytes(), &resp); err != nil {
+			a.logger.Warn("解析ALB服务器组后端响应失败",
+				elog.String("server_group_id", serverGroupID),
+				elog.FieldErr(err))
+			return allServers
+		}
+
+		for _, s := range resp.Servers {
+			server := types.LBBackendServer{
+				ServerID:    s.ServerID,
+				InstanceID:  s.ServerID,
+				IP:          s.ServerIP,
+				Port:        s.Port,
+				Weight:      s.Weight,
+				Type:        s.ServerType,
+				Status:      s.Status,
+				Description: s.Description,
+			}
+			allServers = append(allServers, server)
+		}
+
+		if resp.NextToken == "" || len(resp.Servers) == 0 {
+			break
+		}
+		nextToken = resp.NextToken
+	}
+
+	return allServers
 }
 
 // convertALBToLBInstance 将ALB实例转换为通用LB实例
@@ -577,19 +871,20 @@ func (a *LBAdapter) listNLBInstances(region string) ([]types.LBInstance, error) 
 
 	// 为每个NLB实例获取监听器和后端服务器组信息
 	for i := range allInstances {
-		listeners, listenerCount := a.fetchNLBListeners(client, region, allInstances[i].LoadBalancerID)
+		listeners, sgIDs, listenerCount := a.fetchNLBListeners(client, region, allInstances[i].LoadBalancerID)
 		allInstances[i].Listeners = listeners
 		allInstances[i].ListenerCount = listenerCount
 
-		backendServerCount := a.fetchNLBServerGroupCount(client, region, allInstances[i].LoadBalancerID)
-		allInstances[i].BackendServerCount = backendServerCount
+		backendServers := a.fetchNLBBackendServersByGroups(client, region, sgIDs)
+		allInstances[i].BackendServers = backendServers
+		allInstances[i].BackendServerCount = len(backendServers)
 	}
 
 	return allInstances, nil
 }
 
-// fetchNLBListeners 获取NLB监听器列表
-func (a *LBAdapter) fetchNLBListeners(client *sdk.Client, region, lbID string) ([]types.LBListener, int) {
+// fetchNLBListeners 获取NLB监听器列表，同时提取关联的 ServerGroupId
+func (a *LBAdapter) fetchNLBListeners(client *sdk.Client, region, lbID string) ([]types.LBListener, []string, int) {
 	request := requests.NewCommonRequest()
 	request.Method = "POST"
 	request.Scheme = "https"
@@ -601,16 +896,18 @@ func (a *LBAdapter) fetchNLBListeners(client *sdk.Client, region, lbID string) (
 	response, err := client.ProcessCommonRequest(request)
 	if err != nil {
 		a.logger.Warn("获取NLB监听器列表失败", elog.String("lb_id", lbID), elog.FieldErr(err))
-		return nil, 0
+		return nil, nil, 0
 	}
 
 	var resp nlbListListenersResponse
 	if err := json.Unmarshal(response.GetHttpContentBytes(), &resp); err != nil {
 		a.logger.Warn("解析NLB监听器响应失败", elog.String("lb_id", lbID), elog.FieldErr(err))
-		return nil, 0
+		return nil, nil, 0
 	}
 
 	var listeners []types.LBListener
+	sgIDSet := make(map[string]bool)
+
 	for _, l := range resp.Listeners {
 		listeners = append(listeners, types.LBListener{
 			ListenerID:       l.ListenerID,
@@ -618,40 +915,117 @@ func (a *LBAdapter) fetchNLBListeners(client *sdk.Client, region, lbID string) (
 			ListenerProtocol: l.ListenerProtocol,
 			Status:           l.ListenerStatus,
 		})
+		if l.ServerGroupID != "" {
+			sgIDSet[l.ServerGroupID] = true
+		}
 	}
 
-	return listeners, resp.TotalCount
+	var sgIDs []string
+	for id := range sgIDSet {
+		sgIDs = append(sgIDs, id)
+	}
+
+	return listeners, sgIDs, resp.TotalCount
 }
 
-// fetchNLBServerGroupCount 获取NLB服务器组数量作为后端服务器计数
-func (a *LBAdapter) fetchNLBServerGroupCount(client *sdk.Client, region, lbID string) int {
-	request := requests.NewCommonRequest()
-	request.Method = "POST"
-	request.Scheme = "https"
-	request.Domain = fmt.Sprintf("nlb.%s.aliyuncs.com", region)
-	request.Version = "2022-04-30"
-	request.ApiName = "ListServerGroups"
-	request.QueryParams["LoadBalancerIds.1"] = lbID
-
-	response, err := client.ProcessCommonRequest(request)
-	if err != nil {
-		a.logger.Warn("获取NLB服务器组列表失败", elog.String("lb_id", lbID), elog.FieldErr(err))
-		return 0
+// fetchNLBBackendServersByGroups 根据指定的 ServerGroupId 列表获取 NLB 后端服务器
+func (a *LBAdapter) fetchNLBBackendServersByGroups(client *sdk.Client, region string, serverGroupIDs []string) []types.LBBackendServer {
+	if len(serverGroupIDs) == 0 {
+		return nil
 	}
 
-	var resp nlbListServerGroupsResponse
-	if err := json.Unmarshal(response.GetHttpContentBytes(), &resp); err != nil {
-		a.logger.Warn("解析NLB服务器组响应失败", elog.String("lb_id", lbID), elog.FieldErr(err))
-		return 0
+	var allServers []types.LBBackendServer
+	seen := make(map[string]bool)
+
+	for _, sgID := range serverGroupIDs {
+		servers := a.fetchNLBServerGroupServers(client, region, sgID)
+		for _, s := range servers {
+			key := fmt.Sprintf("%s:%d", s.ServerID, s.Port)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			allServers = append(allServers, s)
+		}
 	}
 
-	// 累加所有服务器组中的服务器数量
-	totalServers := 0
-	for _, sg := range resp.ServerGroups {
-		totalServers += sg.ServerCount
+	return allServers
+}
+
+// nlbListServerGroupServersResponse NLB ListServerGroupServers 响应
+type nlbListServerGroupServersResponse struct {
+	RequestID  string          `json:"RequestId"`
+	Servers    []nlbServerItem `json:"Servers"`
+	TotalCount int             `json:"TotalCount"`
+	NextToken  string          `json:"NextToken"`
+}
+
+type nlbServerItem struct {
+	ServerID    string `json:"ServerId"`
+	ServerIP    string `json:"ServerIp"`
+	ServerType  string `json:"ServerType"` // Ecs / Eni / Ip
+	Port        int    `json:"Port"`
+	Weight      int    `json:"Weight"`
+	Status      string `json:"Status"`
+	Description string `json:"Description"`
+}
+
+// fetchNLBServerGroupServers 获取单个 NLB 服务器组中的后端服务器
+func (a *LBAdapter) fetchNLBServerGroupServers(client *sdk.Client, region, serverGroupID string) []types.LBBackendServer {
+	var allServers []types.LBBackendServer
+	nextToken := ""
+
+	for {
+		request := requests.NewCommonRequest()
+		request.Method = "POST"
+		request.Scheme = "https"
+		request.Domain = fmt.Sprintf("nlb.%s.aliyuncs.com", region)
+		request.Version = "2022-04-30"
+		request.ApiName = "ListServerGroupServers"
+		request.QueryParams["ServerGroupId"] = serverGroupID
+		request.QueryParams["MaxResults"] = "100"
+
+		if nextToken != "" {
+			request.QueryParams["NextToken"] = nextToken
+		}
+
+		response, err := client.ProcessCommonRequest(request)
+		if err != nil {
+			a.logger.Warn("获取NLB服务器组后端失败",
+				elog.String("server_group_id", serverGroupID),
+				elog.FieldErr(err))
+			return allServers
+		}
+
+		var resp nlbListServerGroupServersResponse
+		if err := json.Unmarshal(response.GetHttpContentBytes(), &resp); err != nil {
+			a.logger.Warn("解析NLB服务器组后端响应失败",
+				elog.String("server_group_id", serverGroupID),
+				elog.FieldErr(err))
+			return allServers
+		}
+
+		for _, s := range resp.Servers {
+			server := types.LBBackendServer{
+				ServerID:    s.ServerID,
+				InstanceID:  s.ServerID,
+				IP:          s.ServerIP,
+				Port:        s.Port,
+				Weight:      s.Weight,
+				Type:        s.ServerType,
+				Status:      s.Status,
+				Description: s.Description,
+			}
+			allServers = append(allServers, server)
+		}
+
+		if resp.NextToken == "" || len(resp.Servers) == 0 {
+			break
+		}
+		nextToken = resp.NextToken
 	}
 
-	return totalServers
+	return allServers
 }
 
 // convertNLBToLBInstance 将NLB实例转换为通用LB实例

@@ -1,0 +1,835 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "数据库资源管理 API",
+    "description": "云数据库资源（RDS、Redis、MongoDB）管理接口",
+    "version": "1.0.0",
+    "contact": {
+      "name": "E-CAM Service",
+      "email": "support@example.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "API Base URL"
+    }
+  ],
+  "tags": [
+    {
+      "name": "RDS",
+      "description": "云数据库 MySQL/PostgreSQL 管理"
+    },
+    {
+      "name": "Redis",
+      "description": "云 Redis 缓存管理"
+    },
+    {
+      "name": "MongoDB",
+      "description": "云 MongoDB 数据库管理"
+    }
+  ],
+  "paths": {
+    "/cam/databases/rds": {
+      "get": {
+        "tags": ["RDS"],
+        "summary": "获取RDS实例列表",
+        "description": "获取指定云账号和地域的RDS实例列表",
+        "operationId": "listRDSInstances",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": true,
+            "description": "云账号ID",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": true,
+            "description": "地域",
+            "schema": {
+              "type": "string",
+              "example": "cn-hangzhou"
+            }
+          },
+          {
+            "name": "engine",
+            "in": "query",
+            "required": false,
+            "description": "数据库引擎",
+            "schema": {
+              "type": "string",
+              "enum": ["mysql", "postgresql", "mariadb", "sqlserver"]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "实例状态",
+            "schema": {
+              "type": "string",
+              "enum": ["running", "stopped", "creating", "deleting"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RDSInstanceListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "云账号不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cam/databases/rds/{instance_id}": {
+      "get": {
+        "tags": ["RDS"],
+        "summary": "获取RDS实例详情",
+        "description": "获取指定RDS实例的详细信息",
+        "operationId": "getRDSInstance",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "in": "path",
+            "required": true,
+            "description": "RDS实例ID",
+            "schema": {
+              "type": "string",
+              "example": "rm-bp1xxxxx"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": true,
+            "description": "云账号ID",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": true,
+            "description": "地域",
+            "schema": {
+              "type": "string",
+              "example": "cn-hangzhou"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RDSInstanceResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "实例不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cam/databases/redis": {
+      "get": {
+        "tags": ["Redis"],
+        "summary": "获取Redis实例列表",
+        "description": "获取指定云账号和地域的Redis实例列表",
+        "operationId": "listRedisInstances",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": true,
+            "description": "云账号ID",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": true,
+            "description": "地域",
+            "schema": {
+              "type": "string",
+              "example": "cn-hangzhou"
+            }
+          },
+          {
+            "name": "architecture",
+            "in": "query",
+            "required": false,
+            "description": "架构类型",
+            "schema": {
+              "type": "string",
+              "enum": ["standard", "cluster", "rwsplit"]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "实例状态",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RedisInstanceListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cam/databases/redis/{instance_id}": {
+      "get": {
+        "tags": ["Redis"],
+        "summary": "获取Redis实例详情",
+        "description": "获取指定Redis实例的详细信息",
+        "operationId": "getRedisInstance",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "in": "path",
+            "required": true,
+            "description": "Redis实例ID",
+            "schema": {
+              "type": "string",
+              "example": "r-bp1xxxxx"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": true,
+            "description": "云账号ID",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": true,
+            "description": "地域",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RedisInstanceResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cam/databases/mongodb": {
+      "get": {
+        "tags": ["MongoDB"],
+        "summary": "获取MongoDB实例列表",
+        "description": "获取指定云账号和地域的MongoDB实例列表",
+        "operationId": "listMongoDBInstances",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": true,
+            "description": "云账号ID",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": true,
+            "description": "地域",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "db_type",
+            "in": "query",
+            "required": false,
+            "description": "数据库类型",
+            "schema": {
+              "type": "string",
+              "enum": ["replicate", "sharding", "serverless"]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "实例状态",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MongoDBInstanceListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cam/databases/mongodb/{instance_id}": {
+      "get": {
+        "tags": ["MongoDB"],
+        "summary": "获取MongoDB实例详情",
+        "description": "获取指定MongoDB实例的详细信息",
+        "operationId": "getMongoDBInstance",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "in": "path",
+            "required": true,
+            "description": "MongoDB实例ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": true,
+            "description": "云账号ID",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": true,
+            "description": "地域",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MongoDBInstanceResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Result": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "状态码，0表示成功",
+            "example": 0
+          },
+          "msg": {
+            "type": "string",
+            "description": "状态消息",
+            "example": "success"
+          },
+          "data": {
+            "type": "object",
+            "description": "响应数据"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 400
+          },
+          "msg": {
+            "type": "string",
+            "example": "请求参数错误"
+          }
+        }
+      },
+      "RDSInstance": {
+        "type": "object",
+        "properties": {
+          "instance_id": {
+            "type": "string",
+            "description": "实例ID",
+            "example": "rm-bp1xxxxx"
+          },
+          "instance_name": {
+            "type": "string",
+            "description": "实例名称",
+            "example": "prod-mysql-01"
+          },
+          "engine": {
+            "type": "string",
+            "description": "数据库引擎",
+            "example": "mysql"
+          },
+          "engine_version": {
+            "type": "string",
+            "description": "引擎版本",
+            "example": "8.0"
+          },
+          "instance_class": {
+            "type": "string",
+            "description": "实例规格",
+            "example": "rds.mysql.s2.large"
+          },
+          "instance_status": {
+            "type": "string",
+            "description": "实例状态",
+            "example": "running"
+          },
+          "connection_string": {
+            "type": "string",
+            "description": "连接地址",
+            "example": "rm-bp1xxxxx.mysql.rds.aliyuncs.com"
+          },
+          "port": {
+            "type": "integer",
+            "description": "端口",
+            "example": 3306
+          },
+          "vpc_id": {
+            "type": "string",
+            "description": "VPC ID"
+          },
+          "vswitch_id": {
+            "type": "string",
+            "description": "交换机ID"
+          },
+          "zone_id": {
+            "type": "string",
+            "description": "可用区ID"
+          },
+          "region_id": {
+            "type": "string",
+            "description": "地域ID"
+          },
+          "storage_type": {
+            "type": "string",
+            "description": "存储类型"
+          },
+          "storage_size": {
+            "type": "integer",
+            "description": "存储大小(GB)"
+          },
+          "max_connections": {
+            "type": "integer",
+            "description": "最大连接数"
+          },
+          "max_iops": {
+            "type": "integer",
+            "description": "最大IOPS"
+          },
+          "create_time": {
+            "type": "string",
+            "description": "创建时间"
+          },
+          "expire_time": {
+            "type": "string",
+            "description": "过期时间"
+          },
+          "pay_type": {
+            "type": "string",
+            "description": "付费类型"
+          },
+          "tags": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "标签"
+          }
+        }
+      },
+      "RDSInstanceListResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "msg": {
+            "type": "string",
+            "example": "success"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "instances": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RDSInstance"
+                }
+              },
+              "total": {
+                "type": "integer",
+                "description": "总数"
+              }
+            }
+          }
+        }
+      },
+      "RDSInstanceResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "msg": {
+            "type": "string",
+            "example": "success"
+          },
+          "data": {
+            "$ref": "#/components/schemas/RDSInstance"
+          }
+        }
+      },
+      "RedisInstance": {
+        "type": "object",
+        "properties": {
+          "instance_id": {
+            "type": "string",
+            "description": "实例ID",
+            "example": "r-bp1xxxxx"
+          },
+          "instance_name": {
+            "type": "string",
+            "description": "实例名称"
+          },
+          "instance_class": {
+            "type": "string",
+            "description": "实例规格"
+          },
+          "instance_status": {
+            "type": "string",
+            "description": "实例状态"
+          },
+          "engine_version": {
+            "type": "string",
+            "description": "引擎版本"
+          },
+          "architecture": {
+            "type": "string",
+            "description": "架构类型"
+          },
+          "node_type": {
+            "type": "string",
+            "description": "节点类型"
+          },
+          "shard_count": {
+            "type": "integer",
+            "description": "分片数"
+          },
+          "connection_domain": {
+            "type": "string",
+            "description": "连接地址"
+          },
+          "port": {
+            "type": "integer",
+            "description": "端口"
+          },
+          "vpc_id": {
+            "type": "string"
+          },
+          "vswitch_id": {
+            "type": "string"
+          },
+          "zone_id": {
+            "type": "string"
+          },
+          "region_id": {
+            "type": "string"
+          },
+          "capacity": {
+            "type": "integer",
+            "description": "容量(MB)"
+          },
+          "bandwidth": {
+            "type": "integer",
+            "description": "带宽(Mbps)"
+          },
+          "connections": {
+            "type": "integer",
+            "description": "最大连接数"
+          },
+          "qps": {
+            "type": "integer",
+            "description": "QPS"
+          },
+          "create_time": {
+            "type": "string"
+          },
+          "expire_time": {
+            "type": "string"
+          },
+          "pay_type": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RedisInstanceListResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "msg": {
+            "type": "string",
+            "example": "success"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "instances": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RedisInstance"
+                }
+              },
+              "total": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "RedisInstanceResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "msg": {
+            "type": "string",
+            "example": "success"
+          },
+          "data": {
+            "$ref": "#/components/schemas/RedisInstance"
+          }
+        }
+      },
+      "MongoDBInstance": {
+        "type": "object",
+        "properties": {
+          "instance_id": {
+            "type": "string",
+            "description": "实例ID",
+            "example": "dds-bp1xxxxx"
+          },
+          "instance_name": {
+            "type": "string",
+            "description": "实例名称"
+          },
+          "db_type": {
+            "type": "string",
+            "description": "数据库类型",
+            "enum": ["replicate", "sharding", "serverless"]
+          },
+          "engine_version": {
+            "type": "string",
+            "description": "引擎版本"
+          },
+          "instance_class": {
+            "type": "string",
+            "description": "实例规格"
+          },
+          "instance_status": {
+            "type": "string",
+            "description": "实例状态"
+          },
+          "storage_engine": {
+            "type": "string",
+            "description": "存储引擎"
+          },
+          "replica_set_name": {
+            "type": "string",
+            "description": "副本集名称"
+          },
+          "connection_string": {
+            "type": "string",
+            "description": "连接地址"
+          },
+          "port": {
+            "type": "integer",
+            "description": "端口"
+          },
+          "vpc_id": {
+            "type": "string"
+          },
+          "vswitch_id": {
+            "type": "string"
+          },
+          "zone_id": {
+            "type": "string"
+          },
+          "region_id": {
+            "type": "string"
+          },
+          "storage_type": {
+            "type": "string"
+          },
+          "storage_size": {
+            "type": "integer",
+            "description": "存储大小(GB)"
+          },
+          "max_connections": {
+            "type": "integer"
+          },
+          "max_iops": {
+            "type": "integer"
+          },
+          "create_time": {
+            "type": "string"
+          },
+          "expire_time": {
+            "type": "string"
+          },
+          "pay_type": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "MongoDBInstanceListResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "msg": {
+            "type": "string",
+            "example": "success"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "instances": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MongoDBInstance"
+                }
+              },
+              "total": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "MongoDBInstanceResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "msg": {
+            "type": "string",
+            "example": "success"
+          },
+          "data": {
+            "$ref": "#/components/schemas/MongoDBInstance"
+          }
+        }
+      }
+    }
+  }
+}

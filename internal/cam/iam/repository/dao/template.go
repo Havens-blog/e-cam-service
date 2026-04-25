@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const CloudPolicyTemplatesCollection = "cloud_policy_templates"
+const CloudPolicyTemplatesCollection = "ecam_iam_policy_template"
 
 // TemplateCategory 模板分类
 type TemplateCategory string

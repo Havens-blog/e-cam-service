@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const CollectionModelGroup = "c_model_group"
+const CollectionModelGroup = "ecam_model_group"
 
 // ModelGroup 模型分组数据模型
 type ModelGroup struct {

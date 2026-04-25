@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const InstanceCollection = "c_instance"
+const InstanceCollection = "ecam_instance"
 
 // Instance DAO层资产实例模型
 type Instance struct {

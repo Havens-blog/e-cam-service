@@ -77,8 +77,17 @@ type ComparisonResult struct {
 // CostService 成本分析服务
 type CostService struct {
 	billDAO    repository.BillDAO
+	summaryDAO SummaryQuerier
 	redisCache redis.Cmdable
 	logger     *elog.Component
+}
+
+// SummaryQuerier 汇总表查询接口（由 DailySummaryDAO 实现）
+type SummaryQuerier interface {
+	SumAmount(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error)
+	AggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error)
+	AggregateDailyAmount(ctx context.Context, tenantID string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error)
+	HasData(ctx context.Context) bool
 }
 
 // NewCostService 创建成本分析服务
@@ -88,6 +97,35 @@ func NewCostService(billDAO repository.BillDAO, redisClient redis.Cmdable, logge
 		redisCache: redisClient,
 		logger:     logger,
 	}
+}
+
+// SetSummaryDAO 设置汇总表 DAO（可选注入，设置后查询走汇总表）
+func (s *CostService) SetSummaryDAO(dao SummaryQuerier) {
+	s.summaryDAO = dao
+}
+
+// sumAmount 优先从汇总表查询，降级到明细表
+func (s *CostService) sumAmount(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error) {
+	if s.summaryDAO != nil && s.summaryDAO.HasData(ctx) {
+		return s.summaryDAO.SumAmount(ctx, filter)
+	}
+	return s.billDAO.SumAmount(ctx, filter)
+}
+
+// aggregateByField 优先从汇总表查询，降级到明细表
+func (s *CostService) aggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
+	if s.summaryDAO != nil && s.summaryDAO.HasData(ctx) {
+		return s.summaryDAO.AggregateByField(ctx, tenantID, field, startDate, endDate, filter)
+	}
+	return s.billDAO.AggregateByField(ctx, tenantID, field, startDate, endDate, filter)
+}
+
+// aggregateDailyAmount 优先从汇总表查询，降级到明细表
+func (s *CostService) aggregateDailyAmount(ctx context.Context, tenantID string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+	if s.summaryDAO != nil && s.summaryDAO.HasData(ctx) {
+		return s.summaryDAO.AggregateDailyAmount(ctx, tenantID, startDate, endDate, filter)
+	}
+	return s.billDAO.AggregateDailyAmount(ctx, tenantID, startDate, endDate, filter)
 }
 
 // toUnifiedBillFilter 将 CostFilter 转换为 UnifiedBillFilter
@@ -141,33 +179,60 @@ func (s *CostService) GetCostSummary(ctx context.Context, filter CostFilter) (*C
 	lastMonthStart := currentStart.AddDate(0, -1, 0)
 	lastMonthEnd := currentStart.AddDate(0, 0, -1)
 
-	// 查询当月总成本（截至今日）
-	currentFilter := toUnifiedBillFilter(filter)
-	currentFilter.StartDate = currentStart.Format("2006-01-02")
-	currentFilter.EndDate = currentEnd.Format("2006-01-02")
-	currentAmount, err := s.billDAO.SumAmount(ctx, currentFilter)
-	if err != nil {
-		s.logger.Error("failed to sum current month amount", elog.FieldErr(err))
-		return nil, fmt.Errorf("sum current month amount: %w", err)
+	// 并行查询三个时间段的成本
+	type sumResult struct {
+		amount float64
+		err    error
 	}
+	currentCh := make(chan sumResult, 1)
+	lastCh := make(chan sumResult, 1)
+	lastSameCh := make(chan sumResult, 1)
+
+	// 查询当月总成本（截至今日）
+	go func() {
+		f := toUnifiedBillFilter(filter)
+		f.StartDate = currentStart.Format("2006-01-02")
+		f.EndDate = currentEnd.Format("2006-01-02")
+		amount, err := s.sumAmount(ctx, f)
+		currentCh <- sumResult{amount, err}
+	}()
 
 	// 查询上月整月总成本
-	lastFilter := toUnifiedBillFilter(filter)
-	lastFilter.StartDate = lastMonthStart.Format("2006-01-02")
-	lastFilter.EndDate = lastMonthEnd.Format("2006-01-02")
-	lastAmount, err := s.billDAO.SumAmount(ctx, lastFilter)
-	if err != nil {
-		s.logger.Error("failed to sum last month amount", elog.FieldErr(err))
-		return nil, fmt.Errorf("sum last month amount: %w", err)
+	go func() {
+		f := toUnifiedBillFilter(filter)
+		f.StartDate = lastMonthStart.Format("2006-01-02")
+		f.EndDate = lastMonthEnd.Format("2006-01-02")
+		amount, err := s.sumAmount(ctx, f)
+		lastCh <- sumResult{amount, err}
+	}()
+
+	// 查询上月同期成本
+	go func() {
+		f := toUnifiedBillFilter(filter)
+		f.StartDate = lastMonthSameDay.Format("2006-01-02")
+		f.EndDate = lastMonthSameDayEnd.Format("2006-01-02")
+		amount, err := s.sumAmount(ctx, f)
+		lastSameCh <- sumResult{amount, err}
+	}()
+
+	currentRes := <-currentCh
+	lastRes := <-lastCh
+	lastSameRes := <-lastSameCh
+
+	if currentRes.err != nil {
+		s.logger.Error("failed to sum current month amount", elog.FieldErr(currentRes.err))
+		return nil, fmt.Errorf("sum current month amount: %w", currentRes.err)
+	}
+	if lastRes.err != nil {
+		s.logger.Error("failed to sum last month amount", elog.FieldErr(lastRes.err))
+		return nil, fmt.Errorf("sum last month amount: %w", lastRes.err)
 	}
 
-	// 查询上月同期成本（上月1号 ~ 上月同一天），用于环比
-	lastSamePeriodFilter := toUnifiedBillFilter(filter)
-	lastSamePeriodFilter.StartDate = lastMonthSameDay.Format("2006-01-02")
-	lastSamePeriodFilter.EndDate = lastMonthSameDayEnd.Format("2006-01-02")
-	lastSamePeriodAmount, err := s.billDAO.SumAmount(ctx, lastSamePeriodFilter)
-	if err != nil {
-		s.logger.Error("failed to sum last month same period amount", elog.FieldErr(err))
+	currentAmount := currentRes.amount
+	lastAmount := lastRes.amount
+	lastSamePeriodAmount := lastSameRes.amount
+	if lastSameRes.err != nil {
+		s.logger.Error("failed to sum last month same period amount", elog.FieldErr(lastSameRes.err))
 		// 降级：用上月整月对比
 		lastSamePeriodAmount = lastAmount
 	}
@@ -212,7 +277,7 @@ func (s *CostService) GetCostTrend(ctx context.Context, filter CostTrendFilter) 
 
 	// 查询每日金额
 	ubf := toUnifiedBillFilter(filter.CostFilter)
-	dailyAmounts, err := s.billDAO.AggregateDailyAmount(ctx, filter.TenantID, filter.StartDate, filter.EndDate, ubf)
+	dailyAmounts, err := s.aggregateDailyAmount(ctx, filter.TenantID, filter.StartDate, filter.EndDate, ubf)
 	if err != nil {
 		s.logger.Error("failed to aggregate daily amount", elog.FieldErr(err))
 		return nil, fmt.Errorf("aggregate daily amount: %w", err)
@@ -245,7 +310,7 @@ func (s *CostService) GetCostDistribution(ctx context.Context, filter CostFilter
 		filter.StartDate = start.Format("2006-01-02")
 	}
 
-	results, err := s.billDAO.AggregateByField(ctx, filter.TenantID, dimension, filter.StartDate, filter.EndDate, repository.UnifiedBillFilter{
+	results, err := s.aggregateByField(ctx, filter.TenantID, dimension, filter.StartDate, filter.EndDate, repository.UnifiedBillFilter{
 		Provider:    filter.Provider,
 		AccountID:   filter.AccountID,
 		ServiceType: filter.ServiceType,
@@ -309,21 +374,40 @@ func (s *CostService) GetYoYComparison(ctx context.Context, filter CostFilter) (
 	prevStart := startDate.AddDate(-1, 0, 0)
 	prevEnd := endDate.AddDate(-1, 0, 0)
 
-	// 查询当期金额
-	currentFilter := toUnifiedBillFilter(filter)
-	currentAmount, err := s.billDAO.SumAmount(ctx, currentFilter)
-	if err != nil {
-		return nil, fmt.Errorf("sum current period amount: %w", err)
+	// 并行查询当期和去年同期金额
+	type sumResult struct {
+		amount float64
+		err    error
+	}
+	currentCh := make(chan sumResult, 1)
+	prevCh := make(chan sumResult, 1)
+
+	go func() {
+		currentFilter := toUnifiedBillFilter(filter)
+		amount, err := s.sumAmount(ctx, currentFilter)
+		currentCh <- sumResult{amount, err}
+	}()
+
+	go func() {
+		prevFilter := toUnifiedBillFilter(filter)
+		prevFilter.StartDate = prevStart.Format("2006-01-02")
+		prevFilter.EndDate = prevEnd.Format("2006-01-02")
+		amount, err := s.sumAmount(ctx, prevFilter)
+		prevCh <- sumResult{amount, err}
+	}()
+
+	currentRes := <-currentCh
+	prevRes := <-prevCh
+
+	if currentRes.err != nil {
+		return nil, fmt.Errorf("sum current period amount: %w", currentRes.err)
+	}
+	if prevRes.err != nil {
+		return nil, fmt.Errorf("sum previous period amount: %w", prevRes.err)
 	}
 
-	// 查询去年同期金额
-	prevFilter := toUnifiedBillFilter(filter)
-	prevFilter.StartDate = prevStart.Format("2006-01-02")
-	prevFilter.EndDate = prevEnd.Format("2006-01-02")
-	prevAmount, err := s.billDAO.SumAmount(ctx, prevFilter)
-	if err != nil {
-		return nil, fmt.Errorf("sum previous period amount: %w", err)
-	}
+	currentAmount := currentRes.amount
+	prevAmount := prevRes.amount
 
 	// 计算同比变化百分比
 	var changePct float64

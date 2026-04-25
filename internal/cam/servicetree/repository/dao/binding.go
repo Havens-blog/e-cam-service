@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const BindingCollection = "c_resource_binding"
+const BindingCollection = "ecam_resource_binding"
 
 // Binding 资源绑定 DAO 模型
 type Binding struct {

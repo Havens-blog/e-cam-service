@@ -1,0 +1,2633 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多云镜像管理 - CloudHub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            min-height: 100vh;
+            color: #e2e8f0;
+            overflow-x: hidden;
+        }
+
+        .bg-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(rgba(56, 189, 248, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(56, 189, 248, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-glow {
+            position: fixed;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.15;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-glow-1 { top: -200px; left: -200px; background: #8b5cf6; }
+        .bg-glow-2 { bottom: -200px; right: -200px; background: #06b6d4; }
+        .bg-glow-3 { top: 50%; left: 50%; transform: translate(-50%, -50%); background: #3b82f6; opacity: 0.08; }
+
+        /* 头部 */
+        .header {
+            position: relative;
+            z-index: 10;
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            backdrop-filter: blur(10px);
+            background: rgba(15, 23, 42, 0.8);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .logo-text {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #a78bfa, #22d3ee);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav {
+            display: flex;
+            gap: 8px;
+        }
+
+        .nav-item {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-item:hover {
+            color: #e2e8f0;
+            background: rgba(148, 163, 184, 0.1);
+        }
+
+        .nav-item.active {
+            color: #fff;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(6, 182, 212, 0.3));
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #a78bfa, #22d3ee);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        /* 主内容 */
+        .main {
+            position: relative;
+            z-index: 10;
+            padding: 30px 40px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .page-subtitle {
+            color: #64748b;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-secondary {
+            background: rgba(148, 163, 184, 0.1);
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(148, 163, 184, 0.2);
+            color: #e2e8f0;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4);
+        }
+
+        /* 统计卡片 */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            padding: 24px;
+            border-radius: 16px;
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            backdrop-filter: blur(20px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+        }
+
+        .stat-card.purple::before { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+        .stat-card.cyan::before { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
+        .stat-card.green::before { background: linear-gradient(90deg, #10b981, #34d399); }
+        .stat-card.orange::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            margin-bottom: 16px;
+        }
+
+        .stat-card.purple .stat-icon { background: rgba(139, 92, 246, 0.2); }
+        .stat-card.cyan .stat-icon { background: rgba(6, 182, 212, 0.2); }
+        .stat-card.green .stat-icon { background: rgba(16, 185, 129, 0.2); }
+        .stat-card.orange .stat-icon { background: rgba(245, 158, 11, 0.2); }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #e2e8f0;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        .stat-trend {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            margin-top: 12px;
+        }
+
+        .stat-trend.up { color: #10b981; }
+        .stat-trend.down { color: #ef4444; }
+
+        /* 主布局 */
+        .content-layout {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 24px;
+        }
+
+        /* 侧边栏 */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 16px;
+            backdrop-filter: blur(20px);
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 18px 20px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-body {
+            padding: 16px;
+        }
+
+        /* 云账号选择器 */
+        .cloud-account-selector {
+            margin-bottom: 20px;
+        }
+
+        .selected-account-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 182, 212, 0.1));
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .selected-account-card:hover {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(6, 182, 212, 0.15));
+        }
+
+        .selected-vendor-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .vendor-icon-aliyun { background: linear-gradient(135deg, #ff6a00, #ee0a6b); color: #fff; }
+        .vendor-icon-tencent { background: linear-gradient(135deg, #00a3ff, #00d4ff); color: #fff; }
+        .vendor-icon-huawei { background: linear-gradient(135deg, #c7000b, #ff4d4d); color: #fff; }
+        .vendor-icon-aws { background: linear-gradient(135deg, #ff9900, #ffb84d); color: #fff; }
+        .vendor-icon-volcano { background: linear-gradient(135deg, #f53f3f, #ff7a7a); color: #fff; }
+
+        .selected-account-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .selected-account-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #e2e8f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .selected-account-meta {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .switch-account-btn {
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: rgba(139, 92, 246, 0.15);
+            color: #a78bfa;
+            font-size: 11px;
+            font-weight: 500;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .switch-account-btn:hover {
+            background: rgba(139, 92, 246, 0.25);
+        }
+
+        /* 账号下拉面板 */
+        .account-dropdown {
+            display: none;
+            margin-top: 8px;
+            padding: 12px;
+            border-radius: 12px;
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .account-dropdown.show {
+            display: block;
+        }
+
+        .account-dropdown-search {
+            margin-bottom: 12px;
+        }
+
+        .account-dropdown-search input {
+            width: 100%;
+            padding: 8px 12px 8px 32px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #e2e8f0;
+            font-size: 12px;
+            outline: none;
+        }
+
+        .account-dropdown-search input:focus {
+            border-color: #8b5cf6;
+        }
+
+        .account-dropdown-search input::placeholder {
+            color: #64748b;
+        }
+
+        .account-group {
+            margin-bottom: 12px;
+        }
+
+        .account-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .account-group-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .account-group-header:hover {
+            background: rgba(148, 163, 184, 0.08);
+        }
+
+        .account-group-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-weight: 700;
+        }
+
+        .account-group-name {
+            flex: 1;
+            font-size: 12px;
+            font-weight: 600;
+            color: #94a3b8;
+        }
+
+        .account-group-count {
+            font-size: 10px;
+            color: #64748b;
+            padding: 2px 6px;
+            background: rgba(148, 163, 184, 0.1);
+            border-radius: 8px;
+        }
+
+        .account-group-expand {
+            color: #64748b;
+            font-size: 8px;
+            transition: transform 0.3s ease;
+        }
+
+        .account-group.expanded .account-group-expand {
+            transform: rotate(180deg);
+        }
+
+        .account-group-list {
+            display: none;
+            padding-left: 16px;
+            margin-top: 4px;
+        }
+
+        .account-group.expanded .account-group-list {
+            display: block;
+        }
+
+        .account-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 4px;
+        }
+
+        .account-option:hover {
+            background: rgba(139, 92, 246, 0.1);
+        }
+
+        .account-option.active {
+            background: rgba(139, 92, 246, 0.15);
+        }
+
+        .account-option-status {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .account-option-status.normal { background: #10b981; }
+        .account-option-status.warning { background: #f59e0b; }
+        .account-option-status.error { background: #ef4444; }
+
+        .account-option-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .account-option-name {
+            font-size: 12px;
+            font-weight: 500;
+            color: #e2e8f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .account-option-detail {
+            font-size: 10px;
+            color: #64748b;
+        }
+
+        .account-option-check {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid rgba(148, 163, 184, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            color: transparent;
+            flex-shrink: 0;
+        }
+
+        .account-option.active .account-option-check {
+            background: #8b5cf6;
+            border-color: #8b5cf6;
+            color: #fff;
+        }
+
+        .account-option-tags {
+            display: flex;
+            gap: 4px;
+        }
+
+        .account-tag {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 500;
+        }
+
+        .account-tag.company { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+        .account-tag.primary { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+        .account-tag.env { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+
+        /* 云厂商标志样式 */
+        .vendor-icon-aliyun { background: linear-gradient(135deg, #ff6a00, #ee0a6b); color: #fff; }
+        .vendor-icon-tencent { background: linear-gradient(135deg, #00a3ff, #00d4ff); color: #fff; }
+        .vendor-icon-huawei { background: linear-gradient(135deg, #c7000b, #ff4d4d); color: #fff; }
+        .vendor-icon-aws { background: linear-gradient(135deg, #ff9900, #ffb84d); color: #fff; }
+        .vendor-icon-volcano { background: linear-gradient(135deg, #f53f3f, #ff7a7a); color: #fff; }
+
+        /* 账号下拉搜索框 */
+        .account-dropdown-search {
+            position: relative;
+            margin-bottom: 12px;
+        }
+
+        .account-dropdown-search input {
+            width: 100%;
+            padding: 10px 12px 10px 36px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #e2e8f0;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .account-dropdown-search::before {
+            content: '🔍';
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 12px;
+        }
+
+        .selected-account-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 182, 212, 0.1));
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .selected-account-card:hover {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(6, 182, 212, 0.15));
+        }
+
+        .selected-vendor-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .selected-account-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .selected-account-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #e2e8f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .selected-account-meta {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .switch-account-btn {
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: rgba(139, 92, 246, 0.15);
+            color: #a78bfa;
+            font-size: 11px;
+            font-weight: 500;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .switch-account-btn:hover {
+            background: rgba(139, 92, 246, 0.25);
+        }
+
+        .account-dropdown {
+            display: none;
+            margin-top: 8px;
+            padding: 12px;
+            border-radius: 12px;
+            background: rgba(15, 23, 42, 0.98);
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            max-height: 400px;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .account-dropdown.show {
+            display: block;
+        }
+
+        .account-group {
+            margin-bottom: 8px;
+        }
+
+        .account-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .account-group-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .account-group-header:hover {
+            background: rgba(148, 163, 184, 0.08);
+        }
+
+        .account-group-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            font-weight: 700;
+        }
+
+        .account-group-name {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 600;
+            color: #94a3b8;
+        }
+
+        .account-group-count {
+            font-size: 10px;
+            color: #64748b;
+            padding: 2px 8px;
+            background: rgba(148, 163, 184, 0.1);
+            border-radius: 10px;
+        }
+
+        .account-group-expand {
+            color: #64748b;
+            font-size: 10px;
+            transition: transform 0.3s ease;
+        }
+
+        .account-group.expanded .account-group-expand {
+            transform: rotate(180deg);
+        }
+
+        .account-group-list {
+            display: none;
+            padding-left: 12px;
+            margin-top: 4px;
+        }
+
+        .account-group.expanded .account-group-list {
+            display: block;
+        }
+
+        .account-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 4px;
+        }
+
+        .account-option:hover {
+            background: rgba(139, 92, 246, 0.1);
+        }
+
+        .account-option.active {
+            background: rgba(139, 92, 246, 0.15);
+        }
+
+        .account-option-status {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .account-option-status.normal { background: #10b981; box-shadow: 0 0 6px rgba(16, 185, 129, 0.5); }
+        .account-option-status.warning { background: #f59e0b; box-shadow: 0 0 6px rgba(245, 158, 11, 0.5); }
+        .account-option-status.error { background: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, 0.5); }
+
+        .account-option-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .account-option-name {
+            font-size: 12px;
+            font-weight: 500;
+            color: #e2e8f0;
+        }
+
+        .account-option-detail {
+            font-size: 10px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .account-option-tags {
+            display: flex;
+            gap: 4px;
+        }
+
+        .account-option-check {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid rgba(148, 163, 184, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            color: transparent;
+            flex-shrink: 0;
+        }
+
+        .account-option.active .account-option-check {
+            background: #8b5cf6;
+            border-color: #8b5cf6;
+            color: #fff;
+        }
+
+        /* 镜像类型筛选 */
+        .type-filter-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .type-filter-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .type-filter-item:hover {
+            background: rgba(148, 163, 184, 0.08);
+        }
+
+        .type-filter-item.active {
+            background: rgba(6, 182, 212, 0.15);
+        }
+
+        .type-filter-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .type-filter-dot.public { background: #3b82f6; }
+        .type-filter-dot.custom { background: #8b5cf6; }
+        .type-filter-dot.shared { background: #10b981; }
+        .type-filter-dot.market { background: #f59e0b; }
+
+        .type-filter-name {
+            flex: 1;
+            font-size: 13px;
+            color: #94a3b8;
+        }
+
+        .type-filter-item.active .type-filter-name {
+            color: #e2e8f0;
+        }
+
+        /* 主内容区 */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* 搜索和操作栏 */
+        .toolbar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .search-box {
+            flex: 1;
+            min-width: 300px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 12px 16px 12px 44px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #e2e8f0;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .search-box input:focus {
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+
+        .search-box input::placeholder {
+            color: #64748b;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #64748b;
+        }
+
+        .filter-select {
+            padding: 12px 36px 12px 16px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #e2e8f0;
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+        }
+
+        .filter-select option {
+            background: #1e293b;
+        }
+
+        .view-toggle {
+            display: flex;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            overflow: hidden;
+        }
+
+        .view-btn {
+            padding: 10px 16px;
+            background: rgba(15, 23, 42, 0.6);
+            color: #64748b;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+        }
+
+        .view-btn:hover {
+            color: #94a3b8;
+        }
+
+        .view-btn.active {
+            background: rgba(139, 92, 246, 0.2);
+            color: #a78bfa;
+        }
+
+        /* 镜像表格 */
+        .image-table-wrapper {
+            border-radius: 16px;
+            overflow: hidden;
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .image-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .image-table th {
+            padding: 16px 20px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: rgba(15, 23, 42, 0.5);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .image-table td {
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.06);
+            vertical-align: middle;
+        }
+
+        .image-table tr:hover td {
+            background: rgba(139, 92, 246, 0.05);
+        }
+
+        .image-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* 镜像信息 */
+        .image-info {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .image-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .image-icon.linux { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
+        .image-icon.windows { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+        .image-icon.ubuntu { background: linear-gradient(135deg, #f97316, #ea580c); }
+        .image-icon.debian { background: linear-gradient(135deg, #ec4899, #db2777); }
+        .image-icon.centos { background: linear-gradient(135deg, #9333ea, #7c3aed); }
+        .image-icon.custom { background: linear-gradient(135deg, #64748b, #475569); }
+
+        .image-details {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .image-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .image-id {
+            font-size: 12px;
+            color: #64748b;
+            font-family: monospace;
+        }
+
+        /* 云厂商标签 */
+        .cloud-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .cloud-tag.aliyun { background: rgba(255, 106, 0, 0.15); color: #ff9500; }
+        .cloud-tag.tencent { background: rgba(0, 163, 255, 0.15); color: #22d3ee; }
+        .cloud-tag.huawei { background: rgba(199, 0, 11, 0.15); color: #ff6b6b; }
+        .cloud-tag.aws { background: rgba(255, 153, 0, 0.15); color: #ffb84d; }
+        .cloud-tag.volcano { background: rgba(245, 63, 63, 0.15); color: #ff7a7a; }
+
+        .cloud-tag-icon {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            font-weight: 700;
+        }
+
+        .cloud-tag.aliyun .cloud-tag-icon { background: #ff6a00; color: #fff; }
+        .cloud-tag.tencent .cloud-tag-icon { background: #00a3ff; color: #fff; }
+        .cloud-tag.huawei .cloud-tag-icon { background: #c7000b; color: #fff; }
+        .cloud-tag.aws .cloud-tag-icon { background: #ff9900; color: #fff; }
+        .cloud-tag.volcano .cloud-tag-icon { background: #f53f3f; color: #fff; }
+
+        /* 类型标签 */
+        .type-tag {
+            display: inline-flex;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .type-tag.public { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+        .type-tag.custom { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
+        .type-tag.shared { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+        .type-tag.market { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+
+        /* 状态标签 */
+        .status-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+
+        .status-tag.available {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+        }
+
+        .status-tag.pending {
+            background: rgba(245, 158, 11, 0.15);
+            color: #fbbf24;
+        }
+
+        .status-tag.error {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        /* 大小和系统信息 */
+        .size-info {
+            font-size: 13px;
+            color: #94a3b8;
+        }
+
+        .os-info {
+            font-size: 13px;
+            color: #94a3b8;
+        }
+
+        /* 操作按钮 */
+        .action-btns {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            border: none;
+            background: rgba(148, 163, 184, 0.1);
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .action-btn:hover {
+            background: rgba(139, 92, 246, 0.2);
+            color: #a78bfa;
+        }
+
+        .action-btn.danger:hover {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+
+        /* 分页 */
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: rgba(15, 23, 42, 0.5);
+        }
+
+        .pagination-info {
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        .pagination-btns {
+            display: flex;
+            gap: 8px;
+        }
+
+        .page-btn {
+            min-width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #94a3b8;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .page-btn:hover {
+            border-color: #8b5cf6;
+            color: #a78bfa;
+        }
+
+        .page-btn.active {
+            background: rgba(139, 92, 246, 0.2);
+            border-color: #8b5cf6;
+            color: #a78bfa;
+        }
+
+        /* 镜像详情弹窗 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal {
+            width: 700px;
+            max-height: 90vh;
+            background: rgba(30, 41, 59, 0.98);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+
+        .modal-close {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: rgba(148, 163, 184, 0.1);
+            border: none;
+            color: #64748b;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.3s ease;
+        }
+
+        .modal-close:hover {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+
+        .modal-body {
+            padding: 24px;
+            overflow-y: auto;
+            max-height: calc(90vh - 140px);
+        }
+
+        .detail-section {
+            margin-bottom: 24px;
+        }
+
+        .detail-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .detail-section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #94a3b8;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .detail-section-title::before {
+            content: '';
+            width: 3px;
+            height: 14px;
+            background: linear-gradient(180deg, #8b5cf6, #06b6d4);
+            border-radius: 2px;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .detail-label {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .detail-value {
+            font-size: 14px;
+            color: #e2e8f0;
+            font-weight: 500;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 20px 24px;
+            border-top: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        /* 滚动条 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.3);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.5);
+        }
+
+        /* 批量操作栏 */
+        .batch-actions {
+            display: none;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 20px;
+            background: rgba(139, 92, 246, 0.15);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 12px;
+            margin-bottom: 16px;
+        }
+
+        .batch-actions.show {
+            display: flex;
+        }
+
+        .batch-count {
+            font-size: 13px;
+            color: #a78bfa;
+        }
+
+        .batch-btns {
+            display: flex;
+            gap: 8px;
+            margin-left: auto;
+        }
+
+        .batch-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+        }
+
+        .batch-btn.secondary {
+            background: rgba(148, 163, 184, 0.1);
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .batch-btn.secondary:hover {
+            background: rgba(148, 163, 184, 0.2);
+            color: #e2e8f0;
+        }
+
+        .batch-btn.primary {
+            background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+            color: #fff;
+        }
+
+        .batch-btn.danger {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        /* Checkbox */
+        .checkbox {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 2px solid rgba(148, 163, 184, 0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: transparent;
+        }
+
+        .checkbox:hover {
+            border-color: #8b5cf6;
+        }
+
+        .checkbox.checked {
+            background: #8b5cf6;
+            border-color: #8b5cf6;
+            color: #fff;
+        }
+
+        /* 云账号选择器样式补充 */
+        .cloud-account-selector {
+            margin-bottom: 20px;
+        }
+
+        .selected-account-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 182, 212, 0.1));
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .selected-account-card:hover {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(6, 182, 212, 0.15));
+        }
+
+        .selected-vendor-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .selected-account-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .selected-account-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #e2e8f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .selected-account-meta {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .switch-account-btn {
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: rgba(139, 92, 246, 0.15);
+            color: #a78bfa;
+            font-size: 11px;
+            font-weight: 500;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .switch-account-btn:hover {
+            background: rgba(139, 92, 246, 0.25);
+        }
+
+        .vendor-icon-aliyun { background: linear-gradient(135deg, #ff6a00, #ee0a6b); color: #fff; }
+        .vendor-icon-tencent { background: linear-gradient(135deg, #00a3ff, #00d4ff); color: #fff; }
+        .vendor-icon-huawei { background: linear-gradient(135deg, #c7000b, #ff4d4d); color: #fff; }
+        .vendor-icon-aws { background: linear-gradient(135deg, #ff9900, #ffb84d); color: #fff; }
+        .vendor-icon-volcano { background: linear-gradient(135deg, #f53f3f, #ff7a7a); color: #fff; }
+
+        .account-dropdown {
+            display: none;
+            margin-top: 8px;
+            padding: 12px;
+            border-radius: 12px;
+            background: rgba(15, 23, 42, 0.98);
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            max-height: 400px;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .account-dropdown.show {
+            display: block;
+        }
+
+        .account-dropdown-search {
+            position: relative;
+            margin-bottom: 12px;
+        }
+
+        .account-dropdown-search input {
+            width: 100%;
+            padding: 10px 12px 10px 36px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #e2e8f0;
+            font-size: 12px;
+            outline: none;
+        }
+
+        .account-dropdown-search input:focus {
+            border-color: #8b5cf6;
+        }
+
+        .account-dropdown-search::before {
+            content: '🔍';
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 12px;
+        }
+
+        .account-group {
+            margin-bottom: 8px;
+        }
+
+        .account-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .account-group-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .account-group-header:hover {
+            background: rgba(148, 163, 184, 0.08);
+        }
+
+        .account-group-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            font-weight: 700;
+        }
+
+        .account-group-name {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 600;
+            color: #94a3b8;
+        }
+
+        .account-group-count {
+            font-size: 10px;
+            color: #64748b;
+            padding: 2px 8px;
+            background: rgba(148, 163, 184, 0.1);
+            border-radius: 10px;
+        }
+
+        .account-group-expand {
+            color: #64748b;
+            font-size: 10px;
+            transition: transform 0.3s ease;
+        }
+
+        .account-group.expanded .account-group-expand {
+            transform: rotate(180deg);
+        }
+
+        .account-group-list {
+            display: none;
+            padding-left: 12px;
+            margin-top: 4px;
+        }
+
+        .account-group.expanded .account-group-list {
+            display: block;
+        }
+
+        .account-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 4px;
+        }
+
+        .account-option:hover {
+            background: rgba(139, 92, 246, 0.1);
+        }
+
+        .account-option.active {
+            background: rgba(139, 92, 246, 0.15);
+        }
+
+        .account-option-status {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .account-option-status.normal { background: #10b981; box-shadow: 0 0 6px rgba(16, 185, 129, 0.5); }
+        .account-option-status.warning { background: #f59e0b; box-shadow: 0 0 6px rgba(245, 158, 11, 0.5); }
+        .account-option-status.error { background: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, 0.5); }
+
+        .account-option-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .account-option-name {
+            font-size: 12px;
+            font-weight: 500;
+            color: #e2e8f0;
+        }
+
+        .account-option-detail {
+            font-size: 10px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .account-option-tags {
+            display: flex;
+            gap: 4px;
+        }
+
+        .account-tag {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 500;
+        }
+
+        .account-tag.company { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+        .account-tag.primary { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+        .account-tag.env { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+
+        .account-option-check {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid rgba(148, 163, 184, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            color: transparent;
+            flex-shrink: 0;
+        }
+
+        .account-option.active .account-option-check {
+            background: #8b5cf6;
+            border-color: #8b5cf6;
+            color: #fff;
+        }
+
+        /* 镜像类型筛选卡片 */
+        .type-filter-card {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 16px;
+            backdrop-filter: blur(20px);
+            overflow: hidden;
+        }
+
+        .type-filter-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .type-filter-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .type-filter-item:hover {
+            background: rgba(148, 163, 184, 0.08);
+        }
+
+        .type-filter-item.active {
+            background: rgba(6, 182, 212, 0.15);
+        }
+
+        .type-filter-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .type-filter-dot.public { background: #3b82f6; }
+        .type-filter-dot.custom { background: #8b5cf6; }
+        .type-filter-dot.shared { background: #10b981; }
+        .type-filter-dot.market { background: #f59e0b; }
+
+        .type-filter-name {
+            flex: 1;
+            font-size: 13px;
+            color: #94a3b8;
+        }
+
+        .type-filter-item.active .type-filter-name {
+            color: #e2e8f0;
+        }
+
+        .type-filter-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        /* 快捷操作 */
+        .quick-action-btn {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            color: #94a3b8;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: left;
+            width: 100%;
+        }
+
+        .quick-action-btn:hover {
+            background: rgba(139, 92, 246, 0.1);
+            border-color: rgba(139, 92, 246, 0.2);
+            color: #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+    <div class="bg-glow bg-glow-3"></div>
+
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">☁️</div>
+            <span class="logo-text">CloudHub</span>
+        </div>
+        <nav class="nav">
+            <div class="nav-item">仪表盘</div>
+            <div class="nav-item active">镜像管理</div>
+            <div class="nav-item">云主机</div>
+            <div class="nav-item">网络</div>
+            <div class="nav-item">存储</div>
+            <div class="nav-item">费用中心</div>
+        </nav>
+        <div class="user-info">
+            <span style="font-size: 13px; color: #94a3b8;">管理员</span>
+            <div class="avatar">A</div>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">🖼️ 镜像管理</h1>
+                <p class="page-subtitle">统一管理多云平台镜像，支持导入、导出、复制和共享</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary">📥 导入镜像</button>
+                <button class="btn btn-secondary">📤 导出镜像</button>
+                <button class="btn btn-primary">🔨 创建自定义镜像</button>
+            </div>
+        </div>
+
+        <!-- 统计卡片 -->
+        <div class="stats-row">
+            <div class="stat-card purple">
+                <div class="stat-icon">💿</div>
+                <div class="stat-value">256</div>
+                <div class="stat-label">镜像总数</div>
+                <div class="stat-trend up">↑ 12 本周新增</div>
+            </div>
+            <div class="stat-card cyan">
+                <div class="stat-icon">🏢</div>
+                <div class="stat-value">128</div>
+                <div class="stat-label">公共镜像</div>
+                <div class="stat-trend up">↑ 8 官方更新</div>
+            </div>
+            <div class="stat-card green">
+                <div class="stat-icon">⚙️</div>
+                <div class="stat-value">86</div>
+                <div class="stat-label">自定义镜像</div>
+                <div class="stat-trend up">↑ 4 本周创建</div>
+            </div>
+            <div class="stat-card orange">
+                <div class="stat-icon">🔗</div>
+                <div class="stat-value">42</div>
+                <div class="stat-label">共享镜像</div>
+                <div class="stat-trend down">↓ 2 已过期</div>
+            </div>
+        </div>
+
+        <div class="content-layout">
+            <!-- 侧边栏 -->
+            <div class="sidebar">
+                <!-- 云账号选择器 -->
+                <div class="cloud-account-selector">
+                    <div class="selected-account-card" onclick="toggleAccountDropdown()">
+                        <div class="selected-vendor-icon vendor-icon-aliyun">阿里</div>
+                        <div class="selected-account-info">
+                            <div class="selected-account-name" id="selectedAccountName">总公司-阿里云-生产账号</div>
+                            <div class="selected-account-meta" id="selectedAccountMeta">华东1(杭州) · 86个镜像</div>
+                        </div>
+                        <button class="switch-account-btn">切换账号</button>
+                    </div>
+
+                    <div class="account-dropdown" id="accountDropdown">
+                        <div class="account-dropdown-search">
+                            <input type="text" placeholder="搜索云账号..." oninput="searchAccounts(this.value)">
+                        </div>
+
+                        <!-- 阿里云账号组 -->
+                        <div class="account-group expanded">
+                            <div class="account-group-header" onclick="toggleAccountGroup(this)">
+                                <div class="account-group-icon vendor-icon-aliyun">阿里</div>
+                                <div class="account-group-name">阿里云</div>
+                                <div class="account-group-count">3</div>
+                                <div class="account-group-expand">▼</div>
+                            </div>
+                            <div class="account-group-list">
+                                <div class="account-option active" onclick="selectAccount(this, 'aliyun', '总公司-阿里云-生产账号', '华东1、华东2、华北2 · 86个镜像')">
+                                    <div class="account-option-status normal"></div>
+                                    <div class="account-option-info">
+                                        <div class="account-option-name">总公司-阿里云-生产账号</div>
+                                        <div class="account-option-detail">华东1、华东2、华北2 · 86个镜像</div>
+                                    </div>
+                                    <div class="account-option-tags">
+                                        <span class="account-tag company">总公司</span>
+                                        <span class="account-tag primary">主账号</span>
+                                    </div>
+                                    <div class="account-option-check">✓</div>
+                                </div>
+                                <div class="account-option" onclick="selectAccount(this, 'aliyun', '上海分公司-阿里云', '华东2 · 32个镜像')">
+                                    <div class="account-option-status normal"></div>
+                                    <div class="account-option-info">
+                                        <div class="account-option-name">上海分公司-阿里云</div>
+                                        <div class="account-option-detail">华东2 · 32个镜像</div>
+                                    </div>
+                                    <div class="account-option-tags">
+                                        <span class="account-tag company">上海分公司</span>
+                                    </div>
+                                    <div class="account-option-check">✓</div>
+                                </div>
+                                <div class="account-option" onclick="selectAccount(this, 'aliyun', '深圳分公司-阿里云', '华南1 · 18个镜像')">
+                                    <div class="account-option-status warning"></div>
+                                    <div class="account-option-info">
+                                        <div class="account-option-name">深圳分公司-阿里云</div>
+                                        <div class="account-option-detail">华南1 · 18个镜像</div>
+                                    </div>
+                                    <div class="account-option-tags">
+                                        <span class="account-tag company">深圳分公司</span>
+                                    </div>
+                                    <div class="account-option-check">✓</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 腾讯云账号组 -->
+                        <div class="account-group">
+                            <div class="account-group-header" onclick="toggleAccountGroup(this)">
+                                <div class="account-group-icon vendor-icon-tencent">腾讯</div>
+                                <div class="account-group-name">腾讯云</div>
+                                <div class="account-group-count">2</div>
+                                <div class="account-group-expand">▼</div>
+                            </div>
+                            <div class="account-group-list">
+                                <div class="account-option" onclick="selectAccount(this, 'tencent', '总公司-腾讯云', '上海、广州 · 64个镜像')">
+                                    <div class="account-option-status normal"></div>
+                                    <div class="account-option-info">
+                                        <div class="account-option-name">总公司-腾讯云</div>
+                                        <div class="account-option-detail">上海、广州 · 64个镜像</div>
+                                    </div>
+                                    <div class="account-option-tags">
+                                        <span class="account-tag company">总公司</span>
+                                        <span class="account-tag primary">主账号</span>
+                                    </div>
+                                    <div class="account-option-check">✓</div>
+                                </div>
+                                <div class="account-option" onclick="selectAccount(this, 'tencent', '北京分公司-腾讯云', '北京 · 28个镜像')">
+                                    <div class="account-option-status normal"></div>
+                                    <div class="account-option-info">
+                                        <div class="account-option-name">北京分公司-腾讯云</div>
+                                        <div class="account-option-detail">北京 · 28个镜像</div>
+                                    </div>
+                                    <div class="account-option-tags">
+                                        <span class="account-tag company">北京分公司</span>
+                                    </div>
+                                    <div class="account-option-check">✓</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 华为云账号组 -->
+                        <div class="account-group">
+                            <div class="account-group-header" onclick="toggleAccountGroup(this)">
+                                <div class="account-group-icon vendor-icon-huawei">华为</div>
+                                <div class="account-group-name">华为云</div>
+                                <div class="account-group-count">1</div>
+                                <div class="account-group-expand">▼</div>
+                            </div>
+                            <div class="account-group-list">
+                                <div class="account-option" onclick="selectAccount(this, 'huawei', '总公司-华为云', '华北-北京四 · 52个镜像')">
+                                    <div class="account-option-status normal"></div>
+                                    <div class="account-option-info">
+                                        <div class="account-option-name">总公司-华为云</div>
+                                        <div class="account-option-detail">华北-北京四 · 52个镜像</div>
+                                    </div>
+                                    <div class="account-option-tags">
+                                        <span class="account-tag company">总公司</span>
+                                        <span class="account-tag primary">主账号</span>
+                                    </div>
+                                    <div class="account-option-check">✓</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AWS账号组 -->
+                        <div class="account-group">
+                            <div class="account-group-header" onclick="toggleAccountGroup(this)">
+                                <div class="account-group-icon vendor-icon-aws">AWS</div>
+                                <div class="account-group-name">AWS</div>
+                                <div class="account-group-count">1</div>
+                                <div class="account-group-expand">▼</div>
+                            </div>
+                            <div class="account-group-list">
+                                <div class="account-option" onclick="selectAccount(this, 'aws', '海外业务-AWS', 'ap-southeast-1 · 38个镜像')">
+                                    <div class="account-option-status normal"></div>
+                                    <div class="account-option-info">
+                                        <div class="account-option-name">海外业务-AWS</div>
+                                        <div class="account-option-detail">ap-southeast-1 · 38个镜像</div>
+                                    </div>
+                                    <div class="account-option-tags">
+                                        <span class="account-tag company">海外事业部</span>
+                                    </div>
+                                    <div class="account-option-check">✓</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 火山引擎账号组 -->
+                        <div class="account-group">
+                            <div class="account-group-header" onclick="toggleAccountGroup(this)">
+                                <div class="account-group-icon vendor-icon-volcano">火山</div>
+                                <div class="account-group-name">火山引擎</div>
+                                <div class="account-group-count">1</div>
+                                <div class="account-group-expand">▼</div>
+                            </div>
+                            <div class="account-group-list">
+                                <div class="account-option" onclick="selectAccount(this, 'volcano', '研发测试-火山引擎', 'cn-beijing · 16个镜像')">
+                                    <div class="account-option-status normal"></div>
+                                    <div class="account-option-info">
+                                        <div class="account-option-name">研发测试-火山引擎</div>
+                                        <div class="account-option-detail">cn-beijing · 16个镜像</div>
+                                    </div>
+                                    <div class="account-option-tags">
+                                        <span class="account-tag company">研发中心</span>
+                                        <span class="account-tag env">测试</span>
+                                    </div>
+                                    <div class="account-option-check">✓</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 镜像类型筛选 -->
+                <div class="type-filter-card">
+                    <div class="card-header">
+                        <div class="card-title">📂 镜像类型</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="type-filter-list">
+                            <div class="type-filter-item active" onclick="filterByType(this, 'all')">
+                                <div class="type-filter-dot" style="background: linear-gradient(135deg, #3b82f6, #8b5cf6);"></div>
+                                <div class="type-filter-name">全部类型</div>
+                            </div>
+                            <div class="type-filter-item" onclick="filterByType(this, 'public')">
+                                <div class="type-filter-dot public"></div>
+                                <div class="type-filter-name">公共镜像</div>
+                            </div>
+                            <div class="type-filter-item" onclick="filterByType(this, 'custom')">
+                                <div class="type-filter-dot custom"></div>
+                                <div class="type-filter-name">自定义镜像</div>
+                            </div>
+                            <div class="type-filter-item" onclick="filterByType(this, 'shared')">
+                                <div class="type-filter-dot shared"></div>
+                                <div class="type-filter-name">共享镜像</div>
+                            </div>
+                            <div class="type-filter-item" onclick="filterByType(this, 'market')">
+                                <div class="type-filter-dot market"></div>
+                                <div class="type-filter-name">市场镜像</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 快捷操作 -->
+                <div class="quick-actions-card">
+                    <div class="card-header">
+                        <div class="card-title">⚡ 快捷操作</div>
+                    </div>
+                    <div class="card-body">
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <button class="quick-action-btn">
+                                <span>📋</span> 镜像复制
+                            </button>
+                            <button class="quick-action-btn">
+                                <span>🔄</span> 同步镜像
+                            </button>
+                            <button class="quick-action-btn">
+                                <span>🗑️</span> 清理过期镜像
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 主内容区 -->
+            <div class="main-content">
+                <!-- 工具栏 -->
+                <div class="toolbar">
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" placeholder="搜索镜像名称、ID、操作系统..." id="searchInput" oninput="searchImages(this.value)">
+                    </div>
+                    <select class="filter-select">
+                        <option value="">所有操作系统</option>
+                        <option value="linux">Linux</option>
+                        <option value="windows">Windows</option>
+                        <option value="centos">CentOS</option>
+                        <option value="ubuntu">Ubuntu</option>
+                        <option value="debian">Debian</option>
+                    </select>
+                    <select class="filter-select">
+                        <option value="">所有状态</option>
+                        <option value="available">可用</option>
+                        <option value="pending">处理中</option>
+                        <option value="error">错误</option>
+                    </select>
+                    <select class="filter-select">
+                        <option value="">所有区域</option>
+                        <option value="cn-hangzhou">华东1(杭州)</option>
+                        <option value="cn-shanghai">华东2(上海)</option>
+                        <option value="cn-beijing">华北2(北京)</option>
+                        <option value="cn-shenzhen">华南1(深圳)</option>
+                    </select>
+                    <div class="view-toggle">
+                        <button class="view-btn active" onclick="switchView('table')">☰ 列表</button>
+                        <button class="view-btn" onclick="switchView('grid')">▦ 网格</button>
+                    </div>
+                </div>
+
+                <!-- 批量操作栏 -->
+                <div class="batch-actions" id="batchActions">
+                    <div class="checkbox checked" onclick="toggleCheckbox(this)">✓</div>
+                    <div class="batch-count">已选择 <strong>3</strong> 个镜像</div>
+                    <div class="batch-btns">
+                        <button class="batch-btn secondary" onclick="cancelSelection()">取消选择</button>
+                        <button class="batch-btn secondary">📤 批量导出</button>
+                        <button class="batch-btn secondary">🔗 批量共享</button>
+                        <button class="batch-btn danger">🗑️ 批量删除</button>
+                    </div>
+                </div>
+
+                <!-- 镜像表格 -->
+                <div class="image-table-wrapper">
+                    <table class="image-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;">
+                                    <div class="checkbox" onclick="toggleAllCheckbox(this)"></div>
+                                </th>
+                                <th>镜像信息</th>
+                                <th>云厂商</th>
+                                <th>类型</th>
+                                <th>操作系统</th>
+                                <th>大小</th>
+                                <th>状态</th>
+                                <th style="width: 140px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><div class="checkbox checked" onclick="toggleCheckbox(this)">✓</div></td>
+                                <td>
+                                    <div class="image-info">
+                                        <div class="image-icon centos">🔮</div>
+                                        <div class="image-details">
+                                            <div class="image-name">
+                                                CentOS 7.9 64位
+                                                <span class="type-tag public">公共</span>
+                                            </div>
+                                            <div class="image-id">m-uf6b9x1234567890</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><span class="cloud-tag aliyun"><span class="cloud-tag-icon">阿里</span>阿里云</span></td>
+                                <td><span class="type-tag public">公共镜像</span></td>
+                                <td class="os-info">Linux / CentOS 7.9</td>
+                                <td class="size-info">40 GB</td>
+                                <td><span class="status-tag available"><span class="status-dot"></span>可用</span></td>
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="action-btn" title="创建实例">🖥️</button>
+                                        <button class="action-btn" title="复制镜像">📋</button>
+                                        <button class="action-btn" title="共享">🔗</button>
+                                        <button class="action-btn" title="详情" onclick="showDetail()">📄</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><div class="checkbox checked" onclick="toggleCheckbox(this)">✓</div></td>
+                                <td>
+                                    <div class="image-info">
+                                        <div class="image-icon ubuntu">🟠</div>
+                                        <div class="image-details">
+                                            <div class="image-name">
+                                                Ubuntu 22.04 LTS
+                                                <span class="type-tag public">公共</span>
+                                            </div>
+                                            <div class="image-id">m-uf6b9xabcdefghij</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><span class="cloud-tag aliyun"><span class="cloud-tag-icon">阿里</span>阿里云</span></td>
+                                <td><span class="type-tag public">公共镜像</span></td>
+                                <td class="os-info">Linux / Ubuntu 22.04</td>
+                                <td class="size-info">35 GB</td>
+                                <td><span class="status-tag available"><span class="status-dot"></span>可用</span></td>
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="action-btn" title="创建实例">🖥️</button>
+                                        <button class="action-btn" title="复制镜像">📋</button>
+                                        <button class="action-btn" title="共享">🔗</button>
+                                        <button class="action-btn" title="详情" onclick="showDetail()">📄</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><div class="checkbox checked" onclick="toggleCheckbox(this)">✓</div></td>
+                                <td>
+                                    <div class="image-info">
+                                        <div class="image-icon custom">⚙️</div>
+                                        <div class="image-details">
+                                            <div class="image-name">
+                                                prod-web-v2.3
+                                                <span class="type-tag custom">自定义</span>
+                                            </div>
+                                            <div class="image-id">img-28v9x2k3m4n5o6p7</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><span class="cloud-tag tencent"><span class="cloud-tag-icon">腾讯</span>腾讯云</span></td>
+                                <td><span class="type-tag custom">自定义镜像</span></td>
+                                <td class="os-info">Linux / CentOS 7.9</td>
+                                <td class="size-info">80 GB</td>
+                                <td><span class="status-tag available"><span class="status-dot"></span>可用</span></td>
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="action-btn" title="创建实例">🖥️</button>
+                                        <button class="action-btn" title="复制镜像">📋</button>
+                                        <button class="action-btn" title="共享">🔗</button>
+                                        <button class="action-btn" title="编辑">✏️</button>
+                                        <button class="action-btn danger" title="删除">🗑️</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><div class="checkbox" onclick="toggleCheckbox(this)"></div></td>
+                                <td>
+                                    <div class="image-info">
+                                        <div class="image-icon windows">🪟</div>
+                                        <div class="image-details">
+                                            <div class="image-name">
+                                                Windows Server 2022
+                                                <span class="type-tag public">公共</span>
+                                            </div>
+                                            <div class="image-id">m-uf6b9x9876543210</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><span class="cloud-tag huawei"><span class="cloud-tag-icon">华为</span>华为云</span></td>
+                                <td><span class="type-tag public">公共镜像</span></td>
+                                <td class="os-info">Windows / Server 2022</td>
+                                <td class="size-info">128 GB</td>
+                                <td><span class="status-tag available"><span class="status-dot"></span>可用</span></td>
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="action-btn" title="创建实例">🖥️</button>
+                                        <button class="action-btn" title="复制镜像">📋</button>
+                                        <button class="action-btn" title="共享">🔗</button>
+                                        <button class="action-btn" title="详情" onclick="showDetail()">📄</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><div class="checkbox" onclick="toggleCheckbox(this)"></div></td>
+                                <td>
+                                    <div class="image-info">
+                                        <div class="image-icon debian">🌸</div>
+                                        <div class="image-details">
+                                            <div class="image-name">
+                                                Debian 12 (Bookworm)
+                                                <span class="type-tag public">公共</span>
+                                            </div>
+                                            <div class="image-id">ami-0abc123def456789</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><span class="cloud-tag aws"><span class="cloud-tag-icon">AWS</span>AWS</span></td>
+                                <td><span class="type-tag public">公共镜像</span></td>
+                                <td class="os-info">Linux / Debian 12</td>
+                                <td class="size-info">32 GB</td>
+                                <td><span class="status-tag available"><span class="status-dot"></span>可用</span></td>
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="action-btn" title="创建实例">🖥️</button>
+                                        <button class="action-btn" title="复制镜像">📋</button>
+                                        <button class="action-btn" title="共享">🔗</button>
+                                        <button class="action-btn" title="详情" onclick="showDetail()">📄</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><div class="checkbox" onclick="toggleCheckbox(this)"></div></td>
+                                <td>
+                                    <div class="image-info">
+                                        <div class="image-icon custom">⚙️</div>
+                                        <div class="image-details">
+                                            <div class="image-name">
+                                                dev-mysql-backup
+                                                <span class="type-tag shared">共享</span>
+                                            </div>
+                                            <div class="image-id">img-shared-8x7y6z5w4v</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><span class="cloud-tag aliyun"><span class="cloud-tag-icon">阿里</span>阿里云</span></td>
+                                <td><span class="type-tag shared">共享镜像</span></td>
+                                <td class="os-info">Linux / CentOS 7.9</td>
+                                <td class="size-info">200 GB</td>
+                                <td><span class="status-tag available"><span class="status-dot"></span>可用</span></td>
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="action-btn" title="创建实例">🖥️</button>
+                                        <button class="action-btn" title="复制镜像">📋</button>
+                                        <button class="action-btn" title="详情" onclick="showDetail()">📄</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><div class="checkbox" onclick="toggleCheckbox(this)"></div></td>
+                                <td>
+                                    <div class="image-info">
+                                        <div class="image-icon linux">🐧</div>
+                                        <div class="image-details">
+                                            <div class="image-name">
+                                                Rocky Linux 9.2
+                                                <span class="type-tag public">公共</span>
+                                            </div>
+                                            <div class="image-id">m-uf6b9xr9s8t7u6v5</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><span class="cloud-tag volcano"><span class="cloud-tag-icon">火山</span>火山引擎</span></td>
+                                <td><span class="type-tag public">公共镜像</span></td>
+                                <td class="os-info">Linux / Rocky Linux 9.2</td>
+                                <td class="size-info">40 GB</td>
+                                <td><span class="status-tag pending"><span class="status-dot"></span>同步中</span></td>
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="action-btn" title="详情" onclick="showDetail()">📄</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><div class="checkbox" onclick="toggleCheckbox(this)"></div></td>
+                                <td>
+                                    <div class="image-info">
+                                        <div class="image-icon custom">⚙️</div>
+                                        <div class="image-details">
+                                            <div class="image-name">
+                                                jenkins-agent-v1.0
+                                                <span class="type-tag market">市场</span>
+                                            </div>
+                                            <div class="image-id">mkt-1a2b3c4d5e6f7g8h</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><span class="cloud-tag tencent"><span class="cloud-tag-icon">腾讯</span>腾讯云</span></td>
+                                <td><span class="type-tag market">市场镜像</span></td>
+                                <td class="os-info">Linux / Ubuntu 22.04</td>
+                                <td class="size-info">50 GB</td>
+                                <td><span class="status-tag available"><span class="status-dot"></span>可用</span></td>
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="action-btn" title="创建实例">🖥️</button>
+                                        <button class="action-btn" title="详情" onclick="showDetail()">📄</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="pagination">
+                        <div class="pagination-info">显示 1-8 共 256 条记录</div>
+                        <div class="pagination-btns">
+                            <button class="page-btn">◀</button>
+                            <button class="page-btn active">1</button>
+                            <button class="page-btn">2</button>
+                            <button class="page-btn">3</button>
+                            <button class="page-btn">...</button>
+                            <button class="page-btn">32</button>
+                            <button class="page-btn">▶</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 镜像详情弹窗 -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">🖼️ 镜像详情</div>
+                <button class="modal-close" onclick="hideDetail()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="detail-section">
+                    <div class="detail-section-title">基本信息</div>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">镜像名称</div>
+                            <div class="detail-value">CentOS 7.9 64位</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">镜像ID</div>
+                            <div class="detail-value" style="font-family: monospace;">m-uf6b9x1234567890</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">云厂商</div>
+                            <div class="detail-value">阿里云</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">镜像类型</div>
+                            <div class="detail-value">公共镜像</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">操作系统</div>
+                            <div class="detail-value">Linux / CentOS 7.9 64位</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">镜像大小</div>
+                            <div class="detail-value">40 GB</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <div class="detail-section-title">区域信息</div>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">所属区域</div>
+                            <div class="detail-value">华东1(杭州)</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">可用区</div>
+                            <div class="detail-value">全部可用区</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">已复制区域</div>
+                            <div class="detail-value">华东2、华北2、华南1</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">创建时间</div>
+                            <div class="detail-value">2024-01-15 10:30:00</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <div class="detail-section-title">镜像特征</div>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">架构</div>
+                            <div class="detail-value">x86_64</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">BIOS模式</div>
+                            <div class="detail-value">BIOS</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">GPU驱动</div>
+                            <div class="detail-value">未预装</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">安全加固</div>
+                            <div class="detail-value">已加固</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideDetail()">关闭</button>
+                <button class="btn btn-primary">🖥️ 使用此镜像创建实例</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 当前选中的账号
+        let currentAccount = {
+            vendor: 'aliyun',
+            vendorName: '阿里云',
+            name: '总公司-阿里云-生产账号',
+            meta: '华东1、华东2、华北2 · 86个镜像'
+        };
+
+        function toggleAccountDropdown() {
+            const dropdown = document.getElementById('accountDropdown');
+            dropdown.classList.toggle('show');
+        }
+
+        function toggleAccountGroup(header) {
+            const group = header.parentElement;
+            group.classList.toggle('expanded');
+        }
+
+        function selectAccount(el, vendor, name, meta) {
+            // 更新选中状态
+            document.querySelectorAll('.account-option').forEach(opt => opt.classList.remove('active'));
+            el.classList.add('active');
+
+            // 更新当前账号
+            currentAccount = { vendor, name, meta };
+
+            // 获取云厂商名称
+            const vendorNames = {
+                'aliyun': '阿里云',
+                'tencent': '腾讯云',
+                'huawei': '华为云',
+                'aws': 'AWS',
+                'volcano': '火山引擎'
+            };
+            currentAccount.vendorName = vendorNames[vendor];
+
+            // 更新显示
+            const iconEl = document.querySelector('.selected-vendor-icon');
+            iconEl.className = 'selected-vendor-icon vendor-icon-' + vendor;
+            iconEl.textContent = vendor === 'aws' ? 'AWS' : currentAccount.vendorName.substring(0, 2);
+            document.getElementById('selectedAccountName').textContent = name;
+            document.getElementById('selectedAccountMeta').textContent = meta;
+
+            // 关闭下拉
+            document.getElementById('accountDropdown').classList.remove('show');
+
+            // 触发过滤
+            filterImagesByAccount(vendor, name);
+        }
+
+        function filterImagesByAccount(vendor, accountName) {
+            console.log('过滤镜像:', vendor, accountName);
+            // 这里可以根据选中的账号过滤镜像列表
+        }
+
+        function searchAccounts(keyword) {
+            const lowerKeyword = keyword.toLowerCase();
+            document.querySelectorAll('.account-option').forEach(opt => {
+                const name = opt.querySelector('.account-option-name').textContent.toLowerCase();
+                const detail = opt.querySelector('.account-option-detail').textContent.toLowerCase();
+                if (name.includes(lowerKeyword) || detail.includes(lowerKeyword)) {
+                    opt.style.display = 'flex';
+                } else {
+                    opt.style.display = 'none';
+                }
+            });
+
+            // 展开所有分组
+            if (keyword) {
+                document.querySelectorAll('.account-group').forEach(g => g.classList.add('expanded'));
+            }
+        }
+
+        // 点击外部关闭下拉
+        document.addEventListener('click', function(e) {
+            const selector = document.querySelector('.cloud-account-selector');
+            if (!selector.contains(e.target)) {
+                document.getElementById('accountDropdown').classList.remove('show');
+            }
+        });
+
+        function filterByType(el, type) {
+            document.querySelectorAll('.type-filter-item').forEach(item => item.classList.remove('active'));
+            el.classList.add('active');
+        }
+
+        function searchImages(keyword) {
+            console.log('搜索:', keyword);
+        }
+
+        function switchView(view) {
+            document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function toggleCheckbox(el) {
+            el.classList.toggle('checked');
+            updateBatchActions();
+        }
+
+        function toggleAllCheckbox(el) {
+            const isChecked = el.classList.contains('checked');
+            document.querySelectorAll('.image-table .checkbox').forEach(cb => {
+                if (isChecked) {
+                    cb.classList.remove('checked');
+                } else {
+                    cb.classList.add('checked');
+                }
+            });
+            updateBatchActions();
+        }
+
+        function updateBatchActions() {
+            const checkedCount = document.querySelectorAll('.image-table tbody .checkbox.checked').length;
+            const batchActions = document.getElementById('batchActions');
+            if (checkedCount > 0) {
+                batchActions.classList.add('show');
+                batchActions.querySelector('.batch-count strong').textContent = checkedCount;
+            } else {
+                batchActions.classList.remove('show');
+            }
+        }
+
+        function cancelSelection() {
+            document.querySelectorAll('.image-table .checkbox').forEach(cb => cb.classList.remove('checked'));
+            updateBatchActions();
+        }
+
+        function showDetail() {
+            document.getElementById('detailModal').classList.add('show');
+        }
+
+        function hideDetail() {
+            document.getElementById('detailModal').classList.remove('show');
+        }
+
+        // 初始化批量操作栏
+        updateBatchActions();
+    </script>
+</body>
+</html>

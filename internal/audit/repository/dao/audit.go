@@ -12,7 +12,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const AuditLogsCollection = "cloud_audit_logs"
+const AuditLogsCollection = "ecam_audit_log"
 
 // AuditLogDAO 审计日志数据访问接口
 type AuditLogDAO interface {

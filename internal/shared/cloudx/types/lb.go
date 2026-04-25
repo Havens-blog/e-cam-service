@@ -90,6 +90,8 @@ type LBListener struct {
 type LBBackendServer struct {
 	ServerID    string `json:"server_id"`
 	ServerName  string `json:"server_name"`
+	InstanceID  string `json:"instance_id"` // 云主机实例ID
+	IP          string `json:"ip"`          // 后端服务器IP地址
 	Port        int    `json:"port"`
 	Weight      int    `json:"weight"`
 	Type        string `json:"type"` // ecs/eni/ip

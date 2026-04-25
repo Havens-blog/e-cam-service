@@ -10,8 +10,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const TagPolicyCollection = "c_tag_policy"
-const TagRuleCollection = "c_tag_rule"
+const TagPolicyCollection = "ecam_tag_policy"
+const TagRuleCollection = "ecam_tag_rule"
 
 // TagDAO 标签策略与规则数据访问接口
 type TagDAO interface {

@@ -13,8 +13,8 @@ import (
 
 // Collection names
 const (
-	DomainCollection = "c_dns_domain"
-	RecordCollection = "c_dns_record"
+	DomainCollection = "ecam_dns_domain"
+	RecordCollection = "ecam_dns_record"
 )
 
 // DnsDomainDoc DNS 域名 MongoDB 文档

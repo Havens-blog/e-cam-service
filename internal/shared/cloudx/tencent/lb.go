@@ -376,14 +376,21 @@ func (a *LBAdapter) fetchBackendServers(client *clb.Client, lbID string) ([]type
 
 			if _, exists := serverMap[key]; !exists {
 				server := types.LBBackendServer{
-					ServerID: serverID,
-					Port:     port,
+					ServerID:   serverID,
+					InstanceID: serverID,
+					Port:       port,
 				}
 				if target.Weight != nil {
 					server.Weight = int(*target.Weight)
 				}
 				if target.Type != nil {
 					server.Type = *target.Type
+				}
+				if target.PrivateIpAddresses != nil && len(target.PrivateIpAddresses) > 0 && target.PrivateIpAddresses[0] != nil {
+					server.IP = *target.PrivateIpAddresses[0]
+				}
+				if target.InstanceName != nil {
+					server.ServerName = *target.InstanceName
 				}
 				serverMap[key] = server
 			}

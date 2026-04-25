@@ -58,6 +58,7 @@ const (
 	SourceLog         = "log"
 	SourceManual      = "manual"
 	SourceDNSAPI      = "dns_api"
+	SourceAPM         = "apm"
 )
 
 // 节点状态常量
@@ -95,6 +96,7 @@ var ValidProviders = map[string]bool{
 var ValidSourceCollectors = map[string]bool{
 	SourceCloudAPI: true, SourceK8sAPI: true, SourceDeclaration: true,
 	SourceLog: true, SourceManual: true, SourceDNSAPI: true,
+	SourceAPM: true,
 }
 
 // BidirectionalNodeTypes 通常应具有双向连接的节点类型（用于断链检测）

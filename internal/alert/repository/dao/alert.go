@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	AlertRulesCollection     = "alert_rules"
-	AlertEventsCollection    = "alert_events"
-	NotifyChannelsCollection = "notification_channels"
+	AlertRulesCollection     = "ecam_alert_rule"
+	AlertEventsCollection    = "ecam_alert_event"
+	NotifyChannelsCollection = "ecam_notification_channel"
 )
 
 // AlertDAO 告警数据访问接口

@@ -51,8 +51,20 @@ func (s *declarationService) Register(ctx context.Context, decl domain.LinkDecla
 
 	// 3. 转换为拓扑节点并 Upsert
 	node := decl.ToTopoNode()
-	if err := s.nodeRepo.Upsert(ctx, node); err != nil {
-		return fmt.Errorf("failed to upsert node: %w", err)
+
+	// APM 声明的节点保护：如果节点已存在且来源不是 apm，则跳过节点更新，仅处理边
+	skipNodeUpsert := false
+	if decl.Source == "arms-apm" {
+		existingNode, err := s.nodeRepo.FindByID(ctx, node.ID)
+		if err == nil && existingNode.ID != "" && existingNode.SourceCollector != domain.SourceAPM {
+			skipNodeUpsert = true
+		}
+	}
+
+	if !skipNodeUpsert {
+		if err := s.nodeRepo.Upsert(ctx, node); err != nil {
+			return fmt.Errorf("failed to upsert node: %w", err)
+		}
 	}
 
 	// 4. 转换为拓扑边

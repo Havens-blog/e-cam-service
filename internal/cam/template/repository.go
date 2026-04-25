@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	VMTemplateCollection    = "vm_templates"
-	ProvisionTaskCollection = "provision_tasks"
+	VMTemplateCollection    = "ecam_vm_template"
+	ProvisionTaskCollection = "ecam_provision_task"
 )
 
 // ============================================================================

@@ -11,7 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const AccountsCollection = "cloud_accounts"
+const AccountsCollection = "ecam_cloud_account"
 
 // CloudAccountConfig DAO层云账号配置
 type CloudAccountConfig struct {

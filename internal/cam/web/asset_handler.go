@@ -99,6 +99,10 @@ func (h *AssetHandler) registerAssetRoutes(assetsGroup *gin.RouterGroup) {
 	assetsGroup.GET("/waf", h.ListWAF)
 	assetsGroup.GET("/waf/:asset_id", h.GetWAF)
 
+	// ENI 弹性网卡
+	assetsGroup.GET("/eni", h.ListENI)
+	assetsGroup.GET("/eni/:asset_id", h.GetENI)
+
 	// NAS 文件存储
 	assetsGroup.GET("/nas", h.ListNAS)
 	assetsGroup.GET("/nas/:asset_id", h.GetNAS)
@@ -1236,6 +1240,112 @@ func (h *AssetHandler) GetWAF(ctx *gin.Context) {
 	h.getAsset(ctx, "waf")
 }
 
+// ==================== ENI 弹性网卡 ====================
+
+// ListENI 获取弹性网卡列表
+// @Summary 获取弹性网卡列表
+// @Description 从数据库获取已同步的弹性网卡列表
+// @Tags 资产管理-ENI
+// @Accept json
+// @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param account_id query int false "云账号ID"
+// @Param provider query string false "云厂商" Enums(aliyun,aws,huawei,tencent,volcano)
+// @Param region query string false "地域"
+// @Param status query string false "状态(available/in_use/attaching/detaching)"
+// @Param name query string false "网卡名称(模糊搜索)"
+// @Param vpc_id query string false "VPC ID"
+// @Param subnet_id query string false "子网/交换机ID"
+// @Param instance_id query string false "绑定的ECS实例ID"
+// @Param type query string false "网卡类型(Primary/Secondary)"
+// @Param offset query int false "偏移量" default(0)
+// @Param limit query int false "限制数量" default(20)
+// @Success 200 {object} AssetListResult "成功"
+// @Failure 400 {object} ErrorResponse "租户ID不能为空"
+// @Router /cam/assets/eni [get]
+func (h *AssetHandler) ListENI(ctx *gin.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	provider := ctx.Query("provider")
+	region := ctx.Query("region")
+	status := ctx.Query("status")
+	name := ctx.Query("name")
+	accountIDStr := ctx.Query("account_id")
+
+	// ENI 特有过滤参数
+	vpcID := ctx.Query("vpc_id")
+	subnetID := ctx.Query("subnet_id")
+	instanceID := ctx.Query("instance_id")
+	eniType := ctx.Query("type")
+
+	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+
+	var accountID int64
+	if accountIDStr != "" {
+		accountID, _ = strconv.ParseInt(accountIDStr, 10, 64)
+	}
+
+	// 构建属性过滤条件
+	attributes := make(map[string]interface{})
+	if region != "" {
+		attributes["region"] = region
+	}
+	if status != "" {
+		attributes["status"] = status
+	}
+	if vpcID != "" {
+		attributes["vpc_id"] = vpcID
+	}
+	if subnetID != "" {
+		attributes["subnet_id"] = subnetID
+	}
+	if instanceID != "" {
+		attributes["instance_id"] = instanceID
+	}
+	if eniType != "" {
+		attributes["type"] = eniType
+	}
+
+	filter := domain.InstanceFilter{
+		ModelUID:   "eni",
+		TenantID:   tenantID,
+		AccountID:  accountID,
+		AssetName:  name,
+		Provider:   provider,
+		Attributes: attributes,
+		Offset:     int64(offset),
+		Limit:      int64(limit),
+	}
+
+	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
+	if err != nil {
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
+	}
+
+	ctx.JSON(200, Result(UnifiedAssetListResp{
+		Items: h.toUnifiedAssetVOs(instances),
+		Total: total,
+	}))
+}
+
+// GetENI 获取弹性网卡详情
+// @Summary 获取弹性网卡详情
+// @Description 从数据库获取指定弹性网卡的详细信息
+// @Tags 资产管理-ENI
+// @Accept json
+// @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param asset_id path string true "资产ID(ENI ID)"
+// @Param provider query string false "云厂商" Enums(aliyun,aws,huawei,tencent,volcano)
+// @Success 200 {object} AssetDetailResult "成功"
+// @Failure 400 {object} ErrorResponse "租户ID不能为空"
+// @Failure 404 {object} ErrorResponse "弹性网卡不存在"
+// @Router /cam/assets/eni/{asset_id} [get]
+func (h *AssetHandler) GetENI(ctx *gin.Context) {
+	h.getAsset(ctx, "eni")
+}
+
 // ==================== NAS 文件存储 ====================
 
 // ListNAS 获取NAS文件系统列表
@@ -2262,6 +2372,13 @@ func matchAssetType(modelUID, assetType string) bool {
 			modelUID == "huawei_waf" ||
 			modelUID == "tencent_waf" ||
 			modelUID == "volcano_waf" || modelUID == "volcengine_waf"
+	case "eni":
+		return modelUID == "eni" || modelUID == "cloud_eni" ||
+			modelUID == "aliyun_eni" ||
+			modelUID == "aws_eni" ||
+			modelUID == "huawei_eni" ||
+			modelUID == "tencent_eni" ||
+			modelUID == "volcano_eni" || modelUID == "volcengine_eni"
 	case "image":
 		return modelUID == "image" || modelUID == "cloud_image" ||
 			modelUID == "aliyun_image" ||

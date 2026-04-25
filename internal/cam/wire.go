@@ -1,5 +1,3 @@
-//go:build wireinject
-
 package cam
 
 import (
@@ -24,7 +22,6 @@ import (
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/volcano"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
-	"github.com/google/wire"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -35,7 +32,6 @@ var (
 // InitCollectionOnce 初始化数据库集合和索引（只执行一次）
 func InitCollectionOnce(db *mongox.Mongo) {
 	camInitOnce.Do(func() {
-		// 初始化索引
 		if err := dao.InitIndexes(db); err != nil {
 			panic("failed to init cam indexes: " + err.Error())
 		}
@@ -86,80 +82,91 @@ func InitInstanceRelationDAO(db *mongox.Mongo) dao.InstanceRelationDAO {
 
 // InitTaskRepository 初始化任务仓储
 func InitTaskRepository(db *mongox.Mongo) taskx.TaskRepository {
-	return taskx.NewMongoRepository(db, "tasks")
+	return taskx.NewMongoRepository(db, "ecam_task")
 }
-
-// ProviderSet Wire依赖注入集合
-var ProviderSet = wire.NewSet(
-	// DAO层
-	InitAssetDAO,
-	InitCloudAccountDAO,
-	InitModelDAO,
-	InitModelFieldDAO,
-	InitModelFieldGroupDAO,
-	InitInstanceDAO,
-	InitInstanceRelationDAO,
-
-	// Repository层
-	repository.NewAssetRepository,
-	repository.NewCloudAccountRepository,
-	repository.NewModelRepository,
-	repository.NewModelFieldRepository,
-	repository.NewModelFieldGroupRepository,
-	repository.NewInstanceRepository,
-	repository.NewInstanceRelationRepository,
-
-	// Task Repository
-	InitTaskRepository,
-
-	// 统一适配器工厂
-	asset.NewAdapterFactory,
-	cloudx.NewAdapterFactory,
-
-	// Task层 (需要在 Service 之前初始化，因为 Service 依赖 Queue)
-	task.InitModule,
-	wire.FieldsOf(new(*task.Module), "Queue"),
-
-	// Service层
-	service.NewService,
-	service.NewCloudAccountService,
-	service.NewModelService,
-	service.NewInstanceService,
-	service.NewAssetSyncService,
-
-	// Task Service
-	taskservice.NewTaskService,
-	taskweb.NewTaskHandler,
-
-	// Scheduler 自动同步调度器
-	scheduler.NewAutoSyncScheduler,
-
-	// Logger
-	ProvideLogger,
-
-	// Web层
-	web.NewHandler,
-	web.NewInstanceHandler,
-	web.NewDatabaseHandler,
-	web.NewAssetHandler,
-
-	// Module (排除 IAMModule，手动初始化)
-	wire.Struct(new(Module), "Hdl", "InstanceHdl", "DatabaseHdl", "AssetHdl", "Svc", "AccountSvc", "ModelSvc", "InstanceSvc", "AssetSyncSvc", "TaskModule", "TaskSvc", "TaskHdl", "AutoScheduler", "Logger"),
-)
 
 // InitModule 初始化CAM模块
 func InitModule(db *mongox.Mongo) (*Module, error) {
-	wire.Build(ProviderSet)
-	return &Module{}, nil
+	logger := ProvideLogger()
+
+	// DAO 层
+	assetDAO := InitAssetDAO(db)
+	assetRepository := repository.NewAssetRepository(assetDAO)
+	cloudAccountDAO := InitCloudAccountDAO(db)
+	cloudAccountRepository := repository.NewCloudAccountRepository(cloudAccountDAO)
+	instanceDAO := InitInstanceDAO(db)
+	instanceRepository := repository.NewInstanceRepository(instanceDAO)
+	modelDAO := InitModelDAO(db)
+	modelRepository := repository.NewModelRepository(modelDAO)
+	modelFieldDAO := InitModelFieldDAO(db)
+	modelFieldRepository := repository.NewModelFieldRepository(modelFieldDAO)
+	modelFieldGroupDAO := InitModelFieldGroupDAO(db)
+	modelFieldGroupRepository := repository.NewModelFieldGroupRepository(modelFieldGroupDAO)
+	instanceRelationDAO := InitInstanceRelationDAO(db)
+	instanceRelationRepository := repository.NewInstanceRelationRepository(instanceRelationDAO)
+
+	// 适配器工厂
+	component := logger
+	adapterFactory := asset.NewAdapterFactory(component)
+	cloudxAdapterFactory := cloudx.NewAdapterFactory(component)
+
+	// Service 层
+	serviceService := service.NewService(assetRepository, cloudAccountRepository, adapterFactory, component)
+	modelService := service.NewModelService(modelRepository, modelFieldRepository, modelFieldGroupRepository)
+	instanceService := service.NewInstanceService(instanceRepository)
+	assetSyncService := service.NewAssetSyncService(instanceRepository, instanceRelationRepository, cloudAccountRepository, cloudxAdapterFactory, component)
+
+	// Task 模块
+	taskModule, err := task.InitModule(db, cloudAccountRepository, instanceRepository, adapterFactory, component)
+	if err != nil {
+		return nil, err
+	}
+	queue := taskModule.Queue
+	cloudAccountService := service.NewCloudAccountService(cloudAccountRepository, instanceRepository, adapterFactory, queue, component)
+
+	// Task Service
+	taskRepository := InitTaskRepository(db)
+	taskService := taskservice.NewTaskService(queue, taskRepository, component)
+	taskHandler := taskweb.NewTaskHandler(taskService)
+
+	// Dashboard
+	dashboardDAO := dao.NewDashboardDAO(db)
+	dashboardService := service.NewDashboardService(dashboardDAO)
+	dashboardHandler := web.NewDashboardHandler(dashboardService)
+
+	// Scheduler
+	autoSyncScheduler := scheduler.NewAutoSyncScheduler(cloudAccountRepository, queue, component)
+
+	// Web 层
+	handler := web.NewHandler(serviceService, cloudAccountService, modelService)
+	instanceHandler := web.NewInstanceHandler(instanceService)
+	databaseHandler := web.NewDatabaseHandler(instanceService)
+	assetHandler := web.NewAssetHandler(instanceService)
+
+	camModule := &Module{
+		Hdl:           handler,
+		InstanceHdl:   instanceHandler,
+		DatabaseHdl:   databaseHandler,
+		AssetHdl:      assetHandler,
+		DashboardHdl:  dashboardHandler,
+		Svc:           serviceService,
+		AccountSvc:    cloudAccountService,
+		ModelSvc:      modelService,
+		InstanceSvc:   instanceService,
+		AssetSyncSvc:  assetSyncService,
+		TaskModule:    taskModule,
+		TaskSvc:       taskService,
+		TaskHdl:       taskHandler,
+		AutoScheduler: autoSyncScheduler,
+		Logger:        component,
+	}
+	return camModule, nil
 }
 
 // ProvideLogger 提供默认logger
-// 使用可读的时间格式和调用者信息
 func ProvideLogger() *elog.Component {
-	// 优先使用已初始化的 DefaultLogger
 	if elog.DefaultLogger != nil {
 		return elog.DefaultLogger
 	}
-	// 使用 ego 的 Load 方法创建，配置名为 "logger.default"
 	return elog.Load("logger.default").Build()
 }

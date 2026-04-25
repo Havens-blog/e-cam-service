@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const InstanceRelationCollection = "c_instance_relation"
+const InstanceRelationCollection = "ecam_instance_relation"
 
 // InstanceRelation DAO层实例关系模型
 type InstanceRelation struct {

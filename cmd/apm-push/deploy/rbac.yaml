@@ -1,0 +1,52 @@
+# ============================================================
+# APM 推送脚本 RBAC 配置
+# 功能：为 CronJob 提供读取 K8s Deployment 资源的权限，
+#       用于获取 armsPilotCreateAppName 注解完成服务名映射
+# ============================================================
+
+---
+# ServiceAccount：CronJob Pod 使用的服务账号
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: apm-push-sa
+  namespace: e-cam
+  labels:
+    app: apm-push
+    component: topology
+
+---
+# ClusterRole：定义跨命名空间读取 Deployment 资源的权限
+# 使用 ClusterRole 而非 Role，因为需要读取所有命名空间的 Deployment 注解
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: apm-push-role
+  labels:
+    app: apm-push
+    component: topology
+rules:
+  # 授予对 Deployment 资源的只读权限（get + list）
+  # 用于遍历集群中所有 Deployment，读取 armsPilotCreateAppName 注解
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+
+---
+# ClusterRoleBinding：将 ClusterRole 绑定到 ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: apm-push-role-binding
+  labels:
+    app: apm-push
+    component: topology
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: apm-push-role
+subjects:
+  # 绑定到 e-cam 命名空间下的 apm-push-sa ServiceAccount
+  - kind: ServiceAccount
+    name: apm-push-sa
+    namespace: e-cam

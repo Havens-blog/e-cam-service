@@ -92,12 +92,12 @@ func main() {
 
 	// MongoDB连接配置
 	credential := options.Credential{
-		Username:   "ecmdb",
-		Password:   "123456",
+		Username:   "ecam",
+		Password:   "", // 通过命令行参数或环境变量传入
 		AuthSource: "admin",
 	}
 	clientOpts := options.Client().
-		ApplyURI("mongodb://106.52.187.69:27017").
+		ApplyURI("mongodb://localhost:27017").
 		SetAuth(credential)
 
 	client, err := mongo.Connect(ctx, clientOpts)

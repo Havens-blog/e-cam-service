@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const CloudAuditLogsCollection = "cloud_audit_logs"
+const CloudAuditLogsCollection = "ecam_audit_log"
 
 // AuditOperationType 审计操作类型
 type AuditOperationType string

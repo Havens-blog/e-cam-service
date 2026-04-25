@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	DictTypeCollection = "c_dict_type"
-	DictItemCollection = "c_dict_item"
+	DictTypeCollection = "ecam_dict_type"
+	DictItemCollection = "ecam_dict_item"
 )
 
 // DictDAO 数据字典数据访问接口

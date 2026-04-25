@@ -185,19 +185,29 @@ func (a *EIPAdapter) convertToEIPInstance(addr ec2types.Address, region string) 
 	allocationID := aws.ToString(addr.AllocationId)
 	publicIP := aws.ToString(addr.PublicIp)
 	instanceID := aws.ToString(addr.InstanceId)
+	networkInterfaceID := aws.ToString(addr.NetworkInterfaceId)
 
 	// 确定状态
 	status := "Available"
-	if instanceID != "" || aws.ToString(addr.NetworkInterfaceId) != "" {
+	if instanceID != "" || networkInterfaceID != "" {
 		status = "InUse"
 	}
 
 	// 确定绑定的实例类型
+	// AWS EIP 可以绑定到: EC2 实例、NAT Gateway、Network Interface、Network Load Balancer 等
 	instanceType := ""
 	if instanceID != "" {
 		instanceType = "EcsInstance"
-	} else if aws.ToString(addr.NetworkInterfaceId) != "" {
-		instanceType = "NetworkInterface"
+	} else if networkInterfaceID != "" {
+		// 通过 NetworkInterfaceOwnerId 判断是否为 ELB/NAT 等托管服务
+		ownerID := aws.ToString(addr.NetworkInterfaceOwnerId)
+		if ownerID == "amazon-elb" {
+			instanceType = "SlbInstance"
+		} else if ownerID == "amazon-aws" {
+			instanceType = "Nat"
+		} else {
+			instanceType = "NetworkInterface"
+		}
 	}
 
 	// 提取标签和名称
@@ -223,7 +233,7 @@ func (a *EIPAdapter) convertToEIPInstance(addr ec2types.Address, region string) 
 		InstanceType:     instanceType,
 		PrivateIPAddress: aws.ToString(addr.PrivateIpAddress),
 		VPCID:            aws.ToString(addr.NetworkBorderGroup),
-		NetworkInterface: aws.ToString(addr.AssociationId),
+		NetworkInterface: networkInterfaceID,
 		Tags:             tags,
 		Provider:         "aws",
 	}

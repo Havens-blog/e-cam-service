@@ -255,6 +255,7 @@ func (a *EIPAdapter) convertToEIPInstance(eip *vpc.EipAddressForDescribeEipAddre
 		instanceID = *eip.InstanceId
 	}
 
+	// 火山引擎 InstanceType: EcsInstance, Nat, ClbInstance, AlbInstance, HaVip 等
 	instanceType := ""
 	if eip.InstanceType != nil {
 		instanceType = *eip.InstanceType
@@ -285,6 +286,11 @@ func (a *EIPAdapter) convertToEIPInstance(eip *vpc.EipAddressForDescribeEipAddre
 		expiredTime = *eip.ExpiredTime
 	}
 
+	projectName := ""
+	if eip.ProjectName != nil {
+		projectName = *eip.ProjectName
+	}
+
 	// 提取标签
 	tags := make(map[string]string)
 	if eip.Tags != nil {
@@ -309,6 +315,7 @@ func (a *EIPAdapter) convertToEIPInstance(eip *vpc.EipAddressForDescribeEipAddre
 		ChargeType:   chargeType,
 		CreationTime: createTime,
 		ExpiredTime:  expiredTime,
+		ProjectName:  projectName,
 		Tags:         tags,
 		Provider:     "volcano",
 	}

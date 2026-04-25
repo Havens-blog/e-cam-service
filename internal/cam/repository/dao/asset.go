@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const AssetCollection = "cloud_assets"
+const AssetCollection = "ecam_cloud_asset"
 
 // Asset DAO层资产模型
 type Asset struct {

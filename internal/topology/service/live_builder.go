@@ -70,10 +70,37 @@ func (b *LiveTopologyBuilder) BuildFromDNS(ctx context.Context, tenantID string,
 		return &domain.TopoGraph{Nodes: []domain.TopoNode{}, Edges: []domain.TopoEdge{}, Stats: domain.TopoStats{}}, nil
 	}
 
-	// 2. 预加载所有 CMDB 实例（用于 IP/CNAME 匹配）
-	instances, err := b.queryAllInstances(ctx, tenantID)
+	// 2. 按需加载 CMDB 实例（只查询当前域名相关的实例）
+	domainNames := make([]string, 0)
+	cnameValues := make([]string, 0)
+	aRecordIPs := make([]string, 0)
+	for _, rec := range records {
+		fullDomain := rec.Domain
+		if rec.RR != "" && rec.RR != "@" {
+			fullDomain = rec.RR + "." + rec.Domain
+		}
+		domainNames = append(domainNames, fullDomain)
+		if rec.Type == "CNAME" {
+			cnameValues = append(cnameValues, strings.TrimRight(rec.Value, "."))
+		} else if rec.Type == "A" || rec.Type == "AAAA" {
+			aRecordIPs = append(aRecordIPs, rec.Value)
+		}
+	}
+	// 提取 CNAME 前缀（如 ALB/ELB ID）
+	for _, cv := range cnameValues {
+		prefix := extractCDNDomainPrefix(strings.ToLower(cv))
+		if prefix != "" && prefix != cv {
+			cnameValues = append(cnameValues, prefix)
+		}
+	}
+	instances, err := b.queryInstancesByDomain(ctx, tenantID, domainNames, cnameValues, aRecordIPs)
 	if err != nil {
 		return nil, err
+	}
+	// 从已加载的实例中提取下游地址，继续查询关联实例
+	instances, err = b.expandDownstream(ctx, tenantID, instances)
+	if err != nil {
+		// 扩展失败不阻塞
 	}
 	// 构建匹配索引
 	ipIndex := make(map[string]*cmdbInstanceDoc)    // IP → instance
@@ -87,7 +114,7 @@ func (b *LiveTopologyBuilder) BuildFromDNS(ctx context.Context, tenantID string,
 			ipIndex[inst.AssetID] = inst
 		}
 		// 提取 IP 地址
-		for _, key := range []string{"ip_address", "public_ip", "private_ip", "vip", "address", "ip"} {
+		for _, key := range []string{"ip_address", "public_ip", "private_ip", "primary_private_ip", "vip", "address", "ip"} {
 			if ip := getStr(inst.Attributes, key); ip != "" {
 				ipIndex[ip] = inst
 			}
@@ -238,6 +265,13 @@ func (b *LiveTopologyBuilder) traceDownstream(
 		return
 	}
 
+	// 防止递归重入：用 "traced-{instanceID}" 标记已追踪的实例
+	traceKey := fmt.Sprintf("traced-%d", instanceID)
+	if seen[traceKey] {
+		return
+	}
+	seen[traceKey] = true
+
 	// 收集所有下游实例（去重）
 	downstreamInstances := make(map[int64]bool)
 
@@ -250,10 +284,41 @@ func (b *LiveTopologyBuilder) traceDownstream(
 	inst := idIndex[instanceID]
 	if inst != nil {
 		downstreamAddrs := extractDownstreamAddresses(inst)
+		// 去重
+		addrSeen := make(map[string]bool)
+		uniqueAddrs := make([]string, 0, len(downstreamAddrs))
+		for _, a := range downstreamAddrs {
+			al := strings.ToLower(strings.TrimRight(a, "."))
+			if !addrSeen[al] {
+				addrSeen[al] = true
+				uniqueAddrs = append(uniqueAddrs, a)
+			}
+		}
 
-		for _, addr := range downstreamAddrs {
+		for _, addr := range uniqueAddrs {
 			matched := matchByAddress(addr, ipIndex, cnameIndex)
 			if matched != nil && matched.ID != instanceID {
+				// ENI 透传：如果匹配到 ENI，尝试找到绑定的 ECS
+				if strings.Contains(matched.ModelUID, "eni") {
+					ecsID := getStr(matched.Attributes, "instance_id")
+					if ecsID == "" {
+						ecsID = getStr(matched.Attributes, "instanceid")
+					}
+					if ecsID != "" {
+						if ecsInst := ipIndex[ecsID]; ecsInst != nil {
+							downstreamInstances[ecsInst.ID] = true
+							continue
+						}
+					}
+					// ENI 没有绑定 ECS 信息，也尝试用 ENI 的 private_ip 匹配 ECS
+					eniIP := getStr(matched.Attributes, "private_ip")
+					if eniIP != "" {
+						if ecsInst := ipIndex[eniIP]; ecsInst != nil && ecsInst.ID != matched.ID {
+							downstreamInstances[ecsInst.ID] = true
+							continue
+						}
+					}
+				}
 				downstreamInstances[matched.ID] = true
 			} else if addr != "" && (matched == nil || matched.ID == instanceID) {
 				// 未匹配到 CMDB 实例（或匹配到自身）
@@ -337,8 +402,8 @@ func (b *LiveTopologyBuilder) traceDownstream(
 	}
 
 	for nodeType, targetIDs := range typeGroups {
-		// 同类型超过 2 个实例时聚合显示
-		if len(targetIDs) > 2 && (nodeType == domain.NodeTypeECS || nodeType == domain.NodeTypeRDS || nodeType == domain.NodeTypeRedis) {
+		// 同类型超过 10 个实例时聚合显示（与需求文档一致）
+		if len(targetIDs) > 10 && (nodeType == domain.NodeTypeECS || nodeType == domain.NodeTypeRDS || nodeType == domain.NodeTypeRedis) {
 			// 聚合节点
 			aggID := fmt.Sprintf("agg-%s-%s", parentNodeID, nodeType)
 			if !seen[aggID] {
@@ -438,6 +503,13 @@ func extractDownstreamAddresses(inst *cmdbInstanceDoc) []string {
 		addrs = append(addrs, extractAddrsFromAttr(attrs, key)...)
 	}
 
+	// EIP 绑定的实例 ID（如华为云 EIP 绑定 ELB，instance_id 是 ELB 的 UUID）
+	if strings.Contains(inst.ModelUID, "eip") {
+		if instID := getStr(attrs, "instance_id"); instID != "" {
+			addrs = append(addrs, instID)
+		}
+	}
+
 	return addrs
 }
 
@@ -487,21 +559,28 @@ func extractAddrsFromSlice(items []interface{}) []string {
 	return addrs
 }
 
-// extractAddrFromMap 从 map 中提取地址（支持多种 key 命名风格）
+// extractAddrFromMap 从 map 中提取最佳匹配地址（只返回一个）
+// 优先级：servername(ECS实例ID) > instanceid(ENI ID) > IP
 func extractAddrFromMap(m map[string]interface{}) []string {
-	var addrs []string
-	// 优先用 ECS 实例 ID（servername/server_name/instance_id）匹配 CMDB 实例
-	for _, key := range []string{
-		"servername", "server_name", "instance_id", "instanceid",
-		"ip", "server_ip", "address",
-		"serverid", "server_id",
-	} {
+	// 1. servername 如 i-xxx 可以直接用 asset_id 匹配 ECS
+	for _, key := range []string{"servername", "server_name"} {
 		if v := getStr(m, key); v != "" {
-			addrs = append(addrs, v)
-			return addrs // 找到第一个有效值就返回，避免重复
+			return []string{v}
 		}
 	}
-	return addrs
+	// 2. instanceid 如 eni-xxx 可以用 asset_id 匹配 ENI
+	for _, key := range []string{"instanceid", "instance_id"} {
+		if v := getStr(m, key); v != "" {
+			return []string{v}
+		}
+	}
+	// 3. IP 地址作为 fallback
+	for _, key := range []string{"ip", "server_ip", "address"} {
+		if v := getStr(m, key); v != "" {
+			return []string{v}
+		}
+	}
+	return nil
 }
 
 // matchByAddress 根据地址（IP 或域名）匹配 CMDB 实例
@@ -545,8 +624,8 @@ func (b *LiveTopologyBuilder) matchInstance(rec dnsRecordDoc, ipIndex map[string
 		// 2. CDN 前缀匹配：CNAME 格式通常是 "{domain_name}.{cdn_suffix}"
 		prefix, provider := extractCDNDomainPrefixAndProvider(valueLower)
 		if prefix != "" {
+			// 2a. CDN 域名索引匹配
 			if cdnInsts, ok := cdnDomainIndex[prefix]; ok {
-				// 优先匹配同厂商的 CDN 实例
 				if provider != "" {
 					for _, inst := range cdnInsts {
 						if strings.Contains(inst.ModelUID, provider) {
@@ -554,9 +633,13 @@ func (b *LiveTopologyBuilder) matchInstance(rec dnsRecordDoc, ipIndex map[string
 						}
 					}
 				}
-				// 未找到同厂商实例，不回退到其他厂商（避免合并不同 CDN 链路）
-				// 返回 nil 让调用方创建外部节点
 				return nil
+			}
+			// 2b. ALB/WAF/SLB 前缀匹配（CNAME 直接指向 ALB/WAF 地址）
+			if inst := ipIndex[prefix]; inst != nil {
+				if strings.Contains(inst.ModelUID, "waf") || strings.Contains(inst.ModelUID, "lb") {
+					return inst
+				}
 			}
 		}
 	}
@@ -702,9 +785,12 @@ func looksLikeRegion(s string) bool {
 	return false
 }
 
-// queryDNSRecords 查询 DNS 记录
+// queryDNSRecords 查询 DNS 记录（仅查询与业务链路相关的 A 和 CNAME 类型）
 func (b *LiveTopologyBuilder) queryDNSRecords(ctx context.Context, tenantID, domainFilter string) ([]dnsRecordDoc, error) {
-	query := bson.M{"tenant_id": tenantID}
+	query := bson.M{
+		"tenant_id": tenantID,
+		"type":      bson.M{"$in": bson.A{"A", "CNAME"}}, // 只查流量相关的记录类型，排除 MX/TXT/NS/SRV 等
+	}
 	if domainFilter != "" {
 		parts := strings.SplitN(domainFilter, ".", 2)
 		if len(parts) >= 2 {
@@ -720,7 +806,7 @@ func (b *LiveTopologyBuilder) queryDNSRecords(ctx context.Context, tenantID, dom
 			}
 		}
 	}
-	cursor, err := b.db.Collection("c_dns_record").Find(ctx, query, options.Find().SetLimit(200))
+	cursor, err := b.db.Collection("ecam_dns_record").Find(ctx, query, options.Find().SetLimit(200))
 	if err != nil {
 		return nil, fmt.Errorf("query dns records: %w", err)
 	}
@@ -734,32 +820,241 @@ func (b *LiveTopologyBuilder) queryDNSRecords(ctx context.Context, tenantID, dom
 
 // queryAllInstances 查询租户下所有 CMDB 实例
 // 优先加载拓扑相关的资源类型（CDN/WAF/LB/ECS/RDS 等），排除大量无关类型
+// queryAllInstances — deprecated, use queryInstancesByModelUIDs
 func (b *LiveTopologyBuilder) queryAllInstances(ctx context.Context, tenantID string) ([]cmdbInstanceDoc, error) {
-	// 拓扑相关的 model_uid 模式：CDN、WAF、LB/SLB/ALB/NLB/ELB/CLB、ECS/VM、RDS、Redis、MongoDB、VPC、EIP、OSS/S3
-	// 排除 disk、snapshot、security_group、image、vswitch、nas、kafka、elasticsearch 等不参与链路的类型
-	topoModelPatterns := bson.M{
-		"$regex":   "cdn|waf|lb|slb|alb|nlb|elb|clb|ecs|_vm|rds|redis|mongodb|vpc|eip|oss|s3",
-		"$options": "i",
+	return b.queryInstancesByModelUIDs(ctx, tenantID, nil)
+}
+
+// queryInstancesByModelUIDs 按 model_uid 列表查询实例
+func (b *LiveTopologyBuilder) queryInstancesByModelUIDs(ctx context.Context, tenantID string, modelUIDs []string) ([]cmdbInstanceDoc, error) {
+	query := bson.M{"tenant_id": tenantID}
+	if len(modelUIDs) > 0 {
+		query["model_uid"] = bson.M{"$in": modelUIDs}
 	}
-	query := bson.M{
-		"tenant_id": tenantID,
-		"model_uid": topoModelPatterns,
-	}
-	cursor, err := b.db.Collection("c_instance").Find(ctx, query, options.Find().SetLimit(10000))
+	queryCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	opts := options.Find().SetLimit(10000)
+	cursor, err := b.db.Collection("ecam_instance").Find(queryCtx, query, opts)
 	if err != nil {
 		return nil, fmt.Errorf("query instances: %w", err)
 	}
-	defer cursor.Close(ctx)
+	defer cursor.Close(queryCtx)
 	var docs []cmdbInstanceDoc
-	if err = cursor.All(ctx, &docs); err != nil {
-		return nil, err
+	if err = cursor.All(queryCtx, &docs); err != nil {
+		return nil, fmt.Errorf("decode instances: %w", err)
+	}
+	return docs, nil
+}
+
+// queryInstancesByDomain 按域名查询相关实例（CDN/WAF/LB 的 asset_id 或 cname 匹配）
+func (b *LiveTopologyBuilder) queryInstancesByDomain(ctx context.Context, tenantID string, domainNames []string, cnameValues []string, aRecordIPs []string) ([]cmdbInstanceDoc, error) {
+	if len(domainNames) == 0 && len(cnameValues) == 0 && len(aRecordIPs) == 0 {
+		return nil, nil
+	}
+	// 构建查询条件：asset_id 匹配域名，或 cname 匹配 CNAME 值
+	orConditions := bson.A{}
+	// CDN/WAF 的 asset_id 通常是域名（如 www.jlc-dfm.com 或 www.jlc-dfm.com-waf）
+	assetIDs := make([]string, 0)
+	for _, dn := range domainNames {
+		assetIDs = append(assetIDs, dn, dn+"-waf")
+	}
+	if len(assetIDs) > 0 {
+		orConditions = append(orConditions, bson.M{"asset_id": bson.M{"$in": assetIDs}})
+	}
+	// CNAME 精确匹配（也用 asset_id 匹配 CNAME 前缀，如 ALB/ELB ID）
+	if len(cnameValues) > 0 {
+		orConditions = append(orConditions, bson.M{"attributes.cname": bson.M{"$in": cnameValues}})
+		orConditions = append(orConditions, bson.M{"asset_id": bson.M{"$in": cnameValues}})
+	}
+	// domain_name 匹配
+	if len(domainNames) > 0 {
+		orConditions = append(orConditions, bson.M{"attributes.domain_name": bson.M{"$in": domainNames}})
+	}
+	// 华为 WAF 的 protected_hosts 包含域名
+	if len(domainNames) > 0 {
+		orConditions = append(orConditions, bson.M{"attributes.protected_hosts": bson.M{"$in": domainNames}})
+	}
+	// A 记录 IP 匹配 LB 的 VIP/address
+	if len(aRecordIPs) > 0 {
+		orConditions = append(orConditions, bson.M{"attributes.address": bson.M{"$in": aRecordIPs}})
+		orConditions = append(orConditions, bson.M{"attributes.vip": bson.M{"$in": aRecordIPs}})
+		orConditions = append(orConditions, bson.M{"attributes.public_ip": bson.M{"$in": aRecordIPs}})
+		orConditions = append(orConditions, bson.M{"attributes.ip_address": bson.M{"$in": aRecordIPs}})
+	}
+
+	query := bson.M{
+		"tenant_id": tenantID,
+		"$or":       orConditions,
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	cursor, err := b.db.Collection("ecam_instance").Find(queryCtx, query, options.Find().SetLimit(500))
+	if err != nil {
+		return nil, fmt.Errorf("query instances by domain: %w", err)
+	}
+	defer cursor.Close(queryCtx)
+	var docs []cmdbInstanceDoc
+	if err = cursor.All(queryCtx, &docs); err != nil {
+		return nil, fmt.Errorf("decode instances: %w", err)
+	}
+	return docs, nil
+}
+
+// expandDownstream 从已加载的实例中提取下游地址，查询关联的 LB/ECS 实例
+func (b *LiveTopologyBuilder) expandDownstream(ctx context.Context, tenantID string, instances []cmdbInstanceDoc) ([]cmdbInstanceDoc, error) {
+	// 收集所有下游地址（WAF 的 source_ips、CDN 的 origins 等）
+	downstreamAddrs := make(map[string]bool)
+	for i := range instances {
+		addrs := extractDownstreamAddresses(&instances[i])
+		for _, a := range addrs {
+			a = strings.TrimRight(a, ".")
+			if a != "" {
+				downstreamAddrs[a] = true
+				// 也提取 CNAME 前缀（如 ALB ID）
+				prefix := extractCDNDomainPrefix(strings.ToLower(a))
+				if prefix != "" {
+					downstreamAddrs[prefix] = true
+				}
+			}
+		}
+	}
+	if len(downstreamAddrs) == 0 {
+		return instances, nil
+	}
+
+	// 用下游地址查询关联实例
+	addrList := make([]string, 0, len(downstreamAddrs))
+	for a := range downstreamAddrs {
+		addrList = append(addrList, a)
+	}
+	if len(addrList) > 200 {
+		addrList = addrList[:200]
+	}
+
+	// 查询 asset_id 或 cname 或 address 匹配的实例
+	query := bson.M{
+		"tenant_id": tenantID,
+		"$or": bson.A{
+			bson.M{"asset_id": bson.M{"$in": addrList}},
+			bson.M{"attributes.cname": bson.M{"$in": addrList}},
+			bson.M{"attributes.domain_name": bson.M{"$in": addrList}},
+			bson.M{"attributes.address": bson.M{"$in": addrList}},
+			bson.M{"attributes.vip": bson.M{"$in": addrList}},
+		},
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	cursor, err := b.db.Collection("ecam_instance").Find(queryCtx, query, options.Find().SetLimit(500))
+	if err != nil {
+		return instances, fmt.Errorf("expand downstream: %w", err)
+	}
+	defer cursor.Close(queryCtx)
+	var newDocs []cmdbInstanceDoc
+	if err = cursor.All(queryCtx, &newDocs); err != nil {
+		return instances, fmt.Errorf("decode downstream: %w", err)
+	}
+
+	// 合并，去重
+	existingIDs := make(map[int64]bool)
+	for _, inst := range instances {
+		existingIDs[inst.ID] = true
+	}
+	for _, doc := range newDocs {
+		if !existingIDs[doc.ID] {
+			instances = append(instances, doc)
+			existingIDs[doc.ID] = true
+		}
+	}
+
+	// 第二轮：从所有 LB 实例中提取 backend_servers，查询 ECS/ENI
+	// 包括初始查询和下游查询中的 LB 实例
+	backendIPs := b.extractBackendIPsFromLBs(instances)
+	if len(backendIPs) > 0 {
+		backendInstances, ecsErr := b.queryInstancesByIPs(ctx, tenantID, backendIPs)
+		if ecsErr == nil {
+			// 从 ENI 实例中提取绑定的 ECS instance_id，继续查询 ECS
+			var ecsIDs []string
+			for _, doc := range backendInstances {
+				if !existingIDs[doc.ID] {
+					instances = append(instances, doc)
+					existingIDs[doc.ID] = true
+				}
+				// ENI 透传：提取绑定的 ECS 实例 ID
+				if strings.Contains(doc.ModelUID, "eni") {
+					if ecsID := getStr(doc.Attributes, "instance_id"); ecsID != "" {
+						ecsIDs = append(ecsIDs, ecsID)
+					}
+				}
+			}
+			// 查询 ENI 绑定的 ECS 实例
+			if len(ecsIDs) > 0 {
+				ecsInstances, _ := b.queryInstancesByIPs(ctx, tenantID, ecsIDs)
+				for _, doc := range ecsInstances {
+					if !existingIDs[doc.ID] {
+						instances = append(instances, doc)
+						existingIDs[doc.ID] = true
+					}
+				}
+			}
+		}
+	}
+
+	return instances, nil
+}
+
+// extractBackendIPsFromLBs 从 LB 实例的 backend_servers 中提取后端 IP 和实例 ID
+func (b *LiveTopologyBuilder) extractBackendIPsFromLBs(instances []cmdbInstanceDoc) []string {
+	seen := make(map[string]bool)
+	var ips []string
+	for _, inst := range instances {
+		if !strings.Contains(inst.ModelUID, "lb") && !strings.Contains(inst.ModelUID, "slb") &&
+			!strings.Contains(inst.ModelUID, "alb") && !strings.Contains(inst.ModelUID, "nlb") &&
+			!strings.Contains(inst.ModelUID, "elb") && !strings.Contains(inst.ModelUID, "clb") {
+			continue
+		}
+		addrs := extractDownstreamAddresses(&inst)
+		for _, a := range addrs {
+			if !seen[a] {
+				seen[a] = true
+				ips = append(ips, a)
+			}
+		}
+	}
+	return ips
+}
+
+// queryInstancesByIPs 按 IP/实例ID 查询 ECS/ENI 实例
+func (b *LiveTopologyBuilder) queryInstancesByIPs(ctx context.Context, tenantID string, ips []string) ([]cmdbInstanceDoc, error) {
+	if len(ips) == 0 {
+		return nil, nil
+	}
+	if len(ips) > 100 {
+		ips = ips[:100]
+	}
+	// 只用 asset_id 匹配（有索引，速度快）
+	// ECS 的 asset_id = 实例ID（如 i-xxx），ENI 的 asset_id = eni-xxx
+	// 后端服务器的 servername 通常就是 ECS 实例 ID
+	query := bson.M{
+		"tenant_id": tenantID,
+		"asset_id":  bson.M{"$in": ips},
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	cursor, err := b.db.Collection("ecam_instance").Find(queryCtx, query, options.Find().SetLimit(200))
+	if err != nil {
+		return nil, fmt.Errorf("query ecs by ip: %w", err)
+	}
+	defer cursor.Close(queryCtx)
+	var docs []cmdbInstanceDoc
+	if err = cursor.All(queryCtx, &docs); err != nil {
+		return nil, fmt.Errorf("decode ecs: %w", err)
 	}
 	return docs, nil
 }
 
 // queryRelations 查询租户下所有 CMDB 实例关系
 func (b *LiveTopologyBuilder) queryRelations(ctx context.Context, tenantID string) ([]cmdbRelationDoc, error) {
-	cursor, err := b.db.Collection("c_instance_relation").Find(ctx, bson.M{"tenant_id": tenantID}, options.Find().SetLimit(10000))
+	cursor, err := b.db.Collection("ecam_instance_relation").Find(ctx, bson.M{"tenant_id": tenantID}, options.Find().SetLimit(10000))
 	if err != nil {
 		return nil, fmt.Errorf("query relations: %w", err)
 	}
@@ -817,6 +1112,8 @@ func modelUIDToType(modelUID string) (nodeType, category string) {
 		return domain.NodeTypeSLB, domain.CategoryNetwork
 	case strings.Contains(modelUID, "ecs"), strings.Contains(modelUID, "_vm"):
 		return domain.NodeTypeECS, domain.CategoryCompute
+	case strings.Contains(modelUID, "eni"):
+		return "eni", domain.CategoryNetwork
 	case strings.Contains(modelUID, "rds"):
 		return domain.NodeTypeRDS, domain.CategoryDatabase
 	case strings.Contains(modelUID, "redis"):

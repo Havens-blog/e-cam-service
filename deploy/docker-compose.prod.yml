@@ -1,0 +1,101 @@
+# 生产环境 docker-compose
+# 包含应用 + 所有依赖，一条命令部署全套
+#
+# 部署方式：
+#   1. 本地构建推送：bash scripts/deploy-prod.sh build
+#   2. 服务器拉取部署：docker compose -f deploy/docker-compose.prod.yml up -d
+#   3. 查看日志：docker compose -f deploy/docker-compose.prod.yml logs -f app
+
+services:
+  app:
+    image: ${DOCKER_REGISTRY:-your-registry.example.com/your-namespace/e-cam}:latest
+    container_name: e-cam-service
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+      - "8099:8099"
+    volumes:
+      - ../config:/app/config:ro
+      - app_logs:/app/logs
+    environment:
+      EGO_CONFIG_PATH: /app/config/prod.yaml
+      TZ: Asia/Shanghai
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      etcd:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8001/api/v1/cam/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 15s
+      retries: 3
+    command: ["./e-cam-service", "start"]
+    networks:
+      - e-cam-network
+
+  mongodb:
+    image: mongo:7.0
+    container_name: e-cam-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-password}
+      MONGO_INITDB_DATABASE: ecam
+    volumes:
+      - mongodb_data:/data/db
+      - ../scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - e-cam-network
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: e-cam-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass "${REDIS_PASSWORD:-password}"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-password}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - e-cam-network
+
+  etcd:
+    image: bitnami/etcd:3.5
+    container_name: e-cam-etcd
+    restart: unless-stopped
+    ports:
+      - "2379:2379"
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_ADVERTISE_CLIENT_URLS: "http://0.0.0.0:2379"
+      ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
+    volumes:
+      - etcd_data:/bitnami/etcd
+    networks:
+      - e-cam-network
+
+volumes:
+  mongodb_data:
+  redis_data:
+  etcd_data:
+  app_logs:
+
+networks:
+  e-cam-network:
+    driver: bridge

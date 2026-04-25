@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const RuleCollection = "c_binding_rule"
+const RuleCollection = "ecam_binding_rule"
 
 // RuleCondition 规则条件
 type RuleCondition struct {

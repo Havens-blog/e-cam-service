@@ -92,3 +92,18 @@ func TestTopoNode_IsDNSEntry(t *testing.T) {
 	assert.True(t, (&TopoNode{Type: NodeTypeDNSRecord}).IsDNSEntry())
 	assert.False(t, (&TopoNode{Type: NodeTypeCDN}).IsDNSEntry())
 }
+
+func TestValidSourceCollectors_ContainsAPM(t *testing.T) {
+	assert.True(t, ValidSourceCollectors[SourceAPM], "ValidSourceCollectors should contain 'apm'")
+	assert.Equal(t, "apm", SourceAPM)
+}
+
+func TestTopoNode_Validate_APMSource(t *testing.T) {
+	node := TopoNode{
+		ID: "k8s-cluster1-ns1-svc-a", Name: "svc-a",
+		Type: NodeTypeK8sDeployment, Category: CategoryContainer,
+		SourceCollector: SourceAPM, TenantID: "t1",
+	}
+	err := node.Validate()
+	assert.NoError(t, err, "TopoNode with source_collector 'apm' should pass validation")
+}

@@ -11,7 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const CollectLogCollection = "cost_collect_logs"
+const CollectLogCollection = "ecam_cost_collect_log"
 
 type collectLogDAO struct {
 	db *mongox.Mongo

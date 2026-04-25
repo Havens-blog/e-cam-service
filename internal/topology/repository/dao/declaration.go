@@ -11,7 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const TopoDeclarationsCollection = "topo_declarations"
+const TopoDeclarationsCollection = "ecam_topo_declaration"
 
 // DeclarationDAO 声明式注册数据 MongoDB 数据访问对象
 type DeclarationDAO struct {

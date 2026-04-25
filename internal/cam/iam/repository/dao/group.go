@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const CloudPermissionGroupsCollection = "c_cloud_user_groups"
+const CloudPermissionGroupsCollection = "ecam_iam_user_group"
 
 // PolicyType 策略类型
 type PolicyType string

@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	RawBillCollection     = "cost_raw_bills"
-	UnifiedBillCollection = "cost_unified_bills"
+	RawBillCollection     = "ecam_cost_raw_bill"
+	UnifiedBillCollection = "ecam_cost_unified_bill"
 )
 
 type billDAO struct {
@@ -196,7 +196,8 @@ func (d *billDAO) AggregateByField(ctx context.Context, tenantID string, field s
 		bson.M{"$sort": bson.M{"amount_cny": -1}},
 	}
 
-	cursor, err := d.db.Collection(UnifiedBillCollection).Aggregate(ctx, pipeline)
+	cursor, err := d.db.Collection(UnifiedBillCollection).Aggregate(ctx, pipeline,
+		options.Aggregate().SetAllowDiskUse(true))
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +238,8 @@ func (d *billDAO) AggregateDailyAmount(ctx context.Context, tenantID string, sta
 		bson.M{"$sort": bson.M{"_id": 1}},
 	}
 
-	cursor, err := d.db.Collection(UnifiedBillCollection).Aggregate(ctx, pipeline)
+	cursor, err := d.db.Collection(UnifiedBillCollection).Aggregate(ctx, pipeline,
+		options.Aggregate().SetAllowDiskUse(true))
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +260,8 @@ func (d *billDAO) SumAmount(ctx context.Context, filter repository.UnifiedBillFi
 		}},
 	}
 
-	cursor, err := d.db.Collection(UnifiedBillCollection).Aggregate(ctx, pipeline)
+	cursor, err := d.db.Collection(UnifiedBillCollection).Aggregate(ctx, pipeline,
+		options.Aggregate().SetAllowDiskUse(true))
 	if err != nil {
 		return 0, err
 	}

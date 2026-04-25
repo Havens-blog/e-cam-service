@@ -11,7 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const AnomalyCollection = "cost_anomalies"
+const AnomalyCollection = "ecam_cost_anomaly"
 
 type anomalyDAO struct {
 	db *mongox.Mongo

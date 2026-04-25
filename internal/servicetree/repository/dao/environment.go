@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const EnvironmentCollection = "c_environment"
+const EnvironmentCollection = "ecam_environment"
 
 // Environment 环境 DAO 模型
 type Environment struct {

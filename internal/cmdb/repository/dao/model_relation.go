@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const ModelRelationTypeCollection = "c_model_relation_type"
+const ModelRelationTypeCollection = "ecam_model_relation_type"
 
 // ModelRelationType DAO层模型关系类型
 type ModelRelationType struct {

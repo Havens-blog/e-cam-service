@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const NodeCollection = "c_service_tree_node"
+const NodeCollection = "ecam_service_tree_node"
 
 // Node 服务树节点 DAO 模型
 type Node struct {

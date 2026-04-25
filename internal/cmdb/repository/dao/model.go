@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const ModelCollection = "c_model"
+const ModelCollection = "ecam_model"
 
 // Model DAO层模型
 type Model struct {

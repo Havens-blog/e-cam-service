@@ -12,7 +12,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const BudgetCollection = "cost_budgets"
+const BudgetCollection = "ecam_cost_budget"
 
 type budgetDAO struct {
 	db *mongox.Mongo

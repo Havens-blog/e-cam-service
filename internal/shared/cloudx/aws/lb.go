@@ -276,8 +276,9 @@ func (a *LBAdapter) enrichLBDetails(ctx context.Context, client *elbv2.Client, i
 		instances[i].Listeners = listeners
 		instances[i].ListenerCount = listenerCount
 
-		// 获取后端服务器数量 (通过目标组)
-		backendServerCount := a.fetchTargetGroupCount(ctx, client, lbARN)
+		// 获取后端服务器详情 (通过目标组)
+		backendServers, backendServerCount := a.fetchTargetGroupCount(ctx, client, lbARN)
+		instances[i].BackendServers = backendServers
 		instances[i].BackendServerCount = backendServerCount
 	}
 }
@@ -306,8 +307,8 @@ func (a *LBAdapter) fetchListeners(ctx context.Context, client *elbv2.Client, lb
 	return listeners, len(listeners)
 }
 
-// fetchTargetGroupCount 获取LB关联的目标组数量作为后端服务器计数
-func (a *LBAdapter) fetchTargetGroupCount(ctx context.Context, client *elbv2.Client, lbARN string) int {
+// fetchTargetGroupCount 获取LB关联的目标组，并查询后端目标详情
+func (a *LBAdapter) fetchTargetGroupCount(ctx context.Context, client *elbv2.Client, lbARN string) ([]types.LBBackendServer, int) {
 	input := &elbv2.DescribeTargetGroupsInput{
 		LoadBalancerArn: aws.String(lbARN),
 	}
@@ -315,8 +316,60 @@ func (a *LBAdapter) fetchTargetGroupCount(ctx context.Context, client *elbv2.Cli
 	output, err := client.DescribeTargetGroups(ctx, input)
 	if err != nil {
 		a.logger.Warn("获取AWS目标组列表失败", elog.String("lb_arn", lbARN), elog.FieldErr(err))
-		return 0
+		return nil, 0
 	}
 
-	return len(output.TargetGroups)
+	var allServers []types.LBBackendServer
+	seen := make(map[string]bool)
+
+	for _, tg := range output.TargetGroups {
+		if tg.TargetGroupArn == nil {
+			continue
+		}
+		healthInput := &elbv2.DescribeTargetHealthInput{
+			TargetGroupArn: tg.TargetGroupArn,
+		}
+		healthOutput, err := client.DescribeTargetHealth(ctx, healthInput)
+		if err != nil {
+			a.logger.Warn("获取AWS目标健康状态失败",
+				elog.String("target_group", aws.ToString(tg.TargetGroupArn)),
+				elog.FieldErr(err))
+			continue
+		}
+		for _, thd := range healthOutput.TargetHealthDescriptions {
+			if thd.Target == nil {
+				continue
+			}
+			targetID := aws.ToString(thd.Target.Id)
+			port := int(aws.ToInt32(thd.Target.Port))
+			key := fmt.Sprintf("%s:%d", targetID, port)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+
+			status := ""
+			if thd.TargetHealth != nil {
+				status = string(thd.TargetHealth.State)
+			}
+
+			server := types.LBBackendServer{
+				ServerID: targetID,
+				IP:       targetID, // AWS target ID 通常就是 IP 或 instance-id
+				Port:     port,
+				Status:   status,
+			}
+			// 如果 target ID 以 "i-" 开头，是 EC2 实例 ID
+			if strings.HasPrefix(targetID, "i-") {
+				server.InstanceID = targetID
+				server.IP = ""
+				server.Type = "ecs"
+			} else {
+				server.Type = "ip"
+			}
+			allServers = append(allServers, server)
+		}
+	}
+
+	return allServers, len(allServers)
 }

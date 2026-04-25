@@ -1,0 +1,1667 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>云主机管理 - CloudHub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            min-height: 100vh;
+            color: #e2e8f0;
+            overflow-x: hidden;
+        }
+
+        .bg-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(rgba(56, 189, 248, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(56, 189, 248, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-glow {
+            position: fixed;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.12;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-glow-1 { top: -200px; right: -200px; background: #10b981; }
+        .bg-glow-2 { bottom: -200px; left: -200px; background: #3b82f6; }
+        .bg-glow-3 { top: 50%; left: 50%; transform: translate(-50%, -50%); background: #06b6d4; opacity: 0.06; }
+
+        /* 头部 */
+        .header {
+            position: relative;
+            z-index: 10;
+            padding: 16px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            backdrop-filter: blur(10px);
+            background: rgba(15, 23, 42, 0.8);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #10b981, #06b6d4);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .logo-text {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #34d399, #22d3ee);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav {
+            display: flex;
+            gap: 4px;
+        }
+
+        .nav-item {
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-item:hover {
+            color: #e2e8f0;
+            background: rgba(148, 163, 184, 0.1);
+        }
+
+        .nav-item.active {
+            color: #fff;
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(6, 182, 212, 0.3));
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #34d399, #22d3ee);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        /* 主内容 */
+        .main {
+            position: relative;
+            z-index: 10;
+            padding: 24px 32px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .page-title {
+            font-size: 26px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .page-subtitle {
+            font-size: 14px;
+            color: #64748b;
+            margin-top: 4px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-secondary {
+            background: rgba(148, 163, 184, 0.1);
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(148, 163, 184, 0.2);
+            color: #e2e8f0;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #10b981, #06b6d4);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+        }
+
+        /* 统计卡片 */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 14px;
+            padding: 20px;
+            backdrop-filter: blur(20px);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+        }
+
+        .stat-card.green::before { background: linear-gradient(90deg, #10b981, #34d399); }
+        .stat-card.blue::before { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+        .stat-card.gray::before { background: linear-gradient(90deg, #64748b, #94a3b8); }
+        .stat-card.orange::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+        .stat-card.red::before { background: linear-gradient(90deg, #ef4444, #f87171); }
+
+        .stat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .stat-icon {
+            font-size: 20px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #e2e8f0;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        .stat-card.green .stat-value { color: #34d399; }
+        .stat-card.blue .stat-value { color: #60a5fa; }
+        .stat-card.gray .stat-value { color: #94a3b8; }
+        .stat-card.orange .stat-value { color: #fbbf24; }
+        .stat-card.red .stat-value { color: #f87171; }
+
+        /* 主布局 */
+        .content-layout {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            gap: 24px;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* 卡片通用样式 */
+        .card {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 16px;
+            backdrop-filter: blur(20px);
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 18px 20px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-body {
+            padding: 16px;
+        }
+
+        /* 账号选择器 */
+        .account-selector {
+            padding: 14px 16px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(6, 182, 212, 0.1));
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .account-selector:hover {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(6, 182, 212, 0.15));
+        }
+
+        .account-vendor-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .vendor-aliyun { background: linear-gradient(135deg, #ff6a00, #ee0a6b); color: #fff; }
+        .vendor-tencent { background: linear-gradient(135deg, #00a3ff, #00d4ff); color: #fff; }
+        .vendor-huawei { background: linear-gradient(135deg, #c7000b, #ff4d4d); color: #fff; }
+        .vendor-aws { background: linear-gradient(135deg, #ff9900, #ffb84d); color: #fff; }
+        .vendor-volcano { background: linear-gradient(135deg, #f53f3f, #ff7a7a); color: #fff; }
+
+        .account-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .account-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+
+        .account-meta {
+            font-size: 11px;
+            color: #64748b;
+        }
+
+        .switch-btn {
+            padding: 4px 10px;
+            border-radius: 6px;
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            font-size: 11px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+        }
+
+        /* 筛选列表 */
+        .filter-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .filter-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .filter-item:hover {
+            background: rgba(148, 163, 184, 0.08);
+        }
+
+        .filter-item.active {
+            background: rgba(16, 185, 129, 0.15);
+        }
+
+        .filter-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .filter-dot.all { background: linear-gradient(135deg, #10b981, #06b6d4); }
+        .filter-dot.running { background: #10b981; }
+        .filter-dot.stopped { background: #64748b; }
+        .filter-dot.warning { background: #f59e0b; }
+        .filter-dot.error { background: #ef4444; }
+
+        .filter-name {
+            flex: 1;
+            font-size: 13px;
+            color: #94a3b8;
+        }
+
+        .filter-item.active .filter-name {
+            color: #e2e8f0;
+        }
+
+        .filter-count {
+            font-size: 12px;
+            color: #64748b;
+            padding: 2px 8px;
+            background: rgba(148, 163, 184, 0.1);
+            border-radius: 10px;
+        }
+
+        /* 工具栏 */
+        .toolbar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .search-box {
+            flex: 1;
+            min-width: 280px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 12px 16px 12px 44px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #e2e8f0;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .search-box input:focus {
+            border-color: #10b981;
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        }
+
+        .search-box input::placeholder {
+            color: #64748b;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+        }
+
+        .filter-select {
+            padding: 12px 36px 12px 16px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #e2e8f0;
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+        }
+
+        .filter-select option {
+            background: #1e293b;
+        }
+
+        .view-toggle {
+            display: flex;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            overflow: hidden;
+        }
+
+        .view-btn {
+            padding: 10px 16px;
+            background: rgba(15, 23, 42, 0.6);
+            color: #64748b;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            transition: all 0.3s ease;
+        }
+
+        .view-btn:hover {
+            color: #94a3b8;
+        }
+
+        .view-btn.active {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+        }
+
+        /* 批量操作栏 */
+        .batch-actions {
+            display: none;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 20px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 12px;
+        }
+
+        .batch-actions.show {
+            display: flex;
+        }
+
+        .batch-count {
+            font-size: 13px;
+            color: #34d399;
+        }
+
+        .batch-btns {
+            display: flex;
+            gap: 8px;
+            margin-left: auto;
+        }
+
+        .batch-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+        }
+
+        .batch-btn.secondary {
+            background: rgba(148, 163, 184, 0.1);
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .batch-btn.secondary:hover {
+            background: rgba(148, 163, 184, 0.2);
+            color: #e2e8f0;
+        }
+
+        .batch-btn.danger {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        /* 实例表格 */
+        .instance-table-wrapper {
+            border-radius: 16px;
+            overflow: hidden;
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .instance-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .instance-table th {
+            padding: 14px 16px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: rgba(15, 23, 42, 0.5);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .instance-table td {
+            padding: 16px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.06);
+            vertical-align: middle;
+        }
+
+        .instance-table tr:hover td {
+            background: rgba(16, 185, 129, 0.03);
+        }
+
+        .instance-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Checkbox */
+        .checkbox {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 2px solid rgba(148, 163, 184, 0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: transparent;
+        }
+
+        .checkbox:hover {
+            border-color: #10b981;
+        }
+
+        .checkbox.checked {
+            background: #10b981;
+            border-color: #10b981;
+            color: #fff;
+        }
+
+        /* 实例信息 */
+        .instance-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .instance-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .instance-icon.running { background: rgba(16, 185, 129, 0.2); }
+        .instance-icon.stopped { background: rgba(100, 116, 139, 0.2); }
+        .instance-icon.warning { background: rgba(245, 158, 11, 0.2); }
+        .instance-icon.error { background: rgba(239, 68, 68, 0.2); }
+
+        .instance-details {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .instance-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .instance-id {
+            font-size: 12px;
+            color: #64748b;
+            font-family: monospace;
+        }
+
+        /* 状态标签 */
+        .status-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-tag.running {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+        }
+
+        .status-tag.stopped {
+            background: rgba(100, 116, 139, 0.15);
+            color: #94a3b8;
+        }
+
+        .status-tag.starting,
+        .status-tag.stopping {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+        }
+
+        .status-tag.error {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+        }
+
+        .status-pulse {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* 云厂商标签 */
+        .cloud-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .cloud-tag.aliyun { background: rgba(255, 106, 0, 0.15); color: #ff9500; }
+        .cloud-tag.tencent { background: rgba(0, 163, 255, 0.15); color: #22d3ee; }
+        .cloud-tag.huawei { background: rgba(199, 0, 11, 0.15); color: #ff6b6b; }
+        .cloud-tag.aws { background: rgba(255, 153, 0, 0.15); color: #ffb84d; }
+        .cloud-tag.volcano { background: rgba(245, 63, 63, 0.15); color: #ff7a7a; }
+
+        .cloud-tag-icon {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 7px;
+            font-weight: 700;
+        }
+
+        .cloud-tag.aliyun .cloud-tag-icon { background: #ff6a00; color: #fff; }
+        .cloud-tag.tencent .cloud-tag-icon { background: #00a3ff; color: #fff; }
+        .cloud-tag.huawei .cloud-tag-icon { background: #c7000b; color: #fff; }
+        .cloud-tag.aws .cloud-tag-icon { background: #ff9900; color: #fff; }
+        .cloud-tag.volcano .cloud-tag-icon { background: #f53f3f; color: #fff; }
+
+        /* 配置信息 */
+        .config-info {
+            font-size: 13px;
+            color: #94a3b8;
+        }
+
+        .config-spec {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* 网络信息 */
+        .network-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .ip-address {
+            font-size: 12px;
+            color: #e2e8f0;
+            font-family: monospace;
+        }
+
+        .ip-label {
+            font-size: 10px;
+            color: #64748b;
+        }
+
+        /* 操作按钮 */
+        .action-btns {
+            display: flex;
+            gap: 6px;
+        }
+
+        .action-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            border: none;
+            background: rgba(148, 163, 184, 0.1);
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .action-btn:hover {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+        }
+
+        .action-btn.stop:hover {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+        }
+
+        .action-btn.danger:hover {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+
+        .action-btn.console {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+        }
+
+        .action-btn.console:hover {
+            background: rgba(59, 130, 246, 0.25);
+        }
+
+        /* 分页 */
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: rgba(15, 23, 42, 0.5);
+        }
+
+        .pagination-info {
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        .pagination-btns {
+            display: flex;
+            gap: 8px;
+        }
+
+        .page-btn {
+            min-width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.6);
+            color: #94a3b8;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .page-btn:hover {
+            border-color: #10b981;
+            color: #34d399;
+        }
+
+        .page-btn.active {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: #10b981;
+            color: #34d399;
+        }
+
+        /* 监控指标 */
+        .metrics-bar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .metric-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            background: rgba(15, 23, 42, 0.5);
+            font-size: 11px;
+        }
+
+        .metric-label {
+            color: #64748b;
+        }
+
+        .metric-value {
+            font-weight: 600;
+        }
+
+        .metric-value.low { color: #34d399; }
+        .metric-value.medium { color: #fbbf24; }
+        .metric-value.high { color: #f87171; }
+
+        /* 滚动条 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.3);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.5);
+        }
+
+        /* 快捷操作 */
+        .quick-action-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 13px;
+            color: #94a3b8;
+        }
+
+        .quick-action-item:hover {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: rgba(16, 185, 129, 0.2);
+            color: #e2e8f0;
+        }
+
+        .quick-action-icon {
+            font-size: 16px;
+        }
+
+        /* 区域统计 */
+        .region-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .region-stat-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            background: rgba(15, 23, 42, 0.4);
+        }
+
+        .region-stat-name {
+            flex: 1;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        .region-stat-bar {
+            width: 60px;
+            height: 6px;
+            background: rgba(148, 163, 184, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .region-stat-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #06b6d4);
+            border-radius: 3px;
+        }
+
+        .region-stat-value {
+            font-size: 12px;
+            font-weight: 600;
+            color: #e2e8f0;
+            min-width: 30px;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+    <div class="bg-glow bg-glow-3"></div>
+
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">☁️</div>
+            <span class="logo-text">CloudHub</span>
+        </div>
+        <nav class="nav">
+            <div class="nav-item">仪表盘</div>
+            <div class="nav-item active">云主机</div>
+            <div class="nav-item">镜像管理</div>
+            <div class="nav-item">网络</div>
+            <div class="nav-item">存储</div>
+            <div class="nav-item">费用中心</div>
+        </nav>
+        <div class="user-info">
+            <span style="font-size: 13px; color: #94a3b8;">管理员</span>
+            <div class="avatar">A</div>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">🖥️ 云主机管理</h1>
+                <p class="page-subtitle">统一管理多云平台虚拟机实例，支持生命周期管理和监控运维</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary">🔄 同步资源</button>
+                <button class="btn btn-secondary">📥 导出清单</button>
+                <button class="btn btn-primary">➕ 创建云主机</button>
+            </div>
+        </div>
+
+        <!-- 统计卡片 -->
+        <div class="stats-row">
+            <div class="stat-card green">
+                <div class="stat-header">
+                    <span class="stat-icon">🖥️</span>
+                </div>
+                <div class="stat-value">1,086</div>
+                <div class="stat-label">运行中</div>
+            </div>
+            <div class="stat-card gray">
+                <div class="stat-header">
+                    <span class="stat-icon">⏸️</span>
+                </div>
+                <div class="stat-value">156</div>
+                <div class="stat-label">已停止</div>
+            </div>
+            <div class="stat-card blue">
+                <div class="stat-header">
+                    <span class="stat-icon">🔄</span>
+                </div>
+                <div class="stat-value">24</div>
+                <div class="stat-label">操作中</div>
+            </div>
+            <div class="stat-card orange">
+                <div class="stat-header">
+                    <span class="stat-icon">⚠️</span>
+                </div>
+                <div class="stat-value">12</div>
+                <div class="stat-label">告警中</div>
+            </div>
+            <div class="stat-card red">
+                <div class="stat-header">
+                    <span class="stat-icon">❌</span>
+                </div>
+                <div class="stat-value">8</div>
+                <div class="stat-label">异常</div>
+            </div>
+        </div>
+
+        <div class="content-layout">
+            <!-- 侧边栏 -->
+            <div class="sidebar">
+                <!-- 账号选择 -->
+                <div class="card">
+                    <div class="card-body" style="padding: 12px;">
+                        <div class="account-selector">
+                            <div class="account-vendor-icon vendor-aliyun">阿里</div>
+                            <div class="account-info">
+                                <div class="account-name">总公司-阿里云-生产</div>
+                                <div class="account-meta">华东1 · 486实例</div>
+                            </div>
+                            <button class="switch-btn">切换</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 状态筛选 -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">📊 实例状态</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="filter-list">
+                            <div class="filter-item active" onclick="filterByStatus(this, 'all')">
+                                <div class="filter-dot all"></div>
+                                <div class="filter-name">全部实例</div>
+                                <div class="filter-count">1,286</div>
+                            </div>
+                            <div class="filter-item" onclick="filterByStatus(this, 'running')">
+                                <div class="filter-dot running"></div>
+                                <div class="filter-name">运行中</div>
+                                <div class="filter-count">1,086</div>
+                            </div>
+                            <div class="filter-item" onclick="filterByStatus(this, 'stopped')">
+                                <div class="filter-dot stopped"></div>
+                                <div class="filter-name">已停止</div>
+                                <div class="filter-count">156</div>
+                            </div>
+                            <div class="filter-item" onclick="filterByStatus(this, 'pending')">
+                                <div class="filter-dot" style="background: #3b82f6;"></div>
+                                <div class="filter-name">操作中</div>
+                                <div class="filter-count">24</div>
+                            </div>
+                            <div class="filter-item" onclick="filterByStatus(this, 'warning')">
+                                <div class="filter-dot warning"></div>
+                                <div class="filter-name">告警中</div>
+                                <div class="filter-count">12</div>
+                            </div>
+                            <div class="filter-item" onclick="filterByStatus(this, 'error')">
+                                <div class="filter-dot error"></div>
+                                <div class="filter-name">异常</div>
+                                <div class="filter-count">8</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 区域分布 -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">🌍 区域分布</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="region-stats">
+                            <div class="region-stat-item">
+                                <div class="region-stat-name">华东1(杭州)</div>
+                                <div class="region-stat-bar">
+                                    <div class="region-stat-fill" style="width: 80%;"></div>
+                                </div>
+                                <div class="region-stat-value">386</div>
+                            </div>
+                            <div class="region-stat-item">
+                                <div class="region-stat-name">华东2(上海)</div>
+                                <div class="region-stat-bar">
+                                    <div class="region-stat-fill" style="width: 45%;"></div>
+                                </div>
+                                <div class="region-stat-value">214</div>
+                            </div>
+                            <div class="region-stat-item">
+                                <div class="region-stat-name">华北2(北京)</div>
+                                <div class="region-stat-bar">
+                                    <div class="region-stat-fill" style="width: 35%;"></div>
+                                </div>
+                                <div class="region-stat-value">168</div>
+                            </div>
+                            <div class="region-stat-item">
+                                <div class="region-stat-name">华南1(深圳)</div>
+                                <div class="region-stat-bar">
+                                    <div class="region-stat-fill" style="width: 25%;"></div>
+                                </div>
+                                <div class="region-stat-value">118</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 快捷操作 -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">⚡ 快捷操作</div>
+                    </div>
+                    <div class="card-body">
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <div class="quick-action-item">
+                                <span class="quick-action-icon">🔄</span>
+                                批量重启
+                            </div>
+                            <div class="quick-action-item">
+                                <span class="quick-action-icon">📋</span>
+                                批量变更规格
+                            </div>
+                            <div class="quick-action-item">
+                                <span class="quick-action-icon">🖼️</span>
+                                创建镜像
+                            </div>
+                            <div class="quick-action-item">
+                                <span class="quick-action-icon">📊</span>
+                                资源使用报告
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 主内容区 -->
+            <div class="main-content">
+                <!-- 工具栏 -->
+                <div class="toolbar">
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" placeholder="搜索实例名称、IP、ID...">
+                    </div>
+                    <select class="filter-select">
+                        <option>所有操作系统</option>
+                        <option>Linux</option>
+                        <option>Windows</option>
+                    </select>
+                    <select class="filter-select">
+                        <option>所有规格</option>
+                        <option>通用型</option>
+                        <option>计算型</option>
+                        <option>内存型</option>
+                    </select>
+                    <select class="filter-select">
+                        <option>所有区域</option>
+                        <option>华东1(杭州)</option>
+                        <option>华东2(上海)</option>
+                        <option>华北2(北京)</option>
+                    </select>
+                    <div class="view-toggle">
+                        <button class="view-btn active">☰ 列表</button>
+                        <button class="view-btn">▦ 卡片</button>
+                    </div>
+                </div>
+
+                <!-- 批量操作栏 -->
+                <div class="batch-actions show" id="batchActions">
+                    <div class="checkbox checked" onclick="toggleCheckbox(this)">✓</div>
+                    <div class="batch-count">已选择 <strong>3</strong> 个实例</div>
+                    <div class="batch-btns">
+                        <button class="batch-btn secondary" onclick="cancelSelection()">取消</button>
+                        <button class="batch-btn secondary">▶️ 启动</button>
+                        <button class="batch-btn secondary">⏸️ 停止</button>
+                        <button class="batch-btn secondary">🔄 重启</button>
+                        <button class="batch-btn secondary">🖥️ 远程连接</button>
+                        <button class="batch-btn danger">🗑️ 释放</button>
+                    </div>
+                </div>
+
+                <!-- 实例表格 -->
+                <div class="instance-table-wrapper">
+                    <table class="instance-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;">
+                                    <div class="checkbox checked" onclick="toggleAllCheckbox(this)">✓</div>
+                                </th>
+                                <th>实例信息</th>
+                                <th>云厂商</th>
+                                <th>配置</th>
+                                <th>网络</th>
+                                <th>状态</th>
+                                <th>监控</th>
+                                <th style="width: 160px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><div class="checkbox checked" onclick="toggleCheckbox(this)">✓</div></td>
+                                <td>
+                                    <div class="instance-info">
+                                        <div class="instance-icon running">🖥️</div>
+                                        <div class="instance-details">
+                                            <div class="instance-name">prod-web-001</div>
+                                            <div class="instance-id">i-bp1a2b3c4d5e6f7g8h9</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="cloud-tag aliyun">
+                                        <span class="cloud-tag-icon">阿里</span>
+                                        阿里云
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="config-info">
+                                        <div class="config-spec">4核 16GB</div>
+                                        <div style="font-size: 11px; color: #64748b;">ecs.g6.xlarge</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="network-info">
+                                        <div class="ip-address">192.168.1.100</div>
+                                        <div class="ip-address" style="color: #10b981;">47.98.123.45</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="status-tag running">
+                                        <span class="status-pulse"></span>
+                                        运行中
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="metrics-bar">
+                                        <div class="metric-item">
+                                            <span class="metric-label">CPU</span>
+                                            <span class="metric-value medium">45%</span>
+                                        </div>
+                                        <div class="metric-item">
+                                            <span class="metric-label">MEM</span>
+                                            <span class="metric-value low">62%</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="action-btn console" title="远程连接">🖥️</button>
+                                        <button class="action-btn stop" title="停止">⏸️</button>
+                                        <button class="action-btn" title="重启">🔄</button>
+                                        <button class="action-btn" title="更多">⋯</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><div class="checkbox checked" onclick="toggleCheckbox(this)">✓</div></td>
+                                <td>
+                                    <div class="instance-info">
+                                        <div class="instance-icon running">🖥️</div>
+                                        <div class="instance-details">
+                                            <div class="instance-name">prod-db-master</div>
+                                            <div class="instance-id">i-bp2c3d4e5f6g7h8i9j0</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="cloud-tag aliyun">
+                                        <span class="cloud-tag-icon">阿里</span>
+                                        阿里云
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="config-info">
+                                        <div class="config-spec">16核 64GB</div>
+                                        <div style="font-size: 11px; color: #64748b;">ecs.r6.4xlarge</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="network-info">
+                                        <div class="ip-address">192.168.1.50</div>
+                                        <div class="ip-label">仅内网</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="status-tag running">
+                                        <span class="status-pulse"></span>
+                                        运行中
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="metrics-bar">
+                                        <div class="metric-item">
+                                            <span class="metric-label">CPU</span>
+                                            <span class="metric-value low">28%</span>
+                                        </div>
+                                        <div class="metric-item">
+                                            <span class="metric-label">MEM</span>
+                                            <span class="metric-value high">85%</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="action-btn console" title="远程连接">🖥️</button>
+                                        <button class="action-btn stop" title="停止">⏸️</button>
+                                        <button class="action-btn" title="重启">🔄</button>
+                                        <button class="action-btn" title="更多">⋯</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><div class="checkbox checked" onclick="toggleCheckbox(this)">✓</div></td>
+                                <td>
+                                    <div class="instance-info">
+                                        <div class="instance-icon stopped">⏸️</div>
+                                        <div class="instance-details">
+                                            <div class="instance-name">test-server-001</div>
+                                            <div class="instance-id">ins-1a2b3c4d5e6f7g8h</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="cloud-tag tencent">
+                                        <span class="cloud-tag-icon">腾讯</span>
+                                        腾讯云
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="config-info">
+                                        <div class="config-spec">2核 4GB</div>
+                                        <div style="font-size: 11px; color: #64748b;">S5.MEDIUM4</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="network-info">
+                                        <div class="ip-address">10.0.1.100</div>
+                                        <div class="ip-label">仅内网</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="status-tag stopped">
+                                        已停止
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="metrics-bar">
+                                        <div class="metric-item">
+                                            <span class="metric-label">CPU</span>
+                                            <span class="metric-value" style="color: #64748b;">-</span>
+                                        </div>
+                                        <div class="metric-item">
+                                            <span class="metric-label">MEM</span>
+                                            <span class="metric-value" style="color: #64748b;">-</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="action-btn" title="启动" style="color: #34d399;">▶️</button>
+                                        <button class="action-btn console" title="远程连接" disabled style="opacity: 0.4;">🖥️</button>
+                                        <button class="action-btn danger" title="释放">🗑️</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><div class="checkbox" onclick="toggleCheckbox(this)"></div></td>
+                                <td>
+                                    <div class="instance-info">
+                                        <div class="instance-icon warning">⚠️</div>
+                                        <div class="instance-details">
+                                            <div class="instance-name">prod-api-002</div>
+                                            <div class="instance-id">i-uf6b9x1234567890ab</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="cloud-tag huawei">
+                                        <span class="cloud-tag-icon">华为</span>
+                                        华为云
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="config-info">
+                                        <div class="config-spec">8核 32GB</div>
+                                        <div style="font-size: 11px; color: #64748b;">c6.2xlarge.2</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="network-info">
+                                        <div class="ip-address">192.168.2.80</div>
+                                        <div class="ip-address" style="color: #10b981;">119.8.234.56</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="status-tag running" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">
+                                        <span class="status-pulse"></span>
+                                        告警中
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="metrics-bar">
+                                        <div class="metric-item">
+                                            <span class="metric-label">CPU</span>
+                                            <span class="metric-value high">92%</span>
+                                        </div>
+                                        <div class="metric-item">
+                                            <span class="metric-label">MEM</span>
+                                            <span class="metric-value high">88%</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="action-btn console" title="远程连接">🖥️</button>
+                                        <button class="action-btn stop" title="停止">⏸️</button>
+                                        <button class="action-btn" title="重启">🔄</button>
+                                        <button class="action-btn" title="更多">⋯</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><div class="checkbox" onclick="toggleCheckbox(this)"></div></td>
+                                <td>
+                                    <div class="instance-info">
+                                        <div class="instance-icon running">🖥️</div>
+                                        <div class="instance-details">
+                                            <div class="instance-name">aws-prod-worker-01</div>
+                                            <div class="instance-id">i-0abc123def456789a</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="cloud-tag aws">
+                                        <span class="cloud-tag-icon">AWS</span>
+                                        AWS
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="config-info">
+                                        <div class="config-spec">4核 16GB</div>
+                                        <div style="font-size: 11px; color: #64748b;">m5.xlarge</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="network-info">
+                                        <div class="ip-address">10.0.3.50</div>
+                                        <div class="ip-address" style="color: #10b981;">54.123.45.67</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="status-tag starting">
+                                        <span class="status-pulse"></span>
+                                        启动中
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="metrics-bar">
+                                        <div class="metric-item">
+                                            <span class="metric-label">CPU</span>
+                                            <span class="metric-value" style="color: #60a5fa;">...</span>
+                                        </div>
+                                        <div class="metric-item">
+                                            <span class="metric-label">MEM</span>
+                                            <span class="metric-value" style="color: #60a5fa;">...</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="action-btn console" title="远程连接" disabled style="opacity: 0.4;">🖥️</button>
+                                        <button class="action-btn stop" title="停止" disabled style="opacity: 0.4;">⏸️</button>
+                                        <button class="action-btn" title="更多">⋯</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><div class="checkbox" onclick="toggleCheckbox(this)"></div></td>
+                                <td>
+                                    <div class="instance-info">
+                                        <div class="instance-icon error">❌</div>
+                                        <div class="instance-details">
+                                            <div class="instance-name">dev-server-003</div>
+                                            <div class="instance-id">i-xyz789abc123def456</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="cloud-tag volcano">
+                                        <span class="cloud-tag-icon">火山</span>
+                                        火山引擎
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="config-info">
+                                        <div class="config-spec">2核 8GB</div>
+                                        <div style="font-size: 11px; color: #64748b;">ecs.g2.large</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="network-info">
+                                        <div class="ip-address">192.168.5.200</div>
+                                        <div class="ip-label">仅内网</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="status-tag error">
+                                        异常
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="metrics-bar">
+                                        <div class="metric-item">
+                                            <span class="metric-label">CPU</span>
+                                            <span class="metric-value" style="color: #f87171;">-</span>
+                                        </div>
+                                        <div class="metric-item">
+                                            <span class="metric-label">MEM</span>
+                                            <span class="metric-value" style="color: #f87171;">-</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="action-btn" title="诊断">🔍</button>
+                                        <button class="action-btn" title="重启">🔄</button>
+                                        <button class="action-btn danger" title="释放">🗑️</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="pagination">
+                        <div class="pagination-info">显示 1-6 共 1,286 条记录</div>
+                        <div class="pagination-btns">
+                            <button class="page-btn">◀</button>
+                            <button class="page-btn active">1</button>
+                            <button class="page-btn">2</button>
+                            <button class="page-btn">3</button>
+                            <button class="page-btn">...</button>
+                            <button class="page-btn">215</button>
+                            <button class="page-btn">▶</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function filterByStatus(el, status) {
+            document.querySelectorAll('.filter-item').forEach(item => item.classList.remove('active'));
+            el.classList.add('active');
+        }
+
+        function toggleCheckbox(el) {
+            el.classList.toggle('checked');
+            updateBatchActions();
+        }
+
+        function toggleAllCheckbox(el) {
+            const isChecked = el.classList.contains('checked');
+            document.querySelectorAll('.instance-table .checkbox').forEach(cb => {
+                if (isChecked) {
+                    cb.classList.remove('checked');
+                } else {
+                    cb.classList.add('checked');
+                }
+            });
+            updateBatchActions();
+        }
+
+        function updateBatchActions() {
+            const checkedCount = document.querySelectorAll('.instance-table tbody .checkbox.checked').length;
+            const batchActions = document.getElementById('batchActions');
+            if (checkedCount > 0) {
+                batchActions.classList.add('show');
+                batchActions.querySelector('.batch-count strong').textContent = checkedCount;
+            } else {
+                batchActions.classList.remove('show');
+            }
+        }
+
+        function cancelSelection() {
+            document.querySelectorAll('.instance-table .checkbox').forEach(cb => cb.classList.remove('checked'));
+            updateBatchActions();
+        }
+
+        // 视图切换
+        document.querySelectorAll('.view-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // 初始化
+        updateBatchActions();
+    </script>
+</body>
+</html>

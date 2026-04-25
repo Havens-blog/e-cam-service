@@ -28,7 +28,7 @@ func InitModule(
 	logger *elog.Component,
 ) (*Module, error) {
 	// 初始化任务仓储
-	taskRepo := taskx.NewMongoRepository(db, "tasks")
+	taskRepo := taskx.NewMongoRepository(db, "ecam_task")
 
 	// 初始化索引
 	if err := taskRepo.InitIndexes(context.Background()); err != nil {

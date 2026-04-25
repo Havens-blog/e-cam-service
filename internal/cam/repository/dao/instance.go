@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const InstanceCollection = "c_instance"
+const InstanceCollection = "ecam_instance"
 
 // Instance DAO层资产实例模型
 type Instance struct {
@@ -346,6 +346,11 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 			query["$or"] = []bson.M{
 				{"model_uid": "cloud_waf"},
 				{"model_uid": bson.M{"$regex": "_waf$"}},
+			}
+		case "cloud_eni", "eni":
+			query["$or"] = []bson.M{
+				{"model_uid": "cloud_eni"},
+				{"model_uid": bson.M{"$regex": "_eni$"}},
 			}
 		case "cloud_image", "image":
 			query["$or"] = []bson.M{

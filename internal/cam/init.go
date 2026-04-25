@@ -3,6 +3,7 @@ package cam
 import (
 	"context"
 	"fmt"
+	"time"
 
 	// 使用新的独立 IAM 模块
 	"github.com/Havens-blog/e-cam-service/internal/alert"
@@ -190,6 +191,27 @@ func initCostModule(module *Module, db *mongox.Mongo, redisClient redis.Cmdable,
 
 	// 初始化成本分析服务
 	costSvc := analysis.NewCostService(billDAO, redisClient, logger)
+
+	// 初始化每日汇总 DAO 并注入到成本服务（查询走汇总表，避免明细表全表扫描）
+	dailySummaryDAO := costdao.NewDailySummaryDAO(db, logger)
+	costSvc.SetSummaryDAO(dailySummaryDAO)
+
+	// 异步初始化汇总表索引和数据
+	go func() {
+		bgCtx, bgCancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer bgCancel()
+		if err := dailySummaryDAO.InitIndexes(bgCtx); err != nil {
+			logger.Error("初始化汇总表索引失败", elog.FieldErr(err))
+		}
+		if !dailySummaryDAO.HasData(bgCtx) {
+			logger.Info("汇总表为空，开始从明细表重建...")
+			if err := dailySummaryDAO.RebuildFromSource(bgCtx, "", ""); err != nil {
+				logger.Error("重建汇总表失败", elog.FieldErr(err))
+			} else {
+				logger.Info("汇总表重建完成")
+			}
+		}
+	}()
 
 	// 初始化预算管理服务
 	var alertSvc = alertModule.AlertService

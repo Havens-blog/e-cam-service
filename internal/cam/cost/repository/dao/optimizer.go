@@ -12,7 +12,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const RecommendationCollection = "cost_recommendations"
+const RecommendationCollection = "ecam_cost_recommendation"
 
 type optimizerDAO struct {
 	db *mongox.Mongo

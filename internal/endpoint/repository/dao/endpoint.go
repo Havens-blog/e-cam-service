@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const EndpointCollection = "c_endpoint"
+const EndpointCollection = "ecam_endpoint"
 
 type EndpointDAO interface {
 	CreateEndpoint(ctx context.Context, t Endpoint) (int64, error)

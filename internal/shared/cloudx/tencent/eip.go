@@ -224,6 +224,7 @@ func (a *EIPAdapter) convertToEIPInstance(addr *vpc.Address, region string) type
 		instanceID = *addr.InstanceId
 	}
 
+	// 腾讯云 InstanceType: CVM, NAT, CLB, EIP, HAVIP, ENI 等
 	instanceType := ""
 	if addr.InstanceType != nil {
 		instanceType = *addr.InstanceType
@@ -244,6 +245,30 @@ func (a *EIPAdapter) convertToEIPInstance(addr *vpc.Address, region string) type
 		createTime = *addr.CreatedTime
 	}
 
+	// 绑定的弹性网卡ID
+	networkInterfaceID := ""
+	if addr.NetworkInterfaceId != nil {
+		networkInterfaceID = *addr.NetworkInterfaceId
+	}
+
+	// 绑定的内网IP
+	privateIP := ""
+	if addr.PrivateAddressIp != nil {
+		privateIP = *addr.PrivateAddressIp
+	}
+
+	// VPC ID
+	vpcID := ""
+	if addr.UnVpcId != nil {
+		vpcID = *addr.UnVpcId
+	}
+
+	// 运营商信息
+	isp := ""
+	if addr.InternetServiceProvider != nil {
+		isp = *addr.InternetServiceProvider
+	}
+
 	// 提取标签
 	tags := make(map[string]string)
 	if addr.TagSet != nil {
@@ -262,8 +287,12 @@ func (a *EIPAdapter) convertToEIPInstance(addr *vpc.Address, region string) type
 		Region:             region,
 		Bandwidth:          bandwidth,
 		InternetChargeType: chargeType,
+		ISP:                isp,
 		InstanceID:         instanceID,
 		InstanceType:       instanceType,
+		PrivateIPAddress:   privateIP,
+		VPCID:              vpcID,
+		NetworkInterface:   networkInterfaceID,
 		CreationTime:       createTime,
 		Tags:               tags,
 		Provider:           "tencent",

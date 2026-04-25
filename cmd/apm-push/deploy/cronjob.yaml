@@ -1,0 +1,105 @@
+# ============================================================
+# APM 推送脚本 CronJob 部署清单
+# 功能：定期从 ARMS OpenAPI 拉取服务调用关系数据，
+#       转换为 LinkDeclaration 格式推送到拓扑声明端点
+# ============================================================
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: apm-push
+  namespace: e-cam
+  labels:
+    app: apm-push
+    component: topology
+spec:
+  # 调度周期：每 5 分钟执行一次，与 ARMS 数据刷新频率匹配
+  schedule: "*/5 * * * *"
+
+  # 并发策略：禁止并发执行，防止上一次未完成时启动新任务
+  # 可选值：Allow（允许并发）、Forbid（禁止）、Replace（替换旧任务）
+  concurrencyPolicy: Forbid
+
+  # 保留最近 3 次失败任务的历史记录，便于排查问题
+  failedJobsHistoryLimit: 3
+
+  # 保留最近 3 次成功任务的历史记录，便于确认执行状态
+  successfulJobsHistoryLimit: 3
+
+  # 如果错过调度时间超过 200 秒，则跳过本次执行
+  startingDeadlineSeconds: 200
+
+  jobTemplate:
+    spec:
+      # 任务失败时不自动重试，由 CronJob 下次调度处理
+      backoffLimit: 1
+
+      # 任务超时时间：10 分钟，防止脚本卡死占用资源
+      activeDeadlineSeconds: 600
+
+      template:
+        metadata:
+          labels:
+            app: apm-push
+            component: topology
+        spec:
+          # 使用专用 ServiceAccount，绑定了读取 Deployment 注解的权限
+          serviceAccountName: apm-push-sa
+
+          # 任务完成后不重启容器
+          restartPolicy: Never
+
+          containers:
+            - name: apm-push
+              # 镜像地址占位符，部署时替换为实际镜像仓库地址
+              image: registry.example.com/e-cam/apm-push:latest
+
+              # 镜像拉取策略：始终拉取最新镜像，确保使用最新版本
+              imagePullPolicy: Always
+
+              env:
+                # ---- ARMS API 凭证（通过 Secret 引用，避免明文暴露） ----
+
+                # ARMS AccessKey ID，用于调用 ARMS OpenAPI 认证
+                - name: ARMS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: apm-push-secret
+                      key: arms-access-key-id
+
+                # ARMS AccessKey Secret，用于调用 ARMS OpenAPI 签名
+                - name: ARMS_ACCESS_KEY_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: apm-push-secret
+                      key: arms-access-key-secret
+
+                # ARMS 地域 ID，如 cn-hangzhou、cn-shanghai
+                - name: ARMS_REGION_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: apm-push-secret
+                      key: arms-region-id
+
+                # ---- 业务配置 ----
+
+                # 拓扑声明端点地址，脚本将 LinkDeclaration 推送到此 URL
+                - name: TOPOLOGY_API_URL
+                  value: "http://e-cam-service.e-cam.svc.cluster.local:8080/api/v1/cam/topology/declarations"
+
+                # K8s 集群标识，用于构建节点 ID（k8s-{cluster}-{namespace}-{name}）
+                - name: K8S_CLUSTER_NAME
+                  value: "default"
+
+                # 租户 ID，用于多租户数据隔离
+                - name: TENANT_ID
+                  value: "default"
+
+              resources:
+                # 资源请求：调度器保证的最小资源量
+                requests:
+                  cpu: "100m"       # 0.1 核 CPU
+                  memory: "128Mi"   # 128 MB 内存
+                # 资源限制：容器可使用的最大资源量
+                limits:
+                  cpu: "500m"       # 0.5 核 CPU，ARMS API 调用和数据转换不需要太多 CPU
+                  memory: "256Mi"   # 256 MB 内存，足够处理服务调用关系数据

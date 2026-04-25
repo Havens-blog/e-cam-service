@@ -183,6 +183,91 @@ func (e *SyncAssetsExecutor) convertEIPToInstance(inst types.EIPInstance, accoun
 	}
 }
 
+// syncRegionENI 同步单个地域的弹性网卡
+func (e *SyncAssetsExecutor) syncRegionENI(
+	ctx context.Context,
+	adapter cloudx.CloudAdapter,
+	account *domain.CloudAccount,
+	region string,
+) (int, error) {
+	modelUID := fmt.Sprintf("%s_eni", account.Provider)
+
+	eniAdapter := adapter.ENI()
+	if eniAdapter == nil {
+		return 0, fmt.Errorf("ENI适配器不可用")
+	}
+
+	cloudInstances, err := eniAdapter.ListInstances(ctx, region)
+	if err != nil {
+		return 0, fmt.Errorf("获取弹性网卡列表失败: %w", err)
+	}
+
+	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	if err != nil {
+		localAssetIDs = []string{}
+	}
+
+	cloudAssetIDSet := make(map[string]bool)
+	for _, inst := range cloudInstances {
+		cloudAssetIDSet[inst.ENIID] = true
+	}
+
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudAssetIDSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
+		if err != nil {
+			e.logger.Error("删除过期ENI失败", elog.FieldErr(err))
+		} else {
+			e.logger.Info("删除过期ENI", elog.Int64("deleted", deleted))
+		}
+	}
+
+	synced := 0
+	for _, inst := range cloudInstances {
+		instance := e.convertENIToInstance(inst, account)
+		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
+			e.logger.Error("保存ENI失败", elog.String("asset_id", inst.ENIID), elog.FieldErr(err))
+			continue
+		}
+		synced++
+	}
+
+	e.logger.Info("同步地域ENI完成", elog.String("region", region), elog.Int("synced", synced))
+	return synced, nil
+}
+
+// convertENIToInstance 将 ENI 转换为 Instance 领域模型
+func (e *SyncAssetsExecutor) convertENIToInstance(inst types.ENIInstance, account *domain.CloudAccount) assetdomain.Instance {
+	modelUID := fmt.Sprintf("%s_eni", account.Provider)
+
+	attributes := map[string]any{
+		"status": inst.Status, "type": inst.Type,
+		"region": inst.Region, "zone": inst.Zone,
+		"provider": inst.Provider, "description": inst.Description,
+		"vpc_id": inst.VPCID, "subnet_id": inst.SubnetID,
+		"primary_private_ip": inst.PrimaryPrivateIP, "private_ip_addresses": inst.PrivateIPAddresses,
+		"mac_address": inst.MacAddress, "ipv6_addresses": inst.IPv6Addresses,
+		"instance_id": inst.InstanceID, "instance_name": inst.InstanceName, "device_index": inst.DeviceIndex,
+		"security_group_ids": inst.SecurityGroupIDs,
+		"public_ip":          inst.PublicIP, "eip_addresses": inst.EIPAddresses,
+		"resource_group_id": inst.ResourceGroupID, "project_id": inst.ProjectID,
+		"creation_time":    inst.CreationTime,
+		"cloud_account_id": account.ID, "cloud_account_name": account.Name,
+		"tags": inst.Tags,
+	}
+
+	return assetdomain.Instance{
+		ModelUID: modelUID, AssetID: inst.ENIID, AssetName: inst.ENIName,
+		TenantID: account.TenantID, AccountID: account.ID, Attributes: attributes,
+	}
+}
+
 // syncRegionVSwitch 同步单个地域的交换机/子网
 func (e *SyncAssetsExecutor) syncRegionVSwitch(
 	ctx context.Context,

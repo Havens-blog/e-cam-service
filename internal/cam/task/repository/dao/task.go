@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	CollectionTask = "tasks"
+	CollectionTask = "ecam_task"
 )
 
 // TaskDAO 任务数据访问对象

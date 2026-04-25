@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const FieldGroupCollection = "c_attribute_group"
+const FieldGroupCollection = "ecam_attribute_group"
 
 // ModelFieldGroup DAO层字段分组模型
 type ModelFieldGroup struct {

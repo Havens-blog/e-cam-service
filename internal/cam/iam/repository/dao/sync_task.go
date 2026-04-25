@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const CloudSyncTasksCollection = "cloud_sync_tasks"
+const CloudSyncTasksCollection = "ecam_iam_sync_task"
 
 // SyncTaskType 同步任务类型
 type SyncTaskType string

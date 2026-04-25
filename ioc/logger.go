@@ -8,22 +8,26 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-// InitCustomLogger 初始化自定义日志组件
-// 使用 ego 框架的 elog，配置可读时间格式和调用者信息
+// InitCustomLogger 初始化日志组件
+// 使用 ego elog 作为日志门面，lumberjack 做日志切割
 func InitCustomLogger() {
-	// 确保日志目录存在
 	os.MkdirAll("logs", 0755)
 
-	// 从配置读取日志级别
-	levelStr := "info"
-	if viper.IsSet("logger.default.level") {
-		levelStr = viper.GetString("logger.default.level")
+	levelStr := viper.GetString("logger.default.level")
+	if levelStr == "" {
+		levelStr = "info"
 	}
 
-	// 创建自定义的 encoder 配置 - 可读时间格式
-	encoderConfig := &zapcore.EncoderConfig{
+	var zapLevel zapcore.Level
+	if err := zapLevel.UnmarshalText([]byte(levelStr)); err != nil {
+		zapLevel = zapcore.InfoLevel
+	}
+
+	// encoder 配置：可读时间 + 大写级别 + 短路径调用者
+	encoderConfig := zapcore.EncoderConfig{
 		TimeKey:        "time",
 		LevelKey:       "level",
 		NameKey:        "logger",
@@ -31,27 +35,37 @@ func InitCustomLogger() {
 		MessageKey:     "msg",
 		StacktraceKey:  "stacktrace",
 		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.CapitalLevelEncoder,                        // INFO, WARN, ERROR
-		EncodeTime:     zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05"), // 可读时间格式
+		EncodeLevel:    zapcore.CapitalLevelEncoder,
+		EncodeTime:     zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05"),
 		EncodeDuration: zapcore.StringDurationEncoder,
-		EncodeCaller:   zapcore.ShortCallerEncoder, // 短路径 file.go:123
+		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
+	encoder := zapcore.NewConsoleEncoder(encoderConfig)
 
-	// 使用 ego 的 elog 创建 logger
+	// 日志切割：按大小自动轮转
+	fileWriter := zapcore.AddSync(&lumberjack.Logger{
+		Filename:   "logs/app.log",
+		MaxSize:    200, // 单文件最大 200MB
+		MaxAge:     30,  // 保留 30 天
+		MaxBackups: 10,  // 最多 10 个备份
+		LocalTime:  true,
+		Compress:   true,
+	})
+
+	// 只输出到文件
+	core := zapcore.NewCore(encoder, fileWriter, zapLevel)
+
+	// 注入到 ego elog，保持全项目统一使用 elog.DefaultLogger
 	elog.DefaultLogger = elog.DefaultContainer().Build(
-		elog.WithEncoderConfig(encoderConfig),
-		elog.WithLevel(levelStr),
+		elog.WithZapCore(core),
 		elog.WithEnableAddCaller(true),
-		elog.WithFileName("logs/default.log"),
 	)
 
-	fmt.Println("✅ 日志系统初始化完成 (ego elog)")
+	fmt.Printf("✅ 日志初始化完成 (level=%s, file=logs/app.log, 切割=200MB, 保留30天)\n", levelStr)
 }
 
-// InitLogger 初始化日志系统 (保留以兼容 wire)
+// InitLogger 兼容 wire 依赖注入
 func InitLogger() *zap.Logger {
-	// 调用 InitCustomLogger 初始化 ego logger
 	InitCustomLogger()
-	// 返回 ego logger 的底层 zap logger
 	return elog.DefaultLogger.ZapLogger()
 }

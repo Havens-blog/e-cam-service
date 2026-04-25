@@ -21,7 +21,7 @@ type CloudAccountService interface {
 }
 
 // InstanceCollection 实例集合名称
-const InstanceCollection = "c_instance"
+const InstanceCollection = "ecam_instance"
 
 // TagService 标签管理业务逻辑层接口
 type TagService interface {

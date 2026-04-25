@@ -1,0 +1,696 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "云资产管理 API",
+    "description": "e-cam-service 云资产查询接口，支持 ECS、RDS、Redis、MongoDB、VPC、EIP 六种资产类型",
+    "version": "2.2.0",
+    "contact": {
+      "name": "API Support",
+      "email": "support@example.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080/api/v1",
+      "description": "本地开发环境"
+    },
+    {
+      "url": "https://api.example.com/api/v1",
+      "description": "生产环境"
+    }
+  ],
+  "tags": [
+    {"name": "ECS", "description": "云虚拟机"},
+    {"name": "RDS", "description": "关系型数据库"},
+    {"name": "Redis", "description": "Redis缓存"},
+    {"name": "MongoDB", "description": "MongoDB文档数据库"},
+    {"name": "VPC", "description": "虚拟私有云"},
+    {"name": "EIP", "description": "弹性公网IP"}
+  ],
+  "components": {
+    "securitySchemes": {
+      "TenantId": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Tenant-ID",
+        "description": "租户ID，所有请求必须携带"
+      }
+    },
+    "parameters": {
+      "TenantIdHeader": {
+        "name": "X-Tenant-ID",
+        "in": "header",
+        "required": true,
+        "schema": {"type": "string"},
+        "description": "租户ID",
+        "example": "tenant-001"
+      },
+      "AccountId": {
+        "name": "account_id",
+        "in": "query",
+        "schema": {"type": "integer"},
+        "description": "云账号ID"
+      },
+      "Provider": {
+        "name": "provider",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": ["aliyun", "aws", "huawei", "tencent", "volcano"]
+        },
+        "description": "云厂商"
+      },
+      "Region": {
+        "name": "region",
+        "in": "query",
+        "schema": {"type": "string"},
+        "description": "地域",
+        "example": "cn-hangzhou"
+      },
+      "Status": {
+        "name": "status",
+        "in": "query",
+        "schema": {"type": "string"},
+        "description": "实例状态",
+        "example": "running"
+      },
+      "Name": {
+        "name": "name",
+        "in": "query",
+        "schema": {"type": "string"},
+        "description": "实例名称（模糊搜索）"
+      },
+      "Offset": {
+        "name": "offset",
+        "in": "query",
+        "schema": {"type": "integer", "default": 0},
+        "description": "分页偏移量"
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {"type": "integer", "default": 20},
+        "description": "每页数量"
+      }
+    },
+    "schemas": {
+      "Asset": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer", "description": "数据库ID"},
+          "asset_id": {"type": "string", "description": "云厂商实例ID"},
+          "asset_name": {"type": "string", "description": "实例名称"},
+          "asset_type": {
+            "type": "string",
+            "enum": ["ecs", "rds", "redis", "mongodb", "vpc", "eip"],
+            "description": "资产类型"
+          },
+          "tenant_id": {"type": "string", "description": "租户ID"},
+          "account_id": {"type": "integer", "description": "云账号ID"},
+          "provider": {
+            "type": "string",
+            "enum": ["aliyun", "aws", "huawei", "tencent", "volcano"],
+            "description": "云厂商"
+          },
+          "region": {"type": "string", "description": "地域"},
+          "status": {"type": "string", "description": "实例状态"},
+          "attributes": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "扩展属性"
+          },
+          "create_time": {"type": "integer", "description": "创建时间（毫秒时间戳）"},
+          "update_time": {"type": "integer", "description": "更新时间（毫秒时间戳）"}
+        }
+      },
+      "AssetListResponse": {
+        "type": "object",
+        "properties": {
+          "code": {"type": "integer", "example": 0},
+          "msg": {"type": "string", "example": "success"},
+          "data": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {"$ref": "#/components/schemas/Asset"}
+              },
+              "total": {"type": "integer", "description": "总数"}
+            }
+          }
+        }
+      },
+      "AssetDetailResponse": {
+        "type": "object",
+        "properties": {
+          "code": {"type": "integer", "example": 0},
+          "msg": {"type": "string", "example": "success"},
+          "data": {"$ref": "#/components/schemas/Asset"}
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "code": {"type": "integer"},
+          "message": {"type": "string"}
+        }
+      }
+    },
+    "responses": {
+      "TenantRequired": {
+        "description": "租户ID不能为空",
+        "content": {
+          "application/json": {
+            "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+            "example": {"code": 400, "message": "租户ID不能为空"}
+          }
+        }
+      },
+      "NotFound": {
+        "description": "资源不存在",
+        "content": {
+          "application/json": {
+            "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+            "example": {"code": 404, "msg": "实例不存在"}
+          }
+        }
+      }
+    }
+  },
+  "security": [{"TenantId": []}],
+  "paths": {
+    "/cam/assets/ecs": {
+      "get": {
+        "tags": ["ECS"],
+        "summary": "获取ECS实例列表",
+        "description": "从数据库获取已同步的云虚拟机实例列表",
+        "operationId": "listECS",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantIdHeader"},
+          {"$ref": "#/components/parameters/AccountId"},
+          {"$ref": "#/components/parameters/Provider"},
+          {"$ref": "#/components/parameters/Region"},
+          {"$ref": "#/components/parameters/Status"},
+          {"$ref": "#/components/parameters/Name"},
+          {"$ref": "#/components/parameters/Offset"},
+          {"$ref": "#/components/parameters/Limit"}
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AssetListResponse"},
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "items": [{
+                      "id": 1,
+                      "asset_id": "i-bp1xxxxx",
+                      "asset_name": "web-server-01",
+                      "asset_type": "ecs",
+                      "tenant_id": "tenant-001",
+                      "account_id": 1,
+                      "provider": "aliyun",
+                      "region": "cn-hangzhou",
+                      "status": "running",
+                      "attributes": {
+                        "cpu": 4,
+                        "memory": 8192,
+                        "os_type": "linux",
+                        "instance_type": "ecs.c6.xlarge"
+                      },
+                      "create_time": 1706000000000,
+                      "update_time": 1706000000000
+                    }],
+                    "total": 100
+                  }
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/TenantRequired"}
+        }
+      }
+    },
+    "/cam/assets/ecs/{asset_id}": {
+      "get": {
+        "tags": ["ECS"],
+        "summary": "获取ECS实例详情",
+        "operationId": "getECS",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantIdHeader"},
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "云厂商实例ID"
+          },
+          {"$ref": "#/components/parameters/Provider"}
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AssetDetailResponse"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/TenantRequired"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/cam/assets/rds": {
+      "get": {
+        "tags": ["RDS"],
+        "summary": "获取RDS实例列表",
+        "description": "从数据库获取已同步的关系型数据库实例列表",
+        "operationId": "listRDS",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantIdHeader"},
+          {"$ref": "#/components/parameters/AccountId"},
+          {"$ref": "#/components/parameters/Provider"},
+          {"$ref": "#/components/parameters/Region"},
+          {"$ref": "#/components/parameters/Status"},
+          {"$ref": "#/components/parameters/Name"},
+          {"$ref": "#/components/parameters/Offset"},
+          {"$ref": "#/components/parameters/Limit"}
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AssetListResponse"},
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "items": [{
+                      "id": 2,
+                      "asset_id": "rm-bp1xxxxx",
+                      "asset_name": "prod-mysql-01",
+                      "asset_type": "rds",
+                      "tenant_id": "tenant-001",
+                      "account_id": 1,
+                      "provider": "aliyun",
+                      "region": "cn-hangzhou",
+                      "status": "running",
+                      "attributes": {
+                        "engine": "mysql",
+                        "engine_version": "8.0",
+                        "instance_class": "rds.mysql.s2.large",
+                        "storage_size": 100
+                      },
+                      "create_time": 1706000000000,
+                      "update_time": 1706000000000
+                    }],
+                    "total": 50
+                  }
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/TenantRequired"}
+        }
+      }
+    },
+    "/cam/assets/rds/{asset_id}": {
+      "get": {
+        "tags": ["RDS"],
+        "summary": "获取RDS实例详情",
+        "operationId": "getRDS",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantIdHeader"},
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "RDS实例ID"
+          },
+          {"$ref": "#/components/parameters/Provider"}
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AssetDetailResponse"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/TenantRequired"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/cam/assets/redis": {
+      "get": {
+        "tags": ["Redis"],
+        "summary": "获取Redis实例列表",
+        "description": "从数据库获取已同步的Redis缓存实例列表",
+        "operationId": "listRedis",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantIdHeader"},
+          {"$ref": "#/components/parameters/AccountId"},
+          {"$ref": "#/components/parameters/Provider"},
+          {"$ref": "#/components/parameters/Region"},
+          {"$ref": "#/components/parameters/Status"},
+          {"$ref": "#/components/parameters/Name"},
+          {"$ref": "#/components/parameters/Offset"},
+          {"$ref": "#/components/parameters/Limit"}
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AssetListResponse"},
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "items": [{
+                      "id": 3,
+                      "asset_id": "r-bp1xxxxx",
+                      "asset_name": "cache-redis-01",
+                      "asset_type": "redis",
+                      "tenant_id": "tenant-001",
+                      "account_id": 1,
+                      "provider": "aliyun",
+                      "region": "cn-hangzhou",
+                      "status": "running",
+                      "attributes": {
+                        "engine_version": "6.0",
+                        "architecture": "cluster",
+                        "capacity": 4096
+                      },
+                      "create_time": 1706000000000,
+                      "update_time": 1706000000000
+                    }],
+                    "total": 30
+                  }
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/TenantRequired"}
+        }
+      }
+    },
+    "/cam/assets/redis/{asset_id}": {
+      "get": {
+        "tags": ["Redis"],
+        "summary": "获取Redis实例详情",
+        "operationId": "getRedis",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantIdHeader"},
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "Redis实例ID"
+          },
+          {"$ref": "#/components/parameters/Provider"}
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AssetDetailResponse"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/TenantRequired"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/cam/assets/mongodb": {
+      "get": {
+        "tags": ["MongoDB"],
+        "summary": "获取MongoDB实例列表",
+        "description": "从数据库获取已同步的MongoDB文档数据库实例列表",
+        "operationId": "listMongoDB",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantIdHeader"},
+          {"$ref": "#/components/parameters/AccountId"},
+          {"$ref": "#/components/parameters/Provider"},
+          {"$ref": "#/components/parameters/Region"},
+          {"$ref": "#/components/parameters/Status"},
+          {"$ref": "#/components/parameters/Name"},
+          {"$ref": "#/components/parameters/Offset"},
+          {"$ref": "#/components/parameters/Limit"}
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AssetListResponse"},
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "items": [{
+                      "id": 4,
+                      "asset_id": "dds-bp1xxxxx",
+                      "asset_name": "mongo-cluster-01",
+                      "asset_type": "mongodb",
+                      "tenant_id": "tenant-001",
+                      "account_id": 1,
+                      "provider": "aliyun",
+                      "region": "cn-hangzhou",
+                      "status": "running",
+                      "attributes": {
+                        "engine_version": "5.0",
+                        "db_type": "sharding",
+                        "storage_size": 200
+                      },
+                      "create_time": 1706000000000,
+                      "update_time": 1706000000000
+                    }],
+                    "total": 20
+                  }
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/TenantRequired"}
+        }
+      }
+    },
+    "/cam/assets/mongodb/{asset_id}": {
+      "get": {
+        "tags": ["MongoDB"],
+        "summary": "获取MongoDB实例详情",
+        "operationId": "getMongoDB",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantIdHeader"},
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "MongoDB实例ID"
+          },
+          {"$ref": "#/components/parameters/Provider"}
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AssetDetailResponse"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/TenantRequired"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/cam/assets/vpc": {
+      "get": {
+        "tags": ["VPC"],
+        "summary": "获取VPC列表",
+        "description": "从数据库获取已同步的虚拟私有云列表",
+        "operationId": "listVPC",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantIdHeader"},
+          {"$ref": "#/components/parameters/AccountId"},
+          {"$ref": "#/components/parameters/Provider"},
+          {"$ref": "#/components/parameters/Region"},
+          {"$ref": "#/components/parameters/Status"},
+          {"$ref": "#/components/parameters/Name"},
+          {"$ref": "#/components/parameters/Offset"},
+          {"$ref": "#/components/parameters/Limit"}
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AssetListResponse"},
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "items": [{
+                      "id": 5,
+                      "asset_id": "vpc-bp1xxxxx",
+                      "asset_name": "prod-vpc-01",
+                      "asset_type": "vpc",
+                      "tenant_id": "tenant-001",
+                      "account_id": 1,
+                      "provider": "aliyun",
+                      "region": "cn-hangzhou",
+                      "status": "Available",
+                      "attributes": {
+                        "cidr_block": "172.16.0.0/12",
+                        "is_default": false,
+                        "vswitch_count": 5
+                      },
+                      "create_time": 1706000000000,
+                      "update_time": 1706000000000
+                    }],
+                    "total": 10
+                  }
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/TenantRequired"}
+        }
+      }
+    },
+    "/cam/assets/vpc/{asset_id}": {
+      "get": {
+        "tags": ["VPC"],
+        "summary": "获取VPC详情",
+        "operationId": "getVPC",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantIdHeader"},
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "VPC ID"
+          },
+          {"$ref": "#/components/parameters/Provider"}
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AssetDetailResponse"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/TenantRequired"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/cam/assets/eip": {
+      "get": {
+        "tags": ["EIP"],
+        "summary": "获取EIP列表",
+        "description": "从数据库获取已同步的弹性公网IP列表",
+        "operationId": "listEIP",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantIdHeader"},
+          {"$ref": "#/components/parameters/AccountId"},
+          {"$ref": "#/components/parameters/Provider"},
+          {"$ref": "#/components/parameters/Region"},
+          {"$ref": "#/components/parameters/Status"},
+          {"$ref": "#/components/parameters/Name"},
+          {
+            "name": "instance_id",
+            "in": "query",
+            "schema": {"type": "string"},
+            "description": "绑定的实例ID"
+          },
+          {"$ref": "#/components/parameters/Offset"},
+          {"$ref": "#/components/parameters/Limit"}
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AssetListResponse"},
+                "example": {
+                  "code": 0,
+                  "msg": "success",
+                  "data": {
+                    "items": [{
+                      "id": 6,
+                      "asset_id": "eip-bp1xxxxx",
+                      "asset_name": "web-eip-01",
+                      "asset_type": "eip",
+                      "tenant_id": "tenant-001",
+                      "account_id": 1,
+                      "provider": "aliyun",
+                      "region": "cn-hangzhou",
+                      "status": "InUse",
+                      "attributes": {
+                        "ip_address": "47.xxx.xxx.xxx",
+                        "bandwidth": 100,
+                        "instance_id": "i-bp1xxxxx",
+                        "instance_type": "EcsInstance"
+                      },
+                      "create_time": 1706000000000,
+                      "update_time": 1706000000000
+                    }],
+                    "total": 25
+                  }
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/TenantRequired"}
+        }
+      }
+    },
+    "/cam/assets/eip/{asset_id}": {
+      "get": {
+        "tags": ["EIP"],
+        "summary": "获取EIP详情",
+        "operationId": "getEIP",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantIdHeader"},
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "EIP Allocation ID"
+          },
+          {"$ref": "#/components/parameters/Provider"}
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AssetDetailResponse"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/TenantRequired"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    }
+  }
+}

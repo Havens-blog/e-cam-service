@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	AllocationCollection     = "cost_allocations"
-	AllocationRuleCollection = "cost_allocation_rules"
-	DefaultPolicyCollection  = "cost_allocation_default_policy"
+	AllocationCollection     = "ecam_cost_allocation"
+	AllocationRuleCollection = "ecam_cost_allocation_rule"
+	DefaultPolicyCollection  = "ecam_cost_allocation_default_policy"
 )
 
 type allocationDAO struct {

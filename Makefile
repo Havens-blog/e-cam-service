@@ -157,23 +157,30 @@ wire: ## 生成 Wire 依赖注入代码
 	fi
 	@echo "✅ Wire 代码生成完成"
 
+# Docker 构建
+.PHONY: docker
+docker: ## 构建 Docker 镜像
+	@echo "🐳 构建 Docker 镜像..."
+	docker build -f deploy/Dockerfile -t $(PROJECT_NAME):$(VERSION) .
+	@echo "✅ Docker 镜像构建完成: $(PROJECT_NAME):$(VERSION)"
+
 # 数据库相关
 .PHONY: db-up
 db-up: ## 启动数据库服务 (需要 docker-compose)
 	@echo "🗄️  启动数据库服务..."
-	@if [ -f docker-compose.yml ]; then \
-		docker-compose up -d mongodb redis; \
+	@if [ -f deploy/docker-compose.yml ]; then \
+		docker-compose -f deploy/docker-compose.yml up -d mongodb redis; \
 	else \
-		echo "⚠️  docker-compose.yml 文件不存在"; \
+		echo "⚠️  deploy/docker-compose.yml 文件不存在"; \
 	fi
 
 .PHONY: db-down
 db-down: ## 停止数据库服务
 	@echo "🗄️  停止数据库服务..."
-	@if [ -f docker-compose.yml ]; then \
-		docker-compose down; \
+	@if [ -f deploy/docker-compose.yml ]; then \
+		docker-compose -f deploy/docker-compose.yml down; \
 	else \
-		echo "⚠️  docker-compose.yml 文件不存在"; \
+		echo "⚠️  deploy/docker-compose.yml 文件不存在"; \
 	fi
 
 # 清理

@@ -14,6 +14,7 @@ type TopologyQueryVO struct {
 	Type            string `form:"type" json:"type"`                         // 资源类型过滤
 	SourceCollector string `form:"source_collector" json:"source_collector"` // 数据来源过滤
 	HideSilent      bool   `form:"hide_silent" json:"hide_silent"`           // 隐藏沉默链路
+	Refresh         bool   `form:"refresh" json:"refresh"`                   // 强制刷新：清除缓存数据，重新从云 API 构建
 }
 
 // ToParams 转换为领域层查询参数
@@ -31,6 +32,7 @@ func (v *TopologyQueryVO) ToParams(tenantID string) domain.TopologyQueryParams {
 		Type:            v.Type,
 		SourceCollector: v.SourceCollector,
 		HideSilent:      v.HideSilent,
+		Refresh:         v.Refresh,
 		TenantID:        tenantID,
 	}
 }

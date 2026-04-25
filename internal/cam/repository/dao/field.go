@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const FieldCollection = "c_attribute"
+const FieldCollection = "ecam_attribute"
 
 // ModelField DAO层字段模型
 type ModelField struct {

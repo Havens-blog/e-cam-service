@@ -110,3 +110,18 @@ func TestTopoEdge_IsFromLog(t *testing.T) {
 	assert.True(t, (&TopoEdge{SourceCollector: SourceLog}).IsFromLog())
 	assert.False(t, (&TopoEdge{SourceCollector: SourceCloudAPI}).IsFromLog())
 }
+
+func TestValidRelations_ContainsCalls(t *testing.T) {
+	assert.True(t, ValidRelations[RelationCalls], "ValidRelations should contain 'calls'")
+	assert.Equal(t, "calls", RelationCalls)
+}
+
+func TestTopoEdge_Validate_CallsRelation(t *testing.T) {
+	edge := TopoEdge{
+		ID: "e-apm-1", SourceID: "k8s-cluster1-ns1-svc-a", TargetID: "k8s-cluster1-ns1-svc-b",
+		Relation: RelationCalls, Direction: DirectionOutbound,
+		SourceCollector: SourceAPM, TenantID: "t1",
+	}
+	err := edge.Validate()
+	assert.NoError(t, err, "TopoEdge with relation 'calls' should pass validation")
+}

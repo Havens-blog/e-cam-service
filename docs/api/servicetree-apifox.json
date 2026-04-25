@@ -1,0 +1,577 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "服务树 API",
+    "description": "服务树模块 - 按业务维度组织和管理云资源",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "本地开发环境"
+    }
+  ],
+  "tags": [
+    {"name": "环境管理", "description": "管理部署环境 (dev/test/staging/prod)"},
+    {"name": "服务树节点", "description": "服务树节点的增删改查"},
+    {"name": "资源绑定", "description": "将云资源绑定到服务树节点"},
+    {"name": "绑定规则", "description": "自动绑定规则管理"}
+  ],
+  "paths": {
+    "/api/v1/cam/service-tree/environments/init": {
+      "post": {
+        "tags": ["环境管理"],
+        "summary": "初始化默认环境",
+        "description": "自动创建 dev/test/staging/prod 四个默认环境",
+        "operationId": "initEnvironments",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"}
+        ],
+        "responses": {
+          "200": {
+            "description": "初始化成功",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/BaseResponse"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cam/service-tree/environments": {
+      "get": {
+        "tags": ["环境管理"],
+        "summary": "获取环境列表",
+        "operationId": "listEnvironments",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "code", "in": "query", "schema": {"type": "string"}, "description": "环境代码"},
+          {"name": "status", "in": "query", "schema": {"type": "integer"}, "description": "状态 (1=启用, 0=禁用)"},
+          {"name": "page", "in": "query", "schema": {"type": "integer", "default": 1}},
+          {"name": "page_size", "in": "query", "schema": {"type": "integer", "default": 20}}
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/BaseResponse"},
+                    {"type": "object", "properties": {"data": {"$ref": "#/components/schemas/EnvironmentListData"}}}
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["环境管理"],
+        "summary": "创建环境",
+        "operationId": "createEnvironment",
+        "parameters": [{"$ref": "#/components/parameters/TenantID"}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/CreateEnvReq"}
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "创建成功", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BaseResponse"}}}}
+        }
+      }
+    },
+    "/api/v1/cam/service-tree/environments/{id}": {
+      "get": {
+        "tags": ["环境管理"],
+        "summary": "获取环境详情",
+        "operationId": "getEnvironment",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {
+          "200": {"description": "成功", "content": {"application/json": {"schema": {"allOf": [{"$ref": "#/components/schemas/BaseResponse"}, {"type": "object", "properties": {"data": {"$ref": "#/components/schemas/Environment"}}}]}}}}
+        }
+      },
+      "put": {
+        "tags": ["环境管理"],
+        "summary": "更新环境",
+        "operationId": "updateEnvironment",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateEnvReq"}}}},
+        "responses": {"200": {"description": "更新成功", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BaseResponse"}}}}}
+      },
+      "delete": {
+        "tags": ["环境管理"],
+        "summary": "删除环境",
+        "description": "环境下有绑定资源时无法删除",
+        "operationId": "deleteEnvironment",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {"200": {"description": "删除成功", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BaseResponse"}}}}}
+      }
+    },
+    "/api/v1/cam/service-tree/nodes": {
+      "get": {
+        "tags": ["服务树节点"],
+        "summary": "获取节点列表",
+        "operationId": "listNodes",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "parent_id", "in": "query", "schema": {"type": "integer"}, "description": "父节点ID"},
+          {"name": "level", "in": "query", "schema": {"type": "integer"}, "description": "层级 (1=业务线, 2=产品, 3=模块)"},
+          {"name": "name", "in": "query", "schema": {"type": "string"}, "description": "名称模糊搜索"},
+          {"name": "owner", "in": "query", "schema": {"type": "string"}, "description": "负责人"},
+          {"name": "team", "in": "query", "schema": {"type": "string"}, "description": "团队"},
+          {"name": "status", "in": "query", "schema": {"type": "integer"}, "description": "状态"},
+          {"name": "page", "in": "query", "schema": {"type": "integer", "default": 1}},
+          {"name": "page_size", "in": "query", "schema": {"type": "integer", "default": 20}}
+        ],
+        "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"allOf": [{"$ref": "#/components/schemas/BaseResponse"}, {"type": "object", "properties": {"data": {"$ref": "#/components/schemas/NodeListData"}}}]}}}}}
+      },
+      "post": {
+        "tags": ["服务树节点"],
+        "summary": "创建节点",
+        "operationId": "createNode",
+        "parameters": [{"$ref": "#/components/parameters/TenantID"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateNodeReq"}}}},
+        "responses": {"200": {"description": "创建成功", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BaseResponse"}}}}}
+      }
+    },
+    "/api/v1/cam/service-tree/tree": {
+      "get": {
+        "tags": ["服务树节点"],
+        "summary": "获取树结构",
+        "operationId": "getTree",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "root_id", "in": "query", "schema": {"type": "integer"}, "description": "根节点ID，不传返回完整树"}
+        ],
+        "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"allOf": [{"$ref": "#/components/schemas/BaseResponse"}, {"type": "object", "properties": {"data": {"$ref": "#/components/schemas/TreeNode"}}}]}}}}}
+      }
+    },
+    "/api/v1/cam/service-tree/nodes/{id}": {
+      "get": {
+        "tags": ["服务树节点"],
+        "summary": "获取节点详情",
+        "operationId": "getNode",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"allOf": [{"$ref": "#/components/schemas/BaseResponse"}, {"type": "object", "properties": {"data": {"$ref": "#/components/schemas/Node"}}}]}}}}}
+      },
+      "put": {
+        "tags": ["服务树节点"],
+        "summary": "更新节点",
+        "operationId": "updateNode",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateNodeReq"}}}},
+        "responses": {"200": {"description": "更新成功", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BaseResponse"}}}}}
+      },
+      "delete": {
+        "tags": ["服务树节点"],
+        "summary": "删除节点",
+        "description": "有子节点或绑定资源时无法删除",
+        "operationId": "deleteNode",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {"200": {"description": "删除成功", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BaseResponse"}}}}}
+      }
+    },
+    "/api/v1/cam/service-tree/nodes/{id}/move": {
+      "put": {
+        "tags": ["服务树节点"],
+        "summary": "移动节点",
+        "operationId": "moveNode",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MoveNodeReq"}}}},
+        "responses": {"200": {"description": "移动成功", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BaseResponse"}}}}}
+      }
+    },
+    "/api/v1/cam/service-tree/nodes/{id}/bindings": {
+      "get": {
+        "tags": ["资源绑定"],
+        "summary": "获取节点绑定的资源",
+        "operationId": "listNodeBindings",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}},
+          {"name": "env_id", "in": "query", "schema": {"type": "integer"}, "description": "按环境筛选"},
+          {"name": "resource_type", "in": "query", "schema": {"type": "string"}, "description": "资源类型"},
+          {"name": "bind_type", "in": "query", "schema": {"type": "string"}, "description": "绑定方式: manual/rule"},
+          {"name": "page", "in": "query", "schema": {"type": "integer", "default": 1}},
+          {"name": "page_size", "in": "query", "schema": {"type": "integer", "default": 20}}
+        ],
+        "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"allOf": [{"$ref": "#/components/schemas/BaseResponse"}, {"type": "object", "properties": {"data": {"$ref": "#/components/schemas/BindingListData"}}}]}}}}}
+      },
+      "post": {
+        "tags": ["资源绑定"],
+        "summary": "绑定资源到节点",
+        "operationId": "bindResource",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BindResourceReq"}}}},
+        "responses": {"200": {"description": "绑定成功", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BaseResponse"}}}}}
+      }
+    },
+    "/api/v1/cam/service-tree/nodes/{id}/bindings/batch": {
+      "post": {
+        "tags": ["资源绑定"],
+        "summary": "批量绑定资源",
+        "operationId": "batchBindResources",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BatchBindReq"}}}},
+        "responses": {"200": {"description": "绑定成功", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BaseResponse"}}}}}
+      }
+    },
+    "/api/v1/cam/service-tree/bindings/{id}": {
+      "delete": {
+        "tags": ["资源绑定"],
+        "summary": "解绑资源",
+        "operationId": "unbindResource",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {"200": {"description": "解绑成功", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BaseResponse"}}}}}
+      }
+    },
+    "/api/v1/cam/service-tree/resources/{type}/{id}/node": {
+      "get": {
+        "tags": ["资源绑定"],
+        "summary": "查询资源所属节点",
+        "operationId": "getResourceNode",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "type", "in": "path", "required": true, "schema": {"type": "string"}, "description": "资源类型: instance/asset"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}, "description": "资源ID"}
+        ],
+        "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"allOf": [{"$ref": "#/components/schemas/BaseResponse"}, {"type": "object", "properties": {"data": {"$ref": "#/components/schemas/Binding"}}}]}}}}}
+      }
+    },
+    "/api/v1/cam/service-tree/rules": {
+      "get": {
+        "tags": ["绑定规则"],
+        "summary": "获取规则列表",
+        "operationId": "listRules",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "node_id", "in": "query", "schema": {"type": "integer"}, "description": "目标节点ID"},
+          {"name": "enabled", "in": "query", "schema": {"type": "boolean"}, "description": "是否启用"},
+          {"name": "name", "in": "query", "schema": {"type": "string"}, "description": "规则名称"},
+          {"name": "page", "in": "query", "schema": {"type": "integer", "default": 1}},
+          {"name": "page_size", "in": "query", "schema": {"type": "integer", "default": 20}}
+        ],
+        "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"allOf": [{"$ref": "#/components/schemas/BaseResponse"}, {"type": "object", "properties": {"data": {"$ref": "#/components/schemas/RuleListData"}}}]}}}}}
+      },
+      "post": {
+        "tags": ["绑定规则"],
+        "summary": "创建规则",
+        "operationId": "createRule",
+        "parameters": [{"$ref": "#/components/parameters/TenantID"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateRuleReq"}}}},
+        "responses": {"200": {"description": "创建成功", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BaseResponse"}}}}}
+      }
+    },
+    "/api/v1/cam/service-tree/rules/{id}": {
+      "get": {
+        "tags": ["绑定规则"],
+        "summary": "获取规则详情",
+        "operationId": "getRule",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {"200": {"description": "成功", "content": {"application/json": {"schema": {"allOf": [{"$ref": "#/components/schemas/BaseResponse"}, {"type": "object", "properties": {"data": {"$ref": "#/components/schemas/Rule"}}}]}}}}}
+      },
+      "put": {
+        "tags": ["绑定规则"],
+        "summary": "更新规则",
+        "operationId": "updateRule",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateRuleReq"}}}},
+        "responses": {"200": {"description": "更新成功", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BaseResponse"}}}}}
+      },
+      "delete": {
+        "tags": ["绑定规则"],
+        "summary": "删除规则",
+        "operationId": "deleteRule",
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantID"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {"200": {"description": "删除成功", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BaseResponse"}}}}}
+      }
+    },
+    "/api/v1/cam/service-tree/rules/execute": {
+      "post": {
+        "tags": ["绑定规则"],
+        "summary": "执行规则匹配",
+        "description": "手动触发规则引擎，对未绑定资源执行自动匹配",
+        "operationId": "executeRules",
+        "parameters": [{"$ref": "#/components/parameters/TenantID"}],
+        "responses": {"200": {"description": "执行成功", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BaseResponse"}}}}}
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "TenantID": {
+        "name": "X-Tenant-ID",
+        "in": "header",
+        "required": true,
+        "schema": {"type": "string"},
+        "description": "租户ID"
+      }
+    },
+    "schemas": {
+      "BaseResponse": {
+        "type": "object",
+        "properties": {
+          "code": {"type": "integer", "description": "状态码，0表示成功"},
+          "msg": {"type": "string", "description": "消息"}
+        }
+      },
+      "Environment": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "code": {"type": "string", "description": "环境代码 (dev/test/staging/prod)"},
+          "name": {"type": "string", "description": "环境名称"},
+          "description": {"type": "string"},
+          "color": {"type": "string", "description": "显示颜色"},
+          "order": {"type": "integer", "description": "排序"},
+          "status": {"type": "integer", "description": "状态 (1=启用, 0=禁用)"},
+          "create_time": {"type": "integer"},
+          "update_time": {"type": "integer"}
+        }
+      },
+      "EnvironmentListData": {
+        "type": "object",
+        "properties": {
+          "list": {"type": "array", "items": {"$ref": "#/components/schemas/Environment"}},
+          "total": {"type": "integer"}
+        }
+      },
+      "CreateEnvReq": {
+        "type": "object",
+        "required": ["code", "name"],
+        "properties": {
+          "code": {"type": "string", "description": "环境代码"},
+          "name": {"type": "string", "description": "环境名称"},
+          "description": {"type": "string"},
+          "color": {"type": "string", "description": "显示颜色"},
+          "order": {"type": "integer"}
+        }
+      },
+      "UpdateEnvReq": {
+        "type": "object",
+        "required": ["code", "name"],
+        "properties": {
+          "code": {"type": "string"},
+          "name": {"type": "string"},
+          "description": {"type": "string"},
+          "color": {"type": "string"},
+          "order": {"type": "integer"},
+          "status": {"type": "integer"}
+        }
+      },
+      "Node": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "uid": {"type": "string", "description": "节点唯一标识"},
+          "name": {"type": "string"},
+          "parent_id": {"type": "integer"},
+          "level": {"type": "integer", "description": "层级 (1=业务线, 2=产品, 3=模块)"},
+          "path": {"type": "string", "description": "完整路径"},
+          "owner": {"type": "string", "description": "负责人"},
+          "team": {"type": "string", "description": "团队"},
+          "description": {"type": "string"},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "order": {"type": "integer"},
+          "status": {"type": "integer"},
+          "create_time": {"type": "integer"},
+          "update_time": {"type": "integer"}
+        }
+      },
+      "TreeNode": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "uid": {"type": "string"},
+          "name": {"type": "string"},
+          "parent_id": {"type": "integer"},
+          "level": {"type": "integer"},
+          "path": {"type": "string"},
+          "owner": {"type": "string"},
+          "team": {"type": "string"},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "order": {"type": "integer"},
+          "status": {"type": "integer"},
+          "resource_count": {"type": "integer", "description": "资源数量"},
+          "children": {"type": "array", "items": {"$ref": "#/components/schemas/TreeNode"}}
+        }
+      },
+      "NodeListData": {
+        "type": "object",
+        "properties": {
+          "list": {"type": "array", "items": {"$ref": "#/components/schemas/Node"}},
+          "total": {"type": "integer"}
+        }
+      },
+      "CreateNodeReq": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "uid": {"type": "string", "description": "节点唯一标识，建议用点分格式"},
+          "name": {"type": "string"},
+          "parent_id": {"type": "integer", "description": "父节点ID，0表示根节点"},
+          "owner": {"type": "string"},
+          "team": {"type": "string"},
+          "description": {"type": "string"},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "order": {"type": "integer"}
+        }
+      },
+      "UpdateNodeReq": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "uid": {"type": "string"},
+          "name": {"type": "string"},
+          "owner": {"type": "string"},
+          "team": {"type": "string"},
+          "description": {"type": "string"},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "order": {"type": "integer"},
+          "status": {"type": "integer"}
+        }
+      },
+      "MoveNodeReq": {
+        "type": "object",
+        "properties": {
+          "new_parent_id": {"type": "integer", "description": "新的父节点ID"}
+        }
+      },
+      "Binding": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "node_id": {"type": "integer"},
+          "env_id": {"type": "integer"},
+          "resource_type": {"type": "string", "description": "资源类型: instance/asset"},
+          "resource_id": {"type": "integer"},
+          "bind_type": {"type": "string", "description": "绑定方式: manual/rule"},
+          "rule_id": {"type": "integer"},
+          "create_time": {"type": "integer"}
+        }
+      },
+      "BindingListData": {
+        "type": "object",
+        "properties": {
+          "list": {"type": "array", "items": {"$ref": "#/components/schemas/Binding"}},
+          "total": {"type": "integer"}
+        }
+      },
+      "BindResourceReq": {
+        "type": "object",
+        "required": ["env_id", "resource_type", "resource_id"],
+        "properties": {
+          "env_id": {"type": "integer", "description": "环境ID"},
+          "resource_type": {"type": "string", "description": "资源类型: instance/asset"},
+          "resource_id": {"type": "integer"}
+        }
+      },
+      "BatchBindReq": {
+        "type": "object",
+        "required": ["env_id", "resource_type", "resource_ids"],
+        "properties": {
+          "env_id": {"type": "integer"},
+          "resource_type": {"type": "string"},
+          "resource_ids": {"type": "array", "items": {"type": "integer"}}
+        }
+      },
+      "RuleCondition": {
+        "type": "object",
+        "properties": {
+          "field": {"type": "string", "description": "字段名 (name/tag.xxx/region/attributes.xxx)"},
+          "operator": {"type": "string", "description": "操作符: eq/ne/contains/regex/in/exists"},
+          "value": {"type": "string", "description": "匹配值"}
+        }
+      },
+      "Rule": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "node_id": {"type": "integer"},
+          "name": {"type": "string"},
+          "priority": {"type": "integer", "description": "优先级，数字越小优先级越高"},
+          "conditions": {"type": "array", "items": {"$ref": "#/components/schemas/RuleCondition"}},
+          "enabled": {"type": "boolean"},
+          "description": {"type": "string"},
+          "create_time": {"type": "integer"},
+          "update_time": {"type": "integer"}
+        }
+      },
+      "RuleListData": {
+        "type": "object",
+        "properties": {
+          "list": {"type": "array", "items": {"$ref": "#/components/schemas/Rule"}},
+          "total": {"type": "integer"}
+        }
+      },
+      "CreateRuleReq": {
+        "type": "object",
+        "required": ["node_id", "name", "conditions"],
+        "properties": {
+          "node_id": {"type": "integer"},
+          "name": {"type": "string"},
+          "priority": {"type": "integer"},
+          "conditions": {"type": "array", "items": {"$ref": "#/components/schemas/RuleCondition"}},
+          "enabled": {"type": "boolean"},
+          "description": {"type": "string"}
+        }
+      },
+      "UpdateRuleReq": {
+        "type": "object",
+        "required": ["node_id", "name", "conditions"],
+        "properties": {
+          "node_id": {"type": "integer"},
+          "name": {"type": "string"},
+          "priority": {"type": "integer"},
+          "conditions": {"type": "array", "items": {"$ref": "#/components/schemas/RuleCondition"}},
+          "enabled": {"type": "boolean"},
+          "description": {"type": "string"}
+        }
+      }
+    }
+  }
+}

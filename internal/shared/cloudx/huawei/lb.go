@@ -287,9 +287,15 @@ func (a *LBAdapter) fetchBackendServers(client *v3.ElbClient, pools []model.Pool
 		}
 
 		for _, m := range *response.Members {
+			instanceID := ""
+			if m.InstanceId != nil {
+				instanceID = *m.InstanceId
+			}
 			backendServers = append(backendServers, types.LBBackendServer{
 				ServerID:   m.Id,
 				ServerName: m.Name,
+				InstanceID: instanceID,
+				IP:         m.Address,
 				Port:       int(m.ProtocolPort),
 				Weight:     int(m.Weight),
 				Status:     m.OperatingStatus,

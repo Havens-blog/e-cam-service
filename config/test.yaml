@@ -48,43 +48,17 @@ casbin:
     password: ""
 
 mongodb:
-  dsn: mongodb://118.145.73.93:27017/ecmdb?authSource=admin
-  db: ecmdb
+  dsn: mongodb://118.145.73.93:27017/ecam?authSource=admin
+  db: ecam
   username: ecmdb
   password: 123456
-
-mysql:
-  dsn: test:test@tcp(localhost:3306)/ecmdb_test?charset=utf8mb4&parseTime=True&loc=Local&timeout=5s
-
-kafka:
-  network: tcp
-  addresses:
-    - localhost:9094
 
 etcd:
   endpoints:
     - localhost:2379
 
-minio:
-  endpoint: localhost:9000
-  accessKeyID: minio
-  secretAccessKey: minio123
-  useSSL: false
-
-wechat:
-  corpId: ""
-  corpSecret: ""
-  agentId: 1000002
-
-feishu:
-  appId: ""
-  appSecret: ""
-
 cronjob:
   enabled: true
-
-frontend:
-  logicflow_url: http://localhost:3333/logicflow-preview
 
 # 认证中间件配置
 auth:
@@ -92,11 +66,13 @@ auth:
     - "/api/v1/cam/health"
     - "/swagger/*"
     - "/docs"
+    - "/api/v1/cam/topology/declarations"  # APM 推送脚本内部调用，无需用户 session
 
 # 策略检查中间件配置
 policy:
   fail_mode: "fail_open"
-  whitelist: []
+  whitelist:
+    - "/api/v1/cam/topology/declarations"  # APM 推送脚本内部调用，跳过策略检查
 
 grpc:
   server:

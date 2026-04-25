@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/gotomicro/ego/core/elog"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -12,7 +13,7 @@ import (
 
 // InitCostIndexes 初始化成本模块所有集合的 MongoDB 索引
 func InitCostIndexes(db *mongox.Mongo) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	if err := initRawBillIndexes(ctx, db); err != nil {
@@ -112,9 +113,41 @@ func initUnifiedBillIndexes(ctx context.Context, db *mongox.Mongo) error {
 				{Key: "billing_date", Value: 1},
 			},
 		},
+		// 聚合查询优化索引：billing_date 在前，覆盖 amount_cny 避免回表
+		// 此索引在大集合上创建较慢，异步创建不阻塞启动
 	}
 	_, err := collection.Indexes().CreateMany(ctx, indexes)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// 异步创建聚合优化索引，避免阻塞启动
+	go func() {
+		bgCtx, bgCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer bgCancel()
+
+		logger := elog.DefaultLogger
+		if logger == nil {
+			logger = elog.EgoLogger
+		}
+		logger.Info("开始异步创建 cost_unified_bills 聚合优化索引...")
+
+		aggIndex := mongo.IndexModel{
+			Keys: bson.D{
+				{Key: "billing_date", Value: 1},
+				{Key: "tenant_id", Value: 1},
+				{Key: "provider", Value: 1},
+				{Key: "amount_cny", Value: 1},
+			},
+		}
+		if _, err := collection.Indexes().CreateOne(bgCtx, aggIndex); err != nil {
+			logger.Error("创建聚合优化索引失败", elog.FieldErr(err))
+		} else {
+			logger.Info("cost_unified_bills 聚合优化索引创建完成")
+		}
+	}()
+
+	return nil
 }
 
 // initCollectLogIndexes 初始化采集日志集合索引

@@ -31,6 +31,7 @@ type Adapter struct {
 	mongodb       *MongoDBAdapter
 	vpc           *VPCAdapter
 	eip           *EIPAdapter
+	eni           *ENIAdapter
 	lb            *LBAdapter
 	cdn           *CDNAdapter
 	waf           *WAFAdapter
@@ -150,6 +151,14 @@ func NewAdapter(account *domain.CloudAccount) (*Adapter, error) {
 
 	// 创建EIP适配器
 	adapter.eip = NewEIPAdapter(
+		account.AccessKeyID,
+		account.AccessKeySecret,
+		defaultRegion,
+		logger,
+	)
+
+	// 创建ENI适配器
+	adapter.eni = NewENIAdapter(
 		account.AccessKeyID,
 		account.AccessKeySecret,
 		defaultRegion,
@@ -317,6 +326,11 @@ func (a *Adapter) VPC() cloudx.VPCAdapter {
 // EIP 获取EIP适配器
 func (a *Adapter) EIP() cloudx.EIPAdapter {
 	return a.eip
+}
+
+// ENI 获取弹性网卡适配器
+func (a *Adapter) ENI() cloudx.ENIAdapter {
+	return a.eni
 }
 
 // LB 获取负载均衡适配器

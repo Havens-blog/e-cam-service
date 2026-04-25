@@ -26,6 +26,7 @@ type TopologyQueryParams struct {
 	Type            string `json:"type"`             // 资源类型过滤
 	SourceCollector string `json:"source_collector"` // 数据来源过滤
 	HideSilent      bool   `json:"hide_silent"`      // 隐藏沉默链路
+	Refresh         bool   `json:"refresh"`          // 强制刷新：清除缓存，重新从云 API 构建
 	TenantID        string `json:"tenant_id"`        // 租户 ID
 }
 

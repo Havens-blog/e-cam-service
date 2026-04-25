@@ -10,8 +10,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const AttributeCollection = "c_attribute"
-const AttributeGroupCollection = "c_attribute_group"
+const AttributeCollection = "ecam_attribute"
+const AttributeGroupCollection = "ecam_attribute_group"
 
 // Attribute DAO层属性模型
 type Attribute struct {

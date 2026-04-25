@@ -11,7 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const ChangeHistoryCollection = "asset_change_history"
+const ChangeHistoryCollection = "ecam_change_history"
 
 // ChangeRecordDAO 变更记录数据访问接口
 type ChangeRecordDAO interface {

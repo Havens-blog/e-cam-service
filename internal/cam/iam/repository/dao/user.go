@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const CloudIAMUsersCollection = "cloud_iam_users"
+const CloudIAMUsersCollection = "ecam_iam_user"
 
 // CloudUserType 用户类型
 type CloudUserType string

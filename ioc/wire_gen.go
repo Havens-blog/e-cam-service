@@ -2,7 +2,6 @@
 
 //go:generate go run -mod=mod github.com/google/wire/cmd/wire
 //go:build !wireinject
-// +build !wireinject
 
 package ioc
 
@@ -11,9 +10,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cmdb"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
 	"github.com/google/wire"
-)
 
-import (
 	_ "github.com/Havens-blog/e-cam-service/docs"
 )
 
@@ -72,5 +69,11 @@ var BaseSet = wire.NewSet(
 	InitAuditModule,
 	InitAuditMiddleware,
 	InitWebServer,
-	InitJobs, endpoint.InitModule, cam.InitModuleWithIAM, cmdb.InitModule, InitAlertModule, wire.FieldsOf(new(*endpoint.Module), "Hdl"), wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
+	InitJobs,
+	endpoint.InitModule,
+	cam.InitModuleWithIAM,
+	cmdb.InitModule,
+	InitAlertModule,
+	wire.FieldsOf(new(*endpoint.Module), "Hdl"),
+	wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
 )

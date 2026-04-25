@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	DefaultCollectionName = "tasks"
+	DefaultCollectionName = "ecam_task"
 )
 
 // MongoRepository MongoDB 任务仓储实现

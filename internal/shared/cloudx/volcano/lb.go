@@ -405,7 +405,10 @@ func (a *LBAdapter) getALBBackendServers(client *alb.ALB, serverGroupIDs []strin
 				ServerID: serverID,
 			}
 			if s.InstanceId != nil {
-				server.ServerName = *s.InstanceId
+				server.InstanceID = *s.InstanceId
+			}
+			if s.Ip != nil {
+				server.IP = *s.Ip
 			}
 			if s.Port != nil {
 				server.Port = int(*s.Port)
@@ -557,7 +560,10 @@ func (a *LBAdapter) getCLBBackendServers(client *clb.CLB, lbID string) []types.L
 				ServerID: serverID,
 			}
 			if s.InstanceId != nil {
-				server.ServerName = *s.InstanceId
+				server.InstanceID = *s.InstanceId
+			}
+			if s.Ip != nil {
+				server.IP = *s.Ip
 			}
 			if s.Port != nil {
 				server.Port = int(*s.Port)

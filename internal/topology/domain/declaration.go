@@ -87,8 +87,11 @@ func (d *LinkDeclaration) Validate() error {
 // ToTopoNode 将声明节点转换为拓扑节点
 func (d *LinkDeclaration) ToTopoNode() TopoNode {
 	collector := SourceDeclaration
-	if d.Collector == "log" {
+	switch {
+	case d.Collector == "log":
 		collector = SourceLog
+	case d.Source == "arms-apm":
+		collector = SourceAPM
 	}
 	return TopoNode{
 		ID:              d.Node.ID,
@@ -109,8 +112,11 @@ func (d *LinkDeclaration) ToTopoNode() TopoNode {
 func (d *LinkDeclaration) ToTopoEdges() []TopoEdge {
 	edges := make([]TopoEdge, 0, len(d.Links))
 	collector := SourceDeclaration
-	if d.Collector == "log" {
+	switch {
+	case d.Collector == "log":
 		collector = SourceLog
+	case d.Source == "arms-apm":
+		collector = SourceAPM
 	}
 	for _, link := range d.Links {
 		edge := TopoEdge{
@@ -120,6 +126,7 @@ func (d *LinkDeclaration) ToTopoEdges() []TopoEdge {
 			Relation:        link.Relation,
 			Direction:       link.Direction,
 			SourceCollector: collector,
+			Attributes:      link.Attributes,
 			Status:          EdgeStatusActive, // 默认 active，后续检查目标节点是否存在
 			TenantID:        d.TenantID,
 			UpdatedAt:       time.Now(),

@@ -68,6 +68,9 @@ type CloudAdapter interface {
 	// DNS 获取DNS适配器 (域名解析管理)
 	DNS() DNSAdapter
 
+	// ENI 获取弹性网卡适配器 (Elastic Network Interface)
+	ENI() ENIAdapter
+
 	// ========== 存储资源 ==========
 
 	// NAS 获取NAS适配器 (文件存储)
@@ -690,6 +693,32 @@ type ResourceQueryAdapter interface {
 // ============================================================================
 // TagAdapter - 标签适配器接口
 // ============================================================================
+
+// ============================================================================
+// ENIAdapter - 弹性网卡适配器接口
+// ============================================================================
+
+// ENIAdapter 弹性网卡适配器接口
+// 用于阿里云ENI、AWS ENI、华为云Port、腾讯云ENI、火山引擎ENI等
+type ENIAdapter interface {
+	// ListInstances 获取弹性网卡列表
+	ListInstances(ctx context.Context, region string) ([]types.ENIInstance, error)
+
+	// GetInstance 获取单个弹性网卡详情
+	GetInstance(ctx context.Context, region, eniID string) (*types.ENIInstance, error)
+
+	// ListInstancesByIDs 批量获取弹性网卡
+	ListInstancesByIDs(ctx context.Context, region string, eniIDs []string) ([]types.ENIInstance, error)
+
+	// GetInstanceStatus 获取弹性网卡状态
+	GetInstanceStatus(ctx context.Context, region, eniID string) (string, error)
+
+	// ListInstancesWithFilter 带过滤条件获取弹性网卡列表
+	ListInstancesWithFilter(ctx context.Context, region string, filter *types.ENIInstanceFilter) ([]types.ENIInstance, error)
+
+	// ListByInstanceID 获取实例绑定的弹性网卡
+	ListByInstanceID(ctx context.Context, region, instanceID string) ([]types.ENIInstance, error)
+}
 
 // TagAdapter 标签适配器接口
 // 用于阿里云 Tag API、AWS Resource Groups Tagging API、华为云 TMS、腾讯云标签 API、火山引擎标签 API

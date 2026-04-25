@@ -11,7 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const TopoNodesCollection = "topo_nodes"
+const TopoNodesCollection = "ecam_topo_node"
 
 // NodeDAO 拓扑节点 MongoDB 数据访问对象
 type NodeDAO struct {

@@ -8,6 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// Mongo 通用 MongoDB 数据库连接封装
 type Mongo struct {
 	DBClient *mongo.Client
 	Sess     mongo.Session
@@ -35,8 +36,13 @@ func (m *Mongo) Collections(collName string) Collection {
 	return &col
 }
 
+// DBName 返回当前数据库名称
+func (m *Mongo) DBName() string {
+	return m.dbName
+}
+
 func (m *Mongo) GetIdGenerator(collection string) int64 {
-	coll := m.Database().Collection("c_id_generator")
+	coll := m.Database().Collection("ecam_id_generator")
 	var result struct {
 		Name   string `json:"name" bson:"name"`
 		NextID int64  `json:"next_id" bson:"next_id"`

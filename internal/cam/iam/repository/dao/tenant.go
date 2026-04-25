@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const TenantsCollection = "tenants"
+const TenantsCollection = "ecam_tenant"
 
 // Tenant DAO layer tenant model
 type Tenant struct {
