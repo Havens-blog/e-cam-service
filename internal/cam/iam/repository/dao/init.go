@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"go.mongodb.org/mongo-driver/bson"
@@ -9,46 +10,101 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// ensureIndexes 创建索引，遇到 IndexOptionsConflict 时先删除冲突索引再重建
+func ensureIndexes(ctx context.Context, collection *mongo.Collection, indexes []mongo.IndexModel) error {
+	_, err := collection.Indexes().CreateMany(ctx, indexes)
+	if err == nil {
+		return nil
+	}
+
+	// 如果不是索引冲突错误，直接返回
+	if !strings.Contains(err.Error(), "IndexOptionsConflict") &&
+		!strings.Contains(err.Error(), "already exists with a different name") {
+		return err
+	}
+
+	// 逐个创建，遇到冲突就删除旧索引再重建
+	for _, idx := range indexes {
+		_, createErr := collection.Indexes().CreateOne(ctx, idx)
+		if createErr == nil {
+			continue
+		}
+		if !strings.Contains(createErr.Error(), "IndexOptionsConflict") &&
+			!strings.Contains(createErr.Error(), "already exists with a different name") {
+			return createErr
+		}
+
+		// 删除冲突的旧索引（按字段匹配）
+		cursor, listErr := collection.Indexes().List(ctx)
+		if listErr != nil {
+			return listErr
+		}
+		var existingIndexes []bson.M
+		if listErr = cursor.All(ctx, &existingIndexes); listErr != nil {
+			return listErr
+		}
+
+		// 找到字段相同但名字不同的索引并删除
+		for _, existing := range existingIndexes {
+			existingName, _ := existing["name"].(string)
+			if existingName == "_id_" {
+				continue
+			}
+			existingKey, _ := existing["key"].(bson.M)
+			if existingKey == nil {
+				continue
+			}
+			wantKey := idx.Keys.(bson.D)
+			if len(existingKey) != len(wantKey) {
+				continue
+			}
+			match := true
+			for _, kv := range wantKey {
+				if _, ok := existingKey[kv.Key]; !ok {
+					match = false
+					break
+				}
+			}
+			if match {
+				_, _ = collection.Indexes().DropOne(ctx, existingName)
+				break
+			}
+		}
+
+		// 重新创建
+		if _, createErr = collection.Indexes().CreateOne(ctx, idx); createErr != nil {
+			return createErr
+		}
+	}
+	return nil
+}
+
 // InitCollections 初始化所有IAM相关的MongoDB集合和索引
 func InitCollections(ctx context.Context, db *mongox.Mongo) error {
-	// 初始化云用户集合
 	if err := initCloudUsersCollection(ctx, db); err != nil {
 		return err
 	}
-
-	// 初始化权限组集合
 	if err := initPermissionGroupsCollection(ctx, db); err != nil {
 		return err
 	}
-
-	// 初始化同步任务集合
 	if err := initSyncTasksCollection(ctx, db); err != nil {
 		return err
 	}
-
-	// 初始化审计日志集合
 	if err := initAuditLogsCollection(ctx, db); err != nil {
 		return err
 	}
-
-	// 初始化策略模板集合
 	if err := initPolicyTemplatesCollection(ctx, db); err != nil {
 		return err
 	}
-
-	// 初始化租户集合
 	if err := initTenantsCollection(ctx, db); err != nil {
 		return err
 	}
-
 	return nil
 }
 
 // initCloudUsersCollection 初始化云用户集合
 func initCloudUsersCollection(ctx context.Context, db *mongox.Mongo) error {
 	collection := db.Collection(CloudIAMUsersCollection)
-
-	// 创建索引
 	indexes := []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "cloud_user_id", Value: 1}, {Key: "provider", Value: 1}},
@@ -75,16 +131,12 @@ func initCloudUsersCollection(ctx context.Context, db *mongox.Mongo) error {
 			Options: options.Index().SetName("idx_ctime"),
 		},
 	}
-
-	_, err := collection.Indexes().CreateMany(ctx, indexes)
-	return err
+	return ensureIndexes(ctx, collection, indexes)
 }
 
 // initPermissionGroupsCollection 初始化权限组集合
 func initPermissionGroupsCollection(ctx context.Context, db *mongox.Mongo) error {
 	collection := db.Collection(CloudPermissionGroupsCollection)
-
-	// 创建索引
 	indexes := []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "name", Value: 1}, {Key: "tenant_id", Value: 1}},
@@ -99,16 +151,12 @@ func initPermissionGroupsCollection(ctx context.Context, db *mongox.Mongo) error
 			Options: options.Index().SetName("idx_ctime"),
 		},
 	}
-
-	_, err := collection.Indexes().CreateMany(ctx, indexes)
-	return err
+	return ensureIndexes(ctx, collection, indexes)
 }
 
 // initSyncTasksCollection 初始化同步任务集合
 func initSyncTasksCollection(ctx context.Context, db *mongox.Mongo) error {
 	collection := db.Collection(CloudSyncTasksCollection)
-
-	// 创建索引
 	indexes := []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "status", Value: 1}, {Key: "ctime", Value: -1}},
@@ -127,16 +175,12 @@ func initSyncTasksCollection(ctx context.Context, db *mongox.Mongo) error {
 			Options: options.Index().SetName("idx_ctime"),
 		},
 	}
-
-	_, err := collection.Indexes().CreateMany(ctx, indexes)
-	return err
+	return ensureIndexes(ctx, collection, indexes)
 }
 
 // initAuditLogsCollection 初始化审计日志集合
 func initAuditLogsCollection(ctx context.Context, db *mongox.Mongo) error {
 	collection := db.Collection(CloudAuditLogsCollection)
-
-	// 创建索引
 	indexes := []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "operation_type", Value: 1}, {Key: "ctime", Value: -1}},
@@ -163,21 +207,16 @@ func initAuditLogsCollection(ctx context.Context, db *mongox.Mongo) error {
 			Options: options.Index().SetName("idx_ctime"),
 		},
 		{
-			// TTL索引: 90天后自动删除
 			Keys:    bson.D{{Key: "create_time", Value: 1}},
 			Options: options.Index().SetExpireAfterSeconds(7776000).SetName("idx_ttl_create_time"),
 		},
 	}
-
-	_, err := collection.Indexes().CreateMany(ctx, indexes)
-	return err
+	return ensureIndexes(ctx, collection, indexes)
 }
 
 // initPolicyTemplatesCollection 初始化策略模板集合
 func initPolicyTemplatesCollection(ctx context.Context, db *mongox.Mongo) error {
 	collection := db.Collection(CloudPolicyTemplatesCollection)
-
-	// 创建索引
 	indexes := []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "name", Value: 1}, {Key: "tenant_id", Value: 1}},
@@ -196,16 +235,12 @@ func initPolicyTemplatesCollection(ctx context.Context, db *mongox.Mongo) error 
 			Options: options.Index().SetName("idx_tenant_id"),
 		},
 	}
-
-	_, err := collection.Indexes().CreateMany(ctx, indexes)
-	return err
+	return ensureIndexes(ctx, collection, indexes)
 }
 
 // initTenantsCollection 初始化租户集合
 func initTenantsCollection(ctx context.Context, db *mongox.Mongo) error {
 	collection := db.Collection(TenantsCollection)
-
-	// 创建索引
 	indexes := []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "name", Value: 1}},
@@ -228,12 +263,10 @@ func initTenantsCollection(ctx context.Context, db *mongox.Mongo) error {
 			Options: options.Index().SetName("idx_ctime"),
 		},
 	}
-
-	_, err := collection.Indexes().CreateMany(ctx, indexes)
-	return err
+	return ensureIndexes(ctx, collection, indexes)
 }
 
-// DropCollections 删除所有IAM相关的MongoDB集合（用于测试或重置）
+// DropCollections 删除所有IAM相关的MongoDB集合
 func DropCollections(ctx context.Context, db *mongox.Mongo) error {
 	collections := []string{
 		CloudIAMUsersCollection,
@@ -243,17 +276,15 @@ func DropCollections(ctx context.Context, db *mongox.Mongo) error {
 		CloudPolicyTemplatesCollection,
 		TenantsCollection,
 	}
-
 	for _, collName := range collections {
 		if err := db.Collection(collName).Drop(ctx); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
-// InitIndexes 初始化所有索引（用于Wire）
+// InitIndexes 初始化所有索引
 func InitIndexes(db *mongox.Mongo) error {
 	ctx := context.Background()
 	return InitCollections(ctx, db)
@@ -265,9 +296,8 @@ func EnsureIndexes(ctx context.Context, db *mongox.Mongo) error {
 }
 
 // GetCollectionStats 获取集合统计信息
-func GetCollectionStats(ctx context.Context, db *mongox.Mongo) (map[string]interface{}, error) {
-	stats := make(map[string]interface{})
-
+func GetCollectionStats(ctx context.Context, db *mongox.Mongo) (map[string]any, error) {
+	stats := make(map[string]any)
 	collections := []string{
 		CloudIAMUsersCollection,
 		CloudPermissionGroupsCollection,
@@ -276,7 +306,6 @@ func GetCollectionStats(ctx context.Context, db *mongox.Mongo) (map[string]inter
 		CloudPolicyTemplatesCollection,
 		TenantsCollection,
 	}
-
 	for _, collName := range collections {
 		count, err := db.Collection(collName).CountDocuments(ctx, bson.M{})
 		if err != nil {
@@ -284,6 +313,5 @@ func GetCollectionStats(ctx context.Context, db *mongox.Mongo) (map[string]inter
 		}
 		stats[collName] = count
 	}
-
 	return stats, nil
 }
