@@ -42,6 +42,10 @@ type BillDAO interface {
 	DeleteRawBillsByAccountAndRange(ctx context.Context, accountID int64, startDate, endDate string) (int64, error)
 	// DeleteUnifiedBillsByAccountAndRange 按账号和日期范围删除统一账单（采集去重）
 	DeleteUnifiedBillsByAccountAndRange(ctx context.Context, accountID int64, startDate, endDate string) (int64, error)
+	// DeleteRawBillsByAccountAndMonth 按账号和月份删除原始账单（月份格式: 2025-04）
+	DeleteRawBillsByAccountAndMonth(ctx context.Context, accountID int64, month string) (int64, error)
+	// DeleteUnifiedBillsByAccountAndMonth 按账号和月份删除统一账单（月份格式: 2025-04）
+	DeleteUnifiedBillsByAccountAndMonth(ctx context.Context, accountID int64, month string) (int64, error)
 	// AggregateByTag 按标签 key 聚合统一账单金额（展开 tags map）
 	AggregateByTag(ctx context.Context, tenantID string, startDate, endDate string) ([]AggregateResult, error)
 }

@@ -314,6 +314,33 @@ func (d *billDAO) DeleteUnifiedBillsByAccountAndRange(ctx context.Context, accou
 	return result.DeletedCount, nil
 }
 
+// DeleteRawBillsByAccountAndMonth 按账号和月份删除原始账单
+// month 格式: "2025-04"，匹配 billing_date 以该月份开头的记录（如 "2025-04-01"）
+func (d *billDAO) DeleteRawBillsByAccountAndMonth(ctx context.Context, accountID int64, month string) (int64, error) {
+	filter := bson.M{
+		"account_id":   accountID,
+		"billing_date": bson.M{"$regex": "^" + month},
+	}
+	result, err := d.db.Collection(RawBillCollection).DeleteMany(ctx, filter)
+	if err != nil {
+		return 0, err
+	}
+	return result.DeletedCount, nil
+}
+
+// DeleteUnifiedBillsByAccountAndMonth 按账号和月份删除统一账单
+func (d *billDAO) DeleteUnifiedBillsByAccountAndMonth(ctx context.Context, accountID int64, month string) (int64, error) {
+	filter := bson.M{
+		"account_id":   accountID,
+		"billing_date": bson.M{"$regex": "^" + month},
+	}
+	result, err := d.db.Collection(UnifiedBillCollection).DeleteMany(ctx, filter)
+	if err != nil {
+		return 0, err
+	}
+	return result.DeletedCount, nil
+}
+
 func (d *billDAO) AggregateByTag(ctx context.Context, tenantID string, startDate, endDate string) ([]repository.AggregateResult, error) {
 	match := bson.M{
 		"billing_date": bson.M{"$gte": startDate, "$lte": endDate},

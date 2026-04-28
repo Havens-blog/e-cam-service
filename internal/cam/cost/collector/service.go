@@ -215,17 +215,24 @@ func (s *CollectorService) CollectAccount(ctx context.Context, accountID int64, 
 			unifiedBills[i].TenantID = account.TenantID
 		}
 
-		// 6.5 去重：删除该账号在该时间范围内的旧账单数据（先删后插）
-		startDateStr := startTime.Format("2006-01-02")
-		endDateStr := endTime.Format("2006-01-02")
-		delRaw, _ := s.billDAO.DeleteRawBillsByAccountAndRange(ctx, accountID, startDateStr, endDateStr)
-		delUnified, _ := s.billDAO.DeleteUnifiedBillsByAccountAndRange(ctx, accountID, startDateStr, endDateStr)
+		// 6.5 去重：按月份删除该账号的旧账单数据（先删后插）
+		// 云厂商 API 按月返回账单，BillingDate 统一为月份第一天（如 2025-04-01）
+		// 必须按月份匹配删除，否则增量采集时日期范围不覆盖月初会导致重复
+		months := collectBillingMonths(startTime, endTime)
+		var delRaw, delUnified int64
+		for _, month := range months {
+			// month 格式: "2025-04"，匹配 billing_date 以该月份开头的记录
+			dr, _ := s.billDAO.DeleteRawBillsByAccountAndMonth(ctx, accountID, month)
+			du, _ := s.billDAO.DeleteUnifiedBillsByAccountAndMonth(ctx, accountID, month)
+			delRaw += dr
+			delUnified += du
+		}
 		if delRaw > 0 || delUnified > 0 {
 			s.logger.Info("dedup: deleted old bills before re-insert",
 				elog.Int64("account_id", accountID),
 				elog.Int64("deleted_raw", delRaw),
 				elog.Int64("deleted_unified", delUnified),
-				elog.String("range", fmt.Sprintf("%s ~ %s", startDateStr, endDateStr)),
+				elog.Any("months", months),
 			)
 		}
 
@@ -411,4 +418,18 @@ func (s *CollectorService) invalidateCostCache(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// collectBillingMonths 计算时间范围覆盖的所有月份
+// 返回格式: ["2025-03", "2025-04"]
+func collectBillingMonths(startTime, endTime time.Time) []string {
+	var months []string
+	current := time.Date(startTime.Year(), startTime.Month(), 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(endTime.Year(), endTime.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+	for !current.After(end) {
+		months = append(months, current.Format("2006-01"))
+		current = current.AddDate(0, 1, 0)
+	}
+	return months
 }
