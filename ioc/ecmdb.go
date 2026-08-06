@@ -110,5 +110,7 @@ func InitEcmdbEndpointClient(etcdClient *clientv3.Client) endpointv1.EndpointSer
 func InitCheckPolicyMiddleware(policyClient policyv1.PolicyServiceClient) *middleware.CheckPolicyMiddleware {
 	var cfg middleware.PolicyConfig
 	_ = viper.UnmarshalKey("policy", &cfg)
-	return middleware.NewCheckPolicyMiddleware(policyClient, cfg, elog.DefaultLogger)
+	// cookie 名与认证层共用同一份配置，保证两层取 token 的来源一致
+	cookieName := viper.GetString("session.cookie.name")
+	return middleware.NewCheckPolicyMiddleware(policyClient, cfg, cookieName, elog.DefaultLogger)
 }
