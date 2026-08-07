@@ -23,10 +23,11 @@ type CheckPolicyMiddleware struct {
 	resource     string // 资源标识，用于区分 e-cam-service 的权限域
 	failMode     string
 	whitelist    []string
+	cookieName   string // session cookie 名，用于 Authorization 头缺失时回退取 token
 }
 
 // NewCheckPolicyMiddleware 创建策略检查中间件
-func NewCheckPolicyMiddleware(policyClient policyv1.PolicyServiceClient, cfg PolicyConfig, logger *elog.Component) *CheckPolicyMiddleware {
+func NewCheckPolicyMiddleware(policyClient policyv1.PolicyServiceClient, cfg PolicyConfig, cookieName string, logger *elog.Component) *CheckPolicyMiddleware {
 	failMode := cfg.FailMode
 	if failMode == "" {
 		failMode = "fail_open"
@@ -37,6 +38,7 @@ func NewCheckPolicyMiddleware(policyClient policyv1.PolicyServiceClient, cfg Pol
 		resource:     "CAM",
 		failMode:     failMode,
 		whitelist:    cfg.Whitelist,
+		cookieName:   cookieName,
 	}
 }
 
@@ -55,10 +57,11 @@ func (m *CheckPolicyMiddleware) Build() gin.HandlerFunc {
 			return
 		}
 
-		// 从 Authorization 头获取 token
-		token := c.GetHeader("Authorization")
+		// 取 token：Authorization 头优先，回退 cookie（与认证层 carrier 一致）
+		token := extractToken(c, m.cookieName)
 		if token == "" {
-			m.logger.Warn("策略检查: Token为空")
+			m.logger.Warn("策略检查: Token为空",
+				elog.String("path", c.Request.URL.Path))
 			c.JSON(http.StatusForbidden, gin.H{
 				"code":    403,
 				"message": "权限不足",
@@ -121,4 +124,25 @@ func (m *CheckPolicyMiddleware) Build() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// extractToken 取出请求携带的 token，顺序与认证层的 mixin TokenCarrier 保持一致：
+// 先 Authorization 头，为空则回退 cookie。
+//
+// 认证中间件通过 mixin carrier 同时接受 header 与 cookie 两种载体，若此处只读
+// header，纯 cookie 携带的请求会在通过认证后被本中间件判为「Token为空」而 403。
+//
+// cookie 分支补上 "Bearer " 前缀，使下游收到的格式与 header 分支一致（header
+// 分支保持原样透传，不改变既有行为）。
+func extractToken(c *gin.Context, cookieName string) string {
+	if h := c.GetHeader("Authorization"); h != "" {
+		return h
+	}
+	if cookieName == "" {
+		return ""
+	}
+	if v, err := c.Cookie(cookieName); err == nil && v != "" {
+		return "Bearer " + v
+	}
+	return ""
 }
