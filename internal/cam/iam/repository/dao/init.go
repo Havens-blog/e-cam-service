@@ -96,9 +96,6 @@ func InitCollections(ctx context.Context, db *mongox.Mongo) error {
 	if err := initPolicyTemplatesCollection(ctx, db); err != nil {
 		return err
 	}
-	if err := initTenantsCollection(ctx, db); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -238,34 +235,6 @@ func initPolicyTemplatesCollection(ctx context.Context, db *mongox.Mongo) error 
 	return ensureIndexes(ctx, collection, indexes)
 }
 
-// initTenantsCollection 初始化租户集合
-func initTenantsCollection(ctx context.Context, db *mongox.Mongo) error {
-	collection := db.Collection(TenantsCollection)
-	indexes := []mongo.IndexModel{
-		{
-			Keys:    bson.D{{Key: "name", Value: 1}},
-			Options: options.Index().SetUnique(true).SetName("idx_name"),
-		},
-		{
-			Keys:    bson.D{{Key: "status", Value: 1}, {Key: "create_time", Value: -1}},
-			Options: options.Index().SetName("idx_status_create_time"),
-		},
-		{
-			Keys:    bson.D{{Key: "metadata.industry", Value: 1}},
-			Options: options.Index().SetName("idx_industry"),
-		},
-		{
-			Keys:    bson.D{{Key: "metadata.region", Value: 1}},
-			Options: options.Index().SetName("idx_region"),
-		},
-		{
-			Keys:    bson.D{{Key: "ctime", Value: -1}},
-			Options: options.Index().SetName("idx_ctime"),
-		},
-	}
-	return ensureIndexes(ctx, collection, indexes)
-}
-
 // DropCollections 删除所有IAM相关的MongoDB集合
 func DropCollections(ctx context.Context, db *mongox.Mongo) error {
 	collections := []string{
@@ -274,7 +243,6 @@ func DropCollections(ctx context.Context, db *mongox.Mongo) error {
 		CloudSyncTasksCollection,
 		CloudAuditLogsCollection,
 		CloudPolicyTemplatesCollection,
-		TenantsCollection,
 	}
 	for _, collName := range collections {
 		if err := db.Collection(collName).Drop(ctx); err != nil {
@@ -304,7 +272,6 @@ func GetCollectionStats(ctx context.Context, db *mongox.Mongo) (map[string]any, 
 		CloudSyncTasksCollection,
 		CloudAuditLogsCollection,
 		CloudPolicyTemplatesCollection,
-		TenantsCollection,
 	}
 	for _, collName := range collections {
 		count, err := db.Collection(collName).CountDocuments(ctx, bson.M{})

@@ -15,7 +15,6 @@ type Module struct {
 	SyncHandler       *web.SyncHandler
 	AuditHandler      *web.AuditHandler
 	TemplateHandler   *web.TemplateHandler
-	TenantHandler     *web.TenantHandler
 	Logger            *elog.Component
 }
 
@@ -26,9 +25,6 @@ func (m *Module) RegisterRoutes(r *gin.Engine) {
 	iamGroup.Use(middleware.TenantMiddleware(m.Logger))
 
 	{
-		// 租户管理路由（不需要租户ID验证，因为是管理租户本身）
-		m.TenantHandler.RegisterRoutes(iamGroup)
-
 		// 需要租户ID的路由组
 		tenantRequired := iamGroup.Group("")
 		tenantRequired.Use(middleware.RequireTenant(m.Logger))

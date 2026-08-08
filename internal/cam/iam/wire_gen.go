@@ -49,10 +49,6 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	policyTemplateRepository := repository.NewPolicyTemplateRepository(policyTemplateDAO)
 	policyTemplateService := service.NewPolicyTemplateService(policyTemplateRepository, userGroupRepository, component)
 	templateHandler := web.NewTemplateHandler(policyTemplateService, component)
-	tenantDAO := InitTenantDAO(db)
-	tenantRepository := repository.NewTenantRepository(tenantDAO)
-	tenantService := service.NewTenantService(tenantRepository, cloudAccountRepository, cloudUserRepository, userGroupRepository, component)
-	tenantHandler := web.NewTenantHandler(tenantService, component)
 	module := &Module{
 		UserHandler:       userHandler,
 		GroupHandler:      userGroupHandler,
@@ -60,7 +56,6 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 		SyncHandler:       syncHandler,
 		AuditHandler:      auditHandler,
 		TemplateHandler:   templateHandler,
-		TenantHandler:     tenantHandler,
 		Logger:            component,
 	}
 	return module, nil
@@ -112,12 +107,6 @@ func InitPolicyTemplateDAO(db *mongox.Mongo) dao.PolicyTemplateDAO {
 	return dao.NewPolicyTemplateDAO(db)
 }
 
-// InitTenantDAO 初始化租户DAO
-func InitTenantDAO(db *mongox.Mongo) dao.TenantDAO {
-	InitCollectionOnce(db)
-	return dao.NewTenantDAO(db)
-}
-
 // InitCloudAccountRepository 初始化云账号Repository（从CAM模块）
 func InitCloudAccountRepository(db *mongox.Mongo) repository2.CloudAccountRepository {
 
@@ -133,7 +122,7 @@ var ProviderSet = wire.NewSet(
 	InitSyncTaskDAO,
 	InitAuditLogDAO,
 	InitPolicyTemplateDAO,
-	InitTenantDAO, repository.NewCloudUserRepository, repository.NewUserGroupRepository, repository.NewSyncTaskRepository, repository.NewAuditLogRepository, repository.NewPolicyTemplateRepository, repository.NewTenantRepository, InitCloudAccountRepository, iam.New, service.NewCloudUserService, service.NewUserGroupService, service.NewPermissionService, service.NewSyncService, service.NewAuditService, service.NewPolicyTemplateService, service.NewTenantService, ProvideLogger, web.NewUserHandler, web.NewUserGroupHandler, web.NewPermissionHandler, web.NewSyncHandler, web.NewAuditHandler, web.NewTemplateHandler, web.NewTenantHandler, wire.Struct(new(Module), "*"),
+	repository.NewCloudUserRepository, repository.NewUserGroupRepository, repository.NewSyncTaskRepository, repository.NewAuditLogRepository, repository.NewPolicyTemplateRepository, InitCloudAccountRepository, iam.New, service.NewCloudUserService, service.NewUserGroupService, service.NewPermissionService, service.NewSyncService, service.NewAuditService, service.NewPolicyTemplateService, ProvideLogger, web.NewUserHandler, web.NewUserGroupHandler, web.NewPermissionHandler, web.NewSyncHandler, web.NewAuditHandler, web.NewTemplateHandler, wire.Struct(new(Module), "*"),
 )
 
 // ProvideLogger 提供默认logger

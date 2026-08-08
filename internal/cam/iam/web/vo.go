@@ -167,35 +167,3 @@ type GroupSyncResultVO struct {
 	SyncedMembers int `json:"synced_members" example:"43"` // 成功同步的成员数
 	FailedMembers int `json:"failed_members" example:"2"`  // 失败的成员数
 }
-
-// Tenant related VOs
-
-// CreateTenantVO 创建租户请求VO
-type CreateTenantVO struct {
-	ID          string                `json:"id" binding:"required,min=1,max=50"`
-	Name        string                `json:"name" binding:"required,min=1,max=100"`
-	DisplayName string                `json:"display_name" binding:"max=200"`
-	Description string                `json:"description" binding:"max=500"`
-	Settings    domain.TenantSettings `json:"settings"`
-	Metadata    domain.TenantMetadata `json:"metadata"`
-}
-
-// UpdateTenantVO 更新租户请求VO
-type UpdateTenantVO struct {
-	Name        *string                `json:"name,omitempty"`
-	DisplayName *string                `json:"display_name,omitempty"`
-	Description *string                `json:"description,omitempty"`
-	Status      *domain.TenantStatus   `json:"status,omitempty"`
-	Settings    *domain.TenantSettings `json:"settings,omitempty"`
-	Metadata    *domain.TenantMetadata `json:"metadata,omitempty"`
-}
-
-// ListTenantsVO 查询租户列表请求VO
-type ListTenantsVO struct {
-	Keyword  string `json:"keyword" form:"keyword"`
-	Status   string `json:"status" form:"status"`
-	Industry string `json:"industry" form:"industry"`
-	Region   string `json:"region" form:"region"`
-	Page     int64  `json:"page" form:"page"`
-	Size     int64  `json:"size" form:"size"`
-}

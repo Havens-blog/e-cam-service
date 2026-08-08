@@ -61,12 +61,6 @@ func InitPolicyTemplateDAO(db *mongox.Mongo) dao.PolicyTemplateDAO {
 	return dao.NewPolicyTemplateDAO(db)
 }
 
-// InitTenantDAO 初始化租户DAO
-func InitTenantDAO(db *mongox.Mongo) dao.TenantDAO {
-	InitCollectionOnce(db)
-	return dao.NewTenantDAO(db)
-}
-
 // InitCloudAccountRepository 初始化云账号Repository（从CAM模块）
 func InitCloudAccountRepository(db *mongox.Mongo) camrepo.CloudAccountRepository {
 	// 使用CAM模块的DAO
@@ -82,7 +76,6 @@ var ProviderSet = wire.NewSet(
 	InitSyncTaskDAO,
 	InitAuditLogDAO,
 	InitPolicyTemplateDAO,
-	InitTenantDAO,
 
 	// Repository层
 	repository.NewCloudUserRepository,
@@ -90,7 +83,6 @@ var ProviderSet = wire.NewSet(
 	repository.NewSyncTaskRepository,
 	repository.NewAuditLogRepository,
 	repository.NewPolicyTemplateRepository,
-	repository.NewTenantRepository,
 
 	// CAM模块的Repository
 	InitCloudAccountRepository,
@@ -105,7 +97,6 @@ var ProviderSet = wire.NewSet(
 	service.NewSyncService,
 	service.NewAuditService,
 	service.NewPolicyTemplateService,
-	service.NewTenantService,
 
 	// Logger
 	ProvideLogger,
@@ -117,7 +108,6 @@ var ProviderSet = wire.NewSet(
 	web.NewSyncHandler,
 	web.NewAuditHandler,
 	web.NewTemplateHandler,
-	web.NewTenantHandler,
 
 	// Module
 	wire.Struct(new(Module), "*"),
