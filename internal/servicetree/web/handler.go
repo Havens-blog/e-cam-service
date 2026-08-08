@@ -5,6 +5,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/servicetree/domain"
 	"github.com/Havens-blog/e-cam-service/internal/servicetree/service"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
 )
@@ -67,7 +68,7 @@ func (h *Handler) RegisterRuleRoutes(rg *gin.RouterGroup) {
 }
 
 func (h *Handler) getTenantID(c *gin.Context) string {
-	return c.GetHeader("X-Tenant-ID")
+	return middleware.GetTenantID(c)
 }
 
 func (h *Handler) getIDParam(c *gin.Context) (int64, error) {

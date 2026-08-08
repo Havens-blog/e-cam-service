@@ -6,6 +6,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -158,7 +159,7 @@ func (h *DatabaseHandler) GetMongoDBInstance(ctx *gin.Context) {
 
 // listDatabaseInstances 通用的数据库实例列表查询
 func (h *DatabaseHandler) listDatabaseInstances(ctx *gin.Context, dbType string) {
-	tenantID := ctx.Query("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	provider := ctx.Query("provider")
 	region := ctx.Query("region")
 	status := ctx.Query("status")
@@ -238,7 +239,7 @@ func (h *DatabaseHandler) getDatabaseInstance(ctx *gin.Context, dbType string) {
 		return
 	}
 
-	tenantID := ctx.Query("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	provider := ctx.Query("provider")
 
 	// 构建模型UID

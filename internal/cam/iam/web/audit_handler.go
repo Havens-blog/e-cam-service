@@ -6,6 +6,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -58,7 +59,7 @@ func (h *AuditHandler) ListAuditLogs(c *gin.Context) {
 		OperatorID:    req.OperatorID,
 		TargetType:    req.TargetType,
 		CloudPlatform: req.CloudPlatform,
-		TenantID:      req.TenantID,
+		TenantID:      middleware.GetTenantID(c),
 		Offset:        offset,
 		Limit:         req.Size,
 	}
@@ -118,7 +119,7 @@ func (h *AuditHandler) ExportAuditLogs(c *gin.Context) {
 		OperatorID:    req.OperatorID,
 		TargetType:    req.TargetType,
 		CloudPlatform: req.CloudPlatform,
-		TenantID:      req.TenantID,
+		TenantID:      middleware.GetTenantID(c),
 	}
 
 	// 解析时间参数
@@ -191,7 +192,7 @@ func (h *AuditHandler) GenerateAuditReport(c *gin.Context) {
 	report, err := h.auditService.GenerateAuditReport(c.Request.Context(), &domain.AuditReportRequest{
 		StartTime: &startTime,
 		EndTime:   &endTime,
-		TenantID:  req.TenantID,
+		TenantID:  middleware.GetTenantID(c),
 	})
 
 	if err != nil {

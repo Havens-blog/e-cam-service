@@ -13,6 +13,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
@@ -38,17 +39,6 @@ func NewCostHandler(
 	}
 }
 
-// getTenantID 从请求中获取租户ID（兼容 header / context / query 三种方式）
-func getTenantID(ctx *gin.Context) string {
-	if tid := ctx.GetString("tenant_id"); tid != "" {
-		return tid
-	}
-	if tid := ctx.GetHeader("X-Tenant-ID"); tid != "" {
-		return tid
-	}
-	return ctx.Query("tenant_id")
-}
-
 // PrivateRoutes 注册成本分析相关路由
 func (h *CostHandler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/v1/cam")
@@ -64,7 +54,7 @@ func (h *CostHandler) PrivateRoutes(server *gin.Engine) {
 
 // GetCostSummary 成本概览
 func (h *CostHandler) GetCostSummary(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
+	tenantID := middleware.GetTenantID(ctx)
 	filter := analysis.CostFilter{
 		TenantID:    tenantID,
 		Provider:    ctx.Query("provider"),
@@ -90,7 +80,7 @@ func (h *CostHandler) GetCostSummary(ctx *gin.Context) {
 
 // GetCostTrend 成本趋势
 func (h *CostHandler) GetCostTrend(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
+	tenantID := middleware.GetTenantID(ctx)
 	filter := analysis.CostTrendFilter{
 		CostFilter: analysis.CostFilter{
 			TenantID:    tenantID,
@@ -119,7 +109,7 @@ func (h *CostHandler) GetCostTrend(ctx *gin.Context) {
 
 // GetCostDistribution 成本分布
 func (h *CostHandler) GetCostDistribution(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
+	tenantID := middleware.GetTenantID(ctx)
 	dimension := ctx.DefaultQuery("dimension", "provider")
 	filter := analysis.CostFilter{
 		TenantID:    tenantID,
@@ -146,7 +136,7 @@ func (h *CostHandler) GetCostDistribution(ctx *gin.Context) {
 
 // GetYoYComparison 同比环比
 func (h *CostHandler) GetYoYComparison(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
+	tenantID := middleware.GetTenantID(ctx)
 	filter := analysis.CostFilter{
 		TenantID:    tenantID,
 		Provider:    ctx.Query("provider"),
@@ -172,7 +162,7 @@ func (h *CostHandler) GetYoYComparison(ctx *gin.Context) {
 
 // TriggerAnomalyDetection 手动触发异常检测
 func (h *CostHandler) TriggerAnomalyDetection(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
+	tenantID := middleware.GetTenantID(ctx)
 	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 
 	go func() {
@@ -187,7 +177,7 @@ func (h *CostHandler) TriggerAnomalyDetection(ctx *gin.Context) {
 
 // GetAnomalyEvents 异常事件列表
 func (h *CostHandler) GetAnomalyEvents(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
+	tenantID := middleware.GetTenantID(ctx)
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
 
@@ -214,7 +204,7 @@ func (h *CostHandler) GetAnomalyEvents(ctx *gin.Context) {
 
 // ListRecommendations 优化建议列表
 func (h *CostHandler) ListRecommendations(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
+	tenantID := middleware.GetTenantID(ctx)
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
 

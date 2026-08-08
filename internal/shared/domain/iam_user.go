@@ -77,7 +77,7 @@ type CreateCloudUserRequest struct {
 	DisplayName    string        `json:"display_name" binding:"max=200"`
 	Email          string        `json:"email" binding:"omitempty,email"`
 	UserGroups     []int64       `json:"user_groups"` // 用户组ID列表
-	TenantID       string        `json:"tenant_id" binding:"required"`
+	TenantID       string        `json:"tenant_id"`
 }
 
 // UpdateCloudUserRequest 更新云用户请求

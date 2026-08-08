@@ -48,7 +48,7 @@ type CreateTemplateRequest struct {
 	Category       TemplateCategory   `json:"category" binding:"required"`
 	Policies       []PermissionPolicy `json:"policies"`
 	CloudPlatforms []CloudProvider    `json:"cloud_platforms" binding:"required,min=1"`
-	TenantID       string             `json:"tenant_id" binding:"required"`
+	TenantID       string             `json:"tenant_id"`
 }
 
 // UpdateTemplateRequest 更新模板请求

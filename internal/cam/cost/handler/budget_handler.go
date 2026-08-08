@@ -9,6 +9,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
 )
@@ -53,7 +54,7 @@ func (h *BudgetHandler) PrivateRoutes(server *gin.Engine) {
 
 // CreateBudget 创建预算规则
 func (h *BudgetHandler) CreateBudget(ctx *gin.Context, req CreateBudgetReq) (ginx.Result, error) {
-	tenantID := ctx.GetString("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	rule := costdomain.BudgetRule{
 		Name:        req.Name,
 		AmountLimit: req.AmountLimit,
@@ -72,7 +73,7 @@ func (h *BudgetHandler) CreateBudget(ctx *gin.Context, req CreateBudgetReq) (gin
 
 // ListBudgets 预算规则列表
 func (h *BudgetHandler) ListBudgets(ctx *gin.Context) {
-	tenantID := ctx.GetString("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
 
@@ -120,7 +121,7 @@ func (h *BudgetHandler) UpdateBudget(ctx *gin.Context, req UpdateBudgetReq) (gin
 		return web.ErrorResult(errs.ParamsError), nil
 	}
 
-	tenantID := ctx.GetString("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	rule := costdomain.BudgetRule{
 		ID:          id,
 		Name:        req.Name,

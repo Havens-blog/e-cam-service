@@ -74,7 +74,7 @@ const (
 type AuditReportRequest struct {
 	StartTime *time.Time `json:"start_time" binding:"required"`
 	EndTime   *time.Time `json:"end_time" binding:"required"`
-	TenantID  string     `json:"tenant_id" binding:"required"`
+	TenantID  string     `json:"tenant_id"`
 }
 
 // AuditReport 审计报告

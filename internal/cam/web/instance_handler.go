@@ -6,6 +6,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
 )
@@ -42,7 +43,6 @@ type CreateInstanceReq struct {
 	ModelUID   string                 `json:"model_uid" binding:"required"`
 	AssetID    string                 `json:"asset_id" binding:"required"`
 	AssetName  string                 `json:"asset_name"`
-	TenantID   string                 `json:"tenant_id" binding:"required"`
 	AccountID  int64                  `json:"account_id"`
 	Attributes map[string]interface{} `json:"attributes"`
 }
@@ -57,7 +57,6 @@ type UpsertInstanceReq struct {
 	ModelUID   string                 `json:"model_uid" binding:"required"`
 	AssetID    string                 `json:"asset_id" binding:"required"`
 	AssetName  string                 `json:"asset_name"`
-	TenantID   string                 `json:"tenant_id" binding:"required"`
 	AccountID  int64                  `json:"account_id"`
 	Attributes map[string]interface{} `json:"attributes"`
 }
@@ -108,7 +107,7 @@ func (h *InstanceHandler) Create(ctx *gin.Context, req CreateInstanceReq) (ginx.
 		ModelUID:   req.ModelUID,
 		AssetID:    req.AssetID,
 		AssetName:  req.AssetName,
-		TenantID:   req.TenantID,
+		TenantID:   middleware.GetTenantID(ctx),
 		AccountID:  req.AccountID,
 		Attributes: req.Attributes,
 	}
@@ -140,7 +139,7 @@ func (h *InstanceHandler) CreateBatch(ctx *gin.Context, req CreateBatchInstanceR
 			ModelUID:   r.ModelUID,
 			AssetID:    r.AssetID,
 			AssetName:  r.AssetName,
-			TenantID:   r.TenantID,
+			TenantID:   middleware.GetTenantID(ctx),
 			AccountID:  r.AccountID,
 			Attributes: r.Attributes,
 		}
@@ -168,7 +167,7 @@ func (h *InstanceHandler) Upsert(ctx *gin.Context, req UpsertInstanceReq) (ginx.
 		ModelUID:   req.ModelUID,
 		AssetID:    req.AssetID,
 		AssetName:  req.AssetName,
-		TenantID:   req.TenantID,
+		TenantID:   middleware.GetTenantID(ctx),
 		AccountID:  req.AccountID,
 		Attributes: req.Attributes,
 	}
@@ -197,7 +196,7 @@ func (h *InstanceHandler) UpsertBatch(ctx *gin.Context, req UpsertBatchInstanceR
 			ModelUID:   r.ModelUID,
 			AssetID:    r.AssetID,
 			AssetName:  r.AssetName,
-			TenantID:   r.TenantID,
+			TenantID:   middleware.GetTenantID(ctx),
 			AccountID:  r.AccountID,
 			Attributes: r.Attributes,
 		}
@@ -275,7 +274,7 @@ func (h *InstanceHandler) List(ctx *gin.Context) {
 	if modelUID == "" {
 		modelUID = ctx.Query("uid")
 	}
-	tenantID := ctx.Query("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	accountIDStr := ctx.Query("account_id")
 	assetName := ctx.Query("asset_name")
 	assetID := ctx.Query("asset_id")

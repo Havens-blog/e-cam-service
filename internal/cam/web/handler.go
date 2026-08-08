@@ -7,6 +7,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
 )
@@ -518,7 +519,7 @@ func (h *Handler) CreateCloudAccount(ctx *gin.Context, req CreateCloudAccountReq
 			SupportedRegions:     req.Config.SupportedRegions,
 			SupportedAssetTypes:  req.Config.SupportedAssetTypes,
 		},
-		TenantID: req.TenantID,
+		TenantID: middleware.GetTenantID(ctx),
 	}
 
 	account, err := h.accountSvc.CreateAccount(ctx.Request.Context(), domainReq)
@@ -578,7 +579,7 @@ func (h *Handler) ListCloudAccounts(ctx *gin.Context) {
 	provider := ctx.Query("provider")
 	environment := ctx.Query("environment")
 	status := ctx.Query("status")
-	tenantID := ctx.Query("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
@@ -637,7 +638,10 @@ func (h *Handler) UpdateCloudAccount(ctx *gin.Context, req UpdateCloudAccountReq
 		AccessKeySecret: req.AccessKeySecret,
 		Regions:         req.Regions,
 		Description:     req.Description,
-		TenantID:        req.TenantID,
+		// TenantID 故意不设置：更新操作不得改变账号的归属租户。
+		// 该字段留空后 service 层的 `if req.TenantID != nil` 不成立，
+		// 原有租户被保留。若在此填入会话租户，任何一次更新都会把账号
+		// 静默迁移到调用方租户下。
 	}
 
 	// 转换环境字段

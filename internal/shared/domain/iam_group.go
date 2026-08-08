@@ -57,7 +57,7 @@ type CreateUserGroupRequest struct {
 	Description    string             `json:"description" binding:"max=500"`
 	Policies       []PermissionPolicy `json:"policies"`
 	CloudPlatforms []CloudProvider    `json:"cloud_platforms" binding:"required,min=1"`
-	TenantID       string             `json:"tenant_id" binding:"required"`
+	TenantID       string             `json:"tenant_id"`
 }
 
 // UpdateUserGroupRequest 更新用户组请求

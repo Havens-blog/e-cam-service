@@ -10,6 +10,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
@@ -73,7 +74,7 @@ func (h *AllocationHandler) PrivateRoutes(server *gin.Engine) {
 
 // CreateAllocationRule 创建分摊规则
 func (h *AllocationHandler) CreateAllocationRule(ctx *gin.Context, req CreateAllocationRuleReq) (ginx.Result, error) {
-	tenantID := ctx.GetString("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	rule := costdomain.AllocationRule{
 		Name:            req.Name,
 		RuleType:        req.RuleType,
@@ -100,7 +101,7 @@ func (h *AllocationHandler) UpdateAllocationRule(ctx *gin.Context, req UpdateAll
 		return web.ErrorResult(errs.ParamsError), nil
 	}
 
-	tenantID := ctx.GetString("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	rule := costdomain.AllocationRule{
 		ID:              id,
 		Name:            req.Name,
@@ -121,7 +122,7 @@ func (h *AllocationHandler) UpdateAllocationRule(ctx *gin.Context, req UpdateAll
 
 // ListAllocationRules 分摊规则列表
 func (h *AllocationHandler) ListAllocationRules(ctx *gin.Context) {
-	tenantID := ctx.GetString("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
 
@@ -145,7 +146,7 @@ func (h *AllocationHandler) ListAllocationRules(ctx *gin.Context) {
 
 // SetDefaultPolicy 设置默认分摊策略
 func (h *AllocationHandler) SetDefaultPolicy(ctx *gin.Context, req SetDefaultPolicyReq) (ginx.Result, error) {
-	tenantID := ctx.GetString("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	policy := costdomain.DefaultAllocationPolicy{
 		TargetID:   req.TargetID,
 		TargetName: req.TargetName,
@@ -160,7 +161,7 @@ func (h *AllocationHandler) SetDefaultPolicy(ctx *gin.Context, req SetDefaultPol
 
 // GetAllocationByDimension 按维度查询分摊
 func (h *AllocationHandler) GetAllocationByDimension(ctx *gin.Context) {
-	tenantID := ctx.GetString("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	dimType := ctx.Query("dim_type")
 	dimValue := ctx.Query("dim_value")
 	period := ctx.Query("period")
@@ -180,7 +181,7 @@ func (h *AllocationHandler) GetAllocationByDimension(ctx *gin.Context) {
 
 // GetAllocationByNode 按服务树节点查询分摊
 func (h *AllocationHandler) GetAllocationByNode(ctx *gin.Context) {
-	tenantID := ctx.GetString("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	nodeIDStr := ctx.Param("nodeId")
 	nodeID, err := strconv.ParseInt(nodeIDStr, 10, 64)
 	if err != nil {
@@ -203,7 +204,7 @@ func (h *AllocationHandler) GetAllocationByNode(ctx *gin.Context) {
 
 // GetAllocationTree 维度层级分摊树形视图
 func (h *AllocationHandler) GetAllocationTree(ctx *gin.Context) {
-	tenantID := ctx.GetString("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	dimType := ctx.Query("dim_type")
 	rootID := ctx.Query("root_id")
 	period := ctx.Query("period")
@@ -223,7 +224,7 @@ func (h *AllocationHandler) GetAllocationTree(ctx *gin.Context) {
 
 // ReAllocateHistory 重新分摊历史数据
 func (h *AllocationHandler) ReAllocateHistory(ctx *gin.Context, req ReAllocateReq) (ginx.Result, error) {
-	tenantID := ctx.GetString("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	if req.Period == "" {
 		return web.ErrorResult(errs.ParamsError), nil
 	}

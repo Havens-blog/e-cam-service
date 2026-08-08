@@ -89,7 +89,7 @@ type CreateCloudAccountRequest struct {
 	Region          string             `json:"region" binding:"required"`
 	Description     string             `json:"description" binding:"max=500"`
 	Config          CloudAccountConfig `json:"config"`
-	TenantID        string             `json:"tenant_id" binding:"required"`
+	TenantID        string             `json:"tenant_id"`
 }
 
 // UpdateCloudAccountRequest 更新云账号请求

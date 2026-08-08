@@ -11,6 +11,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/task"
 	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
 )
@@ -42,7 +43,7 @@ func (h *CollectorHandler) PrivateRoutes(server *gin.Engine) {
 
 // TriggerManualCollection 手动触发采集（通过异步任务队列）
 func (h *CollectorHandler) TriggerManualCollection(ctx *gin.Context, req ManualCollectReq) (ginx.Result, error) {
-	tenantID := ctx.GetString("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 
 	// 验证时间格式
 	if _, err := time.Parse(time.RFC3339, req.StartTime); err != nil {
@@ -72,7 +73,7 @@ func (h *CollectorHandler) TriggerManualCollection(ctx *gin.Context, req ManualC
 
 // ListCollectLogs 采集日志列表
 func (h *CollectorHandler) ListCollectLogs(ctx *gin.Context) {
-	tenantID := ctx.GetString("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
 

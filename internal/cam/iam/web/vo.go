@@ -12,7 +12,6 @@ type CreateUserVO struct {
 	DisplayName    string               `json:"display_name" binding:"max=200"`
 	Email          string               `json:"email" binding:"omitempty,email"`
 	UserGroups     []int64              `json:"user_groups"` // 用户组ID列表
-	TenantID       string               `json:"tenant_id" binding:"required"`
 }
 
 // UpdateUserVO 更新用户请求VO
@@ -29,7 +28,6 @@ type ListUsersVO struct {
 	UserType       domain.CloudUserType   `json:"user_type" form:"user_type"`
 	Status         domain.CloudUserStatus `json:"status" form:"status"`
 	CloudAccountID int64                  `json:"cloud_account_id" form:"cloud_account_id"`
-	TenantID       string                 `json:"tenant_id" form:"tenant_id"`
 	Keyword        string                 `json:"keyword" form:"keyword"`
 	Page           int64                  `json:"page" form:"page"`
 	Size           int64                  `json:"size" form:"size"`
@@ -47,7 +45,6 @@ type CreateUserGroupVO struct {
 	Description    string                    `json:"description" binding:"max=500"`
 	Policies       []domain.PermissionPolicy `json:"policies"`
 	CloudPlatforms []domain.CloudProvider    `json:"cloud_platforms" binding:"required,min=1"`
-	TenantID       string                    `json:"tenant_id" binding:"required"`
 }
 
 // UpdateUserGroupVO 更新用户组请求VO
@@ -60,10 +57,9 @@ type UpdateUserGroupVO struct {
 
 // ListUserGroupsVO 查询用户组列表请求VO
 type ListUserGroupsVO struct {
-	TenantID string `json:"tenant_id" form:"tenant_id"`
-	Keyword  string `json:"keyword" form:"keyword"`
-	Page     int64  `json:"page" form:"page"`
-	Size     int64  `json:"size" form:"size"`
+	Keyword string `json:"keyword" form:"keyword"`
+	Page    int64  `json:"page" form:"page"`
+	Size    int64  `json:"size" form:"size"`
 }
 
 // CreateSyncTaskVO 创建同步任务请求VO
@@ -91,7 +87,6 @@ type ListAuditLogsVO struct {
 	OperatorID    string                    `json:"operator_id" form:"operator_id"`
 	TargetType    string                    `json:"target_type" form:"target_type"`
 	CloudPlatform domain.CloudProvider      `json:"cloud_platform" form:"cloud_platform"`
-	TenantID      string                    `json:"tenant_id" form:"tenant_id"`
 	StartTime     string                    `json:"start_time" form:"start_time"`
 	EndTime       string                    `json:"end_time" form:"end_time"`
 	Page          int64                     `json:"page" form:"page"`
@@ -104,7 +99,6 @@ type ExportAuditLogsVO struct {
 	OperatorID    string                    `json:"operator_id" form:"operator_id"`
 	TargetType    string                    `json:"target_type" form:"target_type"`
 	CloudPlatform domain.CloudProvider      `json:"cloud_platform" form:"cloud_platform"`
-	TenantID      string                    `json:"tenant_id" form:"tenant_id"`
 	StartTime     string                    `json:"start_time" form:"start_time"`
 	EndTime       string                    `json:"end_time" form:"end_time"`
 	Format        domain.ExportFormat       `json:"format" form:"format" binding:"required"`
@@ -114,7 +108,6 @@ type ExportAuditLogsVO struct {
 type GenerateAuditReportVO struct {
 	StartTime string `json:"start_time" binding:"required"`
 	EndTime   string `json:"end_time" binding:"required"`
-	TenantID  string `json:"tenant_id" binding:"required"`
 }
 
 // CreateTemplateVO 创建策略模板请求VO
@@ -124,7 +117,6 @@ type CreateTemplateVO struct {
 	Category       domain.TemplateCategory   `json:"category" binding:"required"`
 	Policies       []domain.PermissionPolicy `json:"policies"`
 	CloudPlatforms []domain.CloudProvider    `json:"cloud_platforms" binding:"required,min=1"`
-	TenantID       string                    `json:"tenant_id" binding:"required"`
 }
 
 // UpdateTemplateVO 更新策略模板请求VO
@@ -139,7 +131,6 @@ type UpdateTemplateVO struct {
 type ListTemplatesVO struct {
 	Category  domain.TemplateCategory `json:"category" form:"category"`
 	IsBuiltIn *bool                   `json:"is_built_in" form:"is_built_in"`
-	TenantID  string                  `json:"tenant_id" form:"tenant_id"`
 	Keyword   string                  `json:"keyword" form:"keyword"`
 	Page      int64                   `json:"page" form:"page"`
 	Size      int64                   `json:"size" form:"size"`

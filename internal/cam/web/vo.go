@@ -180,7 +180,6 @@ type CreateCloudAccountReq struct {
 	Regions         []string             `json:"regions" binding:"required,min=1"`
 	Description     string               `json:"description" binding:"max=500"`
 	Config          CloudAccountConfigVO `json:"config"`
-	TenantID        string               `json:"tenant_id" binding:"required"`
 }
 
 // UpdateCloudAccountReq 更新云账号请求
@@ -192,7 +191,6 @@ type UpdateCloudAccountReq struct {
 	Regions         []string              `json:"regions,omitempty"`
 	Description     *string               `json:"description,omitempty"`
 	Config          *CloudAccountConfigVO `json:"config,omitempty"`
-	TenantID        *string               `json:"tenant_id,omitempty"`
 }
 
 // ListCloudAccountsReq 获取云账号列表请求（已废弃，改用 query 参数）

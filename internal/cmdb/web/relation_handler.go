@@ -6,6 +6,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cmdb/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cmdb/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cmdb/service"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
 )
@@ -88,7 +89,6 @@ type CreateInstanceRelationReq struct {
 	SourceInstanceID int64  `json:"source_instance_id" binding:"required"`
 	TargetInstanceID int64  `json:"target_instance_id" binding:"required"`
 	RelationTypeUID  string `json:"relation_type_uid" binding:"required"`
-	TenantID         string `json:"tenant_id" binding:"required"`
 }
 
 // CreateBatchInstanceRelationReq 批量创建实例关系请求
@@ -248,7 +248,7 @@ func (h *RelationHandler) CreateInstanceRelation(ctx *gin.Context, req CreateIns
 		SourceInstanceID: req.SourceInstanceID,
 		TargetInstanceID: req.TargetInstanceID,
 		RelationTypeUID:  req.RelationTypeUID,
-		TenantID:         req.TenantID,
+		TenantID:         middleware.GetTenantID(ctx),
 	}
 
 	id, err := h.relationSvc.Create(ctx.Request.Context(), rel)
@@ -269,7 +269,7 @@ func (h *RelationHandler) CreateBatchInstanceRelation(ctx *gin.Context, req Crea
 			SourceInstanceID: r.SourceInstanceID,
 			TargetInstanceID: r.TargetInstanceID,
 			RelationTypeUID:  r.RelationTypeUID,
-			TenantID:         r.TenantID,
+			TenantID:         middleware.GetTenantID(ctx),
 		}
 	}
 
@@ -285,7 +285,7 @@ func (h *RelationHandler) ListInstanceRelations(ctx *gin.Context) {
 	sourceIDStr := ctx.Query("source_instance_id")
 	targetIDStr := ctx.Query("target_instance_id")
 	relationTypeUID := ctx.Query("relation_type_uid")
-	tenantID := ctx.Query("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
 
@@ -362,7 +362,7 @@ func (h *RelationHandler) GetInstanceTopology(ctx *gin.Context) {
 	depth, _ := strconv.Atoi(depthStr)
 	direction := ctx.DefaultQuery("direction", "both")
 	modelUID := ctx.Query("model_uid")
-	tenantID := ctx.Query("tenant_id")
+	tenantID := middleware.GetTenantID(ctx)
 
 	query := domain.TopologyQuery{
 		InstanceID: id,

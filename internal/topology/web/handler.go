@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/topology/service"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
@@ -36,16 +37,19 @@ func (h *TopologyHandler) RegisterRoutes(server *gin.Engine) {
 	}
 }
 
-// getTenantID 从请求头获取租户 ID
-func getTenantID(ctx *gin.Context) string {
-	tenantID := ctx.GetHeader("X-Tenant-ID")
-	if tenantID == "" {
-		tenantID = ctx.Query("tenant_id")
-	}
-	if tenantID == "" {
-		tenantID = "default"
-	}
-	return tenantID
+// machineTenantIDFromHeader 仅供 auth 白名单内的机器端点使用。
+//
+// 该端点（/api/v1/cam/topology/declarations）跳过认证中间件，故 context 中
+// 不存在会话租户，只能由调用方（cmd/apm-push）经 X-Tenant-ID 头指定。
+//
+// 这是一个已知的信任缺口：任何能访问本服务的人都可写入任意租户的拓扑数据。
+// 机器调用方的租户来源待裁定，见设计文档 §4.7.3。此函数不得用于任何
+// 经认证的端点 —— 那些端点必须用 middleware.GetTenantID。
+//
+// 注意此处不再回退到 "default"：缺头时返回空串，由 handler 拒绝请求，
+// 而不是把数据静默写入一个虚构租户。
+func machineTenantIDFromHeader(ctx *gin.Context) string {
+	return ctx.GetHeader("X-Tenant-ID")
 }
 
 // GetTopology 查询拓扑图
@@ -72,7 +76,7 @@ func (h *TopologyHandler) GetTopology(ctx *gin.Context) {
 		return
 	}
 
-	tenantID := getTenantID(ctx)
+	tenantID := middleware.GetTenantID(ctx)
 	params := query.ToParams(tenantID)
 
 	var result interface{}
@@ -102,7 +106,7 @@ func (h *TopologyHandler) GetTopology(ctx *gin.Context) {
 // @Success 200 {object} ginx.Result{data=DomainListResponseVO}
 // @Router /topology/domains [get]
 func (h *TopologyHandler) GetDomains(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
+	tenantID := middleware.GetTenantID(ctx)
 	domains, err := h.topoSvc.GetDomains(ctx.Request.Context(), tenantID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, ginx.Result{Code: 500, Msg: err.Error()})
@@ -122,7 +126,7 @@ func (h *TopologyHandler) GetDomains(ctx *gin.Context) {
 // @Router /topology/node/{id} [get]
 func (h *TopologyHandler) GetNodeDetail(ctx *gin.Context) {
 	nodeID := ctx.Param("id")
-	tenantID := getTenantID(ctx)
+	tenantID := middleware.GetTenantID(ctx)
 
 	detail, err := h.topoSvc.GetNodeDetail(ctx.Request.Context(), tenantID, nodeID)
 	if err != nil {
@@ -140,7 +144,7 @@ func (h *TopologyHandler) GetNodeDetail(ctx *gin.Context) {
 // @Success 200 {object} ginx.Result{data=StatsResponseVO}
 // @Router /topology/stats [get]
 func (h *TopologyHandler) GetStats(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
+	tenantID := middleware.GetTenantID(ctx)
 	stats, err := h.topoSvc.GetStats(ctx.Request.Context(), tenantID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, ginx.Result{Code: 500, Msg: err.Error()})
@@ -160,7 +164,12 @@ func (h *TopologyHandler) GetStats(ctx *gin.Context) {
 // @Failure 400 {object} ginx.Result
 // @Router /topology/declarations [post]
 func (h *TopologyHandler) CreateDeclaration(ctx *gin.Context, req DeclarationRequestVO) (ginx.Result, error) {
-	tenantID := getTenantID(ctx)
+	// 该端点在 auth 白名单内（无用户会话），租户只能来自调用方请求头。
+	// 详见 machineTenantIDFromHeader 的说明。
+	tenantID := machineTenantIDFromHeader(ctx)
+	if tenantID == "" {
+		return ginx.Result{Code: 400, Msg: "X-Tenant-ID header is required"}, nil
+	}
 	decl := req.ToDeclaration(tenantID)
 
 	if err := h.declSvc.Register(ctx.Request.Context(), decl); err != nil {
@@ -178,7 +187,7 @@ func (h *TopologyHandler) CreateDeclaration(ctx *gin.Context, req DeclarationReq
 // @Success 200 {object} ginx.Result
 // @Router /topology/declarations [get]
 func (h *TopologyHandler) ListDeclarations(ctx *gin.Context) {
-	tenantID := getTenantID(ctx)
+	tenantID := middleware.GetTenantID(ctx)
 	decls, err := h.declSvc.List(ctx.Request.Context(), tenantID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, ginx.Result{Code: 500, Msg: err.Error()})
@@ -197,7 +206,7 @@ func (h *TopologyHandler) ListDeclarations(ctx *gin.Context) {
 // @Router /topology/declarations/{source} [delete]
 func (h *TopologyHandler) DeleteDeclaration(ctx *gin.Context) {
 	source := ctx.Param("source")
-	tenantID := getTenantID(ctx)
+	tenantID := middleware.GetTenantID(ctx)
 
 	count, err := h.declSvc.DeleteBySource(ctx.Request.Context(), tenantID, source)
 	if err != nil {
