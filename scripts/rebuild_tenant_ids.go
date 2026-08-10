@@ -31,6 +31,16 @@
 //   * Always write int64(...) explicitly; a bare literal like 3 encodes as
 //     int32 and won't match the int64 `bson:"tenant_id"` field.
 //
+// Maintenance window
+//   Run this script ONLY when the prod app is stopped OR already running the
+//   new int64-aware code. The old code continuously upserts documents with
+//     string tenant_id values (e.g. ecam_instance asset sync at ~100-200 docs/min).
+//   Concurrent string inserts race the migration: new "Jlc" docs appear between
+//     discovery and UpdateMany, and after rewrite they collide with already-
+//     migrated int64 docs on unique indexes (e.g. tenant_id_1_model_uid_1_asset_id_1).
+//   The script is idempotent and safe to re-run; finish cleanup after the
+//   new code is deployed.
+//
 // Usage
 //   # Dry-run (default): preview only, no writes.
 //   go run scripts/rebuild_tenant_ids.go
@@ -161,6 +171,9 @@ func main() {
 		log.Printf("MODE      : DRY-RUN (no data will be modified)")
 	}
 	log.Printf("==========================================================")
+	if *apply {
+		log.Printf("NOTE: ensure prod app is stopped or running int64-aware code; concurrent string inserts will race")
+	}
 
 	// 2h budget — ecam_cost_unified_bill has ~5M docs; updateMany is a single
 	// server-side op but takes minutes. Don't artificially cut it short.
@@ -222,32 +235,52 @@ func main() {
 	}
 
 	// ---- Phase 2: apply ----
+	// Process ALL collections even if one fails — the operator needs the full
+	// picture from VALIDATE to decide what to fix. Failures are collected and
+	// reported at the end (after VALIDATE); the process exits non-zero if any
+	// collection failed or any validation check failed.
 	log.Printf("")
 	log.Printf("========== APPLY ==========")
 	applyStart := time.Now()
+	var applyFailed []string
 	for i := range infos {
 		c := &infos[i]
 		coll := db.Collection(c.name)
 		start := time.Now()
 		if err := migrateCollection(ctx, coll, c); err != nil {
-			log.Fatalf("FAIL %s: %v", c.name, err)
+			log.Printf("FAIL %s: %v", c.name, err)
+			applyFailed = append(applyFailed, c.name)
+			continue
 		}
 		log.Printf("  %s: collection done in %s", c.name, time.Since(start))
 	}
 	log.Printf("APPLY total elapsed: %s", time.Since(applyStart))
 
 	// ---- Phase 3: validate ----
+	// Run unconditionally on every active collection, regardless of whether
+	// its APPLY step succeeded. This surfaces partial-success states (e.g.
+	// data rewritten but index rebuild failed) that a $type aggregation can
+	// still detect.
 	log.Printf("")
 	log.Printf("========== VALIDATE ==========")
-	bad := 0
+	var validateFailed []string
 	for _, c := range infos {
 		if err := validateCollection(ctx, db.Collection(c.name), c.name); err != nil {
 			log.Printf("VALIDATION FAIL %s: %v", c.name, err)
-			bad++
+			validateFailed = append(validateFailed, c.name)
 		}
 	}
-	if bad > 0 {
-		log.Fatalf("validation failed for %d collections", bad)
+
+	// Final exit decision: non-zero if any APPLY or VALIDATE step failed.
+	if len(applyFailed) > 0 {
+		log.Printf("APPLY failed for %d collection(s): %s", len(applyFailed), strings.Join(applyFailed, ", "))
+	}
+	if len(validateFailed) > 0 {
+		log.Printf("VALIDATE failed for %d collection(s): %s", len(validateFailed), strings.Join(validateFailed, ", "))
+	}
+	if len(applyFailed) > 0 || len(validateFailed) > 0 {
+		log.Printf("Migration completed with errors (apply=%d, validate=%d).", len(applyFailed), len(validateFailed))
+		os.Exit(1)
 	}
 	log.Printf("All active collections validated: tenant_id is int64 (\"long\") only (or empty collection).")
 }
@@ -431,6 +464,12 @@ func migrateCollection(ctx context.Context, coll *mongo.Collection, c *collInfo)
 		if canon, ok := canonicalTenantIDIndexes[c.name]; ok {
 			rebuildSpecs = canon
 			log.Printf("  %s: no tenant_id indexes in DB; using %d canonical specs as fallback", c.name, len(canon))
+		} else {
+			// Genuine "collection has no tenant_id indexes" is fine, but a
+			// previous failed run that dropped-and-crashed would land here too.
+			// The validation stage only checks $type, not index presence, so
+			// warn loudly to flag the silent-success case.
+			log.Printf("  %s: WARN no tenant_id indexes found in DB and no canonical fallback; if this collection should have indexes, rebuild manually", c.name)
 		}
 	}
 
@@ -455,20 +494,28 @@ func migrateCollection(ctx context.Context, coll *mongo.Collection, c *collInfo)
 			log.Printf("  %s: %s (%d docs) already migrated, skipping", c.name, v, cnt)
 			continue
 		case v == "Jlc":
-			n, err := coll.UpdateMany(ctx,
-				bson.M{"tenant_id": "Jlc"},
-				bson.M{"$set": bson.M{"tenant_id": int64(3)}},
-			)
-			if err != nil {
+			var n *mongo.UpdateResult
+			if err := withRetry(ctx, fmt.Sprintf("UpdateMany Jlc on %s", c.name), func() error {
+				var err error
+				n, err = coll.UpdateMany(ctx,
+					bson.M{"tenant_id": "Jlc"},
+					bson.M{"$set": bson.M{"tenant_id": int64(3)}},
+				)
+				return err
+			}); err != nil {
 				return fmt.Errorf("UpdateMany Jlc: %w", err)
 			}
 			log.Printf("  %s: \"Jlc\" → 3 (matched %d, modified %d, planned %d)", c.name, n.MatchedCount, n.ModifiedCount, cnt)
 		case v == "default":
-			n, err := coll.UpdateMany(ctx,
-				bson.M{"tenant_id": "default"},
-				bson.M{"$set": bson.M{"tenant_id": int64(2)}},
-			)
-			if err != nil {
+			var n *mongo.UpdateResult
+			if err := withRetry(ctx, fmt.Sprintf("UpdateMany default on %s", c.name), func() error {
+				var err error
+				n, err = coll.UpdateMany(ctx,
+					bson.M{"tenant_id": "default"},
+					bson.M{"$set": bson.M{"tenant_id": int64(2)}},
+				)
+				return err
+			}); err != nil {
 				return fmt.Errorf("UpdateMany default: %w", err)
 			}
 			log.Printf("  %s: \"default\" → 2 (matched %d, modified %d, planned %d)", c.name, n.MatchedCount, n.ModifiedCount, cnt)
@@ -479,11 +526,15 @@ func migrateCollection(ctx context.Context, coll *mongo.Collection, c *collInfo)
 			}
 			switch p.action {
 			case "rewrite":
-				n, err := coll.UpdateMany(ctx,
-					bson.M{"tenant_id": ""},
-					bson.M{"$set": bson.M{"tenant_id": int64(p.value)}},
-				)
-				if err != nil {
+				var n *mongo.UpdateResult
+				if err := withRetry(ctx, fmt.Sprintf("UpdateMany empty on %s", c.name), func() error {
+					var err error
+					n, err = coll.UpdateMany(ctx,
+						bson.M{"tenant_id": ""},
+						bson.M{"$set": bson.M{"tenant_id": int64(p.value)}},
+					)
+					return err
+				}); err != nil {
 					return fmt.Errorf("UpdateMany empty: %w", err)
 				}
 				log.Printf("  %s: \"\" → %d (matched %d, modified %d, planned %d)", c.name, p.value, n.MatchedCount, n.ModifiedCount, cnt)
@@ -500,8 +551,9 @@ func migrateCollection(ctx context.Context, coll *mongo.Collection, c *collInfo)
 	}
 
 	// 3. Rebuild tenant_id indexes from the rebuild specs. The mongo Go driver
-	//    does not auto-retry on socket EOF, so wrap CreateOne in withRetry.
-	//    A transient connection drop here would otherwise leave the collection
+	//    does not auto-retry on socket EOF, so wrap CreateOne in withRetry
+	//    (the data rewrite's UpdateMany calls above are also wrapped). A
+	//    transient connection drop here would otherwise leave the collection
 	//    with no tenant_id indexes until the app is restarted.
 	for _, s := range rebuildSpecs {
 		opts := options.Index().SetName(s.Name)
