@@ -15,8 +15,9 @@ type TopologyService interface {
 	GetInstanceTopology(ctx context.Context, query domain.TopologyQuery) (*domain.TopologyGraph, error)
 	// GetModelTopology 获取模型拓扑图（模型间的关系定义）
 	GetModelTopology(ctx context.Context, provider string) (*domain.ModelTopologyGraph, error)
-	// GetRelatedInstances 获取关联实例列表
-	GetRelatedInstances(ctx context.Context, instanceID int64, relationTypeUID string) ([]domain.Instance, error)
+	// GetRelatedInstances 获取关联实例列表。
+	// tenantID 必须非 0：查询按租户隔离，0 不作「全部租户」通配。
+	GetRelatedInstances(ctx context.Context, tenantID int64, instanceID int64, relationTypeUID string) ([]domain.Instance, error)
 }
 
 type topologyService struct {
@@ -238,10 +239,14 @@ func (s *topologyService) GetModelTopology(ctx context.Context, provider string)
 }
 
 // GetRelatedInstances 获取关联实例列表
-func (s *topologyService) GetRelatedInstances(ctx context.Context, instanceID int64, relationTypeUID string) ([]domain.Instance, error) {
+func (s *topologyService) GetRelatedInstances(ctx context.Context, tenantID int64, instanceID int64, relationTypeUID string) ([]domain.Instance, error) {
+	// TenantID 必须显式带上：同文件另两处（:89、:136）都带了，唯独此处漏了，
+	// 而 dao/relation.go:193 是 `if filter.TenantID != 0 { 加租户谓词 }` ——
+	// 漏传会丢弃租户谓词，按 instance_id 读到**其他租户**的关联关系。
 	filter := domain.InstanceRelationFilter{
 		SourceInstanceID: instanceID,
 		RelationTypeUID:  relationTypeUID,
+		TenantID:         tenantID,
 		Limit:            100,
 	}
 

@@ -8,6 +8,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/topology/service"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 )
 
 // TopologyHandler 拓扑 HTTP 处理器
@@ -28,10 +29,21 @@ func NewTopologyHandler(topoSvc service.TopologyService, declSvc service.Declara
 func (h *TopologyHandler) RegisterRoutes(server *gin.Engine) {
 	g := server.Group("/api/v1/cam/topology")
 	{
-		g.GET("", h.GetTopology)
-		g.GET("/domains", h.GetDomains)
-		g.GET("/node/:id", h.GetNodeDetail)
-		g.GET("/stats", h.GetStats)
+		// 前 4 条**逐路由**挂 RequireTenant：它们用 middleware.GetTenantID 取会话租户，
+		// 而 dao/node.go:142 与 dao/edge.go:178 是 `if filter.TenantID != 0 { 加谓词 }`
+		// —— 租户为 0（eiam 的「等待选择租户」临时凭证）时谓词被丢弃，会读到**全部
+		// 租户**的拓扑数据。这 4 条的路径均不在 auth 白名单内（白名单只有
+		// /api/v1/cam/topology/declarations），故会话必然存在，加守卫不会误拒。
+		//
+		// **绝不可把守卫挂到 g 上**：下面 3 个 /declarations 动词是白名单机器端点
+		// （apm-push 无用户会话），context 中永无会话租户，组级守卫会让它们一律 403,
+		// 从而打断 APM 拓扑采集。它们的租户按裁定来自 X-Tenant-ID 头，
+		// 由 machineTenantIDFromHeader 解析、handler 内以 400 拒绝 0 值。
+		g.GET("", middleware.RequireTenant(elog.DefaultLogger), h.GetTopology)
+		g.GET("/domains", middleware.RequireTenant(elog.DefaultLogger), h.GetDomains)
+		g.GET("/node/:id", middleware.RequireTenant(elog.DefaultLogger), h.GetNodeDetail)
+		g.GET("/stats", middleware.RequireTenant(elog.DefaultLogger), h.GetStats)
+
 		g.POST("/declarations", ginx.WrapBody[DeclarationRequestVO](h.CreateDeclaration))
 		g.GET("/declarations", h.ListDeclarations)
 		g.DELETE("/declarations/:source", h.DeleteDeclaration)

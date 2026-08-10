@@ -9,6 +9,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 )
 
 // InstanceHandler 资产实例HTTP处理器
@@ -23,7 +24,16 @@ func NewInstanceHandler(svc service.InstanceService) *InstanceHandler {
 
 // RegisterRoutes 注册实例相关路由
 func (h *InstanceHandler) RegisterRoutes(r *gin.RouterGroup) {
+	// 整个 /instances 子组都要求已选定租户：domain.Instance 与 InstanceFilter 都带
+	// TenantID，且 dao/instance.go:280 是 `if filter.TenantID != 0 { 加租户谓词 }` ——
+	// 租户为 0（eiam 的「等待选择租户」临时凭证）时谓词被丢弃，List 会返回全部租户的
+	// 实例。按设计 §4.3，0 必须在中间件边界拒绝，不得进入 DAO。
+	//
+	// 挂在子组而非 cmdb 组上：cmdb 是混合组，/models、/model-groups、
+	// /models/:uid/attributes、/model-relations 的领域类型均不含 TenantID
+	// （模型元数据本身无租户维度），整组挂会把它们一并变成 403。
 	g := r.Group("/instances")
+	g.Use(middleware.RequireTenant(elog.DefaultLogger))
 	{
 		g.POST("", ginx.WrapBody[CreateInstanceReq](h.Create))
 		g.POST("/batch", ginx.WrapBody[CreateBatchInstanceReq](h.CreateBatch))

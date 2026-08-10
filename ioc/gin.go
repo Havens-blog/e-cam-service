@@ -214,7 +214,13 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 	// 注册审计模块路由
 	if auditModule != nil {
 		logger.Info("注册审计模块路由")
+		// 审计组可以整组挂守卫：组内 5 条路由（/logs、/logs/export、/reports 与
+		// 下面的 /changes、/changes/summary）**全部**消费会话租户，没有免租户端点。
+		// 其 DAO（audit/repository/dao/audit.go:209、change.go:144）是
+		// `if filter.TenantID != 0`，租户为 0 时谓词被丢弃 → 会返回全部租户的
+		// 审计日志与变更历史。按设计 §4.3 在边界拒绝。
 		auditGroup := server.Group("/api/v1/cam/audit")
+		auditGroup.Use(middleware.RequireTenant(logger))
 		auditModule.RegisterRoutes(auditGroup)
 
 		// 变更历史路由（挂在 audit 下，避免与 /assets/:id 路由冲突）

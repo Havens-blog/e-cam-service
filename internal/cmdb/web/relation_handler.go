@@ -9,6 +9,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 )
 
 // RelationHandler 关系HTTP处理器
@@ -44,7 +45,14 @@ func (h *RelationHandler) RegisterRoutes(r *gin.RouterGroup) {
 	}
 
 	// 实例关系
+	//
+	// 本子组要求已选定租户：domain.InstanceRelation 与 InstanceRelationFilter 都带
+	// TenantID，且 dao/relation.go:193 是 `if filter.TenantID != 0`——租户为 0 时
+	// 谓词被丢弃，会返回全部租户的实例关系。
+	// 注意上面的 /model-relations 子组**不加**守卫：ModelRelationType 不含 TenantID，
+	// 模型关系类型是与租户无关的元数据。
 	instRelGroup := r.Group("/instance-relations")
+	instRelGroup.Use(middleware.RequireTenant(elog.DefaultLogger))
 	{
 		instRelGroup.POST("", ginx.WrapBody[CreateInstanceRelationReq](h.CreateInstanceRelation))
 		instRelGroup.POST("/batch", ginx.WrapBody[CreateBatchInstanceRelationReq](h.CreateBatchInstanceRelation))
@@ -53,11 +61,23 @@ func (h *RelationHandler) RegisterRoutes(r *gin.RouterGroup) {
 	}
 
 	// 拓扑
+	//
+	// 本子组亦为混合，故逐路由挂守卫：
+	//   /instance/:id  —— 以 GetTenantID 构造 TopologyQuery.TenantID，经 service 转成
+	//                     InstanceRelationFilter 后落到 dao/relation.go:193 的 `!= 0` 谓词。
+	//   /related/:id   —— service 层原本漏传租户（topology.go:242），本轮已补为显式
+	//                     参数，故它现在同样消费会话租户。
+	//   /model         —— **不加**守卫：只按 provider 查模型关系图，ModelRelationType
+	//                     不含 TenantID，与租户无关。
 	topoGroup := r.Group("/topology")
 	{
-		topoGroup.GET("/instance/:id", h.GetInstanceTopology)
+		topoGroup.GET("/instance/:id",
+			middleware.RequireTenant(elog.DefaultLogger),
+			h.GetInstanceTopology)
+		topoGroup.GET("/related/:id",
+			middleware.RequireTenant(elog.DefaultLogger),
+			h.GetRelatedInstances)
 		topoGroup.GET("/model", h.GetModelTopology)
-		topoGroup.GET("/related/:id", h.GetRelatedInstances)
 	}
 }
 
@@ -403,8 +423,9 @@ func (h *RelationHandler) GetRelatedInstances(ctx *gin.Context) {
 	}
 
 	relationTypeUID := ctx.Query("relation_type_uid")
+	tenantID := middleware.GetTenantID(ctx)
 
-	instances, err := h.topologySvc.GetRelatedInstances(ctx.Request.Context(), id, relationTypeUID)
+	instances, err := h.topologySvc.GetRelatedInstances(ctx.Request.Context(), tenantID, id, relationTypeUID)
 	if err != nil {
 		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
 		return
