@@ -169,9 +169,9 @@ func (s *cloudAccountService) UpdateAccount(ctx context.Context, id int64, req *
 	if req.Config != nil {
 		account.Config = *req.Config
 	}
-	if req.TenantID != nil {
-		account.TenantID = *req.TenantID
-	}
+	// 此处原有 `if req.TenantID != nil { account.TenantID = *req.TenantID }`。
+	// 更新不具备"改变归属租户"的语义，该门已随请求结构体的 TenantID 字段一并删除，
+	// 账号归属只在创建时由会话租户确定。
 
 	account.UpdateTime = time.Now()
 	account.UTime = account.UpdateTime.Unix()

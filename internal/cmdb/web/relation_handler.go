@@ -263,13 +263,14 @@ func (h *RelationHandler) CreateInstanceRelation(ctx *gin.Context, req CreateIns
 }
 
 func (h *RelationHandler) CreateBatchInstanceRelation(ctx *gin.Context, req CreateBatchInstanceRelationReq) (ginx.Result, error) {
+	tenantID := middleware.GetTenantID(ctx)
 	rels := make([]domain.InstanceRelation, len(req.Relations))
 	for i, r := range req.Relations {
 		rels[i] = domain.InstanceRelation{
 			SourceInstanceID: r.SourceInstanceID,
 			TargetInstanceID: r.TargetInstanceID,
 			RelationTypeUID:  r.RelationTypeUID,
-			TenantID:         middleware.GetTenantID(ctx),
+			TenantID:         tenantID,
 		}
 	}
 

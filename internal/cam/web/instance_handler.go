@@ -133,13 +133,14 @@ func (h *InstanceHandler) Create(ctx *gin.Context, req CreateInstanceReq) (ginx.
 // @Success 200 {object} ginx.Result{data=object} "成功"
 // @Router /cam/instances/batch [post]
 func (h *InstanceHandler) CreateBatch(ctx *gin.Context, req CreateBatchInstanceReq) (ginx.Result, error) {
+	tenantID := middleware.GetTenantID(ctx)
 	instances := make([]domain.Instance, len(req.Instances))
 	for i, r := range req.Instances {
 		instances[i] = domain.Instance{
 			ModelUID:   r.ModelUID,
 			AssetID:    r.AssetID,
 			AssetName:  r.AssetName,
-			TenantID:   middleware.GetTenantID(ctx),
+			TenantID:   tenantID,
 			AccountID:  r.AccountID,
 			Attributes: r.Attributes,
 		}
@@ -190,13 +191,14 @@ func (h *InstanceHandler) Upsert(ctx *gin.Context, req UpsertInstanceReq) (ginx.
 // @Success 200 {object} ginx.Result "成功"
 // @Router /cam/instances/upsert-batch [post]
 func (h *InstanceHandler) UpsertBatch(ctx *gin.Context, req UpsertBatchInstanceReq) (ginx.Result, error) {
+	tenantID := middleware.GetTenantID(ctx)
 	instances := make([]domain.Instance, len(req.Instances))
 	for i, r := range req.Instances {
 		instances[i] = domain.Instance{
 			ModelUID:   r.ModelUID,
 			AssetID:    r.AssetID,
 			AssetName:  r.AssetName,
-			TenantID:   middleware.GetTenantID(ctx),
+			TenantID:   tenantID,
 			AccountID:  r.AccountID,
 			Attributes: r.Attributes,
 		}

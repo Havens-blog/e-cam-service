@@ -113,13 +113,14 @@ func (h *InstanceHandler) Create(ctx *gin.Context, req CreateInstanceReq) (ginx.
 
 // CreateBatch 批量创建实例
 func (h *InstanceHandler) CreateBatch(ctx *gin.Context, req CreateBatchInstanceReq) (ginx.Result, error) {
+	tenantID := middleware.GetTenantID(ctx)
 	instances := make([]domain.Instance, len(req.Instances))
 	for i, r := range req.Instances {
 		instances[i] = domain.Instance{
 			ModelUID:   r.ModelUID,
 			AssetID:    r.AssetID,
 			AssetName:  r.AssetName,
-			TenantID:   middleware.GetTenantID(ctx),
+			TenantID:   tenantID,
 			AccountID:  r.AccountID,
 			Attributes: r.Attributes,
 		}
@@ -154,13 +155,14 @@ func (h *InstanceHandler) Upsert(ctx *gin.Context, req UpsertInstanceReq) (ginx.
 
 // UpsertBatch 批量更新或插入实例
 func (h *InstanceHandler) UpsertBatch(ctx *gin.Context, req UpsertBatchInstanceReq) (ginx.Result, error) {
+	tenantID := middleware.GetTenantID(ctx)
 	instances := make([]domain.Instance, len(req.Instances))
 	for i, r := range req.Instances {
 		instances[i] = domain.Instance{
 			ModelUID:   r.ModelUID,
 			AssetID:    r.AssetID,
 			AssetName:  r.AssetName,
-			TenantID:   middleware.GetTenantID(ctx),
+			TenantID:   tenantID,
 			AccountID:  r.AccountID,
 			Attributes: r.Attributes,
 		}

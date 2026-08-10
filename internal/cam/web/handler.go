@@ -638,10 +638,10 @@ func (h *Handler) UpdateCloudAccount(ctx *gin.Context, req UpdateCloudAccountReq
 		AccessKeySecret: req.AccessKeySecret,
 		Regions:         req.Regions,
 		Description:     req.Description,
-		// TenantID 故意不设置：更新操作不得改变账号的归属租户。
-		// 该字段留空后 service 层的 `if req.TenantID != nil` 不成立，
-		// 原有租户被保留。若在此填入会话租户，任何一次更新都会把账号
-		// 静默迁移到调用方租户下。
+		// 此处没有 TenantID：更新操作不具备"改变账号归属租户"的语义。
+		// 该字段已从 domain.UpdateCloudAccountRequest 中删除（连同 service 层
+		// 两处 `if req.TenantID != nil` 门），故不存在任何经更新改写归属的路径。
+		// 归属只在创建时由会话租户确定。
 	}
 
 	// 转换环境字段

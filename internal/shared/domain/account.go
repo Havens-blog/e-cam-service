@@ -103,7 +103,10 @@ type UpdateCloudAccountRequest struct {
 	Regions         []string            `json:"regions,omitempty"`
 	Description     *string             `json:"description,omitempty"`
 	Config          *CloudAccountConfig `json:"config,omitempty"`
-	TenantID        *string             `json:"tenant_id,omitempty"`
+	// 此处**不得**再有 TenantID 字段：更新操作不具备"改变账号归属租户"的语义。
+	// 该字段可被 JSON 绑定，留着等于给客户端保留一条改写归属的写路径
+	// （距离成为注入通道只差一次 ShouldBindJSON），故连同 service 层两处
+	// `if req.TenantID != nil` 门一并删除。归属只在创建时由会话租户确定。
 }
 
 // ConnectionTestResult 连接测试结果

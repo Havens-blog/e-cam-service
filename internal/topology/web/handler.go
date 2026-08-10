@@ -37,17 +37,34 @@ func (h *TopologyHandler) RegisterRoutes(server *gin.Engine) {
 	}
 }
 
-// machineTenantIDFromHeader 仅供 auth 白名单内的机器端点使用。
+// machineTenantIDFromHeader 供 /declarations 资源的三个动词（POST/GET/DELETE）使用，
+// 租户来自调用方的 X-Tenant-ID 头，而非会话。
 //
-// 该端点（/api/v1/cam/topology/declarations）跳过认证中间件，故 context 中
-// 不存在会话租户，只能由调用方（cmd/apm-push）经 X-Tenant-ID 头指定。
+// 为什么这三个都拿不到会话租户：
 //
-// 这是一个已知的信任缺口：任何能访问本服务的人都可写入任意租户的拓扑数据。
-// 机器调用方的租户来源待裁定，见设计文档 §4.7.3。此函数不得用于任何
-// 经认证的端点 —— 那些端点必须用 middleware.GetTenantID。
+//  1. POST 与 GET —— 路径 /api/v1/cam/topology/declarations 同时位于 auth 与
+//     policy 白名单（config/prod.yaml:82、:88）。matchWhitelist
+//     （internal/shared/middleware/ecmdb_auth.go:80）是**方法无关**的精确路径
+//     匹配，命中后执行 c.Next(); return —— 该早返回发生在写入租户**之前**。
+//     故 POST 与 GET 命中同一条白名单，context 中从不存在会话租户。
+//  2. DELETE —— 路径 /declarations/:source 不同，确实经过认证，本可用
+//     middleware.GetTenantID。但它必须按 POST 写入时所用的租户来删除，
+//     否则除非两者恰好相等，删除恒为 no-op（{"deleted": 0}），
+//     apm-push 写入的声明将永远无法从 UI 清理。故与 POST 保持一致。
 //
-// 注意此处不再回退到 "default"：缺头时返回空串，由 handler 拒绝请求，
-// 而不是把数据静默写入一个虚构租户。
+// 写入方 cmd/apm-push 无用户会话，租户取自环境变量 TENANT_ID 并经该头发送
+// （config.go:59 已将其列为必需、pusher.go:81 总是设置）；前端读/删则由全局
+// 拦截器设置该头（e-cam-web/src/api/request/index.ts:59-62）。
+//
+// 这是一个已知的信任缺口：任何能访问本服务的人都可读写任意租户的拓扑数据。
+// 该缺口与改动前一致（这三个动词原本就共用同一个读头 helper），并非本次放大；
+// 机器调用方的租户来源待裁定，见设计文档 §4.7.3。
+//
+// 此函数不得用于任何经认证且无此一致性约束的端点 —— 例如同文件的
+// GetTopology/GetDomains/GetNodeDetail/GetStats，它们必须用 middleware.GetTenantID。
+//
+// 注意此处不再回退到 "default"：缺头时返回空串，由 handler 返回 400 拒绝，
+// 而不是把数据静默读写到一个虚构租户。
 func machineTenantIDFromHeader(ctx *gin.Context) string {
 	return ctx.GetHeader("X-Tenant-ID")
 }
@@ -187,7 +204,13 @@ func (h *TopologyHandler) CreateDeclaration(ctx *gin.Context, req DeclarationReq
 // @Success 200 {object} ginx.Result
 // @Router /topology/declarations [get]
 func (h *TopologyHandler) ListDeclarations(ctx *gin.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+	// 与 POST 同路径、同在 auth 白名单内（白名单匹配与 HTTP 方法无关），
+	// 故此处无会话租户，只能读头。详见 machineTenantIDFromHeader。
+	tenantID := machineTenantIDFromHeader(ctx)
+	if tenantID == "" {
+		ctx.JSON(http.StatusBadRequest, ginx.Result{Code: 400, Msg: "X-Tenant-ID header is required"})
+		return
+	}
 	decls, err := h.declSvc.List(ctx.Request.Context(), tenantID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, ginx.Result{Code: 500, Msg: err.Error()})
@@ -206,7 +229,13 @@ func (h *TopologyHandler) ListDeclarations(ctx *gin.Context) {
 // @Router /topology/declarations/{source} [delete]
 func (h *TopologyHandler) DeleteDeclaration(ctx *gin.Context) {
 	source := ctx.Param("source")
-	tenantID := middleware.GetTenantID(ctx)
+	// 本路径确实经过认证，但必须与 POST 写入时所用的租户一致，否则删除恒为
+	// no-op。详见 machineTenantIDFromHeader。
+	tenantID := machineTenantIDFromHeader(ctx)
+	if tenantID == "" {
+		ctx.JSON(http.StatusBadRequest, ginx.Result{Code: 400, Msg: "X-Tenant-ID header is required"})
+		return
+	}
 
 	count, err := h.declSvc.DeleteBySource(ctx.Request.Context(), tenantID, source)
 	if err != nil {
