@@ -74,26 +74,46 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 	// 注册实例路由
 	logger.Info("注册实例路由")
 	camGroup := server.Group("/api/v1/cam")
+
+	// tenantScoped 返回一个挂了 RequireTenant 的 camGroup 子组。
+	//
+	// 为什么必须在这里挂，而不是在 internal/cam/module.go：
+	// cam.Module.RegisterRoutes 虽然也写了同样的拦截，但它**没有任何调用方**
+	// （全仓 grep `camModule.RegisterRoutes` 为 0）；线上生效的注册路径是
+	// ioc/wire_gen.go:42 → 本函数。写在那边的 RequireTenant 一律不生效。
+	//
+	// 为什么这些组需要拦截：这些 handler 全部以 middleware.GetTenantID(ctx) 构造
+	// filter，而多数 filter 的 DAO 保留了「if filter.TenantID != 0 才加租户谓词」
+	// 的可选语义（该可选性是机器路径枚举云账号所必需，见报告）。若放行
+	// tenant_id=0 的会话（eiam 用 0 表示「等待选择租户」的临时凭证），租户谓词会被
+	// 整体丢弃，查询将返回**全部租户**的数据。按设计 §4.3，0 必须在中间件边界拒绝，
+	// 不得进入任何 DAO。
+	tenantScoped := func() *gin.RouterGroup {
+		g := camGroup.Group("")
+		g.Use(middleware.RequireTenant(logger))
+		return g
+	}
+
 	if camModule.InstanceHdl != nil {
-		camModule.InstanceHdl.RegisterRoutes(camGroup)
+		camModule.InstanceHdl.RegisterRoutes(tenantScoped())
 	}
 
 	// 注册数据库资源路由 (RDS, Redis, MongoDB) - 旧路由，保留兼容
 	if camModule.DatabaseHdl != nil {
 		logger.Info("注册数据库资源路由")
-		camModule.DatabaseHdl.RegisterRoutes(camGroup)
+		camModule.DatabaseHdl.RegisterRoutes(tenantScoped())
 	}
 
 	// 注册统一资产路由 (新RESTful风格)
 	if camModule.AssetHdl != nil {
 		logger.Info("注册统一资产路由")
-		camModule.AssetHdl.RegisterRoutes(camGroup)
+		camModule.AssetHdl.RegisterRoutes(tenantScoped())
 	}
 
 	// 注册仪表盘路由
 	if camModule.DashboardHdl != nil {
 		logger.Info("注册仪表盘路由")
-		camModule.DashboardHdl.RegisterRoutesWithGroup(camGroup.Group("/dashboard"))
+		camModule.DashboardHdl.RegisterRoutesWithGroup(tenantScoped().Group("/dashboard"))
 		logger.Info("仪表盘路由注册完成")
 	}
 
@@ -113,7 +133,11 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 	// 注册服务树路由
 	if camModule.ServiceTreeModule != nil {
 		logger.Info("注册服务树路由")
+		// servicetree 的 handler 内已有 6 处 `if tenantID == 0` 判空，但并非每个端点都有；
+		// 组级 RequireTenant 补齐其余端点并把拒绝点前移到边界，二者不冲突
+		// （中间件先返回 403，handler 内的判空成为不可达兜底）。
 		stGroup := server.Group("/api/v1/cam/service-tree")
+		stGroup.Use(middleware.RequireTenant(logger))
 		camModule.ServiceTreeModule.RegisterRoutes(stGroup)
 		logger.Info("服务树路由注册完成")
 	} else {
@@ -141,28 +165,28 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 	// 注册数据字典路由
 	if camModule.DictHdl != nil {
 		logger.Info("注册数据字典路由")
-		camModule.DictHdl.RegisterRoutes(camGroup)
+		camModule.DictHdl.RegisterRoutes(tenantScoped())
 		logger.Info("数据字典路由注册完成")
 	}
 
 	// 注册主机模板路由
 	if camModule.TemplateHdl != nil {
 		logger.Info("注册主机模板路由")
-		camModule.TemplateHdl.RegisterRoutes(camGroup)
+		camModule.TemplateHdl.RegisterRoutes(tenantScoped())
 		logger.Info("主机模板路由注册完成")
 	}
 
 	// 注册标签管理路由
 	if camModule.TagHdl != nil {
 		logger.Info("注册标签管理路由")
-		camModule.TagHdl.RegisterRoutes(camGroup)
+		camModule.TagHdl.RegisterRoutes(tenantScoped())
 		logger.Info("标签管理路由注册完成")
 	}
 
 	// 注册 DNS 管理路由
 	if camModule.DNSHdl != nil {
 		logger.Info("注册 DNS 管理路由")
-		camModule.DNSHdl.RegisterRoutes(camGroup)
+		camModule.DNSHdl.RegisterRoutes(tenantScoped())
 		logger.Info("DNS 管理路由注册完成")
 	}
 

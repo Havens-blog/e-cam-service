@@ -12,6 +12,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 )
 
 // CreateBudgetReq 创建预算请求
@@ -45,6 +46,11 @@ func NewBudgetHandler(budgetSvc *budget.BudgetService) *BudgetHandler {
 // PrivateRoutes 注册预算管理相关路由
 func (h *BudgetHandler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/v1/cam")
+	// 本组全部端点都以 middleware.GetTenantID(ctx) 构造 filter，且组内**没有**任何
+	// handler 级的 tenantID==0 判空，故此处的 RequireTenant 不是重复校验而是唯一防线。
+	// 若放行 tenant_id=0（eiam 的「等待选择租户」临时凭证），DAO 的
+	// `if filter.TenantID != 0` 会丢弃租户谓词，返回全部租户的成本数据。
+	g.Use(middleware.RequireTenant(elog.DefaultLogger))
 	g.POST("/budget", ginx.WrapBody(h.CreateBudget))
 	g.GET("/budget", h.ListBudgets)
 	g.GET("/budget/:id/progress", h.GetBudgetProgress)

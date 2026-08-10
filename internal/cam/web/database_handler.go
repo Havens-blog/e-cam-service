@@ -264,9 +264,14 @@ func (h *DatabaseHandler) getDatabaseInstance(ctx *gin.Context, dbType string) {
 	}
 
 	// 否则，通过asset_id搜索
+	// TenantID 必须显式带上：InstanceService.List 只收一个 filter 参数，不会在
+	// 内部补租户；若此处留空，filter.TenantID 为 0，DAO 的
+	// `if filter.TenantID != 0` 会整体丢弃租户谓词，从而按 asset_id 命中**其他
+	// 租户**的实例。边界上的 RequireTenant 保证此处 tenantID 必然非 0。
 	filter := domain.InstanceFilter{
-		AssetID: assetID,
-		Limit:   10,
+		AssetID:  assetID,
+		TenantID: tenantID,
+		Limit:    10,
 	}
 
 	instances, _, err := h.instanceSvc.List(ctx.Request.Context(), filter)

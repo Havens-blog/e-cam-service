@@ -42,6 +42,11 @@ func NewCostHandler(
 // PrivateRoutes 注册成本分析相关路由
 func (h *CostHandler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/v1/cam")
+	// 本组全部端点都以 middleware.GetTenantID(ctx) 构造 filter，且组内**没有**任何
+	// handler 级的 tenantID==0 判空，故此处的 RequireTenant 不是重复校验而是唯一防线。
+	// 若放行 tenant_id=0（eiam 的「等待选择租户」临时凭证），DAO 的
+	// `if filter.TenantID != 0` 会丢弃租户谓词，返回全部租户的成本数据。
+	g.Use(middleware.RequireTenant(elog.DefaultLogger))
 	g.GET("/cost/summary", h.GetCostSummary)
 	g.GET("/cost/trend", h.GetCostTrend)
 	g.GET("/cost/distribution", h.GetCostDistribution)

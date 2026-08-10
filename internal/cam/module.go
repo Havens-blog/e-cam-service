@@ -86,17 +86,35 @@ type CostOptimizerService interface {
 }
 
 // RegisterRoutes 注册所有路由
+//
+// ⚠️ 本方法当前**没有任何调用方**（全仓 grep `camModule.RegisterRoutes` 为 0）。
+// 线上真正生效的注册路径是 ioc/wire_gen.go:42 → ioc.InitWebServer（ioc/gin.go:76），
+// 那里自建 camGroup 并直接注册各 Hdl。故本方法内的 RequireTenant 全部**不生效**。
+// 修改租户边界请改 ioc/gin.go；此处保留是为了让该方法自身保持一致，
+// 一旦将来被接线即具备正确的边界语义。
 func (m *Module) RegisterRoutes(r *gin.Engine) {
 	camGroup := r.Group("/api/v1/cam")
 
 	// 注册实例路由
+	//
+	// instance_handler 以 middleware.GetTenantID(ctx) 构造 InstanceFilter/SearchFilter，
+	// 而这两个 filter 的 DAO 保留了「if filter.TenantID != 0 才加租户谓词」的可选语义。
+	// 若放行 tenant_id=0 的会话（eiam 用 0 表示「等待选择租户」的临时凭证），
+	// 租户谓词会被整体丢弃，List 会返回全部租户的实例。
+	// 按设计 §4.3，0 必须在中间件边界拒绝，不得进入任何 DAO。
+	// 注意：受上面的方法级说明所限，此处的拦截当前不生效。
 	if m.InstanceHdl != nil {
-		m.InstanceHdl.RegisterRoutes(camGroup)
+		instanceGroup := camGroup.Group("")
+		instanceGroup.Use(middleware.RequireTenant(m.Logger))
+		m.InstanceHdl.RegisterRoutes(instanceGroup)
 	}
 
 	// 注册数据库资源路由 (RDS, Redis, MongoDB) - 旧路由，保留兼容
+	// 同上：database_handler 也用会话租户构造 InstanceFilter。
 	if m.DatabaseHdl != nil {
-		m.DatabaseHdl.RegisterRoutes(camGroup)
+		databaseGroup := camGroup.Group("")
+		databaseGroup.Use(middleware.RequireTenant(m.Logger))
+		m.DatabaseHdl.RegisterRoutes(databaseGroup)
 	}
 
 	// 注册统一资产路由 (新RESTful风格，使用租户中间件)
@@ -119,8 +137,14 @@ func (m *Module) RegisterRoutes(r *gin.Engine) {
 	}
 
 	// 注册服务树路由
+	//
+	// servicetree 的 handler 内已有 6 处 `if tenantID == 0` 判空，但并非每个
+	// handler 都有；组级 RequireTenant 补齐其余端点，并把拒绝点前移到边界。
+	// 二者不冲突：中间件先返回 403，handler 内的判空成为不可达的兜底。
 	if m.ServiceTreeModule != nil {
-		m.ServiceTreeModule.RegisterRoutes(camGroup)
+		serviceTreeGroup := camGroup.Group("")
+		serviceTreeGroup.Use(middleware.RequireTenant(m.Logger))
+		m.ServiceTreeModule.RegisterRoutes(serviceTreeGroup)
 	}
 
 	// 注册主机模板路由 (使用租户中间件)
