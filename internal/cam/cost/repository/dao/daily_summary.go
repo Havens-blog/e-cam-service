@@ -19,7 +19,7 @@ const DailySummaryCollection = "ecam_cost_daily_summary"
 type DailySummary struct {
 	// 复合主键: billing_date + tenant_id + provider + account_id + service_type + region
 	BillingDate string  `bson:"billing_date" json:"billing_date"` // YYYY-MM-DD
-	TenantID    string  `bson:"tenant_id" json:"tenant_id"`
+	TenantID    int64   `bson:"tenant_id" json:"tenant_id"`
 	Provider    string  `bson:"provider" json:"provider"`
 	AccountID   int64   `bson:"account_id" json:"account_id"`
 	ServiceType string  `bson:"service_type" json:"service_type"`
@@ -112,7 +112,7 @@ func (d *DailySummaryDAO) RebuildFromSource(ctx context.Context, startDate, endD
 		var result struct {
 			ID struct {
 				BillingDate string `bson:"billing_date"`
-				TenantID    string `bson:"tenant_id"`
+				TenantID    int64  `bson:"tenant_id"`
 				Provider    string `bson:"provider"`
 				AccountID   int64  `bson:"account_id"`
 				ServiceType string `bson:"service_type"`
@@ -187,13 +187,13 @@ func (d *DailySummaryDAO) SumAmount(ctx context.Context, filter repository.Unifi
 }
 
 // AggregateByField 从汇总表按字段聚合
-func (d *DailySummaryDAO) AggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
+func (d *DailySummaryDAO) AggregateByField(ctx context.Context, tenantID int64, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
 	match := bson.M{
 		"billing_date": bson.M{"$gte": startDate, "$lte": endDate},
 	}
-	if tenantID != "" {
-		match["tenant_id"] = tenantID
-	}
+	// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集，
+	// 而不是退化为「不加过滤」从而返回全部租户数据。
+	match["tenant_id"] = tenantID
 	if filter.Provider != "" {
 		match["provider"] = filter.Provider
 	}
@@ -229,13 +229,13 @@ func (d *DailySummaryDAO) AggregateByField(ctx context.Context, tenantID string,
 }
 
 // AggregateDailyAmount 从汇总表按日聚合
-func (d *DailySummaryDAO) AggregateDailyAmount(ctx context.Context, tenantID string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+func (d *DailySummaryDAO) AggregateDailyAmount(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 	match := bson.M{
 		"billing_date": bson.M{"$gte": startDate, "$lte": endDate},
 	}
-	if tenantID != "" {
-		match["tenant_id"] = tenantID
-	}
+	// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集，
+	// 而不是退化为「不加过滤」从而返回全部租户数据。
+	match["tenant_id"] = tenantID
 	if filter.Provider != "" {
 		match["provider"] = filter.Provider
 	}
@@ -278,7 +278,7 @@ func (d *DailySummaryDAO) HasData(ctx context.Context) bool {
 
 func (d *DailySummaryDAO) buildQuery(filter repository.UnifiedBillFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.Provider != "" {

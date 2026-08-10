@@ -113,7 +113,7 @@ func (s *AllocationService) SetDefaultAllocationPolicy(ctx context.Context, poli
 }
 
 // AllocateCosts 执行成本分摊计算
-func (s *AllocationService) AllocateCosts(ctx context.Context, tenantID string, period string) error {
+func (s *AllocationService) AllocateCosts(ctx context.Context, tenantID int64, period string) error {
 	// 1. Delete existing allocations for this period
 	if err := s.allocationDAO.DeleteAllocationsByPeriod(ctx, tenantID, period); err != nil {
 		return fmt.Errorf("delete existing allocations: %w", err)
@@ -170,7 +170,7 @@ func (s *AllocationService) AllocateCosts(ctx context.Context, tenantID string, 
 	}
 
 	s.logger.Info("cost allocation completed",
-		elog.String("tenant_id", tenantID),
+		elog.Int64("tenant_id", tenantID),
 		elog.String("period", period),
 		elog.Int("bill_count", len(bills)),
 		elog.Int("allocation_count", len(allocations)))
@@ -179,7 +179,7 @@ func (s *AllocationService) AllocateCosts(ctx context.Context, tenantID string, 
 }
 
 // GetAllocationByDimension 按维度查询分摊结果
-func (s *AllocationService) GetAllocationByDimension(ctx context.Context, tenantID, dimType, dimValue, period string) (*DimensionCostAllocation, error) {
+func (s *AllocationService) GetAllocationByDimension(ctx context.Context, tenantID int64, dimType, dimValue, period string) (*DimensionCostAllocation, error) {
 	allocs, err := s.allocationDAO.GetAllocationByDimension(ctx, tenantID, dimType, dimValue, period)
 	if err != nil {
 		return nil, fmt.Errorf("get allocation by dimension: %w", err)
@@ -193,7 +193,7 @@ func (s *AllocationService) GetAllocationByDimension(ctx context.Context, tenant
 }
 
 // GetAllocationByNode 按服务树节点查询分摊结果
-func (s *AllocationService) GetAllocationByNode(ctx context.Context, tenantID string, nodeID int64, period string) (*NodeCostAllocation, error) {
+func (s *AllocationService) GetAllocationByNode(ctx context.Context, tenantID int64, nodeID int64, period string) (*NodeCostAllocation, error) {
 	allocs, err := s.allocationDAO.GetAllocationByNode(ctx, tenantID, nodeID, period)
 	if err != nil {
 		return nil, fmt.Errorf("get allocation by node: %w", err)
@@ -207,7 +207,7 @@ func (s *AllocationService) GetAllocationByNode(ctx context.Context, tenantID st
 
 // GetAllocationTree 获取维度层级成本分摊树形视图
 // 优先查已有分摊结果，没有则直接从账单聚合（不同步执行分摊计算，避免超时）
-func (s *AllocationService) GetAllocationTree(ctx context.Context, tenantID, dimType, rootID, period string) (*AllocationTreeNode, error) {
+func (s *AllocationService) GetAllocationTree(ctx context.Context, tenantID int64, dimType, rootID, period string) (*AllocationTreeNode, error) {
 	allocs, err := s.allocationDAO.ListAllocations(ctx, repository.AllocationFilter{
 		TenantID: tenantID,
 		DimType:  dimType,
@@ -227,7 +227,7 @@ func (s *AllocationService) GetAllocationTree(ctx context.Context, tenantID, dim
 }
 
 // ReAllocateHistory 重新分摊历史数据
-func (s *AllocationService) ReAllocateHistory(ctx context.Context, tenantID string, period string) error {
+func (s *AllocationService) ReAllocateHistory(ctx context.Context, tenantID int64, period string) error {
 	return s.AllocateCosts(ctx, tenantID, period)
 }
 
@@ -517,7 +517,7 @@ func (s *AllocationService) buildTree(allocs []costdomain.CostAllocation, rootID
 }
 
 // buildTreeFromBills 当没有分摊结果时，直接从统一账单按维度聚合构建树
-func (s *AllocationService) buildTreeFromBills(ctx context.Context, tenantID, dimType, rootID, period string) (*AllocationTreeNode, error) {
+func (s *AllocationService) buildTreeFromBills(ctx context.Context, tenantID int64, dimType, rootID, period string) (*AllocationTreeNode, error) {
 	startDate := period + "-01"
 	endDate := s.periodEndDate(period)
 
@@ -561,7 +561,7 @@ func (s *AllocationService) buildTreeFromBills(ctx context.Context, tenantID, di
 }
 
 // buildTreeFromTags 按标签维度聚合：展开 tags map，按 tag value 分组
-func (s *AllocationService) buildTreeFromTags(ctx context.Context, tenantID, rootID, startDate, endDate string) (*AllocationTreeNode, error) {
+func (s *AllocationService) buildTreeFromTags(ctx context.Context, tenantID int64, rootID, startDate, endDate string) (*AllocationTreeNode, error) {
 	results, err := s.billDAO.AggregateByTag(ctx, tenantID, startDate, endDate)
 	if err != nil {
 		return nil, fmt.Errorf("aggregate bills by tag: %w", err)

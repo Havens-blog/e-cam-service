@@ -84,7 +84,7 @@ func (s *AlertService) EmitEvent(ctx context.Context, event domain.AlertEvent) e
 	if len(rules) == 0 {
 		s.logger.Debug("无匹配的告警规则",
 			elog.String("type", string(event.Type)),
-			elog.String("tenant_id", event.TenantID))
+			elog.Int64("tenant_id", event.TenantID))
 		return nil
 	}
 

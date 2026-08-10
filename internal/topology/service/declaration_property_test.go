@@ -75,11 +75,11 @@ func (m *mockNodeRepo) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-func (m *mockNodeRepo) DeleteBySource(_ context.Context, _, _ string) (int64, error) {
+func (m *mockNodeRepo) DeleteBySource(_ context.Context, _ int64, _ string) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockNodeRepo) FindDNSEntries(_ context.Context, _ string) ([]domain.TopoNode, error) {
+func (m *mockNodeRepo) FindDNSEntries(_ context.Context, _ int64) ([]domain.TopoNode, error) {
 	return nil, nil
 }
 
@@ -110,15 +110,15 @@ func (m *mockEdgeRepo) Find(_ context.Context, _ domain.EdgeFilter) ([]domain.To
 	return m.edges, nil
 }
 
-func (m *mockEdgeRepo) FindBySourceID(_ context.Context, _, _ string) ([]domain.TopoEdge, error) {
+func (m *mockEdgeRepo) FindBySourceID(_ context.Context, _ int64, _ string) ([]domain.TopoEdge, error) {
 	return nil, nil
 }
 
-func (m *mockEdgeRepo) FindByTargetID(_ context.Context, _, _ string) ([]domain.TopoEdge, error) {
+func (m *mockEdgeRepo) FindByTargetID(_ context.Context, _ int64, _ string) ([]domain.TopoEdge, error) {
 	return nil, nil
 }
 
-func (m *mockEdgeRepo) FindByNodeID(_ context.Context, _, _ string) ([]domain.TopoEdge, error) {
+func (m *mockEdgeRepo) FindByNodeID(_ context.Context, _ int64, _ string) ([]domain.TopoEdge, error) {
 	return nil, nil
 }
 
@@ -130,19 +130,19 @@ func (m *mockEdgeRepo) Delete(_ context.Context, _ string) error {
 	return nil
 }
 
-func (m *mockEdgeRepo) DeleteBySource(_ context.Context, _, _ string) (int64, error) {
+func (m *mockEdgeRepo) DeleteBySource(_ context.Context, _ int64, _ string) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockEdgeRepo) DeleteByNodeID(_ context.Context, _, _ string) (int64, error) {
+func (m *mockEdgeRepo) DeleteByNodeID(_ context.Context, _ int64, _ string) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockEdgeRepo) UpdatePendingEdges(_ context.Context, _, _ string) (int64, error) {
+func (m *mockEdgeRepo) UpdatePendingEdges(_ context.Context, _ int64, _ string) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockEdgeRepo) CountPending(_ context.Context, _ string) (int64, error) {
+func (m *mockEdgeRepo) CountPending(_ context.Context, _ int64) (int64, error) {
 	return 0, nil
 }
 
@@ -164,15 +164,15 @@ func (m *mockDeclRepo) Upsert(_ context.Context, decl domain.LinkDeclaration) er
 	return nil
 }
 
-func (m *mockDeclRepo) FindBySource(_ context.Context, _, _ string) ([]domain.LinkDeclaration, error) {
+func (m *mockDeclRepo) FindBySource(_ context.Context, _ int64, _ string) ([]domain.LinkDeclaration, error) {
 	return nil, nil
 }
 
-func (m *mockDeclRepo) FindAll(_ context.Context, _ string) ([]domain.LinkDeclaration, error) {
+func (m *mockDeclRepo) FindAll(_ context.Context, _ int64) ([]domain.LinkDeclaration, error) {
 	return m.decls, nil
 }
 
-func (m *mockDeclRepo) DeleteBySource(_ context.Context, _, _ string) (int64, error) {
+func (m *mockDeclRepo) DeleteBySource(_ context.Context, _ int64, _ string) (int64, error) {
 	return 0, nil
 }
 
@@ -192,7 +192,7 @@ func TestProperty9_ExistingNodeSourceProtection(t *testing.T) {
 			Type:            domain.NodeTypeK8sDeployment,
 			Category:        domain.CategoryContainer,
 			SourceCollector: domain.SourceK8sAPI,
-			TenantID:        "t1",
+			TenantID:        1,
 		}
 
 		nodeRepo := newMockNodeRepo()
@@ -213,7 +213,7 @@ func TestProperty9_ExistingNodeSourceProtection(t *testing.T) {
 			Type:            domain.NodeTypeK8sDeployment,
 			Category:        domain.CategoryContainer,
 			SourceCollector: domain.SourceK8sAPI,
-			TenantID:        "t1",
+			TenantID:        1,
 		}
 
 		decl := domain.LinkDeclaration{
@@ -231,7 +231,7 @@ func TestProperty9_ExistingNodeSourceProtection(t *testing.T) {
 					Relation: domain.RelationCalls,
 				},
 			},
-			TenantID: "t1",
+			TenantID: 1,
 		}
 
 		err := svc.Register(context.Background(), decl)

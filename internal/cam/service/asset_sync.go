@@ -39,11 +39,11 @@ import (
 // AssetSyncService 资产同步服务 - 同步到 CMDB c_instance
 type AssetSyncService interface {
 	// SyncAssets 同步云资产到 CMDB
-	SyncAssets(ctx context.Context, tenantID, provider string, assetTypes []string) (*SyncResult, error)
+	SyncAssets(ctx context.Context, tenantID int64, provider string, assetTypes []string) (*SyncResult, error)
 	// SyncAccountAssets 同步指定账号的资产
-	SyncAccountAssets(ctx context.Context, tenantID string, accountID int64, assetTypes []string) (*SyncResult, error)
+	SyncAccountAssets(ctx context.Context, tenantID int64, accountID int64, assetTypes []string) (*SyncResult, error)
 	// SyncRelations 同步资产关系
-	SyncRelations(ctx context.Context, tenantID string) (*RelationSyncResult, error)
+	SyncRelations(ctx context.Context, tenantID int64) (*RelationSyncResult, error)
 	// SetChangeTracker 设置变更追踪器（可选）
 	SetChangeTracker(ct *auditservice.ChangeTracker)
 	// SetDNSCollections 设置 DNS 专用集合（可选）
@@ -151,7 +151,7 @@ func (s *assetSyncService) trackAndUpsert(ctx context.Context, instance domain.I
 // cleanupStaleInstances 清理云端已不存在的本地实例
 func (s *assetSyncService) cleanupStaleInstances(
 	ctx context.Context,
-	tenantID, modelUID string,
+	tenantID int64, modelUID string,
 	accountID int64,
 	region string,
 	cloudAssetIDs map[string]bool,
@@ -191,8 +191,8 @@ func (s *assetSyncService) cleanupStaleInstances(
 }
 
 // SyncAssets 同步云资产到 CMDB
-func (s *assetSyncService) SyncAssets(ctx context.Context, tenantID, provider string, assetTypes []string) (*SyncResult, error) {
-	if tenantID == "" {
+func (s *assetSyncService) SyncAssets(ctx context.Context, tenantID int64, provider string, assetTypes []string) (*SyncResult, error) {
+	if tenantID == 0 {
 		return nil, fmt.Errorf("tenant_id is required")
 	}
 
@@ -212,7 +212,7 @@ func (s *assetSyncService) SyncAssets(ctx context.Context, tenantID, provider st
 	}
 
 	s.logger.Info("开始同步云资产到CMDB",
-		elog.String("tenant_id", tenantID),
+		elog.Int64("tenant_id", tenantID),
 		elog.String("provider", provider),
 		elog.Any("asset_types", assetTypes))
 
@@ -256,8 +256,8 @@ func (s *assetSyncService) SyncAssets(ctx context.Context, tenantID, provider st
 }
 
 // SyncAccountAssets 同步指定账号的资产
-func (s *assetSyncService) SyncAccountAssets(ctx context.Context, tenantID string, accountID int64, assetTypes []string) (*SyncResult, error) {
-	if tenantID == "" {
+func (s *assetSyncService) SyncAccountAssets(ctx context.Context, tenantID int64, accountID int64, assetTypes []string) (*SyncResult, error) {
+	if tenantID == 0 {
 		return nil, fmt.Errorf("tenant_id is required")
 	}
 
@@ -297,7 +297,7 @@ func (s *assetSyncService) SyncAccountAssets(ctx context.Context, tenantID strin
 // syncSingleAccount 同步单个账号的资产
 func (s *assetSyncService) syncSingleAccount(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	account *shareddomain.CloudAccount,
 	assetTypes []string,
 ) (*SyncResult, error) {
@@ -359,7 +359,7 @@ func (s *assetSyncService) syncSingleAccount(
 // syncRegion 同步单个地域的资产
 func (s *assetSyncService) syncRegion(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -596,7 +596,7 @@ func (s *assetSyncService) syncRegion(
 // syncECSInstances 同步 ECS 实例到 CMDB
 func (s *assetSyncService) syncECSInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -647,7 +647,7 @@ func (s *assetSyncService) syncECSInstances(
 
 // convertECSToCMDBInstance 将 ECS 实例转换为 CMDB Instance
 func (s *assetSyncService) convertECSToCMDBInstance(
-	tenantID string,
+	tenantID int64,
 	account *shareddomain.CloudAccount,
 	inst types.ECSInstance,
 ) domain.Instance {
@@ -715,7 +715,7 @@ func (s *assetSyncService) mergeResult(target, source *SyncResult) {
 
 func (s *assetSyncService) syncRDSInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -766,7 +766,7 @@ func (s *assetSyncService) syncRDSInstances(
 
 func (s *assetSyncService) syncRedisInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -816,7 +816,7 @@ func (s *assetSyncService) syncRedisInstances(
 
 func (s *assetSyncService) syncMongoDBInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -866,7 +866,7 @@ func (s *assetSyncService) syncMongoDBInstances(
 
 func (s *assetSyncService) syncVPCInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -913,7 +913,7 @@ func (s *assetSyncService) syncVPCInstances(
 
 func (s *assetSyncService) syncEIPInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -964,7 +964,7 @@ func (s *assetSyncService) syncEIPInstances(
 // syncVSwitchInstances 同步交换机/子网实例
 func (s *assetSyncService) syncVSwitchInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -1030,7 +1030,7 @@ func (s *assetSyncService) syncVSwitchInstances(
 // syncLBInstances 同步负载均衡实例
 func (s *assetSyncService) syncLBInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -1094,8 +1094,8 @@ func (s *assetSyncService) syncLBInstances(
 // ==================== 资产关系同步 ====================
 
 // SyncRelations 同步资产关系
-func (s *assetSyncService) SyncRelations(ctx context.Context, tenantID string) (*RelationSyncResult, error) {
-	if tenantID == "" {
+func (s *assetSyncService) SyncRelations(ctx context.Context, tenantID int64) (*RelationSyncResult, error) {
+	if tenantID == 0 {
 		return nil, fmt.Errorf("tenant_id is required")
 	}
 
@@ -1104,7 +1104,7 @@ func (s *assetSyncService) SyncRelations(ctx context.Context, tenantID string) (
 		StartTime:      time.Now(),
 	}
 
-	s.logger.Info("开始同步资产关系", elog.String("tenant_id", tenantID))
+	s.logger.Info("开始同步资产关系", elog.Int64("tenant_id", tenantID))
 
 	// 1. 同步 ECS -> VPC 关系
 	if r, err := s.syncECSToVPCRelations(ctx, tenantID); err == nil {
@@ -1156,7 +1156,7 @@ type relationSyncPartialResult struct {
 	Failed  int
 }
 
-func (s *assetSyncService) syncECSToVPCRelations(ctx context.Context, tenantID string) (*relationSyncPartialResult, error) {
+func (s *assetSyncService) syncECSToVPCRelations(ctx context.Context, tenantID int64) (*relationSyncPartialResult, error) {
 	result := &relationSyncPartialResult{}
 
 	ecsInstances, err := s.instanceRepo.List(ctx, domain.InstanceFilter{TenantID: tenantID, ModelUID: "cloud_vm"})
@@ -1204,7 +1204,7 @@ func (s *assetSyncService) syncECSToVPCRelations(ctx context.Context, tenantID s
 	return result, nil
 }
 
-func (s *assetSyncService) syncEIPToECSRelations(ctx context.Context, tenantID string) (*relationSyncPartialResult, error) {
+func (s *assetSyncService) syncEIPToECSRelations(ctx context.Context, tenantID int64) (*relationSyncPartialResult, error) {
 	result := &relationSyncPartialResult{}
 
 	eipInstances, err := s.instanceRepo.List(ctx, domain.InstanceFilter{TenantID: tenantID, ModelUID: "cloud_eip"})
@@ -1253,7 +1253,7 @@ func (s *assetSyncService) syncEIPToECSRelations(ctx context.Context, tenantID s
 	return result, nil
 }
 
-func (s *assetSyncService) syncRDSToVPCRelations(ctx context.Context, tenantID string) (*relationSyncPartialResult, error) {
+func (s *assetSyncService) syncRDSToVPCRelations(ctx context.Context, tenantID int64) (*relationSyncPartialResult, error) {
 	result := &relationSyncPartialResult{}
 
 	rdsInstances, err := s.instanceRepo.List(ctx, domain.InstanceFilter{TenantID: tenantID, ModelUID: "cloud_rds"})
@@ -1301,7 +1301,7 @@ func (s *assetSyncService) syncRDSToVPCRelations(ctx context.Context, tenantID s
 	return result, nil
 }
 
-func (s *assetSyncService) syncRedisToVPCRelations(ctx context.Context, tenantID string) (*relationSyncPartialResult, error) {
+func (s *assetSyncService) syncRedisToVPCRelations(ctx context.Context, tenantID int64) (*relationSyncPartialResult, error) {
 	result := &relationSyncPartialResult{}
 
 	redisInstances, err := s.instanceRepo.List(ctx, domain.InstanceFilter{TenantID: tenantID, ModelUID: "cloud_redis"})
@@ -1353,7 +1353,7 @@ func (s *assetSyncService) syncRedisToVPCRelations(ctx context.Context, tenantID
 
 func (s *assetSyncService) syncNASInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -1406,7 +1406,7 @@ func (s *assetSyncService) syncNASInstances(
 
 func (s *assetSyncService) syncOSSBuckets(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -1457,7 +1457,7 @@ func (s *assetSyncService) syncOSSBuckets(
 
 func (s *assetSyncService) syncDiskInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -1527,7 +1527,7 @@ func (s *assetSyncService) syncDiskInstances(
 
 func (s *assetSyncService) syncSnapshotInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -1591,7 +1591,7 @@ func (s *assetSyncService) syncSnapshotInstances(
 
 func (s *assetSyncService) syncSecurityGroupInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -1653,7 +1653,7 @@ func (s *assetSyncService) syncSecurityGroupInstances(
 
 func (s *assetSyncService) syncImageInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -1715,7 +1715,7 @@ func (s *assetSyncService) syncImageInstances(
 
 func (s *assetSyncService) syncCDNInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -1789,7 +1789,7 @@ func (s *assetSyncService) syncCDNInstances(
 
 func (s *assetSyncService) syncWAFInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -1855,7 +1855,7 @@ func (s *assetSyncService) syncWAFInstances(
 
 func (s *assetSyncService) syncENIInstances(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -1924,7 +1924,7 @@ func (s *assetSyncService) syncENIInstances(
 // syncDNSDomains 同步 DNS 域名到 c_dns_domain
 func (s *assetSyncService) syncDNSDomains(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,
@@ -2024,7 +2024,7 @@ func (s *assetSyncService) syncDNSDomains(
 // syncDNSRecords 同步 DNS 解析记录到 c_dns_record
 func (s *assetSyncService) syncDNSRecords(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	adapter cloudx.CloudAdapter,
 	account *shareddomain.CloudAccount,
 	region string,

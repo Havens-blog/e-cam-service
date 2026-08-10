@@ -29,7 +29,7 @@ func (m *MockCloudAccountRepository) GetByID(ctx context.Context, id int64) (dom
 	return args.Get(0).(domain.CloudAccount), args.Error(1)
 }
 
-func (m *MockCloudAccountRepository) GetByName(ctx context.Context, name, tenantID string) (domain.CloudAccount, error) {
+func (m *MockCloudAccountRepository) GetByName(ctx context.Context, name string, tenantID int64) (domain.CloudAccount, error) {
 	args := m.Called(ctx, name, tenantID)
 	return args.Get(0).(domain.CloudAccount), args.Error(1)
 }
@@ -118,14 +118,14 @@ func (suite *CloudAccountServiceTestSuite) TestCreateAccount() {
 				AccessKeySecret: "test-access-key-secret",
 				Regions:         []string{"cn-hangzhou"},
 				Description:     "测试账号",
-				TenantID:        "tenant-123",
+				TenantID:        8,
 				Config: domain.CloudAccountConfig{
 					EnableAutoSync: true,
 					SyncInterval:   3600,
 				},
 			},
 			setupMocks: func() {
-				suite.repo.On("GetByName", suite.ctx, "test-account", "tenant-123").
+				suite.repo.On("GetByName", suite.ctx, "test-account", 8).
 					Return(domain.CloudAccount{}, errors.New("not found"))
 				suite.repo.On("Create", suite.ctx, mock.AnythingOfType("domain.CloudAccount")).
 					Return(int64(123), nil)
@@ -142,10 +142,10 @@ func (suite *CloudAccountServiceTestSuite) TestCreateAccount() {
 				AccessKeyID:     "test-access-key-id",
 				AccessKeySecret: "test-access-key-secret",
 				Regions:         []string{"cn-hangzhou"},
-				TenantID:        "tenant-123",
+				TenantID:        8,
 			},
 			setupMocks: func() {
-				suite.repo.On("GetByName", suite.ctx, "existing-account", "tenant-123").
+				suite.repo.On("GetByName", suite.ctx, "existing-account", 8).
 					Return(domain.CloudAccount{ID: 456}, nil)
 			},
 			expectError: errs.AccountAlreadyExist,

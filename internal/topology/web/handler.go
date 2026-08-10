@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/topology/service"
@@ -63,10 +64,19 @@ func (h *TopologyHandler) RegisterRoutes(server *gin.Engine) {
 // 此函数不得用于任何经认证且无此一致性约束的端点 —— 例如同文件的
 // GetTopology/GetDomains/GetNodeDetail/GetStats，它们必须用 middleware.GetTenantID。
 //
-// 注意此处不再回退到 "default"：缺头时返回空串，由 handler 返回 400 拒绝，
-// 而不是把数据静默读写到一个虚构租户。
-func machineTenantIDFromHeader(ctx *gin.Context) string {
-	return ctx.GetHeader("X-Tenant-ID")
+// 注意此处不再回退到 "default"：缺头或头值无法解析为 int64 时返回 0，
+// 由 handler 返回 400 拒绝，而不是把数据静默读写到一个虚构租户。
+// 租户类型已全仓迁移为 int64，故此处解析后再交给下游。
+func machineTenantIDFromHeader(ctx *gin.Context) int64 {
+	raw := ctx.GetHeader("X-Tenant-ID")
+	if raw == "" {
+		return 0
+	}
+	tenantID, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return tenantID
 }
 
 // GetTopology 查询拓扑图
@@ -184,8 +194,8 @@ func (h *TopologyHandler) CreateDeclaration(ctx *gin.Context, req DeclarationReq
 	// 该端点在 auth 白名单内（无用户会话），租户只能来自调用方请求头。
 	// 详见 machineTenantIDFromHeader 的说明。
 	tenantID := machineTenantIDFromHeader(ctx)
-	if tenantID == "" {
-		return ginx.Result{Code: 400, Msg: "X-Tenant-ID header is required"}, nil
+	if tenantID == 0 {
+		return ginx.Result{Code: 400, Msg: "X-Tenant-ID header is required and must be a valid tenant id"}, nil
 	}
 	decl := req.ToDeclaration(tenantID)
 
@@ -207,8 +217,8 @@ func (h *TopologyHandler) ListDeclarations(ctx *gin.Context) {
 	// 与 POST 同路径、同在 auth 白名单内（白名单匹配与 HTTP 方法无关），
 	// 故此处无会话租户，只能读头。详见 machineTenantIDFromHeader。
 	tenantID := machineTenantIDFromHeader(ctx)
-	if tenantID == "" {
-		ctx.JSON(http.StatusBadRequest, ginx.Result{Code: 400, Msg: "X-Tenant-ID header is required"})
+	if tenantID == 0 {
+		ctx.JSON(http.StatusBadRequest, ginx.Result{Code: 400, Msg: "X-Tenant-ID header is required and must be a valid tenant id"})
 		return
 	}
 	decls, err := h.declSvc.List(ctx.Request.Context(), tenantID)
@@ -232,8 +242,8 @@ func (h *TopologyHandler) DeleteDeclaration(ctx *gin.Context) {
 	// 本路径确实经过认证，但必须与 POST 写入时所用的租户一致，否则删除恒为
 	// no-op。详见 machineTenantIDFromHeader。
 	tenantID := machineTenantIDFromHeader(ctx)
-	if tenantID == "" {
-		ctx.JSON(http.StatusBadRequest, ginx.Result{Code: 400, Msg: "X-Tenant-ID header is required"})
+	if tenantID == 0 {
+		ctx.JSON(http.StatusBadRequest, ginx.Result{Code: 400, Msg: "X-Tenant-ID header is required and must be a valid tenant id"})
 		return
 	}
 

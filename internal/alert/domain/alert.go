@@ -55,7 +55,7 @@ type AlertRule struct {
 	SilenceDuration  int            `json:"silence_duration" bson:"silence_duration"` // 静默期(分钟)
 	EscalateAfter    int            `json:"escalate_after" bson:"escalate_after"`     // 连续N次后升级
 	EscalateChannels []int64        `json:"escalate_channels" bson:"escalate_channels"`
-	TenantID         string         `json:"tenant_id" bson:"tenant_id"`
+	TenantID         int64          `json:"tenant_id" bson:"tenant_id"`
 	Enabled          bool           `json:"enabled" bson:"enabled"`
 	CreateTime       time.Time      `json:"create_time" bson:"create_time"`
 	UpdateTime       time.Time      `json:"update_time" bson:"update_time"`
@@ -70,7 +70,7 @@ type AlertEvent struct {
 	Title      string         `json:"title" bson:"title"`
 	Content    map[string]any `json:"content" bson:"content"`
 	Source     string         `json:"source" bson:"source"` // e.g. "sync_task:123"
-	TenantID   string         `json:"tenant_id" bson:"tenant_id"`
+	TenantID   int64          `json:"tenant_id" bson:"tenant_id"`
 	Status     EventStatus    `json:"status" bson:"status"`
 	RetryCount int            `json:"retry_count" bson:"retry_count"`
 	CreateTime time.Time      `json:"create_time" bson:"create_time"`
@@ -83,7 +83,7 @@ type NotificationChannel struct {
 	Name       string         `json:"name" bson:"name"`
 	Type       ChannelType    `json:"type" bson:"type"`
 	Config     map[string]any `json:"config" bson:"config"`
-	TenantID   string         `json:"tenant_id" bson:"tenant_id"`
+	TenantID   int64          `json:"tenant_id" bson:"tenant_id"`
 	Enabled    bool           `json:"enabled" bson:"enabled"`
 	CreateTime time.Time      `json:"create_time" bson:"create_time"`
 	UpdateTime time.Time      `json:"update_time" bson:"update_time"`
@@ -103,7 +103,7 @@ type ResourceChange struct {
 
 // AlertRuleFilter 告警规则过滤条件
 type AlertRuleFilter struct {
-	TenantID string
+	TenantID int64
 	Type     AlertType
 	Enabled  *bool
 	Offset   int64
@@ -112,7 +112,7 @@ type AlertRuleFilter struct {
 
 // AlertEventFilter 告警事件过滤条件
 type AlertEventFilter struct {
-	TenantID string
+	TenantID int64
 	Type     AlertType
 	Severity Severity
 	Status   EventStatus
@@ -123,7 +123,7 @@ type AlertEventFilter struct {
 
 // ChannelFilter 通知渠道过滤条件
 type ChannelFilter struct {
-	TenantID string
+	TenantID int64
 	Type     ChannelType
 	Enabled  *bool
 	Offset   int64

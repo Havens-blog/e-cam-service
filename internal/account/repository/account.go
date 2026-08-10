@@ -14,7 +14,7 @@ import (
 type CloudAccountRepository interface {
 	Create(ctx context.Context, account domain.CloudAccount) (int64, error)
 	GetByID(ctx context.Context, id int64) (domain.CloudAccount, error)
-	GetByName(ctx context.Context, name, tenantID string) (domain.CloudAccount, error)
+	GetByName(ctx context.Context, name string, tenantID int64) (domain.CloudAccount, error)
 	List(ctx context.Context, filter domain.CloudAccountFilter) ([]domain.CloudAccount, int64, error)
 	Update(ctx context.Context, account domain.CloudAccount) error
 	Delete(ctx context.Context, id int64) error
@@ -44,7 +44,7 @@ func (repo *cloudAccountRepository) GetByID(ctx context.Context, id int64) (doma
 	return repo.toDomain(daoAccount), nil
 }
 
-func (repo *cloudAccountRepository) GetByName(ctx context.Context, name, tenantID string) (domain.CloudAccount, error) {
+func (repo *cloudAccountRepository) GetByName(ctx context.Context, name string, tenantID int64) (domain.CloudAccount, error) {
 	daoAccount, err := repo.dao.GetAccountByName(ctx, name, tenantID)
 	if err != nil {
 		return domain.CloudAccount{}, err

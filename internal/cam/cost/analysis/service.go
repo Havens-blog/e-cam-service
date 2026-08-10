@@ -27,7 +27,7 @@ const (
 
 // CostFilter 成本查询筛选条件
 type CostFilter struct {
-	TenantID    string
+	TenantID    int64
 	Provider    string
 	AccountID   int64
 	ServiceType string
@@ -85,8 +85,8 @@ type CostService struct {
 // SummaryQuerier 汇总表查询接口（由 DailySummaryDAO 实现）
 type SummaryQuerier interface {
 	SumAmount(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error)
-	AggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error)
-	AggregateDailyAmount(ctx context.Context, tenantID string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error)
+	AggregateByField(ctx context.Context, tenantID int64, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error)
+	AggregateDailyAmount(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error)
 	HasData(ctx context.Context) bool
 }
 
@@ -113,7 +113,7 @@ func (s *CostService) sumAmount(ctx context.Context, filter repository.UnifiedBi
 }
 
 // aggregateByField 优先从汇总表查询，降级到明细表
-func (s *CostService) aggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
+func (s *CostService) aggregateByField(ctx context.Context, tenantID int64, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
 	if s.summaryDAO != nil && s.summaryDAO.HasData(ctx) {
 		return s.summaryDAO.AggregateByField(ctx, tenantID, field, startDate, endDate, filter)
 	}
@@ -121,7 +121,7 @@ func (s *CostService) aggregateByField(ctx context.Context, tenantID string, fie
 }
 
 // aggregateDailyAmount 优先从汇总表查询，降级到明细表
-func (s *CostService) aggregateDailyAmount(ctx context.Context, tenantID string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+func (s *CostService) aggregateDailyAmount(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 	if s.summaryDAO != nil && s.summaryDAO.HasData(ctx) {
 		return s.summaryDAO.AggregateDailyAmount(ctx, tenantID, startDate, endDate, filter)
 	}
@@ -142,10 +142,10 @@ func toUnifiedBillFilter(f CostFilter) repository.UnifiedBillFilter {
 }
 
 // getCacheKey 生成缓存 key
-func getCacheKey(prefix, tenantID string, filter interface{}) string {
+func getCacheKey(prefix string, tenantID int64, filter interface{}) string {
 	data, _ := json.Marshal(filter)
 	hash := md5.Sum(data)
-	return fmt.Sprintf("%s:%s:%x", prefix, tenantID, hash)
+	return fmt.Sprintf("%s:%d:%x", prefix, tenantID, hash)
 }
 
 // GetCostSummary 获取成本概览（当月/上月/环比）

@@ -15,7 +15,7 @@ type EnvironmentRepository interface {
 	CreateBatch(ctx context.Context, envs []domain.Environment) (int64, error)
 	Update(ctx context.Context, env domain.Environment) error
 	GetByID(ctx context.Context, id int64) (domain.Environment, error)
-	GetByCode(ctx context.Context, tenantID, code string) (domain.Environment, error)
+	GetByCode(ctx context.Context, tenantID int64, code string) (domain.Environment, error)
 	List(ctx context.Context, filter domain.EnvironmentFilter) ([]domain.Environment, error)
 	Count(ctx context.Context, filter domain.EnvironmentFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
@@ -57,7 +57,7 @@ func (r *environmentRepository) GetByID(ctx context.Context, id int64) (domain.E
 	return r.toDomain(daoEnv), nil
 }
 
-func (r *environmentRepository) GetByCode(ctx context.Context, tenantID, code string) (domain.Environment, error) {
+func (r *environmentRepository) GetByCode(ctx context.Context, tenantID int64, code string) (domain.Environment, error) {
 	daoEnv, err := r.dao.GetByCode(ctx, tenantID, code)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {

@@ -206,7 +206,7 @@ func (d *auditLogDAO) groupCount(ctx context.Context, filter domain.AuditLogFilt
 // buildQuery 构建查询条件
 func (d *auditLogDAO) buildQuery(filter domain.AuditLogFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.OperationType != "" {

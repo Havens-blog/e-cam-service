@@ -1,4 +1,4 @@
-﻿package web
+package web
 
 import (
 	"strconv"
@@ -67,7 +67,7 @@ func (h *Handler) RegisterRuleRoutes(rg *gin.RouterGroup) {
 	rg.POST("/rules/execute", ginx.Wrap(h.ExecuteRules))
 }
 
-func (h *Handler) getTenantID(c *gin.Context) string {
+func (h *Handler) getTenantID(c *gin.Context) int64 {
 	return middleware.GetTenantID(c)
 }
 
@@ -304,7 +304,7 @@ func (h *Handler) GetResourceNode(c *gin.Context) (ginx.Result, error) {
 // ListNodeAssets 查询节点下的云资产列表
 func (h *Handler) ListNodeAssets(c *gin.Context, req ListNodeAssetsReq) (ginx.Result, error) {
 	tenantID := h.getTenantID(c)
-	if tenantID == "" {
+	if tenantID == 0 {
 		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
 	}
 
@@ -338,7 +338,7 @@ func (h *Handler) ListNodeAssets(c *gin.Context, req ListNodeAssetsReq) (ginx.Re
 // GetNodeAssetStats 查询节点资产统计
 func (h *Handler) GetNodeAssetStats(c *gin.Context) (ginx.Result, error) {
 	tenantID := h.getTenantID(c)
-	if tenantID == "" {
+	if tenantID == 0 {
 		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
 	}
 
@@ -364,7 +364,7 @@ func (h *Handler) GetNodeAssetStats(c *gin.Context) (ginx.Result, error) {
 // GetGlobalAssetStats 全局资产统计（不区分节点）
 func (h *Handler) GetGlobalAssetStats(c *gin.Context) (ginx.Result, error) {
 	tenantID := h.getTenantID(c)
-	if tenantID == "" {
+	if tenantID == 0 {
 		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
 	}
 
@@ -383,7 +383,7 @@ func (h *Handler) GetGlobalAssetStats(c *gin.Context) (ginx.Result, error) {
 // GetAssetNode 查询资产所属的服务树节点
 func (h *Handler) GetAssetNode(c *gin.Context) (ginx.Result, error) {
 	tenantID := h.getTenantID(c)
-	if tenantID == "" {
+	if tenantID == 0 {
 		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
 	}
 
@@ -506,7 +506,7 @@ func (h *Handler) ListRules(c *gin.Context, req ListRuleReq) (ginx.Result, error
 
 func (h *Handler) ExecuteRules(c *gin.Context) (ginx.Result, error) {
 	tenantID := h.getTenantID(c)
-	if tenantID == "" {
+	if tenantID == 0 {
 		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
 	}
 

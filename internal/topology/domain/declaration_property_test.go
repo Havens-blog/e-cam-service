@@ -125,7 +125,7 @@ func generateAPMDeclaration(rng *rand.Rand) LinkDeclaration {
 			Category: CategoryContainer,
 		},
 		Links:    links,
-		TenantID: "t1",
+		TenantID: 1,
 	}
 }
 

@@ -15,7 +15,7 @@ type mockDictDAO struct {
 	updateTypeFn               func(ctx context.Context, dt DictType) error
 	deleteTypeFn               func(ctx context.Context, id int64) error
 	getTypeByIDFn              func(ctx context.Context, id int64) (DictType, error)
-	getTypeByCodeFn            func(ctx context.Context, tenantID, code string) (DictType, error)
+	getTypeByCodeFn            func(ctx context.Context, tenantID int64, code string) (DictType, error)
 	listTypesFn                func(ctx context.Context, filter TypeFilter) ([]DictType, int64, error)
 	updateTypeStatusFn         func(ctx context.Context, id int64, status string) error
 	insertItemFn               func(ctx context.Context, item DictItem) (int64, error)
@@ -53,7 +53,7 @@ func (m *mockDictDAO) GetTypeByID(ctx context.Context, id int64) (DictType, erro
 	}
 	return DictType{}, mongo.ErrNoDocuments
 }
-func (m *mockDictDAO) GetTypeByCode(ctx context.Context, tenantID, code string) (DictType, error) {
+func (m *mockDictDAO) GetTypeByCode(ctx context.Context, tenantID int64, code string) (DictType, error) {
 	if m.getTypeByCodeFn != nil {
 		return m.getTypeByCodeFn(ctx, tenantID, code)
 	}
@@ -130,7 +130,7 @@ func (m *mockDictDAO) UpdateItemStatus(ctx context.Context, id int64, status str
 
 func TestCreateType_Success(t *testing.T) {
 	dao := &mockDictDAO{
-		getTypeByCodeFn: func(_ context.Context, _, _ string) (DictType, error) {
+		getTypeByCodeFn: func(_ context.Context, _ int64, _ string) (DictType, error) {
 			return DictType{}, mongo.ErrNoDocuments
 		},
 		insertTypeFn: func(_ context.Context, dt DictType) (int64, error) {
@@ -142,7 +142,7 @@ func TestCreateType_Success(t *testing.T) {
 	}
 	svc := NewDictService(dao)
 
-	dt, err := svc.CreateType(context.Background(), "tenant1", CreateTypeReq{
+	dt, err := svc.CreateType(context.Background(), 3, CreateTypeReq{
 		Code: "env_type",
 		Name: "环境类型",
 	})
@@ -151,18 +151,18 @@ func TestCreateType_Success(t *testing.T) {
 	assert.Equal(t, "env_type", dt.Code)
 	assert.Equal(t, "环境类型", dt.Name)
 	assert.Equal(t, "enabled", dt.Status)
-	assert.Equal(t, "tenant1", dt.TenantID)
+	assert.Equal(t, int64(3), dt.TenantID)
 }
 
 func TestCreateType_DuplicateCode(t *testing.T) {
 	dao := &mockDictDAO{
-		getTypeByCodeFn: func(_ context.Context, _, _ string) (DictType, error) {
+		getTypeByCodeFn: func(_ context.Context, _ int64, _ string) (DictType, error) {
 			return DictType{ID: 1, Code: "env_type"}, nil // already exists
 		},
 	}
 	svc := NewDictService(dao)
 
-	_, err := svc.CreateType(context.Background(), "tenant1", CreateTypeReq{
+	_, err := svc.CreateType(context.Background(), 3, CreateTypeReq{
 		Code: "env_type",
 		Name: "环境类型",
 	})
@@ -177,7 +177,7 @@ func TestDeleteType_HasItems(t *testing.T) {
 	}
 	svc := NewDictService(dao)
 
-	err := svc.DeleteType(context.Background(), "tenant1", 1)
+	err := svc.DeleteType(context.Background(), 3, 1)
 	assert.ErrorIs(t, err, ErrDictTypeHasItems)
 }
 
@@ -195,7 +195,7 @@ func TestDeleteType_NoItems_Success(t *testing.T) {
 	}
 	svc := NewDictService(dao)
 
-	err := svc.DeleteType(context.Background(), "tenant1", 1)
+	err := svc.DeleteType(context.Background(), 3, 1)
 	require.NoError(t, err)
 	assert.True(t, deleted)
 }
@@ -210,7 +210,7 @@ func TestUpdateType_CodeImmutable(t *testing.T) {
 	}
 	svc := NewDictService(dao)
 
-	err := svc.UpdateType(context.Background(), "tenant1", 1, UpdateTypeReq{
+	err := svc.UpdateType(context.Background(), 3, 1, UpdateTypeReq{
 		Name:        "新名称",
 		Description: "新描述",
 	})
@@ -223,13 +223,13 @@ func TestUpdateType_CodeImmutable(t *testing.T) {
 
 func TestGetByCode_DisabledType(t *testing.T) {
 	dao := &mockDictDAO{
-		getTypeByCodeFn: func(_ context.Context, _, _ string) (DictType, error) {
+		getTypeByCodeFn: func(_ context.Context, _ int64, _ string) (DictType, error) {
 			return DictType{ID: 1, Code: "env_type", Status: "disabled"}, nil
 		},
 	}
 	svc := NewDictService(dao)
 
-	items, err := svc.GetByCode(context.Background(), "tenant1", "env_type")
+	items, err := svc.GetByCode(context.Background(), 3, "env_type")
 	require.NoError(t, err)
 	assert.Empty(t, items)
 }
@@ -237,7 +237,7 @@ func TestGetByCode_DisabledType(t *testing.T) {
 func TestGetByCode_CacheHit(t *testing.T) {
 	queryCount := 0
 	dao := &mockDictDAO{
-		getTypeByCodeFn: func(_ context.Context, _, _ string) (DictType, error) {
+		getTypeByCodeFn: func(_ context.Context, _ int64, _ string) (DictType, error) {
 			queryCount++
 			return DictType{ID: 1, Code: "env_type", Status: "enabled"}, nil
 		},
@@ -249,13 +249,13 @@ func TestGetByCode_CacheHit(t *testing.T) {
 	ctx := context.Background()
 
 	// First call - cache miss
-	items1, err := svc.GetByCode(ctx, "tenant1", "env_type")
+	items1, err := svc.GetByCode(ctx, 3, "env_type")
 	require.NoError(t, err)
 	assert.Len(t, items1, 1)
 	assert.Equal(t, 1, queryCount)
 
 	// Second call - cache hit
-	items2, err := svc.GetByCode(ctx, "tenant1", "env_type")
+	items2, err := svc.GetByCode(ctx, 3, "env_type")
 	require.NoError(t, err)
 	assert.Len(t, items2, 1)
 	assert.Equal(t, 1, queryCount) // no additional DB query
@@ -264,9 +264,9 @@ func TestGetByCode_CacheHit(t *testing.T) {
 func TestGetByCode_CacheInvalidation(t *testing.T) {
 	getByCodeCount := 0
 	dao := &mockDictDAO{
-		getTypeByCodeFn: func(_ context.Context, _, _ string) (DictType, error) {
+		getTypeByCodeFn: func(_ context.Context, _ int64, _ string) (DictType, error) {
 			getByCodeCount++
-			return DictType{ID: 1, Code: "env_type", Status: "enabled", TenantID: "tenant1"}, nil
+			return DictType{ID: 1, Code: "env_type", Status: "enabled", TenantID: 3}, nil
 		},
 		listEnabledItemsByTypeIDFn: func(_ context.Context, _ int64) ([]DictItem, error) {
 			return []DictItem{{ID: 1, Value: "prod", Label: "生产", SortOrder: 1}}, nil
@@ -278,23 +278,23 @@ func TestGetByCode_CacheInvalidation(t *testing.T) {
 			return 2, nil
 		},
 		getTypeByIDFn: func(_ context.Context, id int64) (DictType, error) {
-			return DictType{ID: 1, Code: "env_type", TenantID: "tenant1"}, nil
+			return DictType{ID: 1, Code: "env_type", TenantID: 3}, nil
 		},
 	}
 	svc := NewDictService(dao)
 	ctx := context.Background()
 
 	// Populate cache
-	_, err := svc.GetByCode(ctx, "tenant1", "env_type")
+	_, err := svc.GetByCode(ctx, 3, "env_type")
 	require.NoError(t, err)
 	assert.Equal(t, 1, getByCodeCount)
 
 	// CreateItem should invalidate cache
-	_, err = svc.CreateItem(ctx, "tenant1", 1, CreateItemReq{Value: "test", Label: "测试"})
+	_, err = svc.CreateItem(ctx, 3, 1, CreateItemReq{Value: "test", Label: "测试"})
 	require.NoError(t, err)
 
 	// Next GetByCode should query DB again (cache was invalidated)
-	_, err = svc.GetByCode(ctx, "tenant1", "env_type")
+	_, err = svc.GetByCode(ctx, 3, "env_type")
 	require.NoError(t, err)
 	assert.Equal(t, 2, getByCodeCount) // 1 (first GetByCode) + 1 (second GetByCode after invalidation)
 }
@@ -307,7 +307,7 @@ func TestCreateItem_DuplicateValue(t *testing.T) {
 	}
 	svc := NewDictService(dao)
 
-	_, err := svc.CreateItem(context.Background(), "tenant1", 1, CreateItemReq{
+	_, err := svc.CreateItem(context.Background(), 3, 1, CreateItemReq{
 		Value: "prod",
 		Label: "生产",
 	})
@@ -331,7 +331,7 @@ func TestDeleteItem_Success(t *testing.T) {
 	}
 	svc := NewDictService(dao)
 
-	err := svc.DeleteItem(context.Background(), "tenant1", 10)
+	err := svc.DeleteItem(context.Background(), 3, 10)
 	require.NoError(t, err)
 	assert.True(t, deleted)
 }
@@ -339,9 +339,9 @@ func TestDeleteItem_Success(t *testing.T) {
 func TestUpdateItemStatus_InvalidatesCache(t *testing.T) {
 	getByCodeCount := 0
 	dao := &mockDictDAO{
-		getTypeByCodeFn: func(_ context.Context, _, _ string) (DictType, error) {
+		getTypeByCodeFn: func(_ context.Context, _ int64, _ string) (DictType, error) {
 			getByCodeCount++
-			return DictType{ID: 1, Code: "env_type", Status: "enabled", TenantID: "tenant1"}, nil
+			return DictType{ID: 1, Code: "env_type", Status: "enabled", TenantID: 3}, nil
 		},
 		listEnabledItemsByTypeIDFn: func(_ context.Context, _ int64) ([]DictItem, error) {
 			return []DictItem{{ID: 10, Value: "prod", Label: "生产", SortOrder: 1, DictTypeID: 1}}, nil
@@ -353,23 +353,23 @@ func TestUpdateItemStatus_InvalidatesCache(t *testing.T) {
 			return nil
 		},
 		getTypeByIDFn: func(_ context.Context, id int64) (DictType, error) {
-			return DictType{ID: 1, Code: "env_type", TenantID: "tenant1"}, nil
+			return DictType{ID: 1, Code: "env_type", TenantID: 3}, nil
 		},
 	}
 	svc := NewDictService(dao)
 	ctx := context.Background()
 
 	// Populate cache
-	_, err := svc.GetByCode(ctx, "tenant1", "env_type")
+	_, err := svc.GetByCode(ctx, 3, "env_type")
 	require.NoError(t, err)
 	assert.Equal(t, 1, getByCodeCount)
 
 	// UpdateItemStatus should invalidate cache
-	err = svc.UpdateItemStatus(ctx, "tenant1", 10, "disabled")
+	err = svc.UpdateItemStatus(ctx, 3, 10, "disabled")
 	require.NoError(t, err)
 
 	// Next GetByCode should query DB again (cache was invalidated)
-	_, err = svc.GetByCode(ctx, "tenant1", "env_type")
+	_, err = svc.GetByCode(ctx, 3, "env_type")
 	require.NoError(t, err)
 	assert.Equal(t, 2, getByCodeCount) // 1 (first) + 1 (second after invalidation)
 }

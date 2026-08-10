@@ -320,7 +320,7 @@ func TestProperty10_UnifiedBillSerializationRoundTrip(t *testing.T) {
 			AmountCNY:       amountCNY,
 			ChargeType:      rapid.String().Draw(t, "chargeType"),
 			Tags:            tags,
-			TenantID:        rapid.String().Draw(t, "tenantID"),
+			TenantID:        rapid.Int64Min(1).Draw(t, "tenantID"),
 			BillingDate:     billingDate,
 			CreateTime:      rapid.Int64Min(0).Draw(t, "createTime"),
 			UpdateTime:      rapid.Int64Min(0).Draw(t, "updateTime"),

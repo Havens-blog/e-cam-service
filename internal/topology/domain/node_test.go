@@ -19,38 +19,38 @@ func TestTopoNode_Validate(t *testing.T) {
 				ID: "dns-api.example.com", Name: "api.example.com",
 				Type: NodeTypeDNSRecord, Category: CategoryDNS,
 				Provider: ProviderAliyun, SourceCollector: SourceDNSAPI,
-				TenantID: "t1",
+				TenantID: 1,
 			},
 			wantErr: false,
 		},
 		{
 			name:    "missing id",
-			node:    TopoNode{Name: "test", Type: NodeTypeCDN, Category: CategoryNetwork, TenantID: "t1"},
+			node:    TopoNode{Name: "test", Type: NodeTypeCDN, Category: CategoryNetwork, TenantID: 1},
 			wantErr: true, errMsg: "node id is required",
 		},
 		{
 			name:    "missing name",
-			node:    TopoNode{ID: "n1", Type: NodeTypeCDN, Category: CategoryNetwork, TenantID: "t1"},
+			node:    TopoNode{ID: "n1", Type: NodeTypeCDN, Category: CategoryNetwork, TenantID: 1},
 			wantErr: true, errMsg: "node name is required",
 		},
 		{
 			name:    "invalid type",
-			node:    TopoNode{ID: "n1", Name: "test", Type: "invalid", Category: CategoryNetwork, TenantID: "t1"},
+			node:    TopoNode{ID: "n1", Name: "test", Type: "invalid", Category: CategoryNetwork, TenantID: 1},
 			wantErr: true, errMsg: "invalid node type: invalid",
 		},
 		{
 			name:    "invalid category",
-			node:    TopoNode{ID: "n1", Name: "test", Type: NodeTypeCDN, Category: "invalid", TenantID: "t1"},
+			node:    TopoNode{ID: "n1", Name: "test", Type: NodeTypeCDN, Category: "invalid", TenantID: 1},
 			wantErr: true, errMsg: "invalid category: invalid",
 		},
 		{
 			name:    "invalid provider",
-			node:    TopoNode{ID: "n1", Name: "test", Type: NodeTypeCDN, Category: CategoryNetwork, Provider: "invalid", TenantID: "t1"},
+			node:    TopoNode{ID: "n1", Name: "test", Type: NodeTypeCDN, Category: CategoryNetwork, Provider: "invalid", TenantID: 1},
 			wantErr: true, errMsg: "invalid provider: invalid",
 		},
 		{
 			name:    "invalid source_collector",
-			node:    TopoNode{ID: "n1", Name: "test", Type: NodeTypeCDN, Category: CategoryNetwork, SourceCollector: "invalid", TenantID: "t1"},
+			node:    TopoNode{ID: "n1", Name: "test", Type: NodeTypeCDN, Category: CategoryNetwork, SourceCollector: "invalid", TenantID: 1},
 			wantErr: true, errMsg: "invalid source_collector: invalid",
 		},
 		{
@@ -60,7 +60,7 @@ func TestTopoNode_Validate(t *testing.T) {
 		},
 		{
 			name:    "empty provider is ok",
-			node:    TopoNode{ID: "n1", Name: "test", Type: NodeTypeCDN, Category: CategoryNetwork, TenantID: "t1"},
+			node:    TopoNode{ID: "n1", Name: "test", Type: NodeTypeCDN, Category: CategoryNetwork, TenantID: 1},
 			wantErr: false,
 		},
 	}
@@ -102,7 +102,7 @@ func TestTopoNode_Validate_APMSource(t *testing.T) {
 	node := TopoNode{
 		ID: "k8s-cluster1-ns1-svc-a", Name: "svc-a",
 		Type: NodeTypeK8sDeployment, Category: CategoryContainer,
-		SourceCollector: SourceAPM, TenantID: "t1",
+		SourceCollector: SourceAPM, TenantID: 1,
 	}
 	err := node.Validate()
 	assert.NoError(t, err, "TopoNode with source_collector 'apm' should pass validation")

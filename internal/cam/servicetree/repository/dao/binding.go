@@ -18,7 +18,7 @@ type Binding struct {
 	EnvID        int64  `bson:"env_id"`
 	ResourceType string `bson:"resource_type"`
 	ResourceID   int64  `bson:"resource_id"`
-	TenantID     string `bson:"tenant_id"`
+	TenantID     int64  `bson:"tenant_id"`
 	BindType     string `bson:"bind_type"`
 	RuleID       int64  `bson:"rule_id"`
 	Ctime        int64  `bson:"ctime"`
@@ -26,7 +26,7 @@ type Binding struct {
 
 // BindingFilter DAO 层过滤条件
 type BindingFilter struct {
-	TenantID     string
+	TenantID     int64
 	NodeID       int64
 	EnvID        int64
 	ResourceType string
@@ -38,7 +38,7 @@ type BindingFilter struct {
 
 // NodeIDsBindingFilter DAO 层多节点过滤条件
 type NodeIDsBindingFilter struct {
-	TenantID     string
+	TenantID     int64
 	NodeIDs      []int64
 	EnvID        int64
 	ResourceType string
@@ -51,7 +51,7 @@ type BindingDAO interface {
 	Create(ctx context.Context, binding Binding) (int64, error)
 	CreateBatch(ctx context.Context, bindings []Binding) (int64, error)
 	GetByID(ctx context.Context, id int64) (Binding, error)
-	GetByResource(ctx context.Context, tenantID, resourceType string, resourceID int64) (Binding, error)
+	GetByResource(ctx context.Context, tenantID int64, resourceType string, resourceID int64) (Binding, error)
 	List(ctx context.Context, filter BindingFilter) ([]Binding, error)
 	ListByNodeIDs(ctx context.Context, filter NodeIDsBindingFilter) ([]Binding, error)
 	Count(ctx context.Context, filter BindingFilter) (int64, error)
@@ -59,7 +59,7 @@ type BindingDAO interface {
 	CountByNodeIDs(ctx context.Context, filter NodeIDsBindingFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByNodeID(ctx context.Context, nodeID int64) error
-	DeleteByResource(ctx context.Context, tenantID, resourceType string, resourceID int64) error
+	DeleteByResource(ctx context.Context, tenantID int64, resourceType string, resourceID int64) error
 	DeleteByRuleID(ctx context.Context, ruleID int64) error
 }
 
@@ -116,7 +116,7 @@ func (d *bindingDAO) GetByID(ctx context.Context, id int64) (Binding, error) {
 	return binding, err
 }
 
-func (d *bindingDAO) GetByResource(ctx context.Context, tenantID, resourceType string, resourceID int64) (Binding, error) {
+func (d *bindingDAO) GetByResource(ctx context.Context, tenantID int64, resourceType string, resourceID int64) (Binding, error) {
 	var binding Binding
 	filter := bson.M{
 		"tenant_id":     tenantID,
@@ -198,7 +198,7 @@ func (d *bindingDAO) buildNodeIDsQuery(filter NodeIDsBindingFilter) bson.M {
 	query := bson.M{
 		"node_id": bson.M{"$in": filter.NodeIDs},
 	}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.EnvID > 0 {
@@ -222,7 +222,7 @@ func (d *bindingDAO) DeleteByNodeID(ctx context.Context, nodeID int64) error {
 	return err
 }
 
-func (d *bindingDAO) DeleteByResource(ctx context.Context, tenantID, resourceType string, resourceID int64) error {
+func (d *bindingDAO) DeleteByResource(ctx context.Context, tenantID int64, resourceType string, resourceID int64) error {
 	filter := bson.M{
 		"tenant_id":     tenantID,
 		"resource_type": resourceType,
@@ -241,7 +241,7 @@ func (d *bindingDAO) DeleteByRuleID(ctx context.Context, ruleID int64) error {
 func (d *bindingDAO) buildQuery(filter BindingFilter) bson.M {
 	query := bson.M{}
 
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.NodeID > 0 {

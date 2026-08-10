@@ -15,14 +15,14 @@ type InstanceRepository interface {
 	CreateBatch(ctx context.Context, instances []domain.Instance) (int64, error)
 	Update(ctx context.Context, instance domain.Instance) error
 	GetByID(ctx context.Context, id int64) (domain.Instance, error)
-	GetByAssetID(ctx context.Context, tenantID, modelUID, assetID string) (domain.Instance, error)
+	GetByAssetID(ctx context.Context, tenantID int64, modelUID, assetID string) (domain.Instance, error)
 	List(ctx context.Context, filter domain.InstanceFilter) ([]domain.Instance, error)
 	Count(ctx context.Context, filter domain.InstanceFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByAccountID(ctx context.Context, accountID int64) error
-	DeleteByAssetIDs(ctx context.Context, tenantID, modelUID string, assetIDs []string) (int64, error)
-	ListAssetIDsByRegion(ctx context.Context, tenantID, modelUID string, accountID int64, region string) ([]string, error)
-	ListAssetIDsByModelUID(ctx context.Context, tenantID, modelUID string, accountID int64) ([]string, error)
+	DeleteByAssetIDs(ctx context.Context, tenantID int64, modelUID string, assetIDs []string) (int64, error)
+	ListAssetIDsByRegion(ctx context.Context, tenantID int64, modelUID string, accountID int64, region string) ([]string, error)
+	ListAssetIDsByModelUID(ctx context.Context, tenantID int64, modelUID string, accountID int64) ([]string, error)
 	Upsert(ctx context.Context, instance domain.Instance) error
 	Search(ctx context.Context, filter domain.SearchFilter) ([]domain.Instance, int64, error)
 }
@@ -68,7 +68,7 @@ func (r *instanceRepository) GetByID(ctx context.Context, id int64) (domain.Inst
 }
 
 // GetByAssetID 根据云厂商资产ID获取实例
-func (r *instanceRepository) GetByAssetID(ctx context.Context, tenantID, modelUID, assetID string) (domain.Instance, error) {
+func (r *instanceRepository) GetByAssetID(ctx context.Context, tenantID int64, modelUID, assetID string) (domain.Instance, error) {
 	daoInstance, err := r.dao.GetByAssetID(ctx, tenantID, modelUID, assetID)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -114,17 +114,17 @@ func (r *instanceRepository) Upsert(ctx context.Context, instance domain.Instanc
 }
 
 // DeleteByAssetIDs 根据 AssetID 列表批量删除实例
-func (r *instanceRepository) DeleteByAssetIDs(ctx context.Context, tenantID, modelUID string, assetIDs []string) (int64, error) {
+func (r *instanceRepository) DeleteByAssetIDs(ctx context.Context, tenantID int64, modelUID string, assetIDs []string) (int64, error) {
 	return r.dao.DeleteByAssetIDs(ctx, tenantID, modelUID, assetIDs)
 }
 
 // ListAssetIDsByRegion 获取指定地域的所有 AssetID 列表
-func (r *instanceRepository) ListAssetIDsByRegion(ctx context.Context, tenantID, modelUID string, accountID int64, region string) ([]string, error) {
+func (r *instanceRepository) ListAssetIDsByRegion(ctx context.Context, tenantID int64, modelUID string, accountID int64, region string) ([]string, error) {
 	return r.dao.ListAssetIDsByRegion(ctx, tenantID, modelUID, accountID, region)
 }
 
 // ListAssetIDsByModelUID 获取指定模型的所有 AssetID 列表（不按地域过滤，用于 OSS 等全局资源）
-func (r *instanceRepository) ListAssetIDsByModelUID(ctx context.Context, tenantID, modelUID string, accountID int64) ([]string, error) {
+func (r *instanceRepository) ListAssetIDsByModelUID(ctx context.Context, tenantID int64, modelUID string, accountID int64) ([]string, error) {
 	return r.dao.ListAssetIDsByModelUID(ctx, tenantID, modelUID, accountID)
 }
 

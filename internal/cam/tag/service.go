@@ -26,28 +26,28 @@ const InstanceCollection = "ecam_instance"
 // TagService 标签管理业务逻辑层接口
 type TagService interface {
 	// 标签聚合查询（基于本地 MongoDB 资源数据）
-	ListTags(ctx context.Context, tenantID string, filter TagFilter) ([]TagSummary, int64, error)
-	GetTagStats(ctx context.Context, tenantID string) (*TagStats, error)
-	ListTagResources(ctx context.Context, tenantID string, filter TagResourceFilter) ([]TagResource, int64, error)
+	ListTags(ctx context.Context, tenantID int64, filter TagFilter) ([]TagSummary, int64, error)
+	GetTagStats(ctx context.Context, tenantID int64) (*TagStats, error)
+	ListTagResources(ctx context.Context, tenantID int64, filter TagResourceFilter) ([]TagResource, int64, error)
 
 	// 标签操作（调用云厂商 API）
-	BindTags(ctx context.Context, tenantID string, req BindTagsReq) (*BatchResult, error)
-	UnbindTags(ctx context.Context, tenantID string, req UnbindTagsReq) (*BatchResult, error)
+	BindTags(ctx context.Context, tenantID int64, req BindTagsReq) (*BatchResult, error)
+	UnbindTags(ctx context.Context, tenantID int64, req UnbindTagsReq) (*BatchResult, error)
 
 	// 标签策略
-	CreatePolicy(ctx context.Context, tenantID string, req CreatePolicyReq) (TagPolicy, error)
-	ListPolicies(ctx context.Context, tenantID string, filter PolicyFilter) ([]TagPolicy, int64, error)
-	UpdatePolicy(ctx context.Context, tenantID string, id int64, req UpdatePolicyReq) error
-	DeletePolicy(ctx context.Context, tenantID string, id int64) error
-	CheckCompliance(ctx context.Context, tenantID string, filter ComplianceFilter) ([]ComplianceResult, int64, error)
+	CreatePolicy(ctx context.Context, tenantID int64, req CreatePolicyReq) (TagPolicy, error)
+	ListPolicies(ctx context.Context, tenantID int64, filter PolicyFilter) ([]TagPolicy, int64, error)
+	UpdatePolicy(ctx context.Context, tenantID int64, id int64, req UpdatePolicyReq) error
+	DeletePolicy(ctx context.Context, tenantID int64, id int64) error
+	CheckCompliance(ctx context.Context, tenantID int64, filter ComplianceFilter) ([]ComplianceResult, int64, error)
 
 	// 自动打标规则
-	CreateRule(ctx context.Context, tenantID string, req CreateRuleReq) (TagRule, error)
-	ListRules(ctx context.Context, tenantID string, filter RuleFilter) ([]TagRule, int64, error)
-	UpdateRule(ctx context.Context, tenantID string, id int64, req UpdateRuleReq) error
-	DeleteRule(ctx context.Context, tenantID string, id int64) error
-	PreviewRules(ctx context.Context, tenantID string, ruleIDs []int64) ([]RulePreviewResult, error)
-	ExecuteRules(ctx context.Context, tenantID string, ruleIDs []int64) ([]RuleExecuteResult, error)
+	CreateRule(ctx context.Context, tenantID int64, req CreateRuleReq) (TagRule, error)
+	ListRules(ctx context.Context, tenantID int64, filter RuleFilter) ([]TagRule, int64, error)
+	UpdateRule(ctx context.Context, tenantID int64, id int64, req UpdateRuleReq) error
+	DeleteRule(ctx context.Context, tenantID int64, id int64) error
+	PreviewRules(ctx context.Context, tenantID int64, ruleIDs []int64) ([]RulePreviewResult, error)
+	ExecuteRules(ctx context.Context, tenantID int64, ruleIDs []int64) ([]RuleExecuteResult, error)
 }
 
 // tagService TagService 实现
@@ -76,7 +76,7 @@ func NewTagService(
 // ==================== 标签聚合查询 ====================
 
 // ListTags 通过 MongoDB 聚合管道从 instances 集合的 attributes.tags 字段按 key/value 分组统计
-func (s *tagService) ListTags(ctx context.Context, tenantID string, filter TagFilter) ([]TagSummary, int64, error) {
+func (s *tagService) ListTags(ctx context.Context, tenantID int64, filter TagFilter) ([]TagSummary, int64, error) {
 	// Build match stage
 	matchStage := bson.M{"tenant_id": tenantID, "attributes.tags": bson.M{"$exists": true, "$nin": []interface{}{nil, bson.M{}}}}
 	if filter.Provider != "" {
@@ -185,7 +185,7 @@ func (s *tagService) ListTags(ctx context.Context, tenantID string, filter TagFi
 }
 
 // GetTagStats 统计标签键总数、标签值总数、已打标资源数、总资源数、覆盖率
-func (s *tagService) GetTagStats(ctx context.Context, tenantID string) (*TagStats, error) {
+func (s *tagService) GetTagStats(ctx context.Context, tenantID int64) (*TagStats, error) {
 	// Total resources
 	totalResources, err := s.instanceColl.CountDocuments(ctx, bson.M{"tenant_id": tenantID})
 	if err != nil {
@@ -254,7 +254,7 @@ func CalculateCoverage(tagged, total int64) float64 {
 }
 
 // ListTagResources 查询指定标签键值关联的资源列表
-func (s *tagService) ListTagResources(ctx context.Context, tenantID string, filter TagResourceFilter) ([]TagResource, int64, error) {
+func (s *tagService) ListTagResources(ctx context.Context, tenantID int64, filter TagResourceFilter) ([]TagResource, int64, error) {
 	if filter.Key == "" {
 		return nil, 0, ErrTagKeyEmpty
 	}
@@ -354,7 +354,7 @@ func ValidateTagKeysList(keys []string) error {
 }
 
 // BindTags 为资源绑定标签
-func (s *tagService) BindTags(ctx context.Context, tenantID string, req BindTagsReq) (*BatchResult, error) {
+func (s *tagService) BindTags(ctx context.Context, tenantID int64, req BindTagsReq) (*BatchResult, error) {
 	if err := ValidateTagKeys(req.Tags); err != nil {
 		return nil, err
 	}
@@ -401,7 +401,7 @@ func (s *tagService) bindSingleResource(ctx context.Context, res ResourceRef, ta
 }
 
 // UnbindTags 解绑资源标签
-func (s *tagService) UnbindTags(ctx context.Context, tenantID string, req UnbindTagsReq) (*BatchResult, error) {
+func (s *tagService) UnbindTags(ctx context.Context, tenantID int64, req UnbindTagsReq) (*BatchResult, error) {
 	if err := ValidateTagKeysList(req.TagKeys); err != nil {
 		return nil, err
 	}
@@ -450,7 +450,7 @@ func (s *tagService) unbindSingleResource(ctx context.Context, res ResourceRef, 
 // ==================== 标签策略 CRUD ====================
 
 // CreatePolicy 创建标签策略
-func (s *tagService) CreatePolicy(ctx context.Context, tenantID string, req CreatePolicyReq) (TagPolicy, error) {
+func (s *tagService) CreatePolicy(ctx context.Context, tenantID int64, req CreatePolicyReq) (TagPolicy, error) {
 	if strings.TrimSpace(req.Name) == "" {
 		return TagPolicy{}, ErrPolicyNameEmpty
 	}
@@ -477,13 +477,13 @@ func (s *tagService) CreatePolicy(ctx context.Context, tenantID string, req Crea
 }
 
 // ListPolicies 查询标签策略列表
-func (s *tagService) ListPolicies(ctx context.Context, tenantID string, filter PolicyFilter) ([]TagPolicy, int64, error) {
+func (s *tagService) ListPolicies(ctx context.Context, tenantID int64, filter PolicyFilter) ([]TagPolicy, int64, error) {
 	filter.TenantID = tenantID
 	return s.dao.ListPolicies(ctx, filter)
 }
 
 // UpdatePolicy 更新标签策略
-func (s *tagService) UpdatePolicy(ctx context.Context, tenantID string, id int64, req UpdatePolicyReq) error {
+func (s *tagService) UpdatePolicy(ctx context.Context, tenantID int64, id int64, req UpdatePolicyReq) error {
 	existing, err := s.dao.GetPolicyByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -521,7 +521,7 @@ func (s *tagService) UpdatePolicy(ctx context.Context, tenantID string, id int64
 }
 
 // DeletePolicy 删除标签策略
-func (s *tagService) DeletePolicy(ctx context.Context, tenantID string, id int64) error {
+func (s *tagService) DeletePolicy(ctx context.Context, tenantID int64, id int64) error {
 	existing, err := s.dao.GetPolicyByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -578,7 +578,7 @@ func resourceTypeToModelUID(resourceType string) bson.M {
 
 // CheckCompliance 使用 MongoDB 查询预过滤不合规资源，支持分页
 // 返回当前页不合规资源列表和不合规资源总数
-func (s *tagService) CheckCompliance(ctx context.Context, tenantID string, filter ComplianceFilter) ([]ComplianceResult, int64, error) {
+func (s *tagService) CheckCompliance(ctx context.Context, tenantID int64, filter ComplianceFilter) ([]ComplianceResult, int64, error) {
 	// Get the policy
 	policy, err := s.dao.GetPolicyByID(ctx, filter.PolicyID)
 	if err != nil {
@@ -750,7 +750,7 @@ var _ TagService = (*tagService)(nil)
 
 // ==================== 自动打标规则 ====================
 
-func (s *tagService) CreateRule(ctx context.Context, tenantID string, req CreateRuleReq) (TagRule, error) {
+func (s *tagService) CreateRule(ctx context.Context, tenantID int64, req CreateRuleReq) (TagRule, error) {
 	if strings.TrimSpace(req.Name) == "" {
 		return TagRule{}, ErrRuleNameEmpty
 	}
@@ -782,12 +782,12 @@ func (s *tagService) CreateRule(ctx context.Context, tenantID string, req Create
 	return rule, nil
 }
 
-func (s *tagService) ListRules(ctx context.Context, tenantID string, filter RuleFilter) ([]TagRule, int64, error) {
+func (s *tagService) ListRules(ctx context.Context, tenantID int64, filter RuleFilter) ([]TagRule, int64, error) {
 	filter.TenantID = tenantID
 	return s.dao.ListRules(ctx, filter)
 }
 
-func (s *tagService) UpdateRule(ctx context.Context, tenantID string, id int64, req UpdateRuleReq) error {
+func (s *tagService) UpdateRule(ctx context.Context, tenantID int64, id int64, req UpdateRuleReq) error {
 	existing, err := s.dao.GetRuleByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -822,7 +822,7 @@ func (s *tagService) UpdateRule(ctx context.Context, tenantID string, id int64, 
 	return s.dao.UpdateRule(ctx, existing)
 }
 
-func (s *tagService) DeleteRule(ctx context.Context, tenantID string, id int64) error {
+func (s *tagService) DeleteRule(ctx context.Context, tenantID int64, id int64) error {
 	existing, err := s.dao.GetRuleByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -837,7 +837,7 @@ func (s *tagService) DeleteRule(ctx context.Context, tenantID string, id int64) 
 }
 
 // PreviewRules 预览规则匹配结果（不实际打标）— 使用 MongoDB 查询
-func (s *tagService) PreviewRules(ctx context.Context, tenantID string, ruleIDs []int64) ([]RulePreviewResult, error) {
+func (s *tagService) PreviewRules(ctx context.Context, tenantID int64, ruleIDs []int64) ([]RulePreviewResult, error) {
 	rules, err := s.getRulesByIDs(ctx, tenantID, ruleIDs)
 	if err != nil {
 		return nil, err
@@ -888,7 +888,7 @@ func (s *tagService) PreviewRules(ctx context.Context, tenantID string, ruleIDs 
 }
 
 // ExecuteRules 执行规则：用 MongoDB 查询匹配资源，然后调用云 API 打标
-func (s *tagService) ExecuteRules(ctx context.Context, tenantID string, ruleIDs []int64) ([]RuleExecuteResult, error) {
+func (s *tagService) ExecuteRules(ctx context.Context, tenantID int64, ruleIDs []int64) ([]RuleExecuteResult, error) {
 	rules, err := s.getRulesByIDs(ctx, tenantID, ruleIDs)
 	if err != nil {
 		return nil, err
@@ -937,7 +937,7 @@ func (s *tagService) ExecuteRules(ctx context.Context, tenantID string, ruleIDs 
 }
 
 // buildRuleQuery 将规则条件转为 MongoDB 查询
-func buildRuleQuery(tenantID string, rule TagRule) bson.M {
+func buildRuleQuery(tenantID int64, rule TagRule) bson.M {
 	base := bson.M{"tenant_id": tenantID}
 	if len(rule.Conditions) == 0 {
 		return base
@@ -1012,7 +1012,7 @@ func condFieldToMongoField(field string) string {
 }
 
 // getRulesByIDs 获取指定 ID 的规则，如果 ruleIDs 为空则获取所有启用的规则
-func (s *tagService) getRulesByIDs(ctx context.Context, tenantID string, ruleIDs []int64) ([]TagRule, error) {
+func (s *tagService) getRulesByIDs(ctx context.Context, tenantID int64, ruleIDs []int64) ([]TagRule, error) {
 	if len(ruleIDs) == 0 {
 		return s.dao.ListEnabledRules(ctx, tenantID)
 	}

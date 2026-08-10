@@ -18,7 +18,7 @@ type TopologyQueryVO struct {
 }
 
 // ToParams 转换为领域层查询参数
-func (v *TopologyQueryVO) ToParams(tenantID string) domain.TopologyQueryParams {
+func (v *TopologyQueryVO) ToParams(tenantID int64) domain.TopologyQueryParams {
 	mode := v.Mode
 	if mode == "" {
 		mode = "business"
@@ -66,7 +66,7 @@ type DeclarationLinkVO struct {
 }
 
 // ToDeclaration 转换为领域模型
-func (v *DeclarationRequestVO) ToDeclaration(tenantID string) domain.LinkDeclaration {
+func (v *DeclarationRequestVO) ToDeclaration(tenantID int64) domain.LinkDeclaration {
 	links := make([]domain.DeclarationLink, 0, len(v.Links))
 	for _, l := range v.Links {
 		links = append(links, domain.DeclarationLink{

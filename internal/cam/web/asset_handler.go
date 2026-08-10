@@ -6,8 +6,8 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
-	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -324,7 +324,7 @@ func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
 
 	h.logger.Info("GetECSRelations 请求参数",
 		elog.String("asset_id", assetID),
-		elog.String("tenant_id", tenantID),
+		elog.Int64("tenant_id", tenantID),
 		elog.String("provider", provider))
 
 	// 1. 先获取 ECS 实例
@@ -348,7 +348,7 @@ func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
 		h.logger.Info("ECS实例",
 			elog.String("model_uid", inst.ModelUID),
 			elog.String("asset_id", inst.AssetID),
-			elog.String("tenant_id", inst.TenantID),
+			elog.Int64("tenant_id", inst.TenantID),
 			elog.Int64("account_id", inst.AccountID))
 	}
 
@@ -1844,7 +1844,7 @@ func (h *AssetHandler) GetImage(ctx *gin.Context) {
 // @Router /cam/assets/image/stats [get]
 func (h *AssetHandler) GetImageStats(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
-	if tenantID == "" {
+	if tenantID == 0 {
 		ctx.JSON(400, ErrorResultWithMsg(errs.ParamsError, "X-Tenant-ID is required"))
 		return
 	}
@@ -2412,7 +2412,7 @@ type UnifiedAssetVO struct {
 	AssetID    string                 `json:"asset_id"`
 	AssetName  string                 `json:"asset_name"`
 	AssetType  string                 `json:"asset_type"`
-	TenantID   string                 `json:"tenant_id"`
+	TenantID   int64                  `json:"tenant_id"`
 	AccountID  int64                  `json:"account_id"`
 	Provider   string                 `json:"provider"`
 	Region     string                 `json:"region"`

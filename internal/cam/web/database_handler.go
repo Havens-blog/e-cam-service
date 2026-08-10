@@ -249,7 +249,7 @@ func (h *DatabaseHandler) getDatabaseInstance(ctx *gin.Context, dbType string) {
 	}
 
 	// 如果指定了provider，直接查询
-	if provider != "" && tenantID != "" {
+	if provider != "" && tenantID != 0 {
 		instance, err := h.instanceSvc.GetByAssetID(ctx.Request.Context(), tenantID, modelUID, assetID)
 		if err != nil {
 			ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
@@ -329,7 +329,7 @@ type DatabaseInstanceVO struct {
 	ModelUID   string                 `json:"model_uid"`
 	AssetID    string                 `json:"asset_id"`
 	AssetName  string                 `json:"asset_name"`
-	TenantID   string                 `json:"tenant_id"`
+	TenantID   int64                  `json:"tenant_id"`
 	AccountID  int64                  `json:"account_id"`
 	Provider   string                 `json:"provider"`
 	Region     string                 `json:"region"`

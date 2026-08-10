@@ -16,7 +16,7 @@ type PolicyTemplateRepository interface {
 	GetByID(ctx context.Context, id int64) (domain.PolicyTemplate, error)
 
 	// GetByName 根据名称和租户ID获取策略模板
-	GetByName(ctx context.Context, name, tenantID string) (domain.PolicyTemplate, error)
+	GetByName(ctx context.Context, name string, tenantID int64) (domain.PolicyTemplate, error)
 
 	// List 获取策略模板列表
 	List(ctx context.Context, filter domain.TemplateFilter) ([]domain.PolicyTemplate, int64, error)
@@ -58,7 +58,7 @@ func (repo *policyTemplateRepository) GetByID(ctx context.Context, id int64) (do
 }
 
 // GetByName 根据名称和租户ID获取策略模板
-func (repo *policyTemplateRepository) GetByName(ctx context.Context, name, tenantID string) (domain.PolicyTemplate, error) {
+func (repo *policyTemplateRepository) GetByName(ctx context.Context, name string, tenantID int64) (domain.PolicyTemplate, error) {
 	daoTemplate, err := repo.dao.GetByName(ctx, name, tenantID)
 	if err != nil {
 		return domain.PolicyTemplate{}, err

@@ -65,7 +65,7 @@ func NewDNSCollector(providers ...DNSProvider) *DNSCollector {
 func (c *DNSCollector) Name() string { return "dns_collector" }
 
 // Collect 采集所有 DNS 记录并转换为拓扑节点和边
-func (c *DNSCollector) Collect(ctx context.Context, tenantID string) ([]domain.TopoNode, []domain.TopoEdge, error) {
+func (c *DNSCollector) Collect(ctx context.Context, tenantID int64) ([]domain.TopoNode, []domain.TopoEdge, error) {
 	nodes := make([]domain.TopoNode, 0)
 	edges := make([]domain.TopoEdge, 0)
 

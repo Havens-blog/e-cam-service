@@ -483,7 +483,7 @@ func TestAllProviders_DNS_NotNil(t *testing.T) {
 				AccessKeySecret: "test-key-secret-12345",
 				Regions:         []string{p.region},
 				Status:          domain.CloudAccountStatusActive,
-				TenantID:        "tenant-001",
+				TenantID:        6,
 			}
 
 			adapter, err := factory.CreateAdapter(account)

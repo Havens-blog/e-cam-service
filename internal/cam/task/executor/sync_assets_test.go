@@ -35,7 +35,7 @@ func (m *mockAccountRepo) GetByID(ctx context.Context, id int64) (domain.CloudAc
 	return args.Get(0).(domain.CloudAccount), args.Error(1)
 }
 
-func (m *mockAccountRepo) GetByName(ctx context.Context, name, tenantID string) (domain.CloudAccount, error) {
+func (m *mockAccountRepo) GetByName(ctx context.Context, name string, tenantID int64) (domain.CloudAccount, error) {
 	args := m.Called(ctx, name, tenantID)
 	return args.Get(0).(domain.CloudAccount), args.Error(1)
 }
@@ -98,7 +98,7 @@ func (m *mockInstanceRepo) GetByID(ctx context.Context, id int64) (camdomain.Ins
 	return args.Get(0).(camdomain.Instance), args.Error(1)
 }
 
-func (m *mockInstanceRepo) GetByAssetID(ctx context.Context, tenantID, modelUID, assetID string) (camdomain.Instance, error) {
+func (m *mockInstanceRepo) GetByAssetID(ctx context.Context, tenantID int64, modelUID, assetID string) (camdomain.Instance, error) {
 	args := m.Called(ctx, tenantID, modelUID, assetID)
 	return args.Get(0).(camdomain.Instance), args.Error(1)
 }
@@ -123,17 +123,17 @@ func (m *mockInstanceRepo) DeleteByAccountID(ctx context.Context, accountID int6
 	return args.Error(0)
 }
 
-func (m *mockInstanceRepo) DeleteByAssetIDs(ctx context.Context, tenantID, modelUID string, assetIDs []string) (int64, error) {
+func (m *mockInstanceRepo) DeleteByAssetIDs(ctx context.Context, tenantID int64, modelUID string, assetIDs []string) (int64, error) {
 	args := m.Called(ctx, tenantID, modelUID, assetIDs)
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *mockInstanceRepo) ListAssetIDsByRegion(ctx context.Context, tenantID, modelUID string, accountID int64, region string) ([]string, error) {
+func (m *mockInstanceRepo) ListAssetIDsByRegion(ctx context.Context, tenantID int64, modelUID string, accountID int64, region string) ([]string, error) {
 	args := m.Called(ctx, tenantID, modelUID, accountID, region)
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (m *mockInstanceRepo) ListAssetIDsByModelUID(ctx context.Context, tenantID, modelUID string, accountID int64) ([]string, error) {
+func (m *mockInstanceRepo) ListAssetIDsByModelUID(ctx context.Context, tenantID int64, modelUID string, accountID int64) ([]string, error) {
 	args := m.Called(ctx, tenantID, modelUID, accountID)
 	return args.Get(0).([]string), args.Error(1)
 }
@@ -416,7 +416,7 @@ func testAccount() *domain.CloudAccount {
 		AccessKeySecret: "test-sk-1234567890123456",
 		Regions:         []string{"cn-hangzhou", "cn-beijing"},
 		Status:          domain.CloudAccountStatusActive,
-		TenantID:        "tenant-001",
+		TenantID:        6,
 	}
 }
 
@@ -467,12 +467,12 @@ func TestSyncRegionRDS_Success(t *testing.T) {
 	}, nil)
 
 	// 本地没有已有实例
-	instanceRepo.On("ListAssetIDsByRegion", ctx, "tenant-001", "aliyun_rds", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", ctx, 6, "aliyun_rds", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 
 	// Upsert 每个实例
 	instanceRepo.On("Upsert", ctx, mock.MatchedBy(func(inst camdomain.Instance) bool {
-		return inst.ModelUID == "aliyun_rds" && inst.TenantID == "tenant-001"
+		return inst.ModelUID == "aliyun_rds" && inst.TenantID == 6
 	})).Return(nil)
 
 	executor := newTestExecutor(instanceRepo)
@@ -499,11 +499,11 @@ func TestSyncRegionRDS_WithDeletion(t *testing.T) {
 	}, nil)
 
 	// 本地有2个实例（rm-002 已不存在于云端）
-	instanceRepo.On("ListAssetIDsByRegion", ctx, "tenant-001", "aliyun_rds", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", ctx, 6, "aliyun_rds", int64(100), "cn-hangzhou").
 		Return([]string{"rm-001", "rm-002"}, nil)
 
 	// 应该删除 rm-002
-	instanceRepo.On("DeleteByAssetIDs", ctx, "tenant-001", "aliyun_rds", []string{"rm-002"}).
+	instanceRepo.On("DeleteByAssetIDs", ctx, 6, "aliyun_rds", []string{"rm-002"}).
 		Return(int64(1), nil)
 
 	instanceRepo.On("Upsert", ctx, mock.Anything).Return(nil)
@@ -514,7 +514,7 @@ func TestSyncRegionRDS_WithDeletion(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
 
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", ctx, "tenant-001", "aliyun_rds", []string{"rm-002"})
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", ctx, 6, "aliyun_rds", []string{"rm-002"})
 }
 
 func TestSyncRegionRDS_AdapterError(t *testing.T) {
@@ -569,7 +569,7 @@ func TestSyncRegionVPC_Success(t *testing.T) {
 		},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", ctx, "tenant-001", "aliyun_vpc", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", ctx, 6, "aliyun_vpc", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 
 	instanceRepo.On("Upsert", ctx, mock.MatchedBy(func(inst camdomain.Instance) bool {
@@ -599,7 +599,7 @@ func TestSyncRegionRDS_UpsertError(t *testing.T) {
 		{InstanceID: "rm-002", InstanceName: "prod-mysql-02", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", ctx, "tenant-001", "aliyun_rds", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", ctx, 6, "aliyun_rds", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 
 	// 第一个 Upsert 失败，第二个成功
@@ -652,7 +652,7 @@ func TestConvertRDSToInstance(t *testing.T) {
 	assert.Equal(t, "aliyun_rds", result.ModelUID)
 	assert.Equal(t, "rm-test-001", result.AssetID)
 	assert.Equal(t, "prod-mysql", result.AssetName)
-	assert.Equal(t, "tenant-001", result.TenantID)
+	assert.Equal(t, int64(6), result.TenantID)
 	assert.Equal(t, int64(100), result.AccountID)
 
 	// 验证属性
@@ -680,7 +680,7 @@ func TestConvertVPCToInstance(t *testing.T) {
 	assert.Equal(t, "aliyun_vpc", result.ModelUID)
 	assert.Equal(t, "vpc-test-001", result.AssetID)
 	assert.Equal(t, "prod-vpc", result.AssetName)
-	assert.Equal(t, "tenant-001", result.TenantID)
+	assert.Equal(t, int64(6), result.TenantID)
 	assert.Equal(t, int64(100), result.AccountID)
 	assert.Equal(t, "10.0.0.0/8", result.Attributes["cidr_block"])
 }
@@ -712,7 +712,7 @@ func TestConvertECSToInstance(t *testing.T) {
 	assert.Equal(t, "aliyun_ecs", result.ModelUID)
 	assert.Equal(t, "i-test-001", result.AssetID)
 	assert.Equal(t, "web-server-01", result.AssetName)
-	assert.Equal(t, "tenant-001", result.TenantID)
+	assert.Equal(t, int64(6), result.TenantID)
 	assert.Equal(t, int64(100), result.AccountID)
 
 	// 验证关键属性

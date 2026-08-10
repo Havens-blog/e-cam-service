@@ -23,11 +23,11 @@ func TestCloudUser_Validate(t *testing.T) {
 		user    CloudUser
 		wantErr string
 	}{
-		{"有效用户", CloudUser{Username: "admin", UserType: CloudUserTypeRAMUser, CloudAccountID: 1, Provider: CloudProviderAliyun, TenantID: "t1"}, ""},
-		{"缺少用户名", CloudUser{UserType: CloudUserTypeRAMUser, CloudAccountID: 1, Provider: CloudProviderAliyun, TenantID: "t1"}, "username"},
-		{"缺少类型", CloudUser{Username: "admin", CloudAccountID: 1, Provider: CloudProviderAliyun, TenantID: "t1"}, "user type"},
-		{"缺少账号ID", CloudUser{Username: "admin", UserType: CloudUserTypeRAMUser, Provider: CloudProviderAliyun, TenantID: "t1"}, "cloud account id"},
-		{"缺少Provider", CloudUser{Username: "admin", UserType: CloudUserTypeRAMUser, CloudAccountID: 1, TenantID: "t1"}, "provider"},
+		{"有效用户", CloudUser{Username: "admin", UserType: CloudUserTypeRAMUser, CloudAccountID: 1, Provider: CloudProviderAliyun, TenantID: 1}, ""},
+		{"缺少用户名", CloudUser{UserType: CloudUserTypeRAMUser, CloudAccountID: 1, Provider: CloudProviderAliyun, TenantID: 1}, "username"},
+		{"缺少类型", CloudUser{Username: "admin", CloudAccountID: 1, Provider: CloudProviderAliyun, TenantID: 1}, "user type"},
+		{"缺少账号ID", CloudUser{Username: "admin", UserType: CloudUserTypeRAMUser, Provider: CloudProviderAliyun, TenantID: 1}, "cloud account id"},
+		{"缺少Provider", CloudUser{Username: "admin", UserType: CloudUserTypeRAMUser, CloudAccountID: 1, TenantID: 1}, "provider"},
 		{"缺少TenantID", CloudUser{Username: "admin", UserType: CloudUserTypeRAMUser, CloudAccountID: 1, Provider: CloudProviderAliyun}, "tenant id"},
 	}
 	for _, tt := range tests {
@@ -62,9 +62,9 @@ func TestUserGroup_Validate(t *testing.T) {
 		group   UserGroup
 		wantErr string
 	}{
-		{"有效组", UserGroup{Name: "admins", CloudPlatforms: []CloudProvider{CloudProviderAliyun}, TenantID: "t1"}, ""},
-		{"缺少名称", UserGroup{CloudPlatforms: []CloudProvider{CloudProviderAliyun}, TenantID: "t1"}, "group name"},
-		{"缺少平台", UserGroup{Name: "admins", TenantID: "t1"}, "cloud platforms"},
+		{"有效组", UserGroup{Name: "admins", CloudPlatforms: []CloudProvider{CloudProviderAliyun}, TenantID: 1}, ""},
+		{"缺少名称", UserGroup{CloudPlatforms: []CloudProvider{CloudProviderAliyun}, TenantID: 1}, "group name"},
+		{"缺少平台", UserGroup{Name: "admins", TenantID: 1}, "cloud platforms"},
 		{"缺少TenantID", UserGroup{Name: "admins", CloudPlatforms: []CloudProvider{CloudProviderAliyun}}, "tenant id"},
 	}
 	for _, tt := range tests {
@@ -222,11 +222,11 @@ func TestPolicyTemplate_Validate(t *testing.T) {
 		tmpl    PolicyTemplate
 		wantErr string
 	}{
-		{"有效自定义模板", PolicyTemplate{Name: "test", Category: TemplateCategoryCustom, CloudPlatforms: []CloudProvider{CloudProviderAliyun}, TenantID: "t1"}, ""},
+		{"有效自定义模板", PolicyTemplate{Name: "test", Category: TemplateCategoryCustom, CloudPlatforms: []CloudProvider{CloudProviderAliyun}, TenantID: 1}, ""},
 		{"有效内置模板", PolicyTemplate{Name: "test", Category: TemplateCategoryAdmin, CloudPlatforms: []CloudProvider{CloudProviderAliyun}, IsBuiltIn: true}, ""},
-		{"缺少名称", PolicyTemplate{Category: TemplateCategoryCustom, CloudPlatforms: []CloudProvider{CloudProviderAliyun}, TenantID: "t1"}, "template name"},
-		{"缺少分类", PolicyTemplate{Name: "test", CloudPlatforms: []CloudProvider{CloudProviderAliyun}, TenantID: "t1"}, "category"},
-		{"缺少平台", PolicyTemplate{Name: "test", Category: TemplateCategoryCustom, TenantID: "t1"}, "cloud platforms"},
+		{"缺少名称", PolicyTemplate{Category: TemplateCategoryCustom, CloudPlatforms: []CloudProvider{CloudProviderAliyun}, TenantID: 1}, "template name"},
+		{"缺少分类", PolicyTemplate{Name: "test", CloudPlatforms: []CloudProvider{CloudProviderAliyun}, TenantID: 1}, "category"},
+		{"缺少平台", PolicyTemplate{Name: "test", Category: TemplateCategoryCustom, TenantID: 1}, "cloud platforms"},
 		{"自定义缺少TenantID", PolicyTemplate{Name: "test", Category: TemplateCategoryCustom, CloudPlatforms: []CloudProvider{CloudProviderAliyun}}, "tenant id"},
 	}
 	for _, tt := range tests {

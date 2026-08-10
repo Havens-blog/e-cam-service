@@ -16,7 +16,7 @@ type Collector interface {
 	// Name 采集器名称
 	Name() string
 	// Collect 执行采集，返回节点和边列表
-	Collect(ctx context.Context, tenantID string) ([]domain.TopoNode, []domain.TopoEdge, error)
+	Collect(ctx context.Context, tenantID int64) ([]domain.TopoNode, []domain.TopoEdge, error)
 }
 
 // CollectorManager 采集器管理器，负责批量执行采集器并合并结果写入存储
@@ -42,7 +42,7 @@ func NewCollectorManager(
 }
 
 // RunAll 执行所有采集器，合并去重后写入 MongoDB
-func (m *CollectorManager) RunAll(ctx context.Context, tenantID string) error {
+func (m *CollectorManager) RunAll(ctx context.Context, tenantID int64) error {
 	allNodes := make([]domain.TopoNode, 0)
 	allEdges := make([]domain.TopoEdge, 0)
 

@@ -16,7 +16,7 @@ type CostAllocation struct {
 	UnallocatedFlag bool    `bson:"unallocated_flag" json:"unallocated_flag"`
 	DefaultFlag     bool    `bson:"default_flag" json:"default_flag"`
 	RuleID          int64   `bson:"rule_id" json:"rule_id"`
-	TenantID        string  `bson:"tenant_id" json:"tenant_id"`
+	TenantID        int64   `bson:"tenant_id" json:"tenant_id"`
 	CreateTime      int64   `bson:"ctime" json:"ctime"`
 }
 
@@ -31,7 +31,7 @@ type AllocationRule struct {
 	SharedConfig    *SharedConfig    `bson:"shared_config" json:"shared_config"`
 	Priority        int              `bson:"priority" json:"priority"`
 	Status          string           `bson:"status" json:"status"`
-	TenantID        string           `bson:"tenant_id" json:"tenant_id"`
+	TenantID        int64            `bson:"tenant_id" json:"tenant_id"`
 	CreateTime      int64            `bson:"ctime" json:"ctime"`
 	UpdateTime      int64            `bson:"utime" json:"utime"`
 }
@@ -55,7 +55,7 @@ type DefaultAllocationPolicy struct {
 	ID         int64  `bson:"id" json:"id"`
 	TargetID   string `bson:"target_id" json:"target_id"`
 	TargetName string `bson:"target_name" json:"target_name"`
-	TenantID   string `bson:"tenant_id" json:"tenant_id"`
+	TenantID   int64  `bson:"tenant_id" json:"tenant_id"`
 	CreateTime int64  `bson:"ctime" json:"ctime"`
 	UpdateTime int64  `bson:"utime" json:"utime"`
 }
@@ -68,7 +68,7 @@ type DimensionHierarchy struct {
 	NodeName string `bson:"node_name" json:"node_name"`
 	ParentID string `bson:"parent_id" json:"parent_id"`
 	Path     string `bson:"path" json:"path"`
-	TenantID string `bson:"tenant_id" json:"tenant_id"`
+	TenantID int64  `bson:"tenant_id" json:"tenant_id"`
 }
 
 // SharedConfig 共享资源分摊配置

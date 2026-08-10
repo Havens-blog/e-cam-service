@@ -77,7 +77,7 @@ func (e *CreateECSExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 	}
 
 	// 2. 获取创建任务记录
-	task, err := e.taskDAO.GetByID(ctx, "", params.TaskID)
+	task, err := e.taskDAO.GetByID(ctx, 0, params.TaskID)
 	if err != nil {
 		// 尝试不带 tenantID 查询（executor 内部调用）
 		return fmt.Errorf("获取创建任务失败: %w", err)

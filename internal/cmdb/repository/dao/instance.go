@@ -18,7 +18,7 @@ type Instance struct {
 	ModelUID   string                 `bson:"model_uid"`
 	AssetID    string                 `bson:"asset_id"`
 	AssetName  string                 `bson:"asset_name"`
-	TenantID   string                 `bson:"tenant_id"`
+	TenantID   int64                  `bson:"tenant_id"`
 	AccountID  int64                  `bson:"account_id"`
 	Attributes map[string]interface{} `bson:"attributes"`
 	Ctime      int64                  `bson:"ctime"`
@@ -28,7 +28,7 @@ type Instance struct {
 // InstanceFilter DAO层过滤条件
 type InstanceFilter struct {
 	ModelUID   string
-	TenantID   string
+	TenantID   int64
 	AccountID  int64
 	AssetName  string
 	Attributes map[string]interface{}
@@ -61,7 +61,7 @@ type InstanceDAO interface {
 	CreateBatch(ctx context.Context, instances []Instance) (int64, error)
 	Update(ctx context.Context, instance Instance) error
 	GetByID(ctx context.Context, id int64) (Instance, error)
-	GetByAssetID(ctx context.Context, tenantID, modelUID, assetID string) (Instance, error)
+	GetByAssetID(ctx context.Context, tenantID int64, modelUID, assetID string) (Instance, error)
 	List(ctx context.Context, filter InstanceFilter) ([]Instance, error)
 	ListByIDs(ctx context.Context, ids []int64) ([]Instance, error)
 	Count(ctx context.Context, filter InstanceFilter) (int64, error)
@@ -69,15 +69,15 @@ type InstanceDAO interface {
 	DeleteByAccountID(ctx context.Context, accountID int64) error
 	Upsert(ctx context.Context, instance Instance) error
 	// ListUnbound 查询未绑定到任何服务树节点的资产 (通过 $lookup 排除已有 binding 的)
-	ListUnbound(ctx context.Context, tenantID string, offset, limit int64) ([]Instance, error)
+	ListUnbound(ctx context.Context, tenantID int64, offset, limit int64) ([]Instance, error)
 	// CountUnbound 统计未绑定资产数量
-	CountUnbound(ctx context.Context, tenantID string) (int64, error)
+	CountUnbound(ctx context.Context, tenantID int64) (int64, error)
 	// AggregateStatsByIDs 根据资源ID列表聚合统计（高性能）
 	AggregateStatsByIDs(ctx context.Context, ids []int64) (*AssetStatsResult, error)
 	// AggregateAllStats 聚合统计全部资产
-	AggregateAllStats(ctx context.Context, tenantID string) (*AssetStatsResult, error)
+	AggregateAllStats(ctx context.Context, tenantID int64) (*AssetStatsResult, error)
 	// AggregateUnboundStats 聚合统计未绑定资产
-	AggregateUnboundStats(ctx context.Context, tenantID string) (*AssetStatsResult, error)
+	AggregateUnboundStats(ctx context.Context, tenantID int64) (*AssetStatsResult, error)
 }
 
 type instanceDAO struct {
@@ -170,7 +170,7 @@ func (d *instanceDAO) GetByID(ctx context.Context, id int64) (Instance, error) {
 }
 
 // GetByAssetID 根据云厂商资产ID获取实例
-func (d *instanceDAO) GetByAssetID(ctx context.Context, tenantID, modelUID, assetID string) (Instance, error) {
+func (d *instanceDAO) GetByAssetID(ctx context.Context, tenantID int64, modelUID, assetID string) (Instance, error) {
 	var instance Instance
 	filter := bson.M{
 		"tenant_id": tenantID,
@@ -277,7 +277,7 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 	if filter.ModelUID != "" {
 		query["model_uid"] = filter.ModelUID
 	}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.AccountID > 0 {
@@ -297,7 +297,7 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 
 // unboundPipeline 构建查询未绑定资产的聚合管道
 // 思路: c_instance LEFT JOIN c_resource_binding，保留 binding 为空的记录
-func (d *instanceDAO) unboundPipeline(tenantID string) mongo.Pipeline {
+func (d *instanceDAO) unboundPipeline(tenantID int64) mongo.Pipeline {
 	return mongo.Pipeline{
 		// 1. 按租户过滤
 		{{Key: "$match", Value: bson.M{"tenant_id": tenantID}}},
@@ -325,7 +325,7 @@ func (d *instanceDAO) unboundPipeline(tenantID string) mongo.Pipeline {
 }
 
 // ListUnbound 查询未绑定到任何服务树节点的资产
-func (d *instanceDAO) ListUnbound(ctx context.Context, tenantID string, offset, limit int64) ([]Instance, error) {
+func (d *instanceDAO) ListUnbound(ctx context.Context, tenantID int64, offset, limit int64) ([]Instance, error) {
 	pipeline := d.unboundPipeline(tenantID)
 
 	// 排序
@@ -350,7 +350,7 @@ func (d *instanceDAO) ListUnbound(ctx context.Context, tenantID string, offset, 
 }
 
 // CountUnbound 统计未绑定资产数量
-func (d *instanceDAO) CountUnbound(ctx context.Context, tenantID string) (int64, error) {
+func (d *instanceDAO) CountUnbound(ctx context.Context, tenantID int64) (int64, error) {
 	pipeline := d.unboundPipeline(tenantID)
 	pipeline = append(pipeline, bson.D{{Key: "$count", Value: "total"}})
 
@@ -429,11 +429,11 @@ func (d *instanceDAO) AggregateStatsByIDs(ctx context.Context, ids []int64) (*As
 }
 
 // AggregateAllStats 聚合统计全部资产
-func (d *instanceDAO) AggregateAllStats(ctx context.Context, tenantID string) (*AssetStatsResult, error) {
+func (d *instanceDAO) AggregateAllStats(ctx context.Context, tenantID int64) (*AssetStatsResult, error) {
 	match := bson.M{}
-	if tenantID != "" {
-		match["tenant_id"] = tenantID
-	}
+	// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集，
+	// 而不是退化为「不加过滤」从而返回全部租户数据。
+	match["tenant_id"] = tenantID
 
 	pipeline := mongo.Pipeline{
 		{{Key: "$match", Value: match}},
@@ -485,7 +485,7 @@ func (d *instanceDAO) AggregateAllStats(ctx context.Context, tenantID string) (*
 }
 
 // AggregateUnboundStats 聚合统计未绑定资产
-func (d *instanceDAO) AggregateUnboundStats(ctx context.Context, tenantID string) (*AssetStatsResult, error) {
+func (d *instanceDAO) AggregateUnboundStats(ctx context.Context, tenantID int64) (*AssetStatsResult, error) {
 	// 基于未绑定 pipeline，追加统计阶段
 	pipeline := d.unboundPipeline(tenantID)
 	pipeline = append(pipeline, bson.D{{Key: "$facet", Value: bson.M{

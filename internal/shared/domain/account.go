@@ -60,7 +60,7 @@ type CloudAccount struct {
 	Description     string             `json:"description" bson:"description"`             // 描述信息
 	Status          CloudAccountStatus `json:"status" bson:"status"`                       // 账号状态
 	Config          CloudAccountConfig `json:"config" bson:"config"`                       // 配置信息
-	TenantID        string             `json:"tenant_id" bson:"tenant_id"`                 // 租户ID
+	TenantID        int64              `json:"tenant_id" bson:"tenant_id"`                 // 租户ID
 	LastSyncTime    *time.Time         `json:"last_sync_time" bson:"last_sync_time"`       // 最后同步时间
 	LastTestTime    *time.Time         `json:"last_test_time" bson:"last_test_time"`       // 最后测试时间
 	AssetCount      int64              `json:"asset_count" bson:"asset_count"`             // 资产数量
@@ -76,7 +76,7 @@ type CloudAccountFilter struct {
 	Provider    CloudProvider      `json:"provider"`
 	Environment Environment        `json:"environment"`
 	Status      CloudAccountStatus `json:"status"`
-	TenantID    string             `json:"tenant_id"`
+	TenantID    int64              `json:"tenant_id"`
 	Offset      int64              `json:"offset"`
 	Limit       int64              `json:"limit"`
 }
@@ -91,7 +91,7 @@ type CreateCloudAccountRequest struct {
 	Regions         []string           `json:"regions" binding:"required,min=1"`
 	Description     string             `json:"description" binding:"max=500"`
 	Config          CloudAccountConfig `json:"config"`
-	TenantID        string             `json:"tenant_id"`
+	TenantID        int64              `json:"tenant_id"`
 }
 
 // UpdateCloudAccountRequest 更新云账号请求
@@ -191,7 +191,7 @@ func (a *CloudAccount) Validate() error {
 	if a.AccessKeySecret == "" {
 		return fmt.Errorf("access key secret cannot be empty")
 	}
-	if a.TenantID == "" {
+	if a.TenantID == 0 {
 		return fmt.Errorf("tenant id cannot be empty")
 	}
 	return nil

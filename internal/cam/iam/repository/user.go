@@ -19,7 +19,7 @@ type CloudUserRepository interface {
 	GetByCloudUserID(ctx context.Context, cloudUserID string, provider domain.CloudProvider) (domain.CloudUser, error)
 
 	// GetByGroupID 根据用户组ID获取所有成员
-	GetByGroupID(ctx context.Context, groupID int64, tenantID string) ([]domain.CloudUser, error)
+	GetByGroupID(ctx context.Context, groupID int64, tenantID int64) ([]domain.CloudUser, error)
 
 	// List 获取云用户列表
 	List(ctx context.Context, filter domain.CloudUserFilter) ([]domain.CloudUser, int64, error)
@@ -79,7 +79,7 @@ func (repo *cloudUserRepository) GetByCloudUserID(ctx context.Context, cloudUser
 }
 
 // GetByGroupID 根据用户组ID获取所有成员
-func (repo *cloudUserRepository) GetByGroupID(ctx context.Context, groupID int64, tenantID string) ([]domain.CloudUser, error) {
+func (repo *cloudUserRepository) GetByGroupID(ctx context.Context, groupID int64, tenantID int64) ([]domain.CloudUser, error) {
 	daoUsers, err := repo.dao.GetByGroupID(ctx, groupID, tenantID)
 	if err != nil {
 		return nil, err

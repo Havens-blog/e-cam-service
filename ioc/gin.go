@@ -57,8 +57,8 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 	_ = viper.UnmarshalKey("auth", &authCfg)
 	server.Use(middleware.EcmdbAuthMiddlewareWithConfig(sp, authCfg, logger))
 
-	// 租户中间件：从 session 或 header 中提取租户信息
-	server.Use(middleware.TenantMiddleware(logger))
+	// 租户由认证中间件从 JWT claims 解析并写入上下文（见 middleware.TenantIDKey），
+	// 不再有独立的租户中间件：客户端自报的租户一律不采纳。
 
 	// ecmdb 策略检查中间件（加固版）
 	server.Use(checkPolicy.Build())
@@ -223,7 +223,7 @@ func corsHdl() gin.HandlerFunc {
 			return true
 		},
 		AllowMethods:  []string{"POST", "GET", "PUT", "DELETE", "PATCH", "OPTIONS"},
-		AllowHeaders:  []string{"Content-Type", "Authorization", "X-Tenant-ID", "X-Finder-Id", "X-Finder-ID", "X-Request-ID"},
+		AllowHeaders:  []string{"Content-Type", "Authorization", "X-Finder-Id", "X-Finder-ID", "X-Request-ID"},
 		ExposeHeaders: []string{"X-Access-Token", "X-Request-ID", "X-Request-User"},
 		// 允许携带 cookie 和 Authorization header
 		AllowCredentials: true,

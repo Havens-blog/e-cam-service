@@ -43,7 +43,7 @@ func (d *DeclarationDAO) Upsert(ctx context.Context, decl domain.LinkDeclaration
 }
 
 // FindBySource 按上报方标识查询声明数据
-func (d *DeclarationDAO) FindBySource(ctx context.Context, tenantID, source string) ([]domain.LinkDeclaration, error) {
+func (d *DeclarationDAO) FindBySource(ctx context.Context, tenantID int64, source string) ([]domain.LinkDeclaration, error) {
 	cursor, err := d.col().Find(ctx, bson.M{"tenant_id": tenantID, "source": source})
 	if err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ func (d *DeclarationDAO) FindBySource(ctx context.Context, tenantID, source stri
 }
 
 // FindAll 查询租户下所有声明数据
-func (d *DeclarationDAO) FindAll(ctx context.Context, tenantID string) ([]domain.LinkDeclaration, error) {
+func (d *DeclarationDAO) FindAll(ctx context.Context, tenantID int64) ([]domain.LinkDeclaration, error) {
 	cursor, err := d.col().Find(ctx, bson.M{"tenant_id": tenantID},
 		options.Find().SetSort(bson.D{{Key: "updated_at", Value: -1}}))
 	if err != nil {
@@ -72,7 +72,7 @@ func (d *DeclarationDAO) FindAll(ctx context.Context, tenantID string) ([]domain
 }
 
 // DeleteBySource 按上报方标识批量删除声明数据
-func (d *DeclarationDAO) DeleteBySource(ctx context.Context, tenantID, source string) (int64, error) {
+func (d *DeclarationDAO) DeleteBySource(ctx context.Context, tenantID int64, source string) (int64, error) {
 	result, err := d.col().DeleteMany(ctx, bson.M{"tenant_id": tenantID, "source": source})
 	if err != nil {
 		return 0, err

@@ -17,7 +17,7 @@ type Environment struct {
 	ID          int64  `bson:"id"`
 	Code        string `bson:"code"`
 	Name        string `bson:"name"`
-	TenantID    string `bson:"tenant_id"`
+	TenantID    int64  `bson:"tenant_id"`
 	Description string `bson:"description"`
 	Color       string `bson:"color"`
 	Order       int    `bson:"order"`
@@ -28,7 +28,7 @@ type Environment struct {
 
 // EnvironmentFilter DAO 层过滤条件
 type EnvironmentFilter struct {
-	TenantID string
+	TenantID int64
 	Code     string
 	Status   *int
 	Offset   int64
@@ -41,7 +41,7 @@ type EnvironmentDAO interface {
 	CreateBatch(ctx context.Context, envs []Environment) (int64, error)
 	Update(ctx context.Context, env Environment) error
 	GetByID(ctx context.Context, id int64) (Environment, error)
-	GetByCode(ctx context.Context, tenantID, code string) (Environment, error)
+	GetByCode(ctx context.Context, tenantID int64, code string) (Environment, error)
 	List(ctx context.Context, filter EnvironmentFilter) ([]Environment, error)
 	Count(ctx context.Context, filter EnvironmentFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
@@ -129,7 +129,7 @@ func (d *environmentDAO) GetByID(ctx context.Context, id int64) (Environment, er
 	return env, err
 }
 
-func (d *environmentDAO) GetByCode(ctx context.Context, tenantID, code string) (Environment, error) {
+func (d *environmentDAO) GetByCode(ctx context.Context, tenantID int64, code string) (Environment, error) {
 	var env Environment
 	filter := bson.M{"tenant_id": tenantID, "code": code}
 	err := d.db.Collection(EnvironmentCollection).FindOne(ctx, filter).Decode(&env)
@@ -172,7 +172,7 @@ func (d *environmentDAO) Delete(ctx context.Context, id int64) error {
 
 func (d *environmentDAO) buildQuery(filter EnvironmentFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.Code != "" {

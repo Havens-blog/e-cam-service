@@ -7,7 +7,6 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/dictionary"
 	"github.com/Havens-blog/e-cam-service/internal/cam/dns"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam"
-	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree"
@@ -17,6 +16,7 @@ import (
 	taskweb "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
 	"github.com/Havens-blog/e-cam-service/internal/cam/template"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -72,17 +72,17 @@ type CostCollectorService interface {
 
 // CostBudgetService 预算检查服务接口（供定时任务使用）
 type CostBudgetService interface {
-	CheckBudgets(ctx context.Context, tenantID string) error
+	CheckBudgets(ctx context.Context, tenantID int64) error
 }
 
 // CostAnomalyService 异常检测服务接口（供定时任务使用）
 type CostAnomalyService interface {
-	DetectAnomalies(ctx context.Context, tenantID, date string) error
+	DetectAnomalies(ctx context.Context, tenantID int64, date string) error
 }
 
 // CostOptimizerService 优化建议服务接口（供定时任务使用）
 type CostOptimizerService interface {
-	GenerateRecommendations(ctx context.Context, tenantID string) error
+	GenerateRecommendations(ctx context.Context, tenantID int64) error
 }
 
 // RegisterRoutes 注册所有路由
@@ -102,7 +102,6 @@ func (m *Module) RegisterRoutes(r *gin.Engine) {
 	// 注册统一资产路由 (新RESTful风格，使用租户中间件)
 	if m.AssetHdl != nil {
 		assetsGroup := camGroup.Group("/assets")
-		assetsGroup.Use(middleware.TenantMiddleware(m.Logger))
 		assetsGroup.Use(middleware.RequireTenant(m.Logger))
 		m.AssetHdl.RegisterRoutesWithGroup(assetsGroup)
 	}
@@ -110,7 +109,6 @@ func (m *Module) RegisterRoutes(r *gin.Engine) {
 	// 注册仪表盘路由 (使用租户中间件)
 	if m.DashboardHdl != nil {
 		dashboardGroup := camGroup.Group("/dashboard")
-		dashboardGroup.Use(middleware.TenantMiddleware(m.Logger))
 		dashboardGroup.Use(middleware.RequireTenant(m.Logger))
 		m.DashboardHdl.RegisterRoutesWithGroup(dashboardGroup)
 	}
@@ -128,7 +126,6 @@ func (m *Module) RegisterRoutes(r *gin.Engine) {
 	// 注册主机模板路由 (使用租户中间件)
 	if m.TemplateHdl != nil {
 		templateGroup := camGroup.Group("")
-		templateGroup.Use(middleware.TenantMiddleware(m.Logger))
 		templateGroup.Use(middleware.RequireTenant(m.Logger))
 		m.TemplateHdl.RegisterRoutes(templateGroup)
 	}
@@ -136,7 +133,6 @@ func (m *Module) RegisterRoutes(r *gin.Engine) {
 	// 注册标签管理路由 (使用租户中间件)
 	if m.TagHdl != nil {
 		tagGroup := camGroup.Group("")
-		tagGroup.Use(middleware.TenantMiddleware(m.Logger))
 		tagGroup.Use(middleware.RequireTenant(m.Logger))
 		m.TagHdl.RegisterRoutes(tagGroup)
 	}
@@ -144,7 +140,6 @@ func (m *Module) RegisterRoutes(r *gin.Engine) {
 	// 注册 DNS 管理路由 (使用租户中间件)
 	if m.DNSHdl != nil {
 		dnsGroup := camGroup.Group("")
-		dnsGroup.Use(middleware.TenantMiddleware(m.Logger))
 		dnsGroup.Use(middleware.RequireTenant(m.Logger))
 		m.DNSHdl.RegisterRoutes(dnsGroup)
 	}

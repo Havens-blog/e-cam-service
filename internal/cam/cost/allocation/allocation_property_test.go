@@ -148,7 +148,7 @@ func TestProperty19_AllocationRuleDimensionValidation(t *testing.T) {
 			Name:            "PropTest Rule",
 			RuleType:        "dimension_combo",
 			DimensionCombos: combos,
-			TenantID:        "tenant-prop",
+			TenantID:        13,
 		}
 
 		_, err := svc.CreateAllocationRule(context.Background(), rule)
@@ -251,7 +251,7 @@ func TestProperty21_RatioAllocationAmountConservation(t *testing.T) {
 		billAmount := rapid.Float64Range(0.01, 1e8).Draw(rt, "billAmount")
 		comboCount := rapid.IntRange(1, 5).Draw(rt, "comboCount")
 		combos := genValidDimensionCombos(rt, comboCount)
-		tenantID := rapid.StringMatching(`[a-z]{3,10}`).Draw(rt, "tenantID")
+		tenantID := rapid.Int64Range(1, 1000).Draw(rt, "tenantID")
 
 		// Set up combos to match the bill by region
 		region := rapid.StringMatching(`[a-z]{2}-[a-z]{4,8}-[0-9]`).Draw(rt, "region")
@@ -263,8 +263,8 @@ func TestProperty21_RatioAllocationAmountConservation(t *testing.T) {
 
 		var insertedAllocs []costdomain.CostAllocation
 		allocDAO := &mockAllocationDAO{
-			deleteAllocationsPeriodFn: func(_ context.Context, _, _ string) error { return nil },
-			listActiveRulesFn: func(_ context.Context, _ string) ([]costdomain.AllocationRule, error) {
+			deleteAllocationsPeriodFn: func(_ context.Context, _ int64, _ string) error { return nil },
+			listActiveRulesFn: func(_ context.Context, _ int64) ([]costdomain.AllocationRule, error) {
 				return []costdomain.AllocationRule{{
 					ID:              1,
 					RuleType:        "dimension_combo",
@@ -272,7 +272,7 @@ func TestProperty21_RatioAllocationAmountConservation(t *testing.T) {
 					Status:          "active",
 				}}, nil
 			},
-			getDefaultPolicyFn: func(_ context.Context, _ string) (costdomain.DefaultAllocationPolicy, error) {
+			getDefaultPolicyFn: func(_ context.Context, _ int64) (costdomain.DefaultAllocationPolicy, error) {
 				return costdomain.DefaultAllocationPolicy{}, errors.New("no default")
 			},
 			insertAllocationsFn: func(_ context.Context, allocs []costdomain.CostAllocation) (int64, error) {
@@ -322,16 +322,16 @@ func TestProperty22_DefaultPolicyAndUnallocatedFallback(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		billAmount := rapid.Float64Range(0.01, 1e8).Draw(rt, "billAmount")
 		hasDefaultPolicy := rapid.Bool().Draw(rt, "hasDefaultPolicy")
-		tenantID := rapid.StringMatching(`[a-z]{3,10}`).Draw(rt, "tenantID")
+		tenantID := rapid.Int64Range(1, 1000).Draw(rt, "tenantID")
 		defaultTargetID := rapid.StringMatching(`[a-z]{3,15}`).Draw(rt, "defaultTargetID")
 
 		var insertedAllocs []costdomain.CostAllocation
 		allocDAO := &mockAllocationDAO{
-			deleteAllocationsPeriodFn: func(_ context.Context, _, _ string) error { return nil },
-			listActiveRulesFn: func(_ context.Context, _ string) ([]costdomain.AllocationRule, error) {
+			deleteAllocationsPeriodFn: func(_ context.Context, _ int64, _ string) error { return nil },
+			listActiveRulesFn: func(_ context.Context, _ int64) ([]costdomain.AllocationRule, error) {
 				return nil, nil // no rules → bill won't match anything
 			},
-			getDefaultPolicyFn: func(_ context.Context, _ string) (costdomain.DefaultAllocationPolicy, error) {
+			getDefaultPolicyFn: func(_ context.Context, _ int64) (costdomain.DefaultAllocationPolicy, error) {
 				if hasDefaultPolicy {
 					return costdomain.DefaultAllocationPolicy{
 						TargetID:   defaultTargetID,
@@ -386,7 +386,7 @@ func TestProperty23_TagAllocationCorrectness(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		billCount := rapid.IntRange(1, 10).Draw(rt, "billCount")
 		tagKey := rapid.StringMatching(`[a-z]{3,10}`).Draw(rt, "tagKey")
-		tenantID := rapid.StringMatching(`[a-z]{3,10}`).Draw(rt, "tenantID")
+		tenantID := rapid.Int64Range(1, 1000).Draw(rt, "tenantID")
 
 		// Generate tag values and their node mappings
 		tagValueCount := rapid.IntRange(1, 5).Draw(rt, "tagValueCount")
@@ -419,8 +419,8 @@ func TestProperty23_TagAllocationCorrectness(t *testing.T) {
 
 		var insertedAllocs []costdomain.CostAllocation
 		allocDAO := &mockAllocationDAO{
-			deleteAllocationsPeriodFn: func(_ context.Context, _, _ string) error { return nil },
-			listActiveRulesFn: func(_ context.Context, _ string) ([]costdomain.AllocationRule, error) {
+			deleteAllocationsPeriodFn: func(_ context.Context, _ int64, _ string) error { return nil },
+			listActiveRulesFn: func(_ context.Context, _ int64) ([]costdomain.AllocationRule, error) {
 				return []costdomain.AllocationRule{{
 					ID:          1,
 					RuleType:    "tag_mapping",
@@ -429,7 +429,7 @@ func TestProperty23_TagAllocationCorrectness(t *testing.T) {
 					Status:      "active",
 				}}, nil
 			},
-			getDefaultPolicyFn: func(_ context.Context, _ string) (costdomain.DefaultAllocationPolicy, error) {
+			getDefaultPolicyFn: func(_ context.Context, _ int64) (costdomain.DefaultAllocationPolicy, error) {
 				return costdomain.DefaultAllocationPolicy{}, errors.New("no default")
 			},
 			insertAllocationsFn: func(_ context.Context, allocs []costdomain.CostAllocation) (int64, error) {
@@ -541,7 +541,7 @@ func TestProperty24_DimensionHierarchyCostConservation(t *testing.T) {
 		}
 		svc := setupPropertyService(allocDAO, &mockBillDAO{})
 
-		tree, err := svc.GetAllocationTree(context.Background(), "t1", costdomain.DimProject, rootID, "2024-01")
+		tree, err := svc.GetAllocationTree(context.Background(), 1, costdomain.DimProject, rootID, "2024-01")
 		assert.NoError(rt, err)
 		assert.NotNil(rt, tree)
 

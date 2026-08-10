@@ -1,4 +1,4 @@
-﻿package repository
+package repository
 
 import (
 	"context"
@@ -14,7 +14,7 @@ type BindingRepository interface {
 	Create(ctx context.Context, binding domain.ResourceBinding) (int64, error)
 	CreateBatch(ctx context.Context, bindings []domain.ResourceBinding) (int64, error)
 	GetByID(ctx context.Context, id int64) (domain.ResourceBinding, error)
-	GetByResource(ctx context.Context, tenantID, resourceType string, resourceID int64) (domain.ResourceBinding, error)
+	GetByResource(ctx context.Context, tenantID int64, resourceType string, resourceID int64) (domain.ResourceBinding, error)
 	List(ctx context.Context, filter domain.BindingFilter) ([]domain.ResourceBinding, error)
 	ListByNodeIDs(ctx context.Context, filter domain.NodeIDsBindingFilter) ([]domain.ResourceBinding, error)
 	Count(ctx context.Context, filter domain.BindingFilter) (int64, error)
@@ -22,7 +22,7 @@ type BindingRepository interface {
 	CountByNodeIDs(ctx context.Context, filter domain.NodeIDsBindingFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByNodeID(ctx context.Context, nodeID int64) error
-	DeleteByResource(ctx context.Context, tenantID, resourceType string, resourceID int64) error
+	DeleteByResource(ctx context.Context, tenantID int64, resourceType string, resourceID int64) error
 	DeleteByRuleID(ctx context.Context, ruleID int64) error
 }
 
@@ -58,7 +58,7 @@ func (r *bindingRepository) GetByID(ctx context.Context, id int64) (domain.Resou
 	return r.toDomain(daoBinding), nil
 }
 
-func (r *bindingRepository) GetByResource(ctx context.Context, tenantID, resourceType string, resourceID int64) (domain.ResourceBinding, error) {
+func (r *bindingRepository) GetByResource(ctx context.Context, tenantID int64, resourceType string, resourceID int64) (domain.ResourceBinding, error) {
 	daoBinding, err := r.dao.GetByResource(ctx, tenantID, resourceType, resourceID)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -126,7 +126,7 @@ func (r *bindingRepository) DeleteByNodeID(ctx context.Context, nodeID int64) er
 	return r.dao.DeleteByNodeID(ctx, nodeID)
 }
 
-func (r *bindingRepository) DeleteByResource(ctx context.Context, tenantID, resourceType string, resourceID int64) error {
+func (r *bindingRepository) DeleteByResource(ctx context.Context, tenantID int64, resourceType string, resourceID int64) error {
 	return r.dao.DeleteByResource(ctx, tenantID, resourceType, resourceID)
 }
 

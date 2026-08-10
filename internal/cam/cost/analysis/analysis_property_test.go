@@ -18,8 +18,8 @@ import (
 // propertyMockBillDAO is a mock BillDAO for property tests.
 type propertyMockBillDAO struct {
 	sumAmountFn        func(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error)
-	aggregateByFieldFn func(ctx context.Context, tenantID string, field string, startDate, endDate string) ([]repository.AggregateResult, error)
-	aggregateDailyFn   func(ctx context.Context, tenantID string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error)
+	aggregateByFieldFn func(ctx context.Context, tenantID int64, field string, startDate, endDate string) ([]repository.AggregateResult, error)
+	aggregateDailyFn   func(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error)
 }
 
 func (m *propertyMockBillDAO) SumAmount(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error) {
@@ -29,14 +29,14 @@ func (m *propertyMockBillDAO) SumAmount(ctx context.Context, filter repository.U
 	return 0, nil
 }
 
-func (m *propertyMockBillDAO) AggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
+func (m *propertyMockBillDAO) AggregateByField(ctx context.Context, tenantID int64, field string, startDate, endDate string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
 	if m.aggregateByFieldFn != nil {
 		return m.aggregateByFieldFn(ctx, tenantID, field, startDate, endDate)
 	}
 	return nil, nil
 }
 
-func (m *propertyMockBillDAO) AggregateDailyAmount(ctx context.Context, tenantID string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+func (m *propertyMockBillDAO) AggregateDailyAmount(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 	if m.aggregateDailyFn != nil {
 		return m.aggregateDailyFn(ctx, tenantID, startDate, endDate, filter)
 	}
@@ -84,7 +84,7 @@ func (m *propertyMockBillDAO) DeleteRawBillsByAccountAndRange(_ context.Context,
 func (m *propertyMockBillDAO) DeleteUnifiedBillsByAccountAndRange(_ context.Context, _ int64, _, _ string) (int64, error) {
 	return 0, nil
 }
-func (m *propertyMockBillDAO) AggregateByTag(_ context.Context, _ string, _, _ string) ([]repository.AggregateResult, error) {
+func (m *propertyMockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([]repository.AggregateResult, error) {
 	return nil, nil
 }
 
@@ -312,7 +312,7 @@ func TestProperty14_FilterCorrectness(t *testing.T) {
 		serviceType := rapid.SampledFrom(serviceTypes).Draw(rt, "serviceType")
 		region := rapid.SampledFrom(regions).Draw(rt, "region")
 		accountID := rapid.Int64Range(0, 100000).Draw(rt, "accountID")
-		tenantID := rapid.StringMatching(`[a-z]{3,10}`).Draw(rt, "tenantID")
+		tenantID := rapid.Int64Range(1, 1000).Draw(rt, "tenantID")
 
 		filter := CostFilter{
 			TenantID:    tenantID,

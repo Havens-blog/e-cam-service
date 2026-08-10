@@ -51,7 +51,7 @@ type AuditLog struct {
 	ErrorMessage  string             `bson:"error_message"`
 	IPAddress     string             `bson:"ip_address"`
 	UserAgent     string             `bson:"user_agent"`
-	TenantID      string             `bson:"tenant_id"`
+	TenantID      int64              `bson:"tenant_id"`
 	CreateTime    time.Time          `bson:"create_time"`
 	CTime         int64              `bson:"ctime"`
 }
@@ -62,7 +62,7 @@ type AuditLogFilter struct {
 	OperatorID    string
 	TargetType    string
 	CloudPlatform CloudProvider
-	TenantID      string
+	TenantID      int64
 	StartTime     *time.Time
 	EndTime       *time.Time
 	Offset        int64
@@ -310,7 +310,7 @@ func (dao *auditLogDAO) buildQuery(filter AuditLogFilter) bson.M {
 	if filter.CloudPlatform != "" {
 		query["cloud_platform"] = filter.CloudPlatform
 	}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 

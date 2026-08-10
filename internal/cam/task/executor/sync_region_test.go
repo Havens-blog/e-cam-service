@@ -318,7 +318,7 @@ func TestSyncRegionRedis_Success(t *testing.T) {
 		{InstanceID: "r-002", InstanceName: "test-redis", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", ctx, "tenant-001", "aliyun_redis", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", ctx, 6, "aliyun_redis", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", ctx, mock.MatchedBy(func(inst camdomain.Instance) bool {
 		return inst.ModelUID == "aliyun_redis"
@@ -367,9 +367,9 @@ func TestSyncRegionRedis_WithDeletion(t *testing.T) {
 		{InstanceID: "r-001", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_redis", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_redis", int64(100), "cn-hangzhou").
 		Return([]string{"r-001", "r-old"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_redis", []string{"r-old"}).
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_redis", []string{"r-old"}).
 		Return(int64(1), nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -377,7 +377,7 @@ func TestSyncRegionRedis_WithDeletion(t *testing.T) {
 	synced, err := executor.syncRegionRedis(c, cloudAdapter, account, "cn-hangzhou")
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, "tenant-001", "aliyun_redis", []string{"r-old"})
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, 6, "aliyun_redis", []string{"r-old"})
 }
 
 // ============================================================================
@@ -397,7 +397,7 @@ func TestSyncRegionMongoDB_Success(t *testing.T) {
 		{InstanceID: "dds-001", InstanceName: "prod-mongo", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_mongodb", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_mongodb", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", c, mock.MatchedBy(func(inst camdomain.Instance) bool {
 		return inst.ModelUID == "aliyun_mongodb"
@@ -449,7 +449,7 @@ func TestSyncRegionEIP_Success(t *testing.T) {
 		{AllocationID: "eip-001", Name: "prod-eip", IPAddress: "1.2.3.4", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_eip", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_eip", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", c, mock.MatchedBy(func(inst camdomain.Instance) bool {
 		return inst.ModelUID == "aliyun_eip" && inst.AssetID == "eip-001"
@@ -488,7 +488,7 @@ func TestSyncRegionLB_Success(t *testing.T) {
 		{LoadBalancerID: "lb-001", LoadBalancerName: "prod-slb", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_lb", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_lb", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", c, mock.MatchedBy(func(inst camdomain.Instance) bool {
 		return inst.ModelUID == "aliyun_lb"
@@ -527,7 +527,7 @@ func TestSyncRegionNAS_Success(t *testing.T) {
 		{FileSystemID: "nas-001", FileSystemName: "prod-nas", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_nas", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_nas", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", c, mock.MatchedBy(func(inst camdomain.Instance) bool {
 		return inst.ModelUID == "aliyun_nas"
@@ -566,7 +566,7 @@ func TestSyncRegionKafka_Success(t *testing.T) {
 		{InstanceID: "kafka-001", InstanceName: "prod-kafka", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_kafka", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_kafka", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", c, mock.MatchedBy(func(inst camdomain.Instance) bool {
 		return inst.ModelUID == "aliyun_kafka"
@@ -605,7 +605,7 @@ func TestSyncRegionElasticsearch_Success(t *testing.T) {
 		{InstanceID: "es-001", InstanceName: "prod-es", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_elasticsearch", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_elasticsearch", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", c, mock.MatchedBy(func(inst camdomain.Instance) bool {
 		return inst.ModelUID == "aliyun_elasticsearch"
@@ -645,7 +645,7 @@ func TestSyncRegionDisk_Success(t *testing.T) {
 		{DiskID: "d-002", DiskName: "data-disk", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_disk", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_disk", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", c, mock.MatchedBy(func(inst camdomain.Instance) bool {
 		return inst.ModelUID == "aliyun_disk"
@@ -684,7 +684,7 @@ func TestSyncRegionSnapshot_Success(t *testing.T) {
 		{SnapshotID: "s-001", SnapshotName: "snap-1", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_snapshot", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_snapshot", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", c, mock.MatchedBy(func(inst camdomain.Instance) bool {
 		return inst.ModelUID == "aliyun_snapshot"
@@ -728,7 +728,7 @@ func TestSyncRegionSecurityGroup_Success(t *testing.T) {
 		{RuleID: "rule-1", Direction: "ingress", Protocol: "tcp", PortRange: "80/80"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_security_group", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_security_group", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", c, mock.MatchedBy(func(inst camdomain.Instance) bool {
 		return inst.ModelUID == "aliyun_security_group"
@@ -767,7 +767,7 @@ func TestSyncRegionImage_Success(t *testing.T) {
 		{ImageID: "m-001", ImageName: "centos-7", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_image", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_image", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", c, mock.MatchedBy(func(inst camdomain.Instance) bool {
 		return inst.ModelUID == "aliyun_image"
@@ -843,9 +843,9 @@ func TestSyncRegionVPC_WithDeletion(t *testing.T) {
 		{VPCID: "vpc-001", VPCName: "prod-vpc", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_vpc", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_vpc", int64(100), "cn-hangzhou").
 		Return([]string{"vpc-001", "vpc-old"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_vpc", []string{"vpc-old"}).
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_vpc", []string{"vpc-old"}).
 		Return(int64(1), nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -853,7 +853,7 @@ func TestSyncRegionVPC_WithDeletion(t *testing.T) {
 	synced, err := executor.syncRegionVPC(c, cloudAdapter, account, "cn-hangzhou")
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, "tenant-001", "aliyun_vpc", []string{"vpc-old"})
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, 6, "aliyun_vpc", []string{"vpc-old"})
 }
 
 func TestSyncRegionVPC_UpsertError(t *testing.T) {
@@ -868,7 +868,7 @@ func TestSyncRegionVPC_UpsertError(t *testing.T) {
 	vpcAdpt.On("ListInstances", c, "cn-hangzhou").Return([]types.VPCInstance{
 		{VPCID: "vpc-001", Region: "cn-hangzhou"},
 	}, nil)
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_vpc", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_vpc", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(fmt.Errorf("db error"))
 
@@ -904,9 +904,9 @@ func TestSyncRegionEIP_WithDeletion(t *testing.T) {
 		{AllocationID: "eip-001", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_eip", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_eip", int64(100), "cn-hangzhou").
 		Return([]string{"eip-001", "eip-old"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_eip", []string{"eip-old"}).
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_eip", []string{"eip-old"}).
 		Return(int64(1), nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -914,7 +914,7 @@ func TestSyncRegionEIP_WithDeletion(t *testing.T) {
 	synced, err := executor.syncRegionEIP(c, cloudAdapter, account, "cn-hangzhou")
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, "tenant-001", "aliyun_eip", []string{"eip-old"})
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, 6, "aliyun_eip", []string{"eip-old"})
 }
 
 func TestSyncRegionEIP_AdapterError(t *testing.T) {
@@ -943,9 +943,9 @@ func TestSyncRegionMongoDB_WithDeletion(t *testing.T) {
 		{InstanceID: "dds-001", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_mongodb", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_mongodb", int64(100), "cn-hangzhou").
 		Return([]string{"dds-001", "dds-old"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_mongodb", []string{"dds-old"}).
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_mongodb", []string{"dds-old"}).
 		Return(int64(1), nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -953,7 +953,7 @@ func TestSyncRegionMongoDB_WithDeletion(t *testing.T) {
 	synced, err := executor.syncRegionMongoDB(c, cloudAdapter, account, "cn-hangzhou")
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, "tenant-001", "aliyun_mongodb", []string{"dds-old"})
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, 6, "aliyun_mongodb", []string{"dds-old"})
 }
 
 func TestSyncRegionLB_WithDeletion(t *testing.T) {
@@ -969,9 +969,9 @@ func TestSyncRegionLB_WithDeletion(t *testing.T) {
 		{LoadBalancerID: "lb-001", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_lb", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_lb", int64(100), "cn-hangzhou").
 		Return([]string{"lb-001", "lb-old"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_lb", []string{"lb-old"}).
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_lb", []string{"lb-old"}).
 		Return(int64(1), nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -979,7 +979,7 @@ func TestSyncRegionLB_WithDeletion(t *testing.T) {
 	synced, err := executor.syncRegionLB(c, cloudAdapter, account, "cn-hangzhou")
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, "tenant-001", "aliyun_lb", []string{"lb-old"})
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, 6, "aliyun_lb", []string{"lb-old"})
 }
 
 func TestSyncRegionLB_AdapterError(t *testing.T) {
@@ -1007,9 +1007,9 @@ func TestSyncRegionNAS_WithDeletion(t *testing.T) {
 		{FileSystemID: "nas-001", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_nas", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_nas", int64(100), "cn-hangzhou").
 		Return([]string{"nas-001", "nas-old"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_nas", []string{"nas-old"}).
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_nas", []string{"nas-old"}).
 		Return(int64(1), nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -1017,7 +1017,7 @@ func TestSyncRegionNAS_WithDeletion(t *testing.T) {
 	synced, err := executor.syncRegionNAS(c, cloudAdapter, account, "cn-hangzhou")
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, "tenant-001", "aliyun_nas", []string{"nas-old"})
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, 6, "aliyun_nas", []string{"nas-old"})
 }
 
 func TestSyncRegionNAS_AdapterError(t *testing.T) {
@@ -1046,9 +1046,9 @@ func TestSyncRegionKafka_WithDeletion(t *testing.T) {
 		{InstanceID: "kafka-001", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_kafka", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_kafka", int64(100), "cn-hangzhou").
 		Return([]string{"kafka-001", "kafka-old"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_kafka", []string{"kafka-old"}).
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_kafka", []string{"kafka-old"}).
 		Return(int64(1), nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -1056,7 +1056,7 @@ func TestSyncRegionKafka_WithDeletion(t *testing.T) {
 	synced, err := executor.syncRegionKafka(c, cloudAdapter, account, "cn-hangzhou")
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, "tenant-001", "aliyun_kafka", []string{"kafka-old"})
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, 6, "aliyun_kafka", []string{"kafka-old"})
 }
 
 func TestSyncRegionKafka_AdapterError(t *testing.T) {
@@ -1084,9 +1084,9 @@ func TestSyncRegionElasticsearch_WithDeletion(t *testing.T) {
 		{InstanceID: "es-001", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_elasticsearch", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_elasticsearch", int64(100), "cn-hangzhou").
 		Return([]string{"es-001", "es-old"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_elasticsearch", []string{"es-old"}).
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_elasticsearch", []string{"es-old"}).
 		Return(int64(1), nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -1094,7 +1094,7 @@ func TestSyncRegionElasticsearch_WithDeletion(t *testing.T) {
 	synced, err := executor.syncRegionElasticsearch(c, cloudAdapter, account, "cn-hangzhou")
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, "tenant-001", "aliyun_elasticsearch", []string{"es-old"})
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, 6, "aliyun_elasticsearch", []string{"es-old"})
 }
 
 func TestSyncRegionElasticsearch_AdapterError(t *testing.T) {
@@ -1122,9 +1122,9 @@ func TestSyncRegionDisk_WithDeletion(t *testing.T) {
 		{DiskID: "d-001", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_disk", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_disk", int64(100), "cn-hangzhou").
 		Return([]string{"d-001", "d-old"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_disk", []string{"d-old"}).
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_disk", []string{"d-old"}).
 		Return(int64(1), nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -1132,7 +1132,7 @@ func TestSyncRegionDisk_WithDeletion(t *testing.T) {
 	synced, err := executor.syncRegionDisk(c, cloudAdapter, account, "cn-hangzhou")
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, "tenant-001", "aliyun_disk", []string{"d-old"})
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, 6, "aliyun_disk", []string{"d-old"})
 }
 
 func TestSyncRegionDisk_AdapterError(t *testing.T) {
@@ -1160,9 +1160,9 @@ func TestSyncRegionSnapshot_WithDeletion(t *testing.T) {
 		{SnapshotID: "s-001", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_snapshot", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_snapshot", int64(100), "cn-hangzhou").
 		Return([]string{"s-001", "s-old"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_snapshot", []string{"s-old"}).
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_snapshot", []string{"s-old"}).
 		Return(int64(1), nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -1170,7 +1170,7 @@ func TestSyncRegionSnapshot_WithDeletion(t *testing.T) {
 	synced, err := executor.syncRegionSnapshot(c, cloudAdapter, account, "cn-hangzhou")
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, "tenant-001", "aliyun_snapshot", []string{"s-old"})
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, 6, "aliyun_snapshot", []string{"s-old"})
 }
 
 func TestSyncRegionSnapshot_AdapterError(t *testing.T) {
@@ -1199,9 +1199,9 @@ func TestSyncRegionSecurityGroup_WithDeletion(t *testing.T) {
 	}, nil)
 	sgAdpt.On("GetSecurityGroupRules", c, "cn-hangzhou", "sg-001").Return([]types.SecurityGroupRule{}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_security_group", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_security_group", int64(100), "cn-hangzhou").
 		Return([]string{"sg-001", "sg-old"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_security_group", []string{"sg-old"}).
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_security_group", []string{"sg-old"}).
 		Return(int64(1), nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -1209,7 +1209,7 @@ func TestSyncRegionSecurityGroup_WithDeletion(t *testing.T) {
 	synced, err := executor.syncRegionSecurityGroup(c, cloudAdapter, account, "cn-hangzhou")
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, "tenant-001", "aliyun_security_group", []string{"sg-old"})
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, 6, "aliyun_security_group", []string{"sg-old"})
 }
 
 func TestSyncRegionSecurityGroup_RulesError(t *testing.T) {
@@ -1233,7 +1233,7 @@ func TestSyncRegionSecurityGroup_RulesError(t *testing.T) {
 			{RuleID: "r-1", Direction: "egress", Protocol: "all"},
 		}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_security_group", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_security_group", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -1269,9 +1269,9 @@ func TestSyncRegionImage_WithDeletion(t *testing.T) {
 		{ImageID: "m-001", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_image", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_image", int64(100), "cn-hangzhou").
 		Return([]string{"m-001", "m-old"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_image", []string{"m-old"}).
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_image", []string{"m-old"}).
 		Return(int64(1), nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -1279,7 +1279,7 @@ func TestSyncRegionImage_WithDeletion(t *testing.T) {
 	synced, err := executor.syncRegionImage(c, cloudAdapter, account, "cn-hangzhou")
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, "tenant-001", "aliyun_image", []string{"m-old"})
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, 6, "aliyun_image", []string{"m-old"})
 }
 
 func TestSyncRegionImage_AdapterError(t *testing.T) {
@@ -1351,7 +1351,7 @@ func TestSyncRegionECS_Success(t *testing.T) {
 		},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_ecs", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_ecs", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", c, mock.MatchedBy(func(inst camdomain.Instance) bool {
 		return inst.ModelUID == "aliyun_ecs" && inst.AssetID == "i-001"
@@ -1373,9 +1373,9 @@ func TestSyncRegionECS_WithDeletion(t *testing.T) {
 		{InstanceID: "i-001", Region: "cn-hangzhou", Provider: "aliyun"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_ecs", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_ecs", int64(100), "cn-hangzhou").
 		Return([]string{"i-001", "i-old-001", "i-old-002"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_ecs", mock.MatchedBy(func(ids []string) bool {
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_ecs", mock.MatchedBy(func(ids []string) bool {
 		return len(ids) == 2
 	})).Return(int64(2), nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
@@ -1384,7 +1384,7 @@ func TestSyncRegionECS_WithDeletion(t *testing.T) {
 	synced, err := executor.syncRegionECS(c, assetAdpt, account, "cn-hangzhou")
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, "tenant-001", "aliyun_ecs", mock.Anything)
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", c, 6, "aliyun_ecs", mock.Anything)
 }
 
 func TestSyncRegionECS_AdapterError(t *testing.T) {
@@ -1409,7 +1409,7 @@ func TestSyncRegionECS_UpsertError(t *testing.T) {
 		{InstanceID: "i-002", Region: "cn-hangzhou", Provider: "aliyun"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_ecs", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_ecs", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	// First upsert fails, second succeeds
 	instanceRepo.On("Upsert", c, mock.MatchedBy(func(inst camdomain.Instance) bool {
@@ -1441,7 +1441,7 @@ func TestSyncRegionAssets_SingleType_RDS(t *testing.T) {
 	rdsAdpt.On("ListInstances", c, "cn-hangzhou").Return([]types.RDSInstance{
 		{InstanceID: "rds-001", InstanceName: "prod-rds", Region: "cn-hangzhou"},
 	}, nil)
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_rds", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_rds", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -1456,7 +1456,7 @@ func TestSyncRegionAssets_SingleType_RDS(t *testing.T) {
 	assetAdpt.On("GetECSInstances", c, "cn-hangzhou").Return([]types.ECSInstance{
 		{InstanceID: "i-001", InstanceName: "web-01", Region: "cn-hangzhou", Provider: "aliyun"},
 	}, nil)
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_ecs", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_ecs", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 
 	executor := newTestExecutor(instanceRepo)
@@ -1590,9 +1590,9 @@ func TestSyncRegionVPC_DeleteError(t *testing.T) {
 		{VPCID: "vpc-001", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_vpc", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_vpc", int64(100), "cn-hangzhou").
 		Return([]string{"vpc-001", "vpc-old"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_vpc", []string{"vpc-old"}).
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_vpc", []string{"vpc-old"}).
 		Return(int64(0), fmt.Errorf("delete error"))
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 
@@ -1612,9 +1612,9 @@ func TestSyncRegionECS_DeleteError(t *testing.T) {
 		{InstanceID: "i-001", Region: "cn-hangzhou", Provider: "aliyun"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", c, "tenant-001", "aliyun_ecs", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", c, 6, "aliyun_ecs", int64(100), "cn-hangzhou").
 		Return([]string{"i-001", "i-old"}, nil)
-	instanceRepo.On("DeleteByAssetIDs", c, "tenant-001", "aliyun_ecs", []string{"i-old"}).
+	instanceRepo.On("DeleteByAssetIDs", c, 6, "aliyun_ecs", []string{"i-old"}).
 		Return(int64(0), fmt.Errorf("delete error"))
 	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
 

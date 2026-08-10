@@ -25,7 +25,7 @@ type Rule struct {
 	NodeID      int64           `bson:"node_id"`
 	EnvID       int64           `bson:"env_id"`
 	Name        string          `bson:"name"`
-	TenantID    string          `bson:"tenant_id"`
+	TenantID    int64           `bson:"tenant_id"`
 	Priority    int             `bson:"priority"`
 	Conditions  []RuleCondition `bson:"conditions"`
 	Enabled     bool            `bson:"enabled"`
@@ -36,7 +36,7 @@ type Rule struct {
 
 // RuleFilter DAO 层过滤条件
 type RuleFilter struct {
-	TenantID string
+	TenantID int64
 	NodeID   int64
 	Enabled  *bool
 	Name     string
@@ -50,7 +50,7 @@ type RuleDAO interface {
 	Update(ctx context.Context, rule Rule) error
 	GetByID(ctx context.Context, id int64) (Rule, error)
 	List(ctx context.Context, filter RuleFilter) ([]Rule, error)
-	ListEnabled(ctx context.Context, tenantID string) ([]Rule, error)
+	ListEnabled(ctx context.Context, tenantID int64) ([]Rule, error)
 	Count(ctx context.Context, filter RuleFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByNodeID(ctx context.Context, nodeID int64) error
@@ -138,7 +138,7 @@ func (d *ruleDAO) List(ctx context.Context, filter RuleFilter) ([]Rule, error) {
 	return rules, err
 }
 
-func (d *ruleDAO) ListEnabled(ctx context.Context, tenantID string) ([]Rule, error) {
+func (d *ruleDAO) ListEnabled(ctx context.Context, tenantID int64) ([]Rule, error) {
 	filter := bson.M{
 		"tenant_id": tenantID,
 		"enabled":   true,
@@ -177,7 +177,7 @@ func (d *ruleDAO) DeleteByNodeID(ctx context.Context, nodeID int64) error {
 func (d *ruleDAO) buildQuery(filter RuleFilter) bson.M {
 	query := bson.M{}
 
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.NodeID > 0 {

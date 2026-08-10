@@ -29,19 +29,19 @@ type TaskSubmitter interface {
 // TemplateService 模板服务接口
 type TemplateService interface {
 	// 模板 CRUD
-	CreateTemplate(ctx context.Context, tenantID string, req CreateTemplateReq) (*VMTemplate, error)
-	GetTemplate(ctx context.Context, tenantID string, id int64) (*VMTemplate, error)
-	ListTemplates(ctx context.Context, tenantID string, filter TemplateFilter) ([]VMTemplate, int64, error)
-	UpdateTemplate(ctx context.Context, tenantID string, id int64, req UpdateTemplateReq) error
-	DeleteTemplate(ctx context.Context, tenantID string, id int64) error
+	CreateTemplate(ctx context.Context, tenantID int64, req CreateTemplateReq) (*VMTemplate, error)
+	GetTemplate(ctx context.Context, tenantID int64, id int64) (*VMTemplate, error)
+	ListTemplates(ctx context.Context, tenantID int64, filter TemplateFilter) ([]VMTemplate, int64, error)
+	UpdateTemplate(ctx context.Context, tenantID int64, id int64, req UpdateTemplateReq) error
+	DeleteTemplate(ctx context.Context, tenantID int64, id int64) error
 
 	// 两种创建方式
-	ProvisionFromTemplate(ctx context.Context, tenantID, createdBy string, templateID int64, req ProvisionReq) (string, error)
-	DirectProvision(ctx context.Context, tenantID, createdBy string, req DirectProvisionReq) (string, error)
+	ProvisionFromTemplate(ctx context.Context, tenantID int64, createdBy string, templateID int64, req ProvisionReq) (string, error)
+	DirectProvision(ctx context.Context, tenantID int64, createdBy string, req DirectProvisionReq) (string, error)
 
 	// 任务查询
-	ListProvisionTasks(ctx context.Context, tenantID string, filter ProvisionTaskFilter) ([]ProvisionTask, int64, error)
-	GetProvisionTask(ctx context.Context, tenantID, taskID string) (*ProvisionTask, error)
+	ListProvisionTasks(ctx context.Context, tenantID int64, filter ProvisionTaskFilter) ([]ProvisionTask, int64, error)
+	GetProvisionTask(ctx context.Context, tenantID int64, taskID string) (*ProvisionTask, error)
 }
 
 // templateService TemplateService 实现
@@ -62,7 +62,7 @@ func NewTemplateService(tmplDAO TemplateDAO, taskDAO ProvisionTaskDAO, submitter
 
 // ==================== 模板 CRUD ====================
 
-func (s *templateService) CreateTemplate(ctx context.Context, tenantID string, req CreateTemplateReq) (*VMTemplate, error) {
+func (s *templateService) CreateTemplate(ctx context.Context, tenantID int64, req CreateTemplateReq) (*VMTemplate, error) {
 	// 参数校验：只有 name 是必填的，其他字段允许为空（模板可以部分填写后续补充）
 	if req.Name == "" {
 		return nil, fmt.Errorf("%w: name is required", ErrValidationFailed)
@@ -109,7 +109,7 @@ func (s *templateService) CreateTemplate(ctx context.Context, tenantID string, r
 	return &tmpl, nil
 }
 
-func (s *templateService) GetTemplate(ctx context.Context, tenantID string, id int64) (*VMTemplate, error) {
+func (s *templateService) GetTemplate(ctx context.Context, tenantID int64, id int64) (*VMTemplate, error) {
 	tmpl, err := s.tmplDAO.GetByID(ctx, tenantID, id)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -120,12 +120,12 @@ func (s *templateService) GetTemplate(ctx context.Context, tenantID string, id i
 	return &tmpl, nil
 }
 
-func (s *templateService) ListTemplates(ctx context.Context, tenantID string, filter TemplateFilter) ([]VMTemplate, int64, error) {
+func (s *templateService) ListTemplates(ctx context.Context, tenantID int64, filter TemplateFilter) ([]VMTemplate, int64, error) {
 	filter.TenantID = tenantID
 	return s.tmplDAO.List(ctx, filter)
 }
 
-func (s *templateService) UpdateTemplate(ctx context.Context, tenantID string, id int64, req UpdateTemplateReq) error {
+func (s *templateService) UpdateTemplate(ctx context.Context, tenantID int64, id int64, req UpdateTemplateReq) error {
 	// 检查模板是否存在
 	_, err := s.tmplDAO.GetByID(ctx, tenantID, id)
 	if err != nil {
@@ -149,7 +149,7 @@ func (s *templateService) UpdateTemplate(ctx context.Context, tenantID string, i
 	return s.tmplDAO.Update(ctx, tenantID, id, req)
 }
 
-func (s *templateService) DeleteTemplate(ctx context.Context, tenantID string, id int64) error {
+func (s *templateService) DeleteTemplate(ctx context.Context, tenantID int64, id int64) error {
 	// 检查模板是否存在
 	_, err := s.tmplDAO.GetByID(ctx, tenantID, id)
 	if err != nil {
@@ -173,7 +173,7 @@ func (s *templateService) DeleteTemplate(ctx context.Context, tenantID string, i
 
 // ==================== 两种创建方式 ====================
 
-func (s *templateService) ProvisionFromTemplate(ctx context.Context, tenantID, createdBy string, templateID int64, req ProvisionReq) (string, error) {
+func (s *templateService) ProvisionFromTemplate(ctx context.Context, tenantID int64, createdBy string, templateID int64, req ProvisionReq) (string, error) {
 	if req.Count < 1 || req.Count > 20 {
 		return "", ErrInvalidCount
 	}
@@ -230,7 +230,7 @@ func (s *templateService) ProvisionFromTemplate(ctx context.Context, tenantID, c
 	return taskID, nil
 }
 
-func (s *templateService) DirectProvision(ctx context.Context, tenantID, createdBy string, req DirectProvisionReq) (string, error) {
+func (s *templateService) DirectProvision(ctx context.Context, tenantID int64, createdBy string, req DirectProvisionReq) (string, error) {
 	if req.Count < 1 || req.Count > 20 {
 		return "", ErrInvalidCount
 	}
@@ -288,12 +288,12 @@ func (s *templateService) DirectProvision(ctx context.Context, tenantID, created
 
 // ==================== 任务查询 ====================
 
-func (s *templateService) ListProvisionTasks(ctx context.Context, tenantID string, filter ProvisionTaskFilter) ([]ProvisionTask, int64, error) {
+func (s *templateService) ListProvisionTasks(ctx context.Context, tenantID int64, filter ProvisionTaskFilter) ([]ProvisionTask, int64, error) {
 	filter.TenantID = tenantID
 	return s.taskDAO.List(ctx, filter)
 }
 
-func (s *templateService) GetProvisionTask(ctx context.Context, tenantID, taskID string) (*ProvisionTask, error) {
+func (s *templateService) GetProvisionTask(ctx context.Context, tenantID int64, taskID string) (*ProvisionTask, error) {
 	task, err := s.taskDAO.GetByID(ctx, tenantID, taskID)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {

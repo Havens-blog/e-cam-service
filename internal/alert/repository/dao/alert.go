@@ -143,7 +143,7 @@ func (d *alertDAO) DeleteRule(ctx context.Context, id int64) error {
 
 func (d *alertDAO) buildRuleQuery(filter domain.AlertRuleFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.Type != "" {
@@ -236,7 +236,7 @@ func (d *alertDAO) IncrementRetry(ctx context.Context, id int64) error {
 
 func (d *alertDAO) buildEventQuery(filter domain.AlertEventFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.Type != "" {
@@ -330,7 +330,7 @@ func (d *alertDAO) GetChannelsByIDs(ctx context.Context, ids []int64) ([]domain.
 
 func (d *alertDAO) buildChannelQuery(filter domain.ChannelFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.Type != "" {

@@ -6,7 +6,7 @@ type ChangeRecord struct {
 	AssetID      string `json:"asset_id" bson:"asset_id"`
 	AssetName    string `json:"asset_name" bson:"asset_name"`
 	ModelUID     string `json:"model_uid" bson:"model_uid"`
-	TenantID     string `json:"tenant_id" bson:"tenant_id"`
+	TenantID     int64  `json:"tenant_id" bson:"tenant_id"`
 	AccountID    int64  `json:"account_id" bson:"account_id"`
 	Provider     string `json:"provider" bson:"provider"`
 	Region       string `json:"region" bson:"region"`
@@ -21,7 +21,7 @@ type ChangeRecord struct {
 // ChangeFilter 变更记录查询过滤器
 type ChangeFilter struct {
 	AssetID   string `json:"asset_id"`
-	TenantID  string `json:"tenant_id"`
+	TenantID  int64  `json:"tenant_id"`
 	ModelUID  string `json:"model_uid"`
 	Provider  string `json:"provider"`
 	FieldName string `json:"field_name"`
@@ -44,7 +44,7 @@ type ChangeMetadata struct {
 	AssetID      string
 	AssetName    string
 	ModelUID     string
-	TenantID     string
+	TenantID     int64
 	AccountID    int64
 	Provider     string
 	Region       string

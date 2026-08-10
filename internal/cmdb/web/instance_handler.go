@@ -76,7 +76,7 @@ type InstanceVO struct {
 	ModelUID   string                 `json:"model_uid"`
 	AssetID    string                 `json:"asset_id"`
 	AssetName  string                 `json:"asset_name"`
-	TenantID   string                 `json:"tenant_id"`
+	TenantID   int64                  `json:"tenant_id"`
 	AccountID  int64                  `json:"account_id"`
 	Attributes map[string]interface{} `json:"attributes"`
 	CreateTime int64                  `json:"create_time"`

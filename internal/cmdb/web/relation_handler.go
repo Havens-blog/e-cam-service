@@ -118,7 +118,7 @@ type InstanceRelationVO struct {
 	SourceInstanceID int64  `json:"source_instance_id"`
 	TargetInstanceID int64  `json:"target_instance_id"`
 	RelationTypeUID  string `json:"relation_type_uid"`
-	TenantID         string `json:"tenant_id"`
+	TenantID         int64  `json:"tenant_id"`
 	CreateTime       int64  `json:"create_time"`
 }
 

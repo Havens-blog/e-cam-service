@@ -19,14 +19,14 @@ type CloudAccountService interface {
 
 // DNSService DNS 管理业务逻辑层接口
 type DNSService interface {
-	ListDomains(ctx context.Context, tenantID string, filter DomainFilter) ([]DNSDomainVO, int64, error)
-	ListRecords(ctx context.Context, tenantID string, domainName string, filter RecordFilter) ([]DNSRecordVO, int64, error)
-	SearchRecords(ctx context.Context, tenantID string, keyword string, limit int64) ([]DNSRecordVO, int64, error)
-	CreateRecord(ctx context.Context, tenantID string, domainName string, req CreateRecordReq) (*DNSRecordVO, error)
-	UpdateRecord(ctx context.Context, tenantID string, domainName string, recordID string, req UpdateRecordReq) (*DNSRecordVO, error)
-	DeleteRecord(ctx context.Context, tenantID string, domainName string, recordID string) error
-	BatchDeleteRecords(ctx context.Context, tenantID string, domainName string, recordIDs []string) (*BatchDeleteResult, error)
-	GetStats(ctx context.Context, tenantID string) (*DNSStats, error)
+	ListDomains(ctx context.Context, tenantID int64, filter DomainFilter) ([]DNSDomainVO, int64, error)
+	ListRecords(ctx context.Context, tenantID int64, domainName string, filter RecordFilter) ([]DNSRecordVO, int64, error)
+	SearchRecords(ctx context.Context, tenantID int64, keyword string, limit int64) ([]DNSRecordVO, int64, error)
+	CreateRecord(ctx context.Context, tenantID int64, domainName string, req CreateRecordReq) (*DNSRecordVO, error)
+	UpdateRecord(ctx context.Context, tenantID int64, domainName string, recordID string, req UpdateRecordReq) (*DNSRecordVO, error)
+	DeleteRecord(ctx context.Context, tenantID int64, domainName string, recordID string) error
+	BatchDeleteRecords(ctx context.Context, tenantID int64, domainName string, recordIDs []string) (*BatchDeleteResult, error)
+	GetStats(ctx context.Context, tenantID int64) (*DNSStats, error)
 }
 
 // dnsService DNSService 实现
@@ -59,7 +59,7 @@ func NewDNSService(accountSvc CloudAccountService, adapterFactory *cloudx.Adapte
 var _ DNSService = (*dnsService)(nil)
 
 // ListDomains 查询域名列表：从本地 MongoDB c_dns_domain 查询已同步的 DNS 域名
-func (s *dnsService) ListDomains(ctx context.Context, tenantID string, filter DomainFilter) ([]DNSDomainVO, int64, error) {
+func (s *dnsService) ListDomains(ctx context.Context, tenantID int64, filter DomainFilter) ([]DNSDomainVO, int64, error) {
 	docs, total, err := s.domainDAO.ListDomains(ctx, tenantID, filter)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query dns domains: %w", err)
@@ -76,7 +76,7 @@ func (s *dnsService) ListDomains(ctx context.Context, tenantID string, filter Do
 }
 
 // ListRecords 查询解析记录列表：从本地 MongoDB c_dns_record 查询已同步的 DNS 记录
-func (s *dnsService) ListRecords(ctx context.Context, tenantID string, domainName string, filter RecordFilter) ([]DNSRecordVO, int64, error) {
+func (s *dnsService) ListRecords(ctx context.Context, tenantID int64, domainName string, filter RecordFilter) ([]DNSRecordVO, int64, error) {
 	docs, total, err := s.recordDAO.ListRecords(ctx, tenantID, domainName, filter)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query dns records: %w", err)
@@ -95,7 +95,7 @@ func (s *dnsService) ListRecords(ctx context.Context, tenantID string, domainNam
 }
 
 // SearchRecords 跨域名搜索解析记录（按 RR 或完整子域名模糊匹配所有域名下的记录）
-func (s *dnsService) SearchRecords(ctx context.Context, tenantID string, keyword string, limit int64) ([]DNSRecordVO, int64, error) {
+func (s *dnsService) SearchRecords(ctx context.Context, tenantID int64, keyword string, limit int64) ([]DNSRecordVO, int64, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
@@ -117,7 +117,7 @@ func (s *dnsService) SearchRecords(ctx context.Context, tenantID string, keyword
 }
 
 // CreateRecord 创建解析记录（实时调用云 API）
-func (s *dnsService) CreateRecord(ctx context.Context, tenantID string, domainName string, req CreateRecordReq) (*DNSRecordVO, error) {
+func (s *dnsService) CreateRecord(ctx context.Context, tenantID int64, domainName string, req CreateRecordReq) (*DNSRecordVO, error) {
 	if err := ValidateRecord(req.Type, req.RR, req.Value, req.TTL, req.Priority); err != nil {
 		return nil, err
 	}
@@ -145,7 +145,7 @@ func (s *dnsService) CreateRecord(ctx context.Context, tenantID string, domainNa
 }
 
 // UpdateRecord 修改解析记录（实时调用云 API）
-func (s *dnsService) UpdateRecord(ctx context.Context, tenantID string, domainName string, recordID string, req UpdateRecordReq) (*DNSRecordVO, error) {
+func (s *dnsService) UpdateRecord(ctx context.Context, tenantID int64, domainName string, recordID string, req UpdateRecordReq) (*DNSRecordVO, error) {
 	account, adapter, err := s.findAdapterByAccountID(ctx, req.AccountID)
 	if err != nil {
 		return nil, err
@@ -169,7 +169,7 @@ func (s *dnsService) UpdateRecord(ctx context.Context, tenantID string, domainNa
 }
 
 // DeleteRecord 删除解析记录（实时调用云 API）
-func (s *dnsService) DeleteRecord(ctx context.Context, tenantID string, domainName string, recordID string) error {
+func (s *dnsService) DeleteRecord(ctx context.Context, tenantID int64, domainName string, recordID string) error {
 	_, adapter, err := s.findAdapterForDomain(ctx, tenantID, domainName)
 	if err != nil {
 		return err
@@ -182,7 +182,7 @@ func (s *dnsService) DeleteRecord(ctx context.Context, tenantID string, domainNa
 }
 
 // BatchDeleteRecords 批量删除解析记录
-func (s *dnsService) BatchDeleteRecords(ctx context.Context, tenantID string, domainName string, recordIDs []string) (*BatchDeleteResult, error) {
+func (s *dnsService) BatchDeleteRecords(ctx context.Context, tenantID int64, domainName string, recordIDs []string) (*BatchDeleteResult, error) {
 	result := &BatchDeleteResult{
 		Total:    len(recordIDs),
 		Failures: make([]FailureDetail, 0),
@@ -205,7 +205,7 @@ func (s *dnsService) BatchDeleteRecords(ctx context.Context, tenantID string, do
 }
 
 // GetStats 获取 DNS 统计数据：从本地 MongoDB 聚合
-func (s *dnsService) GetStats(ctx context.Context, tenantID string) (*DNSStats, error) {
+func (s *dnsService) GetStats(ctx context.Context, tenantID int64) (*DNSStats, error) {
 	stats := &DNSStats{
 		ProviderDistrib:   make(map[string]int64),
 		RecordTypeDistrib: make(map[string]int64),
@@ -274,7 +274,7 @@ func recordDocToVO(doc DnsRecordDoc) DNSRecordVO {
 
 // findAdapterForDomain 找到域名所属的云账号和 DNS 适配器
 // 通过查询 c_dns_domain 中的域名记录找到对应的 account_id
-func (s *dnsService) findAdapterForDomain(ctx context.Context, tenantID string, domainName string) (*shareddomain.CloudAccount, cloudx.DNSAdapter, error) {
+func (s *dnsService) findAdapterForDomain(ctx context.Context, tenantID int64, domainName string) (*shareddomain.CloudAccount, cloudx.DNSAdapter, error) {
 	// 先从 c_dns_domain 查找域名对应的账号
 	docs, _, err := s.domainDAO.ListDomains(ctx, tenantID, DomainFilter{
 		Keyword: domainName,
@@ -338,7 +338,7 @@ func (s *dnsService) findAdapterByAccountID(ctx context.Context, accountID int64
 }
 
 // getTenantAccounts 获取租户下所有活跃云账号
-func (s *dnsService) getTenantAccounts(ctx context.Context, tenantID string) ([]*shareddomain.CloudAccount, error) {
+func (s *dnsService) getTenantAccounts(ctx context.Context, tenantID int64) ([]*shareddomain.CloudAccount, error) {
 	accounts, _, err := s.accountSvc.ListAccounts(ctx, shareddomain.CloudAccountFilter{
 		TenantID: tenantID,
 		Status:   shareddomain.CloudAccountStatusActive,

@@ -29,8 +29,7 @@ func TestProperty28_LowCPUDownsizeRecommendation(t *testing.T) {
 		dailyAmount := rapid.Float64Range(1, 1000).Draw(rt, "dailyAmount")
 		resourceID := fmt.Sprintf("i-%s", rapid.StringMatching(`[a-z0-9]{8}`).Draw(rt, "resID"))
 		resourceName := fmt.Sprintf("ecs-%s", rapid.StringMatching(`[a-z]{4}`).Draw(rt, "resName"))
-		tenantID := "tenant-prop28"
-
+		tenantID := int64(28)
 		// Build compute bills for the resource spanning `days` consecutive days
 		now := time.Now()
 		var bills []costdomain.UnifiedBill
@@ -117,7 +116,7 @@ func TestProperty29_UnattachedDiskReleaseRecommendation(t *testing.T) {
 		// Generate random storage resources
 		numStorage := rapid.IntRange(1, 5).Draw(rt, "numStorage")
 		numCompute := rapid.IntRange(0, 3).Draw(rt, "numCompute")
-		tenantID := "tenant-prop29"
+		tenantID := int64(29)
 		now := time.Now()
 
 		// Generate storage bills
@@ -261,8 +260,7 @@ func TestProperty30_ConvertPrepaidRecommendation(t *testing.T) {
 		dailyAmount := rapid.Float64Range(1, 1000).Draw(rt, "dailyAmount")
 		resourceID := fmt.Sprintf("i-%s", rapid.StringMatching(`[a-z0-9]{8}`).Draw(rt, "resID"))
 		resourceName := fmt.Sprintf("vm-%s", rapid.StringMatching(`[a-z]{4}`).Draw(rt, "resName"))
-		tenantID := "tenant-prop30"
-
+		tenantID := int64(30)
 		now := time.Now()
 		var bills []costdomain.UnifiedBill
 		for i := 0; i < days; i++ {
@@ -353,8 +351,7 @@ func TestProperty31_DismissedRecommendationFiltering(t *testing.T) {
 
 		resourceID := fmt.Sprintf("i-%s", rapid.StringMatching(`[a-z0-9]{8}`).Draw(rt, "resID"))
 		recType := rapid.SampledFrom([]string{RecTypeDownsize, RecTypeReleaseDisk, RecTypeConvertPrepaid}).Draw(rt, "recType")
-		tenantID := "tenant-prop31"
-
+		tenantID := int64(31)
 		isExpired := expiryTime.Before(now) || expiryTime.Equal(now)
 
 		optDAO := &mockOptimizerDAO{

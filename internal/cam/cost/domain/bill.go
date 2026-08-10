@@ -20,7 +20,7 @@ type UnifiedBill struct {
 	AmountCNY       float64           `bson:"amount_cny" json:"amount_cny"`
 	ChargeType      string            `bson:"charge_type" json:"charge_type"`
 	Tags            map[string]string `bson:"tags" json:"tags"`
-	TenantID        string            `bson:"tenant_id" json:"tenant_id"`
+	TenantID        int64             `bson:"tenant_id" json:"tenant_id"`
 	BillingDate     string            `bson:"billing_date" json:"billing_date"`
 	CreateTime      int64             `bson:"ctime" json:"ctime"`
 	UpdateTime      int64             `bson:"utime" json:"utime"`

@@ -27,12 +27,12 @@ type TopologyQueryParams struct {
 	SourceCollector string `json:"source_collector"` // 数据来源过滤
 	HideSilent      bool   `json:"hide_silent"`      // 隐藏沉默链路
 	Refresh         bool   `json:"refresh"`          // 强制刷新：清除缓存，重新从云 API 构建
-	TenantID        string `json:"tenant_id"`        // 租户 ID
+	TenantID        int64  `json:"tenant_id"`        // 租户 ID
 }
 
 // NodeFilter 节点查询过滤条件
 type NodeFilter struct {
-	TenantID         string
+	TenantID         int64
 	Types            []string
 	Categories       []string
 	Providers        []string
@@ -43,7 +43,7 @@ type NodeFilter struct {
 
 // EdgeFilter 边查询过滤条件
 type EdgeFilter struct {
-	TenantID         string
+	TenantID         int64
 	SourceIDs        []string
 	TargetIDs        []string
 	Relations        []string

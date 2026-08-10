@@ -106,11 +106,11 @@ func TestCloudAccount_Validate(t *testing.T) {
 		account CloudAccount
 		wantErr string
 	}{
-		{"有效账号", CloudAccount{Name: "test", Provider: "aliyun", AccessKeyID: "ak", AccessKeySecret: "sk", TenantID: "t1"}, ""},
-		{"缺少名称", CloudAccount{Provider: "aliyun", AccessKeyID: "ak", AccessKeySecret: "sk", TenantID: "t1"}, "account name"},
-		{"缺少Provider", CloudAccount{Name: "test", AccessKeyID: "ak", AccessKeySecret: "sk", TenantID: "t1"}, "provider"},
-		{"缺少AK", CloudAccount{Name: "test", Provider: "aliyun", AccessKeySecret: "sk", TenantID: "t1"}, "access key id"},
-		{"缺少SK", CloudAccount{Name: "test", Provider: "aliyun", AccessKeyID: "ak", TenantID: "t1"}, "access key secret"},
+		{"有效账号", CloudAccount{Name: "test", Provider: "aliyun", AccessKeyID: "ak", AccessKeySecret: "sk", TenantID: 1}, ""},
+		{"缺少名称", CloudAccount{Provider: "aliyun", AccessKeyID: "ak", AccessKeySecret: "sk", TenantID: 1}, "account name"},
+		{"缺少Provider", CloudAccount{Name: "test", AccessKeyID: "ak", AccessKeySecret: "sk", TenantID: 1}, "provider"},
+		{"缺少AK", CloudAccount{Name: "test", Provider: "aliyun", AccessKeySecret: "sk", TenantID: 1}, "access key id"},
+		{"缺少SK", CloudAccount{Name: "test", Provider: "aliyun", AccessKeyID: "ak", TenantID: 1}, "access key secret"},
 		{"缺少TenantID", CloudAccount{Name: "test", Provider: "aliyun", AccessKeyID: "ak", AccessKeySecret: "sk"}, "tenant id"},
 	}
 	for _, tt := range tests {

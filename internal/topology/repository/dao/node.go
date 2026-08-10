@@ -109,7 +109,7 @@ func (d *NodeDAO) Delete(ctx context.Context, id string) error {
 }
 
 // DeleteBySource 按数据来源批量删除节点
-func (d *NodeDAO) DeleteBySource(ctx context.Context, tenantID, source string) (int64, error) {
+func (d *NodeDAO) DeleteBySource(ctx context.Context, tenantID int64, source string) (int64, error) {
 	result, err := d.col().DeleteMany(ctx, bson.M{
 		"tenant_id":        tenantID,
 		"source_collector": source,
@@ -121,7 +121,7 @@ func (d *NodeDAO) DeleteBySource(ctx context.Context, tenantID, source string) (
 }
 
 // FindDNSEntries 查询所有 DNS 入口节点
-func (d *NodeDAO) FindDNSEntries(ctx context.Context, tenantID string) ([]domain.TopoNode, error) {
+func (d *NodeDAO) FindDNSEntries(ctx context.Context, tenantID int64) ([]domain.TopoNode, error) {
 	cursor, err := d.col().Find(ctx, bson.M{
 		"tenant_id": tenantID,
 		"type":      domain.NodeTypeDNSRecord,
@@ -139,7 +139,7 @@ func (d *NodeDAO) FindDNSEntries(ctx context.Context, tenantID string) ([]domain
 
 func (d *NodeDAO) buildNodeQuery(filter domain.NodeFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if len(filter.Types) > 0 {

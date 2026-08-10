@@ -38,7 +38,7 @@ func (m *mockCloudAccountService) ListAccounts(_ context.Context, filter domain.
 	}
 	var result []*domain.CloudAccount
 	for _, a := range m.accounts {
-		if filter.TenantID != "" && a.TenantID != filter.TenantID {
+		if filter.TenantID != 0 && a.TenantID != filter.TenantID {
 			continue
 		}
 		result = append(result, a)
@@ -302,7 +302,7 @@ func TestDomainDocToVO(t *testing.T) {
 			Provider:    "aliyun",
 			AccountID:   1,
 			AccountName: "prod-aliyun",
-			TenantID:    "tenant-1",
+			TenantID:    5,
 			RecordCount: 10,
 			Status:      "normal",
 		}
@@ -331,7 +331,7 @@ func TestRecordDocToVO(t *testing.T) {
 			Status:    "enable",
 			Provider:  "aws",
 			AccountID: 2,
-			TenantID:  "tenant-1",
+			TenantID:  5,
 		}
 		vo := recordDocToVO(doc)
 		assert.Equal(t, "rid-456", vo.RecordID)

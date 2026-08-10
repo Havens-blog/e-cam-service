@@ -13,9 +13,9 @@ type DeclarationService interface {
 	// Register 注册声明数据（校验 + 转换 + Upsert + pending 边激活）
 	Register(ctx context.Context, decl domain.LinkDeclaration) error
 	// DeleteBySource 按上报方标识批量删除声明数据及其对应的节点和边
-	DeleteBySource(ctx context.Context, tenantID, source string) (int64, error)
+	DeleteBySource(ctx context.Context, tenantID int64, source string) (int64, error)
 	// List 查询租户下所有声明数据
-	List(ctx context.Context, tenantID string) ([]domain.LinkDeclaration, error)
+	List(ctx context.Context, tenantID int64) ([]domain.LinkDeclaration, error)
 }
 
 type declarationService struct {
@@ -100,7 +100,7 @@ func (s *declarationService) Register(ctx context.Context, decl domain.LinkDecla
 }
 
 // DeleteBySource 按上报方标识批量删除
-func (s *declarationService) DeleteBySource(ctx context.Context, tenantID, source string) (int64, error) {
+func (s *declarationService) DeleteBySource(ctx context.Context, tenantID int64, source string) (int64, error) {
 	// 1. 查询该 source 的所有声明，获取节点 ID 列表
 	decls, err := s.declRepo.FindBySource(ctx, tenantID, source)
 	if err != nil {
@@ -123,6 +123,6 @@ func (s *declarationService) DeleteBySource(ctx context.Context, tenantID, sourc
 }
 
 // List 查询所有声明数据
-func (s *declarationService) List(ctx context.Context, tenantID string) ([]domain.LinkDeclaration, error) {
+func (s *declarationService) List(ctx context.Context, tenantID int64) ([]domain.LinkDeclaration, error) {
 	return s.declRepo.FindAll(ctx, tenantID)
 }

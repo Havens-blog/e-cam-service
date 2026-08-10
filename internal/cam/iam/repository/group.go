@@ -16,7 +16,7 @@ type UserGroupRepository interface {
 	GetByID(ctx context.Context, id int64) (domain.UserGroup, error)
 
 	// GetByName 根据名称和租户ID获取用户组
-	GetByName(ctx context.Context, name, tenantID string) (domain.UserGroup, error)
+	GetByName(ctx context.Context, name string, tenantID int64) (domain.UserGroup, error)
 
 	// List 获取用户组列表
 	List(ctx context.Context, filter domain.UserGroupFilter) ([]domain.UserGroup, int64, error)
@@ -61,7 +61,7 @@ func (repo *userGroupRepository) GetByID(ctx context.Context, id int64) (domain.
 }
 
 // GetByName 根据名称和租户ID获取用户组
-func (repo *userGroupRepository) GetByName(ctx context.Context, name, tenantID string) (domain.UserGroup, error) {
+func (repo *userGroupRepository) GetByName(ctx context.Context, name string, tenantID int64) (domain.UserGroup, error) {
 	daoGroup, err := repo.dao.GetByName(ctx, name, tenantID)
 	if err != nil {
 		return domain.UserGroup{}, err

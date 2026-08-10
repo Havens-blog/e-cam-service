@@ -19,7 +19,7 @@ type BindingRule struct {
 	NodeID      int64           // 目标节点ID
 	EnvID       int64           // 目标环境ID
 	Name        string          // 规则名称
-	TenantID    string          // 租户ID
+	TenantID    int64           // 租户ID
 	Priority    int             // 优先级 (数字越小优先级越高)
 	Conditions  []RuleCondition // 匹配条件 (AND关系)
 	Enabled     bool            // 是否启用
@@ -43,7 +43,7 @@ func (r *BindingRule) Validate() error {
 	if r.NodeID == 0 {
 		return ErrRuleNodeIDEmpty
 	}
-	if r.TenantID == "" {
+	if r.TenantID == 0 {
 		return ErrRuleTenantIDEmpty
 	}
 	if len(r.Conditions) == 0 {
@@ -54,7 +54,7 @@ func (r *BindingRule) Validate() error {
 
 // RuleFilter 规则过滤条件
 type RuleFilter struct {
-	TenantID string
+	TenantID int64
 	NodeID   int64
 	Enabled  *bool
 	Name     string

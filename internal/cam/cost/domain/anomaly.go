@@ -11,6 +11,6 @@ type CostAnomaly struct {
 	DeviationPct   float64 `bson:"deviation_pct" json:"deviation_pct"`
 	Severity       string  `bson:"severity" json:"severity"`
 	PossibleCause  string  `bson:"possible_cause" json:"possible_cause"`
-	TenantID       string  `bson:"tenant_id" json:"tenant_id"`
+	TenantID       int64   `bson:"tenant_id" json:"tenant_id"`
 	CreateTime     int64   `bson:"ctime" json:"ctime"`
 }

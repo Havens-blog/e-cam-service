@@ -13,7 +13,7 @@ type BudgetRule struct {
 	Thresholds  []float64            `bson:"thresholds" json:"thresholds"`
 	NotifiedAt  map[string]time.Time `bson:"notified_at" json:"notified_at"`
 	Status      string               `bson:"status" json:"status"`
-	TenantID    string               `bson:"tenant_id" json:"tenant_id"`
+	TenantID    int64                `bson:"tenant_id" json:"tenant_id"`
 	CreateTime  int64                `bson:"ctime" json:"ctime"`
 	UpdateTime  int64                `bson:"utime" json:"utime"`
 }

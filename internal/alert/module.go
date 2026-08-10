@@ -9,7 +9,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/alert/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/alert/service"
 	"github.com/Havens-blog/e-cam-service/internal/alert/web"
-	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
@@ -56,7 +56,6 @@ func InitModule(db *mongox.Mongo, logger *elog.Component) (*Module, error) {
 // RegisterRoutes 注册告警模块路由
 func (m *Module) RegisterRoutes(r *gin.Engine) {
 	alertGroup := r.Group("/api/v1/cam")
-	alertGroup.Use(middleware.TenantMiddleware(m.Logger))
 	alertGroup.Use(middleware.RequireTenant(m.Logger))
 
 	m.AlertHandler.RegisterRoutes(alertGroup)

@@ -54,7 +54,7 @@ type CloudUser struct {
 	Policies         []PermissionPolicy `bson:"policies"`          // 用户的个人权限策略列表
 	Metadata         CloudUserMetadata  `bson:"metadata"`
 	Status           CloudUserStatus    `bson:"status"`
-	TenantID         string             `bson:"tenant_id"`
+	TenantID         int64              `bson:"tenant_id"`
 	CreateTime       time.Time          `bson:"create_time"`
 	UpdateTime       time.Time          `bson:"update_time"`
 	CTime            int64              `bson:"ctime"`
@@ -67,7 +67,7 @@ type CloudUserFilter struct {
 	UserType       CloudUserType
 	Status         CloudUserStatus
 	CloudAccountID int64
-	TenantID       string
+	TenantID       int64
 	Keyword        string
 	Offset         int64
 	Limit          int64
@@ -79,7 +79,7 @@ type CloudUserDAO interface {
 	Update(ctx context.Context, user CloudUser) error
 	GetByID(ctx context.Context, id int64) (CloudUser, error)
 	GetByCloudUserID(ctx context.Context, cloudUserID string, provider CloudProvider) (CloudUser, error)
-	GetByGroupID(ctx context.Context, groupID int64, tenantID string) ([]CloudUser, error)
+	GetByGroupID(ctx context.Context, groupID int64, tenantID int64) ([]CloudUser, error)
 	List(ctx context.Context, filter CloudUserFilter) ([]CloudUser, error)
 	Count(ctx context.Context, filter CloudUserFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
@@ -171,7 +171,7 @@ func (dao *cloudUserDAO) GetByCloudUserID(ctx context.Context, cloudUserID strin
 }
 
 // GetByGroupID 根据用户组ID获取所有成员
-func (dao *cloudUserDAO) GetByGroupID(ctx context.Context, groupID int64, tenantID string) ([]CloudUser, error) {
+func (dao *cloudUserDAO) GetByGroupID(ctx context.Context, groupID int64, tenantID int64) ([]CloudUser, error) {
 	var users []CloudUser
 
 	// 查询 permission_groups 数组中包含该 groupID 的所有用户
@@ -211,7 +211,7 @@ func (dao *cloudUserDAO) List(ctx context.Context, filter CloudUserFilter) ([]Cl
 	if filter.CloudAccountID > 0 {
 		query["cloud_account_id"] = filter.CloudAccountID
 	}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.Keyword != "" {
@@ -258,7 +258,7 @@ func (dao *cloudUserDAO) Count(ctx context.Context, filter CloudUserFilter) (int
 	if filter.CloudAccountID > 0 {
 		query["cloud_account_id"] = filter.CloudAccountID
 	}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.Keyword != "" {

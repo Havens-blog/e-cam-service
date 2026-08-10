@@ -15,6 +15,6 @@ type CollectLog struct {
 	RecordCount int64     `bson:"record_count" json:"record_count"`
 	Duration    int64     `bson:"duration_ms" json:"duration_ms"`
 	ErrorMsg    string    `bson:"error_msg" json:"error_msg"`
-	TenantID    string    `bson:"tenant_id" json:"tenant_id"`
+	TenantID    int64     `bson:"tenant_id" json:"tenant_id"`
 	CreateTime  int64     `bson:"ctime" json:"ctime"`
 }

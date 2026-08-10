@@ -18,16 +18,16 @@ type mockAllocationDAO struct {
 	updateRuleFn              func(ctx context.Context, rule costdomain.AllocationRule) error
 	getRuleByIDFn             func(ctx context.Context, id int64) (costdomain.AllocationRule, error)
 	listRulesFn               func(ctx context.Context, filter repository.AllocationRuleFilter) ([]costdomain.AllocationRule, error)
-	listActiveRulesFn         func(ctx context.Context, tenantID string) ([]costdomain.AllocationRule, error)
+	listActiveRulesFn         func(ctx context.Context, tenantID int64) ([]costdomain.AllocationRule, error)
 	deleteRuleFn              func(ctx context.Context, id int64) error
 	saveDefaultPolicyFn       func(ctx context.Context, policy costdomain.DefaultAllocationPolicy) error
-	getDefaultPolicyFn        func(ctx context.Context, tenantID string) (costdomain.DefaultAllocationPolicy, error)
+	getDefaultPolicyFn        func(ctx context.Context, tenantID int64) (costdomain.DefaultAllocationPolicy, error)
 	insertAllocationFn        func(ctx context.Context, alloc costdomain.CostAllocation) (int64, error)
 	insertAllocationsFn       func(ctx context.Context, allocs []costdomain.CostAllocation) (int64, error)
-	deleteAllocationsPeriodFn func(ctx context.Context, tenantID, period string) error
+	deleteAllocationsPeriodFn func(ctx context.Context, tenantID int64, period string) error
 	listAllocationsFn         func(ctx context.Context, filter repository.AllocationFilter) ([]costdomain.CostAllocation, error)
-	getAllocByDimFn           func(ctx context.Context, tenantID, dimType, dimValue, period string) ([]costdomain.CostAllocation, error)
-	getAllocByNodeFn          func(ctx context.Context, tenantID string, nodeID int64, period string) ([]costdomain.CostAllocation, error)
+	getAllocByDimFn           func(ctx context.Context, tenantID int64, dimType, dimValue, period string) ([]costdomain.CostAllocation, error)
+	getAllocByNodeFn          func(ctx context.Context, tenantID int64, nodeID int64, period string) ([]costdomain.CostAllocation, error)
 }
 
 func (m *mockAllocationDAO) CreateRule(ctx context.Context, rule costdomain.AllocationRule) (int64, error) {
@@ -54,7 +54,7 @@ func (m *mockAllocationDAO) ListRules(ctx context.Context, filter repository.All
 	}
 	return nil, nil
 }
-func (m *mockAllocationDAO) ListActiveRules(ctx context.Context, tenantID string) ([]costdomain.AllocationRule, error) {
+func (m *mockAllocationDAO) ListActiveRules(ctx context.Context, tenantID int64) ([]costdomain.AllocationRule, error) {
 	if m.listActiveRulesFn != nil {
 		return m.listActiveRulesFn(ctx, tenantID)
 	}
@@ -72,7 +72,7 @@ func (m *mockAllocationDAO) SaveDefaultPolicy(ctx context.Context, policy costdo
 	}
 	return nil
 }
-func (m *mockAllocationDAO) GetDefaultPolicy(ctx context.Context, tenantID string) (costdomain.DefaultAllocationPolicy, error) {
+func (m *mockAllocationDAO) GetDefaultPolicy(ctx context.Context, tenantID int64) (costdomain.DefaultAllocationPolicy, error) {
 	if m.getDefaultPolicyFn != nil {
 		return m.getDefaultPolicyFn(ctx, tenantID)
 	}
@@ -90,7 +90,7 @@ func (m *mockAllocationDAO) InsertAllocations(ctx context.Context, allocs []cost
 	}
 	return int64(len(allocs)), nil
 }
-func (m *mockAllocationDAO) DeleteAllocationsByPeriod(ctx context.Context, tenantID, period string) error {
+func (m *mockAllocationDAO) DeleteAllocationsByPeriod(ctx context.Context, tenantID int64, period string) error {
 	if m.deleteAllocationsPeriodFn != nil {
 		return m.deleteAllocationsPeriodFn(ctx, tenantID, period)
 	}
@@ -102,13 +102,13 @@ func (m *mockAllocationDAO) ListAllocations(ctx context.Context, filter reposito
 	}
 	return nil, nil
 }
-func (m *mockAllocationDAO) GetAllocationByDimension(ctx context.Context, tenantID, dimType, dimValue, period string) ([]costdomain.CostAllocation, error) {
+func (m *mockAllocationDAO) GetAllocationByDimension(ctx context.Context, tenantID int64, dimType, dimValue, period string) ([]costdomain.CostAllocation, error) {
 	if m.getAllocByDimFn != nil {
 		return m.getAllocByDimFn(ctx, tenantID, dimType, dimValue, period)
 	}
 	return nil, nil
 }
-func (m *mockAllocationDAO) GetAllocationByNode(ctx context.Context, tenantID string, nodeID int64, period string) ([]costdomain.CostAllocation, error) {
+func (m *mockAllocationDAO) GetAllocationByNode(ctx context.Context, tenantID int64, nodeID int64, period string) ([]costdomain.CostAllocation, error) {
 	if m.getAllocByNodeFn != nil {
 		return m.getAllocByNodeFn(ctx, tenantID, nodeID, period)
 	}
@@ -161,10 +161,10 @@ func (m *mockBillDAO) GetUnifiedBillByID(_ context.Context, _ int64) (costdomain
 func (m *mockBillDAO) CountUnifiedBills(_ context.Context, _ repository.UnifiedBillFilter) (int64, error) {
 	return 0, nil
 }
-func (m *mockBillDAO) AggregateByField(_ context.Context, _ string, _ string, _, _ string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
+func (m *mockBillDAO) AggregateByField(_ context.Context, _ int64, _ string, _, _ string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
 	return nil, nil
 }
-func (m *mockBillDAO) AggregateDailyAmount(_ context.Context, _ string, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+func (m *mockBillDAO) AggregateDailyAmount(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 	return nil, nil
 }
 func (m *mockBillDAO) DeleteUnifiedBillsByPeriod(_ context.Context, _, _ string) error { return nil }
@@ -174,7 +174,7 @@ func (m *mockBillDAO) DeleteRawBillsByAccountAndRange(_ context.Context, _ int64
 func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndRange(_ context.Context, _ int64, _, _ string) (int64, error) {
 	return 0, nil
 }
-func (m *mockBillDAO) AggregateByTag(_ context.Context, _ string, _, _ string) ([]repository.AggregateResult, error) {
+func (m *mockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([]repository.AggregateResult, error) {
 	return nil, nil
 }
 
@@ -216,7 +216,7 @@ func TestCreateAllocationRule_Success(t *testing.T) {
 				Ratio:      40,
 			},
 		},
-		TenantID: "tenant-1",
+		TenantID: 5,
 	}
 
 	id, err := svc.CreateAllocationRule(context.Background(), rule)
@@ -331,7 +331,7 @@ func TestSetDefaultAllocationPolicy_Success(t *testing.T) {
 	err := svc.SetDefaultAllocationPolicy(context.Background(), costdomain.DefaultAllocationPolicy{
 		TargetID:   "default-dept",
 		TargetName: "Default Department",
-		TenantID:   "tenant-1",
+		TenantID:   5,
 	})
 	require.NoError(t, err)
 	assert.NotZero(t, saved.CreateTime)
@@ -345,11 +345,11 @@ func TestAllocateCosts_WithMatchingRules(t *testing.T) {
 
 	billDAO.listUnifiedBillsFn = func(_ context.Context, _ repository.UnifiedBillFilter) ([]costdomain.UnifiedBill, error) {
 		return []costdomain.UnifiedBill{
-			{ID: 1, Region: "us-east-1", AmountCNY: 1000, TenantID: "t1", ServiceType: "compute"},
+			{ID: 1, Region: "us-east-1", AmountCNY: 1000, TenantID: 1, ServiceType: "compute"},
 		}, nil
 	}
 
-	allocDAO.listActiveRulesFn = func(_ context.Context, _ string) ([]costdomain.AllocationRule, error) {
+	allocDAO.listActiveRulesFn = func(_ context.Context, _ int64) ([]costdomain.AllocationRule, error) {
 		return []costdomain.AllocationRule{
 			{
 				ID:       1,
@@ -376,7 +376,7 @@ func TestAllocateCosts_WithMatchingRules(t *testing.T) {
 		return int64(len(allocs)), nil
 	}
 
-	err := svc.AllocateCosts(context.Background(), "t1", "2024-01")
+	err := svc.AllocateCosts(context.Background(), 1, "2024-01")
 	require.NoError(t, err)
 	require.Len(t, inserted, 2)
 	assert.InDelta(t, 600, inserted[0].TotalAmount, 0.01)
@@ -388,15 +388,15 @@ func TestAllocateCosts_DefaultPolicy(t *testing.T) {
 
 	billDAO.listUnifiedBillsFn = func(_ context.Context, _ repository.UnifiedBillFilter) ([]costdomain.UnifiedBill, error) {
 		return []costdomain.UnifiedBill{
-			{ID: 1, Region: "ap-south-1", AmountCNY: 500, TenantID: "t1"},
+			{ID: 1, Region: "ap-south-1", AmountCNY: 500, TenantID: 1},
 		}, nil
 	}
 
-	allocDAO.listActiveRulesFn = func(_ context.Context, _ string) ([]costdomain.AllocationRule, error) {
+	allocDAO.listActiveRulesFn = func(_ context.Context, _ int64) ([]costdomain.AllocationRule, error) {
 		return nil, nil // no rules
 	}
 
-	allocDAO.getDefaultPolicyFn = func(_ context.Context, _ string) (costdomain.DefaultAllocationPolicy, error) {
+	allocDAO.getDefaultPolicyFn = func(_ context.Context, _ int64) (costdomain.DefaultAllocationPolicy, error) {
 		return costdomain.DefaultAllocationPolicy{TargetID: "fallback-dept", TargetName: "Fallback"}, nil
 	}
 
@@ -406,7 +406,7 @@ func TestAllocateCosts_DefaultPolicy(t *testing.T) {
 		return int64(len(allocs)), nil
 	}
 
-	err := svc.AllocateCosts(context.Background(), "t1", "2024-01")
+	err := svc.AllocateCosts(context.Background(), 1, "2024-01")
 	require.NoError(t, err)
 	require.Len(t, inserted, 1)
 	assert.True(t, inserted[0].DefaultFlag)
@@ -419,16 +419,16 @@ func TestAllocateCosts_Unallocated(t *testing.T) {
 
 	billDAO.listUnifiedBillsFn = func(_ context.Context, _ repository.UnifiedBillFilter) ([]costdomain.UnifiedBill, error) {
 		return []costdomain.UnifiedBill{
-			{ID: 1, Region: "ap-south-1", AmountCNY: 300, TenantID: "t1"},
+			{ID: 1, Region: "ap-south-1", AmountCNY: 300, TenantID: 1},
 		}, nil
 	}
 
-	allocDAO.listActiveRulesFn = func(_ context.Context, _ string) ([]costdomain.AllocationRule, error) {
+	allocDAO.listActiveRulesFn = func(_ context.Context, _ int64) ([]costdomain.AllocationRule, error) {
 		return nil, nil
 	}
 
 	// No default policy (returns empty)
-	allocDAO.getDefaultPolicyFn = func(_ context.Context, _ string) (costdomain.DefaultAllocationPolicy, error) {
+	allocDAO.getDefaultPolicyFn = func(_ context.Context, _ int64) (costdomain.DefaultAllocationPolicy, error) {
 		return costdomain.DefaultAllocationPolicy{}, nil
 	}
 
@@ -438,7 +438,7 @@ func TestAllocateCosts_Unallocated(t *testing.T) {
 		return int64(len(allocs)), nil
 	}
 
-	err := svc.AllocateCosts(context.Background(), "t1", "2024-01")
+	err := svc.AllocateCosts(context.Background(), 1, "2024-01")
 	require.NoError(t, err)
 	require.Len(t, inserted, 1)
 	assert.True(t, inserted[0].UnallocatedFlag)
@@ -452,11 +452,11 @@ func TestAllocateCosts_TagMapping(t *testing.T) {
 
 	billDAO.listUnifiedBillsFn = func(_ context.Context, _ repository.UnifiedBillFilter) ([]costdomain.UnifiedBill, error) {
 		return []costdomain.UnifiedBill{
-			{ID: 1, AmountCNY: 800, TenantID: "t1", Tags: map[string]string{"env": "production"}},
+			{ID: 1, AmountCNY: 800, TenantID: 1, Tags: map[string]string{"env": "production"}},
 		}, nil
 	}
 
-	allocDAO.listActiveRulesFn = func(_ context.Context, _ string) ([]costdomain.AllocationRule, error) {
+	allocDAO.listActiveRulesFn = func(_ context.Context, _ int64) ([]costdomain.AllocationRule, error) {
 		return []costdomain.AllocationRule{
 			{
 				ID:       2,
@@ -476,7 +476,7 @@ func TestAllocateCosts_TagMapping(t *testing.T) {
 		return int64(len(allocs)), nil
 	}
 
-	err := svc.AllocateCosts(context.Background(), "t1", "2024-01")
+	err := svc.AllocateCosts(context.Background(), 1, "2024-01")
 	require.NoError(t, err)
 	require.Len(t, inserted, 1)
 	assert.Equal(t, int64(100), inserted[0].NodeID)
@@ -491,11 +491,11 @@ func TestAllocateCosts_SharedRatio(t *testing.T) {
 
 	billDAO.listUnifiedBillsFn = func(_ context.Context, _ repository.UnifiedBillFilter) ([]costdomain.UnifiedBill, error) {
 		return []costdomain.UnifiedBill{
-			{ID: 1, ResourceID: "shared-db-1", AmountCNY: 1000, TenantID: "t1"},
+			{ID: 1, ResourceID: "shared-db-1", AmountCNY: 1000, TenantID: 1},
 		}, nil
 	}
 
-	allocDAO.listActiveRulesFn = func(_ context.Context, _ string) ([]costdomain.AllocationRule, error) {
+	allocDAO.listActiveRulesFn = func(_ context.Context, _ int64) ([]costdomain.AllocationRule, error) {
 		return []costdomain.AllocationRule{
 			{
 				ID:       3,
@@ -514,7 +514,7 @@ func TestAllocateCosts_SharedRatio(t *testing.T) {
 		return int64(len(allocs)), nil
 	}
 
-	err := svc.AllocateCosts(context.Background(), "t1", "2024-01")
+	err := svc.AllocateCosts(context.Background(), 1, "2024-01")
 	require.NoError(t, err)
 	require.Len(t, inserted, 2)
 
@@ -531,13 +531,13 @@ func TestAllocateCosts_SharedRatio(t *testing.T) {
 func TestGetAllocationByDimension(t *testing.T) {
 	svc, allocDAO, _ := setupTestService(t)
 
-	allocDAO.getAllocByDimFn = func(_ context.Context, _, _, _, _ string) ([]costdomain.CostAllocation, error) {
+	allocDAO.getAllocByDimFn = func(_ context.Context, _ int64, _, _, _ string) ([]costdomain.CostAllocation, error) {
 		return []costdomain.CostAllocation{
 			{DimType: costdomain.DimRegion, DimValue: "us-east-1", TotalAmount: 500},
 		}, nil
 	}
 
-	result, err := svc.GetAllocationByDimension(context.Background(), "t1", costdomain.DimRegion, "us-east-1", "2024-01")
+	result, err := svc.GetAllocationByDimension(context.Background(), 1, costdomain.DimRegion, "us-east-1", "2024-01")
 	require.NoError(t, err)
 	assert.Equal(t, costdomain.DimRegion, result.DimType)
 	assert.Len(t, result.Allocations, 1)
@@ -549,13 +549,13 @@ func TestGetAllocationByDimension(t *testing.T) {
 func TestGetAllocationByNode(t *testing.T) {
 	svc, allocDAO, _ := setupTestService(t)
 
-	allocDAO.getAllocByNodeFn = func(_ context.Context, _ string, nodeID int64, _ string) ([]costdomain.CostAllocation, error) {
+	allocDAO.getAllocByNodeFn = func(_ context.Context, _ int64, nodeID int64, _ string) ([]costdomain.CostAllocation, error) {
 		return []costdomain.CostAllocation{
 			{NodeID: nodeID, TotalAmount: 1200},
 		}, nil
 	}
 
-	result, err := svc.GetAllocationByNode(context.Background(), "t1", 42, "2024-01")
+	result, err := svc.GetAllocationByNode(context.Background(), 1, 42, "2024-01")
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), result.NodeID)
 	assert.Len(t, result.Allocations, 1)
@@ -567,7 +567,7 @@ func TestReAllocateHistory(t *testing.T) {
 	svc, allocDAO, billDAO := setupTestService(t)
 
 	deleteCalled := false
-	allocDAO.deleteAllocationsPeriodFn = func(_ context.Context, _, _ string) error {
+	allocDAO.deleteAllocationsPeriodFn = func(_ context.Context, _ int64, _ string) error {
 		deleteCalled = true
 		return nil
 	}
@@ -576,7 +576,7 @@ func TestReAllocateHistory(t *testing.T) {
 		return nil, nil // empty bills
 	}
 
-	err := svc.ReAllocateHistory(context.Background(), "t1", "2023-06")
+	err := svc.ReAllocateHistory(context.Background(), 1, "2023-06")
 	require.NoError(t, err)
 	assert.True(t, deleteCalled)
 }
@@ -593,7 +593,7 @@ func TestListRules(t *testing.T) {
 		}, nil
 	}
 
-	rules, err := svc.ListRules(context.Background(), repository.AllocationRuleFilter{TenantID: "t1"})
+	rules, err := svc.ListRules(context.Background(), repository.AllocationRuleFilter{TenantID: 1})
 	require.NoError(t, err)
 	assert.Len(t, rules, 2)
 }

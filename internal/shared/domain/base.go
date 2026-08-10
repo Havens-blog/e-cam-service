@@ -13,19 +13,19 @@ var (
 // TenantResource 租户资源基础结构
 // 所有需要租户隔离的资源都可以嵌入这个结构
 type TenantResource struct {
-	TenantID string `json:"tenant_id" bson:"tenant_id"`
+	TenantID int64 `json:"tenant_id" bson:"tenant_id"`
 }
 
 // Validate 验证租户ID
 func (t *TenantResource) Validate() error {
-	if t.TenantID == "" {
+	if t.TenantID == 0 {
 		return ErrTenantIDRequired
 	}
 	return nil
 }
 
 // BelongsToTenant 检查资源是否属于指定租户
-func (t *TenantResource) BelongsToTenant(tenantID string) bool {
+func (t *TenantResource) BelongsToTenant(tenantID int64) bool {
 	return t.TenantID == tenantID
 }
 

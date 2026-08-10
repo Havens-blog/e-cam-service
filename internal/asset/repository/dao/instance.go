@@ -19,7 +19,7 @@ type Instance struct {
 	ModelUID   string                 `bson:"model_uid"`
 	AssetID    string                 `bson:"asset_id"`
 	AssetName  string                 `bson:"asset_name"`
-	TenantID   string                 `bson:"tenant_id"`
+	TenantID   int64                  `bson:"tenant_id"`
 	AccountID  int64                  `bson:"account_id"`
 	Attributes map[string]interface{} `bson:"attributes"`
 	Ctime      int64                  `bson:"ctime"`
@@ -29,7 +29,7 @@ type Instance struct {
 // InstanceFilter DAO层过滤条件
 type InstanceFilter struct {
 	ModelUID   string
-	TenantID   string
+	TenantID   int64
 	AccountID  int64
 	AssetID    string
 	AssetName  string
@@ -50,7 +50,7 @@ type TagFilter struct {
 
 // SearchFilter 统一搜索过滤条件
 type SearchFilter struct {
-	TenantID   string
+	TenantID   int64
 	Keyword    string
 	AssetTypes []string
 	Provider   string
@@ -66,14 +66,14 @@ type InstanceDAO interface {
 	CreateBatch(ctx context.Context, instances []Instance) (int64, error)
 	Update(ctx context.Context, instance Instance) error
 	GetByID(ctx context.Context, id int64) (Instance, error)
-	GetByAssetID(ctx context.Context, tenantID, modelUID, assetID string) (Instance, error)
+	GetByAssetID(ctx context.Context, tenantID int64, modelUID, assetID string) (Instance, error)
 	List(ctx context.Context, filter InstanceFilter) ([]Instance, error)
 	Count(ctx context.Context, filter InstanceFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByAccountID(ctx context.Context, accountID int64) error
-	DeleteByAssetIDs(ctx context.Context, tenantID, modelUID string, assetIDs []string) (int64, error)
-	ListAssetIDsByRegion(ctx context.Context, tenantID, modelUID string, accountID int64, region string) ([]string, error)
-	ListAssetIDsByModelUID(ctx context.Context, tenantID, modelUID string, accountID int64) ([]string, error)
+	DeleteByAssetIDs(ctx context.Context, tenantID int64, modelUID string, assetIDs []string) (int64, error)
+	ListAssetIDsByRegion(ctx context.Context, tenantID int64, modelUID string, accountID int64, region string) ([]string, error)
+	ListAssetIDsByModelUID(ctx context.Context, tenantID int64, modelUID string, accountID int64) ([]string, error)
 	Upsert(ctx context.Context, instance Instance) error
 	Search(ctx context.Context, filter SearchFilter) ([]Instance, int64, error)
 }
@@ -142,7 +142,7 @@ func (d *instanceDAO) GetByID(ctx context.Context, id int64) (Instance, error) {
 	return instance, err
 }
 
-func (d *instanceDAO) GetByAssetID(ctx context.Context, tenantID, modelUID, assetID string) (Instance, error) {
+func (d *instanceDAO) GetByAssetID(ctx context.Context, tenantID int64, modelUID, assetID string) (Instance, error) {
 	var instance Instance
 	filter := bson.M{"tenant_id": tenantID, "model_uid": modelUID, "asset_id": assetID}
 	err := d.db.Collection(InstanceCollection).FindOne(ctx, filter).Decode(&instance)
@@ -188,7 +188,7 @@ func (d *instanceDAO) DeleteByAccountID(ctx context.Context, accountID int64) er
 	return err
 }
 
-func (d *instanceDAO) DeleteByAssetIDs(ctx context.Context, tenantID, modelUID string, assetIDs []string) (int64, error) {
+func (d *instanceDAO) DeleteByAssetIDs(ctx context.Context, tenantID int64, modelUID string, assetIDs []string) (int64, error) {
 	if len(assetIDs) == 0 {
 		return 0, nil
 	}
@@ -200,7 +200,7 @@ func (d *instanceDAO) DeleteByAssetIDs(ctx context.Context, tenantID, modelUID s
 	return result.DeletedCount, nil
 }
 
-func (d *instanceDAO) ListAssetIDsByRegion(ctx context.Context, tenantID, modelUID string, accountID int64, region string) ([]string, error) {
+func (d *instanceDAO) ListAssetIDsByRegion(ctx context.Context, tenantID int64, modelUID string, accountID int64, region string) ([]string, error) {
 	filter := bson.M{"tenant_id": tenantID, "model_uid": modelUID, "account_id": accountID, "attributes.region": region}
 	opts := options.Find().SetProjection(bson.M{"asset_id": 1})
 	cursor, err := d.db.Collection(InstanceCollection).Find(ctx, filter, opts)
@@ -222,7 +222,7 @@ func (d *instanceDAO) ListAssetIDsByRegion(ctx context.Context, tenantID, modelU
 	return assetIDs, nil
 }
 
-func (d *instanceDAO) ListAssetIDsByModelUID(ctx context.Context, tenantID, modelUID string, accountID int64) ([]string, error) {
+func (d *instanceDAO) ListAssetIDsByModelUID(ctx context.Context, tenantID int64, modelUID string, accountID int64) ([]string, error) {
 	filter := bson.M{"tenant_id": tenantID, "model_uid": modelUID, "account_id": accountID}
 	opts := options.Find().SetProjection(bson.M{"asset_id": 1})
 	cursor, err := d.db.Collection(InstanceCollection).Find(ctx, filter, opts)
@@ -320,7 +320,7 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 			query["model_uid"] = filter.ModelUID
 		}
 	}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.AccountID > 0 {
@@ -356,7 +356,7 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 
 func (d *instanceDAO) buildSearchQuery(filter SearchFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if len(filter.AssetTypes) > 0 {

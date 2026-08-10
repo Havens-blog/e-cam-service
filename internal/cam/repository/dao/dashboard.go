@@ -13,19 +13,19 @@ import (
 // DashboardDAO 仪表盘数据访问接口
 type DashboardDAO interface {
 	// CountByProvider 按云厂商统计资产数量
-	CountByProvider(ctx context.Context, tenantID string) ([]GroupCount, error)
+	CountByProvider(ctx context.Context, tenantID int64) ([]GroupCount, error)
 	// CountByAssetType 按资产类型统计数量
-	CountByAssetType(ctx context.Context, tenantID string) ([]GroupCount, error)
+	CountByAssetType(ctx context.Context, tenantID int64) ([]GroupCount, error)
 	// CountByRegion 按地域统计资产数量
-	CountByRegion(ctx context.Context, tenantID string) ([]GroupCount, error)
+	CountByRegion(ctx context.Context, tenantID int64) ([]GroupCount, error)
 	// CountByAccountID 按云账号统计资产数量
-	CountByAccountID(ctx context.Context, tenantID string) ([]GroupCount, error)
+	CountByAccountID(ctx context.Context, tenantID int64) ([]GroupCount, error)
 	// GetExpiringInstances 获取即将过期的资源列表
-	GetExpiringInstances(ctx context.Context, tenantID string, withinDays int, offset, limit int64) ([]Instance, int64, error)
+	GetExpiringInstances(ctx context.Context, tenantID int64, withinDays int, offset, limit int64) ([]Instance, int64, error)
 	// GetTotalCount 获取资产总数
-	GetTotalCount(ctx context.Context, tenantID string) (int64, error)
+	GetTotalCount(ctx context.Context, tenantID int64) (int64, error)
 	// CountByStatus 按状态统计资产数量
-	CountByStatus(ctx context.Context, tenantID string) ([]GroupCount, error)
+	CountByStatus(ctx context.Context, tenantID int64) ([]GroupCount, error)
 }
 
 // GroupCount 分组统计结果
@@ -48,41 +48,41 @@ func (d *dashboardDAO) collection() *mongo.Collection {
 }
 
 // CountByProvider 按云厂商统计
-func (d *dashboardDAO) CountByProvider(ctx context.Context, tenantID string) ([]GroupCount, error) {
+func (d *dashboardDAO) CountByProvider(ctx context.Context, tenantID int64) ([]GroupCount, error) {
 	return d.aggregateGroup(ctx, tenantID, "$attributes.provider")
 }
 
 // CountByAssetType 按资产类型统计
-func (d *dashboardDAO) CountByAssetType(ctx context.Context, tenantID string) ([]GroupCount, error) {
+func (d *dashboardDAO) CountByAssetType(ctx context.Context, tenantID int64) ([]GroupCount, error) {
 	return d.aggregateGroup(ctx, tenantID, "$model_uid")
 }
 
 // CountByRegion 按地域统计
-func (d *dashboardDAO) CountByRegion(ctx context.Context, tenantID string) ([]GroupCount, error) {
+func (d *dashboardDAO) CountByRegion(ctx context.Context, tenantID int64) ([]GroupCount, error) {
 	return d.aggregateGroup(ctx, tenantID, "$attributes.region")
 }
 
 // CountByAccountID 按云账号统计
-func (d *dashboardDAO) CountByAccountID(ctx context.Context, tenantID string) ([]GroupCount, error) {
+func (d *dashboardDAO) CountByAccountID(ctx context.Context, tenantID int64) ([]GroupCount, error) {
 	return d.aggregateGroup(ctx, tenantID, "$account_id")
 }
 
 // CountByStatus 按状态统计
-func (d *dashboardDAO) CountByStatus(ctx context.Context, tenantID string) ([]GroupCount, error) {
+func (d *dashboardDAO) CountByStatus(ctx context.Context, tenantID int64) ([]GroupCount, error) {
 	return d.aggregateGroup(ctx, tenantID, "$attributes.status")
 }
 
 // GetTotalCount 获取资产总数
-func (d *dashboardDAO) GetTotalCount(ctx context.Context, tenantID string) (int64, error) {
+func (d *dashboardDAO) GetTotalCount(ctx context.Context, tenantID int64) (int64, error) {
 	filter := bson.M{}
-	if tenantID != "" {
-		filter["tenant_id"] = tenantID
-	}
+	// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集，
+	// 而不是退化为「不加过滤」从而返回全部租户数据。
+	filter["tenant_id"] = tenantID
 	return d.collection().CountDocuments(ctx, filter)
 }
 
 // GetExpiringInstances 获取即将过期的资源
-func (d *dashboardDAO) GetExpiringInstances(ctx context.Context, tenantID string, withinDays int, offset, limit int64) ([]Instance, int64, error) {
+func (d *dashboardDAO) GetExpiringInstances(ctx context.Context, tenantID int64, withinDays int, offset, limit int64) ([]Instance, int64, error) {
 	now := time.Now()
 	deadline := now.AddDate(0, 0, withinDays)
 
@@ -96,9 +96,9 @@ func (d *dashboardDAO) GetExpiringInstances(ctx context.Context, tenantID string
 			"$lte":    deadline.Format(time.RFC3339),
 		},
 	}
-	if tenantID != "" {
-		filter["tenant_id"] = tenantID
-	}
+	// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集，
+	// 而不是退化为「不加过滤」从而返回全部租户数据。
+	filter["tenant_id"] = tenantID
 
 	total, err := d.collection().CountDocuments(ctx, filter)
 	if err != nil {
@@ -125,14 +125,14 @@ func (d *dashboardDAO) GetExpiringInstances(ctx context.Context, tenantID string
 }
 
 // aggregateGroup 通用分组聚合
-func (d *dashboardDAO) aggregateGroup(ctx context.Context, tenantID, groupField string) ([]GroupCount, error) {
+func (d *dashboardDAO) aggregateGroup(ctx context.Context, tenantID int64, groupField string) ([]GroupCount, error) {
 	pipeline := mongo.Pipeline{}
 
 	// match 阶段
 	match := bson.M{}
-	if tenantID != "" {
-		match["tenant_id"] = tenantID
-	}
+	// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集，
+	// 而不是退化为「不加过滤」从而返回全部租户数据。
+	match["tenant_id"] = tenantID
 	if len(match) > 0 {
 		pipeline = append(pipeline, bson.D{{Key: "$match", Value: match}})
 	}

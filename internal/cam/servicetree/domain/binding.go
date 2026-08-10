@@ -21,7 +21,7 @@ type ResourceBinding struct {
 	EnvID        int64  // 环境ID
 	ResourceType string // 资源类型 (instance/asset)
 	ResourceID   int64  // 资源ID
-	TenantID     string // 租户ID
+	TenantID     int64  // 租户ID
 	BindType     string // 绑定方式 (manual/rule)
 	RuleID       int64  // 规则ID (当 BindType=rule 时有效)
 	CreateTime   time.Time
@@ -29,7 +29,7 @@ type ResourceBinding struct {
 
 // BindingFilter 绑定过滤条件
 type BindingFilter struct {
-	TenantID     string
+	TenantID     int64
 	NodeID       int64
 	EnvID        int64
 	ResourceType string
@@ -45,7 +45,7 @@ type BatchBindRequest struct {
 	EnvID        int64   // 环境ID
 	ResourceType string  // 资源类型
 	ResourceIDs  []int64 // 资源ID列表
-	TenantID     string  // 租户ID
+	TenantID     int64   // 租户ID
 }
 
 // ResourceWithNode 带节点信息的资源
@@ -58,7 +58,7 @@ type ResourceWithNode struct {
 
 // NodeIDsBindingFilter 多节点绑定过滤条件 (用于子节点递归查询)
 type NodeIDsBindingFilter struct {
-	TenantID     string
+	TenantID     int64
 	NodeIDs      []int64
 	EnvID        int64
 	ResourceType string
@@ -68,7 +68,7 @@ type NodeIDsBindingFilter struct {
 
 // NodeAssetFilter 节点资产查询过滤条件
 type NodeAssetFilter struct {
-	TenantID        string
+	TenantID        int64
 	NodeID          int64
 	EnvID           int64
 	AssetType       string // 按 model_uid 过滤 (ecs/rds/redis 等)

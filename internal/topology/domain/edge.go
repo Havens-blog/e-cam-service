@@ -55,7 +55,7 @@ type TopoEdge struct {
 	RequestCount    *int64                 `bson:"request_count,omitempty" json:"request_count,omitempty"`
 	LatencyP99      *float64               `bson:"latency_p99,omitempty" json:"latency_p99,omitempty"`
 	Attributes      map[string]interface{} `bson:"attributes,omitempty" json:"attributes,omitempty"`
-	TenantID        string                 `bson:"tenant_id" json:"tenant_id"`
+	TenantID        int64                  `bson:"tenant_id" json:"tenant_id"`
 	UpdatedAt       time.Time              `bson:"updated_at" json:"updated_at"`
 }
 
@@ -76,7 +76,7 @@ func (e *TopoEdge) Validate() error {
 	if !ValidDirections[e.Direction] {
 		return fmt.Errorf("invalid direction: %s", e.Direction)
 	}
-	if e.TenantID == "" {
+	if e.TenantID == 0 {
 		return fmt.Errorf("tenant_id is required")
 	}
 	if e.Status == "" {

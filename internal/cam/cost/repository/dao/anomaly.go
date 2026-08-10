@@ -100,7 +100,7 @@ func (d *anomalyDAO) Count(ctx context.Context, filter repository.AnomalyFilter)
 
 func (d *anomalyDAO) buildQuery(filter repository.AnomalyFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.Dimension != "" {

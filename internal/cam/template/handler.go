@@ -6,9 +6,9 @@ import (
 	"strconv"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
-	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -157,7 +157,7 @@ func (h *TemplateHandler) ProvisionFromTemplate(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
-	taskID, err := h.svc.ProvisionFromTemplate(ctx.Request.Context(), tenantID, tenantID, id, req)
+	taskID, err := h.svc.ProvisionFromTemplate(ctx.Request.Context(), tenantID, middleware.GetUsername(ctx), id, req)
 	if err != nil {
 		h.handleError(ctx, err)
 		return
@@ -172,7 +172,7 @@ func (h *TemplateHandler) DirectProvision(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
-	taskID, err := h.svc.DirectProvision(ctx.Request.Context(), tenantID, tenantID, req)
+	taskID, err := h.svc.DirectProvision(ctx.Request.Context(), tenantID, middleware.GetUsername(ctx), req)
 	if err != nil {
 		h.handleError(ctx, err)
 		return

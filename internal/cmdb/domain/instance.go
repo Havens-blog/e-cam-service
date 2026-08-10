@@ -12,7 +12,7 @@ type Instance struct {
 	ModelUID   string                 // 关联的模型UID (如 aliyun_ecs)
 	AssetID    string                 // 云厂商资产ID (如 i-bp1234xxx)
 	AssetName  string                 // 资产名称
-	TenantID   string                 // 租户ID
+	TenantID   int64                  // 租户ID
 	AccountID  int64                  // 云账号ID
 	Attributes map[string]interface{} // 动态属性
 	CreateTime time.Time
@@ -22,7 +22,7 @@ type Instance struct {
 // InstanceFilter 实例过滤条件
 type InstanceFilter struct {
 	ModelUID   string                 // 按模型过滤
-	TenantID   string                 // 按租户过滤
+	TenantID   int64                  // 按租户过滤
 	AccountID  int64                  // 按云账号过滤
 	AssetName  string                 // 按名称模糊搜索
 	Attributes map[string]interface{} // 按属性过滤
@@ -38,7 +38,7 @@ func (i *Instance) Validate() error {
 	if i.AssetID == "" {
 		return errs.ErrInvalidAssetID
 	}
-	if i.TenantID == "" {
+	if i.TenantID == 0 {
 		return errs.ErrInvalidTenantID
 	}
 	return nil

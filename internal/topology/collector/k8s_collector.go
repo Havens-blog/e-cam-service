@@ -59,7 +59,7 @@ func NewK8sCollector(cloudProvider string, providers ...K8sProvider) *K8sCollect
 func (c *K8sCollector) Name() string { return "k8s_collector" }
 
 // Collect 采集 K8s 资源并转换为拓扑节点和边
-func (c *K8sCollector) Collect(ctx context.Context, tenantID string) ([]domain.TopoNode, []domain.TopoEdge, error) {
+func (c *K8sCollector) Collect(ctx context.Context, tenantID int64) ([]domain.TopoNode, []domain.TopoEdge, error) {
 	nodes := make([]domain.TopoNode, 0)
 	edges := make([]domain.TopoEdge, 0)
 
@@ -86,7 +86,7 @@ func (c *K8sCollector) Collect(ctx context.Context, tenantID string) ([]domain.T
 	return nodes, edges, nil
 }
 
-func (c *K8sCollector) convertResource(res K8sResource, cluster, tenantID string) ([]domain.TopoNode, []domain.TopoEdge) {
+func (c *K8sCollector) convertResource(res K8sResource, cluster string, tenantID int64) ([]domain.TopoNode, []domain.TopoEdge) {
 	nodes := make([]domain.TopoNode, 0, 1)
 	edges := make([]domain.TopoEdge, 0)
 	now := time.Now()

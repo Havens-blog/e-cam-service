@@ -31,7 +31,7 @@ type TopologyGraph struct {
 type TopologyQuery struct {
 	InstanceID int64  // 起始实例ID
 	ModelUID   string // 按模型过滤
-	TenantID   string // 租户ID
+	TenantID   int64  // 租户ID
 	Depth      int    // 查询深度，默认1
 	Direction  string // 查询方向: both, outgoing, incoming
 }

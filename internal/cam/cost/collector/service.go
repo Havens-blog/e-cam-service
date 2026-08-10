@@ -32,7 +32,7 @@ type ManualCollectRequest struct {
 	AccountID int64
 	StartTime time.Time
 	EndTime   time.Time
-	TenantID  string
+	TenantID  int64
 }
 
 // CollectorService 账单采集服务

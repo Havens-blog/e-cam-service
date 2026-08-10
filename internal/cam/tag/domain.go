@@ -22,7 +22,7 @@ type TagPolicy struct {
 	KeyValueConstraints map[string][]string `bson:"key_value_constraints" json:"key_value_constraints"`
 	ResourceTypes       []string            `bson:"resource_types" json:"resource_types"`
 	Status              string              `bson:"status" json:"status"` // enabled / disabled
-	TenantID            string              `bson:"tenant_id" json:"tenant_id"`
+	TenantID            int64               `bson:"tenant_id" json:"tenant_id"`
 	Ctime               int64               `bson:"ctime" json:"created_at"`
 	Utime               int64               `bson:"utime" json:"updated_at"`
 }
@@ -139,9 +139,9 @@ type UpdatePolicyReq struct {
 
 // PolicyFilter 策略列表查询过滤
 type PolicyFilter struct {
-	TenantID string `json:"tenant_id"`
-	Offset   int64  `json:"offset"`
-	Limit    int64  `json:"limit"`
+	TenantID int64 `json:"tenant_id"`
+	Offset   int64 `json:"offset"`
+	Limit    int64 `json:"limit"`
 }
 
 // ComplianceFilter 合规检查过滤
@@ -176,7 +176,7 @@ type TagRule struct {
 	Tags        map[string]string `bson:"tags" json:"tags"` // 命中后打的标签
 	Priority    int               `bson:"priority" json:"priority"`
 	Status      string            `bson:"status" json:"status"` // enabled / disabled
-	TenantID    string            `bson:"tenant_id" json:"tenant_id"`
+	TenantID    int64             `bson:"tenant_id" json:"tenant_id"`
 	Ctime       int64             `bson:"ctime" json:"created_at"`
 	Utime       int64             `bson:"utime" json:"updated_at"`
 }
@@ -211,9 +211,9 @@ type UpdateRuleReq struct {
 
 // RuleFilter 规则列表查询过滤
 type RuleFilter struct {
-	TenantID string `json:"tenant_id"`
-	Offset   int64  `json:"offset"`
-	Limit    int64  `json:"limit"`
+	TenantID int64 `json:"tenant_id"`
+	Offset   int64 `json:"offset"`
+	Limit    int64 `json:"limit"`
 }
 
 // RulePreviewResult 规则预览结果

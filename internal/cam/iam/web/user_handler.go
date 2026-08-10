@@ -4,8 +4,8 @@ import (
 	"strconv"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/service"
-	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -51,7 +51,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 	})
 
 	if err != nil {
-		h.logger.Error("创建用户失败", elog.String("tenant_id", tenantID), elog.FieldErr(err))
+		h.logger.Error("创建用户失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -79,7 +79,7 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 
 	user, err := h.userService.GetUser(c.Request.Context(), id)
 	if err != nil {
-		h.logger.Error("获取用户失败", elog.String("tenant_id", tenantID), elog.Int64("user_id", id), elog.FieldErr(err))
+		h.logger.Error("获取用户失败", elog.Int64("tenant_id", tenantID), elog.Int64("user_id", id), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -129,7 +129,7 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 	})
 
 	if err != nil {
-		h.logger.Error("查询用户列表失败", elog.String("tenant_id", tenantID), elog.FieldErr(err))
+		h.logger.Error("查询用户列表失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -171,7 +171,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 	})
 
 	if err != nil {
-		h.logger.Error("更新用户失败", elog.String("tenant_id", tenantID), elog.Int64("user_id", id), elog.FieldErr(err))
+		h.logger.Error("更新用户失败", elog.Int64("tenant_id", tenantID), elog.Int64("user_id", id), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -199,7 +199,7 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 
 	err = h.userService.DeleteUser(c.Request.Context(), id)
 	if err != nil {
-		h.logger.Error("删除用户失败", elog.String("tenant_id", tenantID), elog.Int64("user_id", id), elog.FieldErr(err))
+		h.logger.Error("删除用户失败", elog.Int64("tenant_id", tenantID), elog.Int64("user_id", id), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -229,7 +229,7 @@ func (h *UserHandler) SyncUsers(c *gin.Context) {
 	// 使用异步同步方法
 	task, err := h.userService.SyncUsersAsync(c.Request.Context(), cloudAccountID)
 	if err != nil {
-		h.logger.Error("创建同步任务失败", elog.String("tenant_id", tenantID), elog.Int64("cloud_account_id", cloudAccountID), elog.FieldErr(err))
+		h.logger.Error("创建同步任务失败", elog.Int64("tenant_id", tenantID), elog.Int64("cloud_account_id", cloudAccountID), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -257,7 +257,7 @@ func (h *UserHandler) AssignPermissionGroups(c *gin.Context) {
 
 	err := h.userService.AssignPermissionGroups(c.Request.Context(), req.UserIDs, req.GroupIDs)
 	if err != nil {
-		h.logger.Error("批量分配用户组失败", elog.String("tenant_id", tenantID), elog.FieldErr(err))
+		h.logger.Error("批量分配用户组失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}

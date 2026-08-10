@@ -23,7 +23,7 @@ type dnsRecordDoc struct {
 	Value    string `bson:"value"`
 	TTL      int    `bson:"ttl"`
 	Provider string `bson:"provider"`
-	TenantID string `bson:"tenant_id"`
+	TenantID int64  `bson:"tenant_id"`
 }
 
 // cmdbInstanceDoc c_instance 文档（简化版，只取拓扑需要的字段）
@@ -32,7 +32,7 @@ type cmdbInstanceDoc struct {
 	ModelUID   string                 `bson:"model_uid"`
 	AssetID    string                 `bson:"asset_id"`
 	AssetName  string                 `bson:"asset_name"`
-	TenantID   string                 `bson:"tenant_id"`
+	TenantID   int64                  `bson:"tenant_id"`
 	Attributes map[string]interface{} `bson:"attributes"`
 }
 
@@ -55,7 +55,7 @@ func NewLiveTopologyBuilder(db *mongox.Mongo) *LiveTopologyBuilder {
 }
 
 // BuildFromDNS 从 DNS 记录 + CMDB 实例实时构建全链路拓扑
-func (b *LiveTopologyBuilder) BuildFromDNS(ctx context.Context, tenantID string, domainFilter string) (*domain.TopoGraph, error) {
+func (b *LiveTopologyBuilder) BuildFromDNS(ctx context.Context, tenantID int64, domainFilter string) (*domain.TopoGraph, error) {
 	now := time.Now()
 	nodes := make([]domain.TopoNode, 0)
 	edges := make([]domain.TopoEdge, 0)
@@ -258,7 +258,7 @@ func (b *LiveTopologyBuilder) traceDownstream(
 	ipIndex map[string]*cmdbInstanceDoc, cnameIndex map[string]*cmdbInstanceDoc,
 	wafDomainIndex map[string]*cmdbInstanceDoc,
 	nodes *[]domain.TopoNode, edges *[]domain.TopoEdge,
-	seen map[string]bool, tenantID string, now time.Time,
+	seen map[string]bool, tenantID int64, now time.Time,
 	depth, maxDepth int,
 ) {
 	if depth > maxDepth {
@@ -786,7 +786,7 @@ func looksLikeRegion(s string) bool {
 }
 
 // queryDNSRecords 查询 DNS 记录（仅查询与业务链路相关的 A 和 CNAME 类型）
-func (b *LiveTopologyBuilder) queryDNSRecords(ctx context.Context, tenantID, domainFilter string) ([]dnsRecordDoc, error) {
+func (b *LiveTopologyBuilder) queryDNSRecords(ctx context.Context, tenantID int64, domainFilter string) ([]dnsRecordDoc, error) {
 	query := bson.M{
 		"tenant_id": tenantID,
 		"type":      bson.M{"$in": bson.A{"A", "CNAME"}}, // 只查流量相关的记录类型，排除 MX/TXT/NS/SRV 等
@@ -821,12 +821,12 @@ func (b *LiveTopologyBuilder) queryDNSRecords(ctx context.Context, tenantID, dom
 // queryAllInstances 查询租户下所有 CMDB 实例
 // 优先加载拓扑相关的资源类型（CDN/WAF/LB/ECS/RDS 等），排除大量无关类型
 // queryAllInstances — deprecated, use queryInstancesByModelUIDs
-func (b *LiveTopologyBuilder) queryAllInstances(ctx context.Context, tenantID string) ([]cmdbInstanceDoc, error) {
+func (b *LiveTopologyBuilder) queryAllInstances(ctx context.Context, tenantID int64) ([]cmdbInstanceDoc, error) {
 	return b.queryInstancesByModelUIDs(ctx, tenantID, nil)
 }
 
 // queryInstancesByModelUIDs 按 model_uid 列表查询实例
-func (b *LiveTopologyBuilder) queryInstancesByModelUIDs(ctx context.Context, tenantID string, modelUIDs []string) ([]cmdbInstanceDoc, error) {
+func (b *LiveTopologyBuilder) queryInstancesByModelUIDs(ctx context.Context, tenantID int64, modelUIDs []string) ([]cmdbInstanceDoc, error) {
 	query := bson.M{"tenant_id": tenantID}
 	if len(modelUIDs) > 0 {
 		query["model_uid"] = bson.M{"$in": modelUIDs}
@@ -847,7 +847,7 @@ func (b *LiveTopologyBuilder) queryInstancesByModelUIDs(ctx context.Context, ten
 }
 
 // queryInstancesByDomain 按域名查询相关实例（CDN/WAF/LB 的 asset_id 或 cname 匹配）
-func (b *LiveTopologyBuilder) queryInstancesByDomain(ctx context.Context, tenantID string, domainNames []string, cnameValues []string, aRecordIPs []string) ([]cmdbInstanceDoc, error) {
+func (b *LiveTopologyBuilder) queryInstancesByDomain(ctx context.Context, tenantID int64, domainNames []string, cnameValues []string, aRecordIPs []string) ([]cmdbInstanceDoc, error) {
 	if len(domainNames) == 0 && len(cnameValues) == 0 && len(aRecordIPs) == 0 {
 		return nil, nil
 	}
@@ -901,7 +901,7 @@ func (b *LiveTopologyBuilder) queryInstancesByDomain(ctx context.Context, tenant
 }
 
 // expandDownstream 从已加载的实例中提取下游地址，查询关联的 LB/ECS 实例
-func (b *LiveTopologyBuilder) expandDownstream(ctx context.Context, tenantID string, instances []cmdbInstanceDoc) ([]cmdbInstanceDoc, error) {
+func (b *LiveTopologyBuilder) expandDownstream(ctx context.Context, tenantID int64, instances []cmdbInstanceDoc) ([]cmdbInstanceDoc, error) {
 	// 收集所有下游地址（WAF 的 source_ips、CDN 的 origins 等）
 	downstreamAddrs := make(map[string]bool)
 	for i := range instances {
@@ -1024,7 +1024,7 @@ func (b *LiveTopologyBuilder) extractBackendIPsFromLBs(instances []cmdbInstanceD
 }
 
 // queryInstancesByIPs 按 IP/实例ID 查询 ECS/ENI 实例
-func (b *LiveTopologyBuilder) queryInstancesByIPs(ctx context.Context, tenantID string, ips []string) ([]cmdbInstanceDoc, error) {
+func (b *LiveTopologyBuilder) queryInstancesByIPs(ctx context.Context, tenantID int64, ips []string) ([]cmdbInstanceDoc, error) {
 	if len(ips) == 0 {
 		return nil, nil
 	}
@@ -1053,7 +1053,7 @@ func (b *LiveTopologyBuilder) queryInstancesByIPs(ctx context.Context, tenantID 
 }
 
 // queryRelations 查询租户下所有 CMDB 实例关系
-func (b *LiveTopologyBuilder) queryRelations(ctx context.Context, tenantID string) ([]cmdbRelationDoc, error) {
+func (b *LiveTopologyBuilder) queryRelations(ctx context.Context, tenantID int64) ([]cmdbRelationDoc, error) {
 	cursor, err := b.db.Collection("ecam_instance_relation").Find(ctx, bson.M{"tenant_id": tenantID}, options.Find().SetLimit(10000))
 	if err != nil {
 		return nil, fmt.Errorf("query relations: %w", err)

@@ -7,17 +7,17 @@ import (
 )
 
 func TestTenantResource_Validate(t *testing.T) {
-	tr := &TenantResource{TenantID: ""}
+	tr := &TenantResource{TenantID: 0}
 	assert.ErrorIs(t, tr.Validate(), ErrTenantIDRequired)
 
-	tr2 := &TenantResource{TenantID: "tenant-001"}
+	tr2 := &TenantResource{TenantID: 6}
 	assert.NoError(t, tr2.Validate())
 }
 
 func TestTenantResource_BelongsToTenant(t *testing.T) {
-	tr := &TenantResource{TenantID: "tenant-001"}
-	assert.True(t, tr.BelongsToTenant("tenant-001"))
-	assert.False(t, tr.BelongsToTenant("tenant-002"))
+	tr := &TenantResource{TenantID: 6}
+	assert.True(t, tr.BelongsToTenant(6))
+	assert.False(t, tr.BelongsToTenant(7))
 }
 
 func TestTimeStamps_UpdateTimestamp(t *testing.T) {

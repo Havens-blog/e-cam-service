@@ -6,7 +6,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/alert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/alert/service"
-	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )

@@ -25,7 +25,7 @@ func newTestAccount(provider domain.CloudProvider) *domain.CloudAccount {
 		AccessKeySecret: "test-access-key-secret-12345",
 		Regions:         []string{"cn-hangzhou"},
 		Status:          domain.CloudAccountStatusActive,
-		TenantID:        "tenant-001",
+		TenantID:        6,
 	}
 }
 

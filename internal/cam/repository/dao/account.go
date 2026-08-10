@@ -66,7 +66,7 @@ type CloudAccount struct {
 	Description     string             `json:"description" bson:"description"`             // 描述信息
 	Status          CloudAccountStatus `json:"status" bson:"status"`                       // 账号状态
 	Config          CloudAccountConfig `json:"config" bson:"config"`                       // 配置信息
-	TenantID        string             `json:"tenant_id" bson:"tenant_id"`                 // 租户ID
+	TenantID        int64              `json:"tenant_id" bson:"tenant_id"`                 // 租户ID
 	LastSyncTime    *time.Time         `json:"last_sync_time" bson:"last_sync_time"`       // 最后同步时间
 	LastTestTime    *time.Time         `json:"last_test_time" bson:"last_test_time"`       // 最后测试时间
 	AssetCount      int64              `json:"asset_count" bson:"asset_count"`             // 资产数量
@@ -82,7 +82,7 @@ type CloudAccountDAO interface {
 	CreateAccount(ctx context.Context, account CloudAccount) (int64, error)
 	UpdateAccount(ctx context.Context, account CloudAccount) error
 	GetAccountById(ctx context.Context, id int64) (CloudAccount, error)
-	GetAccountByName(ctx context.Context, name, tenantID string) (CloudAccount, error)
+	GetAccountByName(ctx context.Context, name string, tenantID int64) (CloudAccount, error)
 	ListAccounts(ctx context.Context, filter CloudAccountFilter) ([]CloudAccount, error)
 	CountAccounts(ctx context.Context, filter CloudAccountFilter) (int64, error)
 	DeleteAccount(ctx context.Context, id int64) error
@@ -96,7 +96,7 @@ type CloudAccountFilter struct {
 	Provider    CloudProvider
 	Environment Environment
 	Status      CloudAccountStatus
-	TenantID    string
+	TenantID    int64
 	Name        string
 	Offset      int64
 	Limit       int64
@@ -162,7 +162,7 @@ func (dao *cloudAccountDAO) GetAccountById(ctx context.Context, id int64) (Cloud
 }
 
 // GetAccountByName 根据名称和租户ID获取云账号
-func (dao *cloudAccountDAO) GetAccountByName(ctx context.Context, name, tenantID string) (CloudAccount, error) {
+func (dao *cloudAccountDAO) GetAccountByName(ctx context.Context, name string, tenantID int64) (CloudAccount, error) {
 	var account CloudAccount
 	filter := bson.M{
 		"name":      name,
@@ -188,7 +188,7 @@ func (dao *cloudAccountDAO) ListAccounts(ctx context.Context, filter CloudAccoun
 	if filter.Status != "" {
 		query["status"] = filter.Status
 	}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.Name != "" {
@@ -228,7 +228,7 @@ func (dao *cloudAccountDAO) CountAccounts(ctx context.Context, filter CloudAccou
 	if filter.Status != "" {
 		query["status"] = filter.Status
 	}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.Name != "" {

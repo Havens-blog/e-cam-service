@@ -26,7 +26,7 @@ type TagDAO interface {
 	DeleteRule(ctx context.Context, id int64) error
 	GetRuleByID(ctx context.Context, id int64) (TagRule, error)
 	ListRules(ctx context.Context, filter RuleFilter) ([]TagRule, int64, error)
-	ListEnabledRules(ctx context.Context, tenantID string) ([]TagRule, error)
+	ListEnabledRules(ctx context.Context, tenantID int64) ([]TagRule, error)
 }
 
 type tagDAO struct {
@@ -195,7 +195,7 @@ func (d *tagDAO) ListRules(ctx context.Context, filter RuleFilter) ([]TagRule, i
 	return rules, total, nil
 }
 
-func (d *tagDAO) ListEnabledRules(ctx context.Context, tenantID string) ([]TagRule, error) {
+func (d *tagDAO) ListEnabledRules(ctx context.Context, tenantID int64) ([]TagRule, error) {
 	query := bson.M{"tenant_id": tenantID, "status": "enabled"}
 	opts := options.Find().SetSort(bson.D{{Key: "priority", Value: 1}})
 	cursor, err := d.db.Collection(TagRuleCollection).Find(ctx, query, opts)

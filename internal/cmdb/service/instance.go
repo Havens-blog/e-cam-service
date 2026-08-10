@@ -16,7 +16,7 @@ type InstanceService interface {
 	CreateBatch(ctx context.Context, instances []domain.Instance) (int64, error)
 	Update(ctx context.Context, instance domain.Instance) error
 	GetByID(ctx context.Context, id int64) (domain.Instance, error)
-	GetByAssetID(ctx context.Context, tenantID, modelUID, assetID string) (domain.Instance, error)
+	GetByAssetID(ctx context.Context, tenantID int64, modelUID, assetID string) (domain.Instance, error)
 	List(ctx context.Context, filter domain.InstanceFilter) ([]domain.Instance, int64, error)
 	ListByIDs(ctx context.Context, ids []int64) ([]domain.Instance, error)
 	Delete(ctx context.Context, id int64) error
@@ -87,7 +87,7 @@ func (s *instanceService) GetByID(ctx context.Context, id int64) (domain.Instanc
 	return instance, nil
 }
 
-func (s *instanceService) GetByAssetID(ctx context.Context, tenantID, modelUID, assetID string) (domain.Instance, error) {
+func (s *instanceService) GetByAssetID(ctx context.Context, tenantID int64, modelUID, assetID string) (domain.Instance, error) {
 	return s.repo.GetByAssetID(ctx, tenantID, modelUID, assetID)
 }
 

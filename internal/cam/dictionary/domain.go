@@ -7,7 +7,7 @@ type DictType struct {
 	Name        string `bson:"name" json:"name"`
 	Description string `bson:"description" json:"description"`
 	Status      string `bson:"status" json:"status"`
-	TenantID    string `bson:"tenant_id" json:"tenant_id"`
+	TenantID    int64  `bson:"tenant_id" json:"tenant_id"`
 	Ctime       int64  `bson:"ctime" json:"created_at"`
 	Utime       int64  `bson:"utime" json:"updated_at"`
 }
@@ -56,7 +56,7 @@ type UpdateItemReq struct {
 
 // TypeFilter 字典类型查询过滤条件
 type TypeFilter struct {
-	TenantID string `json:"tenant_id"`
+	TenantID int64  `json:"tenant_id"`
 	Keyword  string `json:"keyword"`
 	Status   string `json:"status"`
 	Offset   int64  `json:"offset"`

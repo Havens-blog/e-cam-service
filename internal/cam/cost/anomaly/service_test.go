@@ -63,19 +63,19 @@ func (m *mockAnomalyDAO) Count(ctx context.Context, filter repository.AnomalyFil
 }
 
 type mockBillDAO struct {
-	aggregateByFieldFn func(ctx context.Context, tenantID, field, startDate, endDate string) ([]repository.AggregateResult, error)
-	aggregateDailyFn   func(ctx context.Context, tenantID, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error)
+	aggregateByFieldFn func(ctx context.Context, tenantID int64, field, startDate, endDate string) ([]repository.AggregateResult, error)
+	aggregateDailyFn   func(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error)
 	sumAmountFn        func(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error)
 }
 
-func (m *mockBillDAO) AggregateByField(ctx context.Context, tenantID, field, startDate, endDate string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
+func (m *mockBillDAO) AggregateByField(ctx context.Context, tenantID int64, field, startDate, endDate string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
 	if m.aggregateByFieldFn != nil {
 		return m.aggregateByFieldFn(ctx, tenantID, field, startDate, endDate)
 	}
 	return nil, nil
 }
 
-func (m *mockBillDAO) AggregateDailyAmount(ctx context.Context, tenantID, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+func (m *mockBillDAO) AggregateDailyAmount(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 	if m.aggregateDailyFn != nil {
 		return m.aggregateDailyFn(ctx, tenantID, startDate, endDate, filter)
 	}
@@ -127,7 +127,7 @@ func (m *mockBillDAO) DeleteRawBillsByAccountAndRange(_ context.Context, _ int64
 func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndRange(_ context.Context, _ int64, _, _ string) (int64, error) {
 	return 0, nil
 }
-func (m *mockBillDAO) AggregateByTag(_ context.Context, _ string, _, _ string) ([]repository.AggregateResult, error) {
+func (m *mockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([]repository.AggregateResult, error) {
 	return nil, nil
 }
 
@@ -198,7 +198,7 @@ func TestDetectAnomalies_WithAnomaliesFound(t *testing.T) {
 	// Baseline: 30 days, total 3000 per dimension value → daily avg = 100
 	// Current day: 250 → deviation = 150% → should trigger warning (>100%)
 	billDAO := &mockBillDAO{
-		aggregateByFieldFn: func(_ context.Context, tenantID, field, startDate, endDate string) ([]repository.AggregateResult, error) {
+		aggregateByFieldFn: func(_ context.Context, tenantID int64, field, startDate, endDate string) ([]repository.AggregateResult, error) {
 			if startDate == "2024-01-15" && endDate == "2024-01-15" {
 				// Current day costs
 				return []repository.AggregateResult{
@@ -222,7 +222,7 @@ func TestDetectAnomalies_WithAnomaliesFound(t *testing.T) {
 
 	svc := setupTestService(t, anomalyDAO, billDAO, alertDAO)
 
-	err := svc.DetectAnomalies(context.Background(), "tenant1", "2024-01-15")
+	err := svc.DetectAnomalies(context.Background(), 3, "2024-01-15")
 	require.NoError(t, err)
 
 	// Should have created anomalies
@@ -239,7 +239,7 @@ func TestDetectAnomalies_WithAnomaliesFound(t *testing.T) {
 			assert.Equal(t, 150.0, a.DeviationPct)
 			assert.Equal(t, "warning", a.Severity)
 			assert.NotEmpty(t, a.PossibleCause)
-			assert.Equal(t, "tenant1", a.TenantID)
+			assert.Equal(t, int64(3), a.TenantID)
 			break
 		}
 	}
@@ -268,7 +268,7 @@ func TestDetectAnomalies_NoAnomalies(t *testing.T) {
 
 	svc := setupTestService(t, anomalyDAO, billDAO, alertDAO)
 
-	err := svc.DetectAnomalies(context.Background(), "tenant1", "2024-01-15")
+	err := svc.DetectAnomalies(context.Background(), 3, "2024-01-15")
 	require.NoError(t, err)
 
 	// No anomalies should be created
@@ -339,7 +339,7 @@ func TestDetectAnomalies_SeverityLevels(t *testing.T) {
 			}
 
 			svc := setupTestService(t, anomalyDAO, billDAO, alertDAO)
-			err := svc.DetectAnomalies(context.Background(), "tenant1", "2024-01-15")
+			err := svc.DetectAnomalies(context.Background(), 3, "2024-01-15")
 			require.NoError(t, err)
 
 			if tt.expectAnomaly {
@@ -364,12 +364,12 @@ func TestDetectAnomalies_SeverityLevels(t *testing.T) {
 
 func TestGetAnomalyEvents(t *testing.T) {
 	expected := []costdomain.CostAnomaly{
-		{ID: 1, Dimension: "service_type", Severity: "critical", TenantID: "t1"},
-		{ID: 2, Dimension: "cloud_account", Severity: "warning", TenantID: "t1"},
+		{ID: 1, Dimension: "service_type", Severity: "critical", TenantID: 1},
+		{ID: 2, Dimension: "cloud_account", Severity: "warning", TenantID: 1},
 	}
 	anomalyDAO := &mockAnomalyDAO{
 		listFn: func(_ context.Context, f repository.AnomalyFilter) ([]costdomain.CostAnomaly, error) {
-			assert.Equal(t, "t1", f.TenantID)
+			assert.Equal(t, int64(1), f.TenantID)
 			return expected, nil
 		},
 		countFn: func(_ context.Context, f repository.AnomalyFilter) (int64, error) {
@@ -378,7 +378,7 @@ func TestGetAnomalyEvents(t *testing.T) {
 	}
 	svc := setupTestService(t, anomalyDAO, &mockBillDAO{}, &mockAlertDAO{})
 
-	anomalies, count, err := svc.GetAnomalyEvents(context.Background(), "t1", repository.AnomalyFilter{
+	anomalies, count, err := svc.GetAnomalyEvents(context.Background(), 1, repository.AnomalyFilter{
 		SortBy: "severity",
 	})
 	require.NoError(t, err)
@@ -412,7 +412,7 @@ func TestDetectAnomalies_AlertIntegration(t *testing.T) {
 	}
 
 	svc := setupTestService(t, anomalyDAO, billDAO, alertDAO)
-	err := svc.DetectAnomalies(context.Background(), "tenant1", "2024-01-15")
+	err := svc.DetectAnomalies(context.Background(), 3, "2024-01-15")
 	require.NoError(t, err)
 
 	// Verify EmitEvent was called
@@ -422,7 +422,7 @@ func TestDetectAnomalies_AlertIntegration(t *testing.T) {
 		if evt.Type == "cost_anomaly" {
 			foundAlert = true
 			assert.Equal(t, alertdomain.SeverityCritical, evt.Severity)
-			assert.Equal(t, "tenant1", evt.TenantID)
+			assert.Equal(t, int64(3), evt.TenantID)
 			assert.Contains(t, evt.Title, "成本异常")
 			assert.NotNil(t, evt.Content["dimension"])
 			assert.NotNil(t, evt.Content["actual_amount"])
@@ -452,7 +452,7 @@ func TestDetectAnomalies_ZeroBaseline(t *testing.T) {
 	alertDAO := &mockAlertDAO{}
 
 	svc := setupTestService(t, anomalyDAO, billDAO, alertDAO)
-	err := svc.DetectAnomalies(context.Background(), "tenant1", "2024-01-15")
+	err := svc.DetectAnomalies(context.Background(), 3, "2024-01-15")
 	require.NoError(t, err)
 
 	// No anomalies when baseline is zero/missing
@@ -472,7 +472,7 @@ func TestDetectAnomalies_EmptyBills(t *testing.T) {
 	alertDAO := &mockAlertDAO{}
 
 	svc := setupTestService(t, anomalyDAO, billDAO, alertDAO)
-	err := svc.DetectAnomalies(context.Background(), "tenant1", "2024-01-15")
+	err := svc.DetectAnomalies(context.Background(), 3, "2024-01-15")
 	require.NoError(t, err)
 
 	assert.Empty(t, anomalyDAO.createdAnomalies)

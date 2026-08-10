@@ -16,8 +16,8 @@ import (
 // mockBillDAO 用于测试的 BillDAO mock
 type mockBillDAO struct {
 	sumAmountFn        func(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error)
-	aggregateByFieldFn func(ctx context.Context, tenantID string, field string, startDate, endDate string) ([]repository.AggregateResult, error)
-	aggregateDailyFn   func(ctx context.Context, tenantID string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error)
+	aggregateByFieldFn func(ctx context.Context, tenantID int64, field string, startDate, endDate string) ([]repository.AggregateResult, error)
+	aggregateDailyFn   func(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error)
 }
 
 func (m *mockBillDAO) SumAmount(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error) {
@@ -27,14 +27,14 @@ func (m *mockBillDAO) SumAmount(ctx context.Context, filter repository.UnifiedBi
 	return 0, nil
 }
 
-func (m *mockBillDAO) AggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
+func (m *mockBillDAO) AggregateByField(ctx context.Context, tenantID int64, field string, startDate, endDate string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
 	if m.aggregateByFieldFn != nil {
 		return m.aggregateByFieldFn(ctx, tenantID, field, startDate, endDate)
 	}
 	return nil, nil
 }
 
-func (m *mockBillDAO) AggregateDailyAmount(ctx context.Context, tenantID string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+func (m *mockBillDAO) AggregateDailyAmount(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 	if m.aggregateDailyFn != nil {
 		return m.aggregateDailyFn(ctx, tenantID, startDate, endDate, filter)
 	}
@@ -80,7 +80,7 @@ func (m *mockBillDAO) DeleteRawBillsByAccountAndRange(_ context.Context, _ int64
 func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndRange(_ context.Context, _ int64, _, _ string) (int64, error) {
 	return 0, nil
 }
-func (m *mockBillDAO) AggregateByTag(_ context.Context, _ string, _, _ string) ([]repository.AggregateResult, error) {
+func (m *mockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([]repository.AggregateResult, error) {
 	return nil, nil
 }
 
@@ -109,7 +109,7 @@ func TestGetCostSummary(t *testing.T) {
 	}
 	svc, _ := setupTestService(t, dao)
 
-	summary, err := svc.GetCostSummary(context.Background(), CostFilter{TenantID: "t1"})
+	summary, err := svc.GetCostSummary(context.Background(), CostFilter{TenantID: 1})
 	require.NoError(t, err)
 	assert.Equal(t, 1500.0, summary.CurrentMonthAmount)
 	assert.Equal(t, 1000.0, summary.LastMonthAmount)
@@ -129,7 +129,7 @@ func TestGetCostSummary_LastMonthZero(t *testing.T) {
 	}
 	svc, _ := setupTestService(t, dao)
 
-	summary, err := svc.GetCostSummary(context.Background(), CostFilter{TenantID: "t1"})
+	summary, err := svc.GetCostSummary(context.Background(), CostFilter{TenantID: 1})
 	require.NoError(t, err)
 	assert.Equal(t, 500.0, summary.CurrentMonthAmount)
 	assert.Equal(t, 0.0, summary.LastMonthAmount)
@@ -155,7 +155,7 @@ func TestGetCostSummary_Cache(t *testing.T) {
 	}
 	svc, _ := setupTestService(t, dao)
 	ctx := context.Background()
-	filter := CostFilter{TenantID: "t1"}
+	filter := CostFilter{TenantID: 1}
 
 	s1, err := svc.GetCostSummary(ctx, filter)
 	require.NoError(t, err)
@@ -181,7 +181,7 @@ func TestGetCostTrend_Daily(t *testing.T) {
 	svc, _ := setupTestService(t, dao)
 
 	points, err := svc.GetCostTrend(context.Background(), CostTrendFilter{
-		CostFilter:  CostFilter{TenantID: "t1", StartDate: "2024-01-01", EndDate: "2024-01-03"},
+		CostFilter:  CostFilter{TenantID: 1, StartDate: "2024-01-01", EndDate: "2024-01-03"},
 		Granularity: "daily",
 	})
 	require.NoError(t, err)
@@ -204,7 +204,7 @@ func TestGetCostTrend_Weekly(t *testing.T) {
 	svc, _ := setupTestService(t, dao)
 
 	points, err := svc.GetCostTrend(context.Background(), CostTrendFilter{
-		CostFilter:  CostFilter{TenantID: "t1", StartDate: "2024-01-01", EndDate: "2024-01-08"},
+		CostFilter:  CostFilter{TenantID: 1, StartDate: "2024-01-01", EndDate: "2024-01-08"},
 		Granularity: "weekly",
 	})
 	require.NoError(t, err)
@@ -228,7 +228,7 @@ func TestGetCostTrend_Monthly(t *testing.T) {
 	svc, _ := setupTestService(t, dao)
 
 	points, err := svc.GetCostTrend(context.Background(), CostTrendFilter{
-		CostFilter:  CostFilter{TenantID: "t1", StartDate: "2024-01-01", EndDate: "2024-02-28"},
+		CostFilter:  CostFilter{TenantID: 1, StartDate: "2024-01-01", EndDate: "2024-02-28"},
 		Granularity: "monthly",
 	})
 	require.NoError(t, err)
@@ -251,7 +251,7 @@ func TestGetCostDistribution(t *testing.T) {
 	svc, _ := setupTestService(t, dao)
 
 	items, err := svc.GetCostDistribution(context.Background(), CostFilter{
-		TenantID:  "t1",
+		TenantID:  1,
 		StartDate: "2024-01-01",
 		EndDate:   "2024-01-31",
 	}, "provider")
@@ -271,7 +271,7 @@ func TestGetCostDistribution_Empty(t *testing.T) {
 	}
 	svc, _ := setupTestService(t, dao)
 
-	items, err := svc.GetCostDistribution(context.Background(), CostFilter{TenantID: "t1"}, "provider")
+	items, err := svc.GetCostDistribution(context.Background(), CostFilter{TenantID: 1}, "provider")
 	require.NoError(t, err)
 	assert.Empty(t, items)
 }
@@ -290,7 +290,7 @@ func TestGetYoYComparison(t *testing.T) {
 	svc, _ := setupTestService(t, dao)
 
 	result, err := svc.GetYoYComparison(context.Background(), CostFilter{
-		TenantID:  "t1",
+		TenantID:  1,
 		StartDate: "2024-01-01",
 		EndDate:   "2024-01-31",
 	})
@@ -316,7 +316,7 @@ func TestGetYoYComparison_PreviousZero(t *testing.T) {
 	svc, _ := setupTestService(t, dao)
 
 	result, err := svc.GetYoYComparison(context.Background(), CostFilter{
-		TenantID:  "t1",
+		TenantID:  1,
 		StartDate: "2024-06-01",
 		EndDate:   "2024-06-30",
 	})
@@ -332,7 +332,7 @@ func TestNewCostService_NilRedis(t *testing.T) {
 	}
 	svc := NewCostService(dao, nil, nil)
 
-	summary, err := svc.GetCostSummary(context.Background(), CostFilter{TenantID: "t1"})
+	summary, err := svc.GetCostSummary(context.Background(), CostFilter{TenantID: 1})
 	require.NoError(t, err)
 	assert.Equal(t, 100.0, summary.CurrentMonthAmount)
 }
@@ -359,19 +359,19 @@ func TestConvertDailyToPoints_Sorted(t *testing.T) {
 }
 
 func TestGetCacheKey_Deterministic(t *testing.T) {
-	f := CostFilter{TenantID: "t1", Provider: "aws"}
-	k1 := getCacheKey("prefix", "t1", f)
-	k2 := getCacheKey("prefix", "t1", f)
+	f := CostFilter{TenantID: 1, Provider: "aws"}
+	k1 := getCacheKey("prefix", 1, f)
+	k2 := getCacheKey("prefix", 1, f)
 	assert.Equal(t, k1, k2)
 
-	f2 := CostFilter{TenantID: "t1", Provider: "aliyun"}
-	k3 := getCacheKey("prefix", "t1", f2)
+	f2 := CostFilter{TenantID: 1, Provider: "aliyun"}
+	k3 := getCacheKey("prefix", 1, f2)
 	assert.NotEqual(t, k1, k3)
 }
 
 func TestToUnifiedBillFilter(t *testing.T) {
 	f := CostFilter{
-		TenantID:    "t1",
+		TenantID:    1,
 		Provider:    "aws",
 		AccountID:   42,
 		ServiceType: "compute",
@@ -409,7 +409,7 @@ func TestGetCostSummary_DateRanges(t *testing.T) {
 	}
 	svc, _ := setupTestService(t, dao)
 
-	_, err := svc.GetCostSummary(context.Background(), CostFilter{TenantID: "t1"})
+	_, err := svc.GetCostSummary(context.Background(), CostFilter{TenantID: 1})
 	require.NoError(t, err)
 	require.Len(t, capturedFilters, 3) // 当月、上月整月、上月同期
 

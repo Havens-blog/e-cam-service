@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -16,11 +16,11 @@ type TreeService interface {
 	UpdateNode(ctx context.Context, node domain.ServiceTreeNode) error
 	DeleteNode(ctx context.Context, id int64) error
 	GetNode(ctx context.Context, id int64) (domain.ServiceTreeNode, error)
-	GetNodeByUID(ctx context.Context, tenantID, uid string) (domain.ServiceTreeNode, error)
+	GetNodeByUID(ctx context.Context, tenantID int64, uid string) (domain.ServiceTreeNode, error)
 	MoveNode(ctx context.Context, nodeID, newParentID int64) error
 	ListNodes(ctx context.Context, filter domain.NodeFilter) ([]domain.ServiceTreeNode, int64, error)
-	GetTree(ctx context.Context, tenantID string, rootID int64) (*domain.NodeWithChildren, error)
-	GetSubTree(ctx context.Context, tenantID string, nodeID int64) ([]domain.ServiceTreeNode, error)
+	GetTree(ctx context.Context, tenantID int64, rootID int64) (*domain.NodeWithChildren, error)
+	GetSubTree(ctx context.Context, tenantID int64, nodeID int64) ([]domain.ServiceTreeNode, error)
 	GetAncestors(ctx context.Context, nodeID int64) ([]domain.ServiceTreeNode, error)
 }
 
@@ -136,7 +136,7 @@ func (s *treeService) GetNode(ctx context.Context, id int64) (domain.ServiceTree
 	return s.nodeRepo.GetByID(ctx, id)
 }
 
-func (s *treeService) GetNodeByUID(ctx context.Context, tenantID, uid string) (domain.ServiceTreeNode, error) {
+func (s *treeService) GetNodeByUID(ctx context.Context, tenantID int64, uid string) (domain.ServiceTreeNode, error) {
 	return s.nodeRepo.GetByUID(ctx, tenantID, uid)
 }
 
@@ -216,7 +216,7 @@ func (s *treeService) ListNodes(ctx context.Context, filter domain.NodeFilter) (
 	return nodes, total, nil
 }
 
-func (s *treeService) GetTree(ctx context.Context, tenantID string, rootID int64) (*domain.NodeWithChildren, error) {
+func (s *treeService) GetTree(ctx context.Context, tenantID int64, rootID int64) (*domain.NodeWithChildren, error) {
 	var nodes []domain.ServiceTreeNode
 	var err error
 
@@ -240,7 +240,7 @@ func (s *treeService) GetTree(ctx context.Context, tenantID string, rootID int64
 	return s.buildTree(nodes, rootID), nil
 }
 
-func (s *treeService) GetSubTree(ctx context.Context, tenantID string, nodeID int64) ([]domain.ServiceTreeNode, error) {
+func (s *treeService) GetSubTree(ctx context.Context, tenantID int64, nodeID int64) ([]domain.ServiceTreeNode, error) {
 	node, err := s.nodeRepo.GetByID(ctx, nodeID)
 	if err != nil {
 		return nil, err

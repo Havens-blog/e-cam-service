@@ -31,13 +31,13 @@ type BillDAO interface {
 	// CountUnifiedBills 统计统一账单数量
 	CountUnifiedBills(ctx context.Context, filter UnifiedBillFilter) (int64, error)
 	// AggregateByField 按指定字段聚合统一账单金额
-	AggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string, filter UnifiedBillFilter) ([]AggregateResult, error)
+	AggregateByField(ctx context.Context, tenantID int64, field string, startDate, endDate string, filter UnifiedBillFilter) ([]AggregateResult, error)
 	// AggregateDailyAmount 按日聚合统一账单金额
-	AggregateDailyAmount(ctx context.Context, tenantID string, startDate, endDate string, filter UnifiedBillFilter) ([]DailyAmount, error)
+	AggregateDailyAmount(ctx context.Context, tenantID int64, startDate, endDate string, filter UnifiedBillFilter) ([]DailyAmount, error)
 	// SumAmount 汇总指定筛选条件下的总金额
 	SumAmount(ctx context.Context, filter UnifiedBillFilter) (float64, error)
 	// DeleteUnifiedBillsByPeriod 按租户和账期删除统一账单（用于重新分摊）
-	DeleteUnifiedBillsByPeriod(ctx context.Context, tenantID string, period string) error
+	DeleteUnifiedBillsByPeriod(ctx context.Context, tenantID int64, period string) error
 	// DeleteRawBillsByAccountAndRange 按账号和日期范围删除原始账单（采集去重）
 	DeleteRawBillsByAccountAndRange(ctx context.Context, accountID int64, startDate, endDate string) (int64, error)
 	// DeleteUnifiedBillsByAccountAndRange 按账号和日期范围删除统一账单（采集去重）
@@ -47,12 +47,12 @@ type BillDAO interface {
 	// DeleteUnifiedBillsByAccountAndMonth 按账号和月份删除统一账单（月份格式: 2025-04）
 	DeleteUnifiedBillsByAccountAndMonth(ctx context.Context, accountID int64, month string) (int64, error)
 	// AggregateByTag 按标签 key 聚合统一账单金额（展开 tags map）
-	AggregateByTag(ctx context.Context, tenantID string, startDate, endDate string) ([]AggregateResult, error)
+	AggregateByTag(ctx context.Context, tenantID int64, startDate, endDate string) ([]AggregateResult, error)
 }
 
 // UnifiedBillFilter 统一账单筛选条件
 type UnifiedBillFilter struct {
-	TenantID    string
+	TenantID    int64
 	Provider    string
 	AccountID   int64
 	ServiceType string
@@ -98,7 +98,7 @@ type CollectLogDAO interface {
 
 // CollectLogFilter 采集日志筛选条件
 type CollectLogFilter struct {
-	TenantID  string
+	TenantID  int64
 	AccountID int64
 	Status    string
 	Offset    int64
@@ -118,7 +118,7 @@ type BudgetDAO interface {
 	// Count 统计预算规则数量
 	Count(ctx context.Context, filter BudgetFilter) (int64, error)
 	// ListActive 获取所有启用的预算规则
-	ListActive(ctx context.Context, tenantID string) ([]domain.BudgetRule, error)
+	ListActive(ctx context.Context, tenantID int64) ([]domain.BudgetRule, error)
 	// UpdateStatus 更新预算状态
 	UpdateStatus(ctx context.Context, id int64, status string) error
 	// UpdateNotifiedAt 更新阈值通知时间
@@ -129,7 +129,7 @@ type BudgetDAO interface {
 
 // BudgetFilter 预算规则筛选条件
 type BudgetFilter struct {
-	TenantID  string
+	TenantID  int64
 	ScopeType string
 	Status    string
 	Offset    int64
@@ -147,32 +147,32 @@ type AllocationDAO interface {
 	// ListRules 按筛选条件查询分摊规则
 	ListRules(ctx context.Context, filter AllocationRuleFilter) ([]domain.AllocationRule, error)
 	// ListActiveRules 获取所有启用的分摊规则（按优先级排序）
-	ListActiveRules(ctx context.Context, tenantID string) ([]domain.AllocationRule, error)
+	ListActiveRules(ctx context.Context, tenantID int64) ([]domain.AllocationRule, error)
 	// DeleteRule 删除分摊规则
 	DeleteRule(ctx context.Context, id int64) error
 
 	// SaveDefaultPolicy 保存默认分摊策略（upsert）
 	SaveDefaultPolicy(ctx context.Context, policy domain.DefaultAllocationPolicy) error
 	// GetDefaultPolicy 获取默认分摊策略
-	GetDefaultPolicy(ctx context.Context, tenantID string) (domain.DefaultAllocationPolicy, error)
+	GetDefaultPolicy(ctx context.Context, tenantID int64) (domain.DefaultAllocationPolicy, error)
 
 	// InsertAllocation 插入分摊结果
 	InsertAllocation(ctx context.Context, alloc domain.CostAllocation) (int64, error)
 	// InsertAllocations 批量插入分摊结果
 	InsertAllocations(ctx context.Context, allocs []domain.CostAllocation) (int64, error)
 	// DeleteAllocationsByPeriod 按租户和账期删除分摊结果（用于重新分摊）
-	DeleteAllocationsByPeriod(ctx context.Context, tenantID string, period string) error
+	DeleteAllocationsByPeriod(ctx context.Context, tenantID int64, period string) error
 	// ListAllocations 按筛选条件查询分摊结果
 	ListAllocations(ctx context.Context, filter AllocationFilter) ([]domain.CostAllocation, error)
 	// GetAllocationByDimension 按维度查询分摊结果
-	GetAllocationByDimension(ctx context.Context, tenantID, dimType, dimValue, period string) ([]domain.CostAllocation, error)
+	GetAllocationByDimension(ctx context.Context, tenantID int64, dimType, dimValue, period string) ([]domain.CostAllocation, error)
 	// GetAllocationByNode 按服务树节点查询分摊结果
-	GetAllocationByNode(ctx context.Context, tenantID string, nodeID int64, period string) ([]domain.CostAllocation, error)
+	GetAllocationByNode(ctx context.Context, tenantID int64, nodeID int64, period string) ([]domain.CostAllocation, error)
 }
 
 // AllocationRuleFilter 分摊规则筛选条件
 type AllocationRuleFilter struct {
-	TenantID string
+	TenantID int64
 	RuleType string
 	Status   string
 	Offset   int64
@@ -181,7 +181,7 @@ type AllocationRuleFilter struct {
 
 // AllocationFilter 分摊结果筛选条件
 type AllocationFilter struct {
-	TenantID string
+	TenantID int64
 	DimType  string
 	Period   string
 	Offset   int64
@@ -204,7 +204,7 @@ type AnomalyDAO interface {
 
 // AnomalyFilter 异常事件筛选条件
 type AnomalyFilter struct {
-	TenantID  string
+	TenantID  int64
 	Dimension string
 	Severity  string
 	StartDate string
@@ -229,12 +229,12 @@ type OptimizerDAO interface {
 	// Count 统计优化建议数量
 	Count(ctx context.Context, filter RecommendationFilter) (int64, error)
 	// FindByResourceAndType 查找指定资源和类型的建议（用于去重和忽略检查）
-	FindByResourceAndType(ctx context.Context, tenantID, resourceID, recType string) (domain.Recommendation, error)
+	FindByResourceAndType(ctx context.Context, tenantID int64, resourceID, recType string) (domain.Recommendation, error)
 }
 
 // RecommendationFilter 优化建议筛选条件
 type RecommendationFilter struct {
-	TenantID       string
+	TenantID       int64
 	Type           string
 	Provider       string
 	Status         string

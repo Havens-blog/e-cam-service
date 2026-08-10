@@ -5,7 +5,6 @@ import (
 	"log"
 
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 // SeedType 种子字典类型定义
@@ -260,53 +259,40 @@ var seedTypes = []SeedType{
 	},
 }
 
-// SeedDictDataForAllTenants 查询所有租户并为每个租户初始化种子数据
-// 如果没有租户，则为 "default" 租户初始化
-func SeedDictDataForAllTenants(ctx context.Context, svc DictService, db *mongox.Mongo) (totalCreated, totalSkipped int, err error) {
-	tenantIDs, queryErr := getAllTenantIDs(ctx, db)
-	if queryErr != nil {
-		log.Printf("[WARN] seed: failed to query tenants, falling back to 'default': %v", queryErr)
-		tenantIDs = []string{"default"}
-	}
-	if len(tenantIDs) == 0 {
-		tenantIDs = []string{"default"}
-	}
+// defaultSeedTenantID 是种子数据落到的租户。
+//
+// 取值 2 的来历：迁移前这里用的是字符串 "default"，而这批既有字典数据在 eiam
+// 侧对应的租户是 default-tenant，其数值 id 为 2（已对照 eiam 线上接口确认）。
+// 故 int64(2) 是 "default" 的等价物，而不是任意挑选的数字。
+//
+// 注意不能用 0：按设计 §4.3，0 表示「会话未选定租户」，不是一个真实租户。
+const defaultSeedTenantID int64 = 2
 
-	for _, tid := range tenantIDs {
-		created, skipped, seedErr := SeedDictData(ctx, svc, tid)
-		totalCreated += created
-		totalSkipped += skipped
-		if seedErr != nil {
-			log.Printf("[WARN] seed: error seeding tenant %s: %v", tid, seedErr)
-		}
+// SeedDictDataForAllTenants 为种子租户初始化字典数据。
+//
+// 原实现会先查 MongoDB 的 tenants 集合以枚举租户，该查询已删除，原因有两点：
+//  1. 该集合从来不存在 —— 被删除的本地租户注册表用的集合名是 ecam_tenant。
+//     Mongo 对不存在的集合执行 Find 返回空游标而非报错，故这个函数**从上线起
+//     就一直返回空**，每次都走 "default" 回退分支。
+//  2. 租户现在由 eiam 统一管理，本服务已无本地租户注册表可查。真要枚举全部
+//     租户需调用 eiam 接口，那超出本次改动范围。
+//
+// 因此这里直接为 defaultSeedTenantID 播种，与迁移前的**实际**运行行为一致。
+// db 参数保留以维持调用方签名不变。
+func SeedDictDataForAllTenants(ctx context.Context, svc DictService, db *mongox.Mongo) (totalCreated, totalSkipped int, err error) {
+	created, skipped, seedErr := SeedDictData(ctx, svc, defaultSeedTenantID)
+	totalCreated += created
+	totalSkipped += skipped
+	if seedErr != nil {
+		log.Printf("[WARN] seed: error seeding tenant %d: %v", defaultSeedTenantID, seedErr)
 	}
 	return totalCreated, totalSkipped, nil
-}
-
-// getAllTenantIDs 从 MongoDB tenants 集合获取所有租户 ID
-func getAllTenantIDs(ctx context.Context, db *mongox.Mongo) ([]string, error) {
-	cursor, err := db.Collection("tenants").Find(ctx, bson.M{})
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var tenantIDs []string
-	for cursor.Next(ctx) {
-		var doc struct {
-			ID string `bson:"_id"`
-		}
-		if err := cursor.Decode(&doc); err == nil && doc.ID != "" {
-			tenantIDs = append(tenantIDs, doc.ID)
-		}
-	}
-	return tenantIDs, cursor.Err()
 }
 
 // SeedDictData 初始化字典种子数据（幂等）
 // 以字典类型 code 为幂等键，已存在则跳过
 // 返回 (创建数量, 跳过数量, error)
-func SeedDictData(ctx context.Context, svc DictService, tenantID string) (created, skipped int, err error) {
+func SeedDictData(ctx context.Context, svc DictService, tenantID int64) (created, skipped int, err error) {
 	for _, st := range seedTypes {
 		// 尝试创建类型，如果已存在则跳过
 		dt, createErr := svc.CreateType(ctx, tenantID, CreateTypeReq{

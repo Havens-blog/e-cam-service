@@ -117,14 +117,14 @@ func TestSeedDictData_CreatesAllTypes(t *testing.T) {
 	svc := NewDictService(dao)
 	ctx := context.Background()
 
-	created, skipped, err := SeedDictData(ctx, svc, "default")
+	created, skipped, err := SeedDictData(ctx, svc, defaultSeedTenantID)
 	assert.NoError(t, err)
 	assert.Equal(t, 19, created, "should create all 19 types")
 	assert.Equal(t, 0, skipped, "should skip no types on empty DB")
 
 	// 验证每个类型都可以通过 GetByCode 查询到
 	for _, st := range seedTypes {
-		items, err := svc.GetByCode(ctx, "default", st.Code)
+		items, err := svc.GetByCode(ctx, defaultSeedTenantID, st.Code)
 		assert.NoError(t, err)
 		assert.Equal(t, len(st.Items), len(items), "type %s should have %d items", st.Code, len(st.Items))
 	}
@@ -137,20 +137,20 @@ func TestSeedDictData_Idempotent(t *testing.T) {
 	ctx := context.Background()
 
 	// 第一次执行
-	created1, skipped1, err := SeedDictData(ctx, svc, "default")
+	created1, skipped1, err := SeedDictData(ctx, svc, defaultSeedTenantID)
 	assert.NoError(t, err)
 	assert.Equal(t, 19, created1)
 	assert.Equal(t, 0, skipped1)
 
 	// 第二次执行
-	created2, skipped2, err := SeedDictData(ctx, svc, "default")
+	created2, skipped2, err := SeedDictData(ctx, svc, defaultSeedTenantID)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, created2, "second run should create nothing")
 	assert.Equal(t, 19, skipped2, "second run should skip all 19 types")
 
 	// 验证数据不变
 	for _, st := range seedTypes {
-		items, err := svc.GetByCode(ctx, "default", st.Code)
+		items, err := svc.GetByCode(ctx, defaultSeedTenantID, st.Code)
 		assert.NoError(t, err)
 		assert.Equal(t, len(st.Items), len(items), "type %s item count should be unchanged", st.Code)
 	}
@@ -167,7 +167,7 @@ func TestSeedDictData_SkipsExisting(t *testing.T) {
 	for _, code := range preCreated {
 		for _, st := range seedTypes {
 			if st.Code == code {
-				_, err := svc.CreateType(ctx, "default", CreateTypeReq{
+				_, err := svc.CreateType(ctx, defaultSeedTenantID, CreateTypeReq{
 					Code:        st.Code,
 					Name:        st.Name,
 					Description: st.Description,
@@ -178,7 +178,7 @@ func TestSeedDictData_SkipsExisting(t *testing.T) {
 		}
 	}
 
-	created, skipped, err := SeedDictData(ctx, svc, "default")
+	created, skipped, err := SeedDictData(ctx, svc, defaultSeedTenantID)
 	assert.NoError(t, err)
 	assert.Equal(t, 16, created, "should create 16 new types")
 	assert.Equal(t, 3, skipped, "should skip 3 pre-existing types")
@@ -195,7 +195,7 @@ func TestSeedDictData_CountInvariant(t *testing.T) {
 		if i >= 5 {
 			break
 		}
-		_, err := svc.CreateType(ctx, "default", CreateTypeReq{
+		_, err := svc.CreateType(ctx, defaultSeedTenantID, CreateTypeReq{
 			Code:        st.Code,
 			Name:        st.Name,
 			Description: st.Description,
@@ -203,7 +203,7 @@ func TestSeedDictData_CountInvariant(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	created, skipped, err := SeedDictData(ctx, svc, "default")
+	created, skipped, err := SeedDictData(ctx, svc, defaultSeedTenantID)
 	assert.NoError(t, err)
 	assert.Equal(t, 19, created+skipped, "created + skipped should equal total seed types (19)")
 }

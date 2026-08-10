@@ -48,7 +48,7 @@ type ResourceMetrics interface {
 	// GetCPUUtilization 获取指定资源过去 N 天的每日平均 CPU 利用率
 	GetCPUUtilization(ctx context.Context, resourceID string, days int) ([]DailyCPU, error)
 	// GetUnattachedDisks 获取未挂载的云盘列表
-	GetUnattachedDisks(ctx context.Context, tenantID string) ([]DiskInfo, error)
+	GetUnattachedDisks(ctx context.Context, tenantID int64) ([]DiskInfo, error)
 }
 
 // DailyCPU 每日 CPU 利用率
@@ -88,14 +88,14 @@ func NewOptimizerService(
 }
 
 // GenerateRecommendations 每日生成优化建议
-func (s *OptimizerService) GenerateRecommendations(ctx context.Context, tenantID string) error {
+func (s *OptimizerService) GenerateRecommendations(ctx context.Context, tenantID int64) error {
 	var recs []domain.Recommendation
 
 	// 1. 检测低 CPU 利用率实例（基于账单数据的启发式方法）
 	downsizeRecs, err := s.detectLowCPUInstances(ctx, tenantID)
 	if err != nil {
 		s.logger.Error("detect low CPU instances failed",
-			elog.String("tenant_id", tenantID),
+			elog.Int64("tenant_id", tenantID),
 			elog.FieldErr(err))
 	} else {
 		recs = append(recs, downsizeRecs...)
@@ -105,7 +105,7 @@ func (s *OptimizerService) GenerateRecommendations(ctx context.Context, tenantID
 	diskRecs, err := s.detectUnattachedDisks(ctx, tenantID)
 	if err != nil {
 		s.logger.Error("detect unattached disks failed",
-			elog.String("tenant_id", tenantID),
+			elog.Int64("tenant_id", tenantID),
 			elog.FieldErr(err))
 	} else {
 		recs = append(recs, diskRecs...)
@@ -115,7 +115,7 @@ func (s *OptimizerService) GenerateRecommendations(ctx context.Context, tenantID
 	convertRecs, err := s.detectOnDemandConvert(ctx, tenantID)
 	if err != nil {
 		s.logger.Error("detect on-demand convert candidates failed",
-			elog.String("tenant_id", tenantID),
+			elog.Int64("tenant_id", tenantID),
 			elog.FieldErr(err))
 	} else {
 		recs = append(recs, convertRecs...)
@@ -141,7 +141,7 @@ func (s *OptimizerService) GenerateRecommendations(ctx context.Context, tenantID
 
 // detectLowCPUInstances 检测低 CPU 利用率实例
 // 使用账单数据启发式方法：连续 7+ 天有计算类型账单且金额较低的资源
-func (s *OptimizerService) detectLowCPUInstances(ctx context.Context, tenantID string) ([]domain.Recommendation, error) {
+func (s *OptimizerService) detectLowCPUInstances(ctx context.Context, tenantID int64) ([]domain.Recommendation, error) {
 	now := time.Now()
 	endDate := now.Format("2006-01-02")
 	startDate := now.AddDate(0, 0, -lowCPUConsecutiveDays).Format("2006-01-02")
@@ -211,7 +211,7 @@ func (s *OptimizerService) detectLowCPUInstances(ctx context.Context, tenantID s
 
 // detectUnattachedDisks 检测未挂载云盘
 // 使用账单数据启发式方法：存储类型账单中无关联计算实例的资源
-func (s *OptimizerService) detectUnattachedDisks(ctx context.Context, tenantID string) ([]domain.Recommendation, error) {
+func (s *OptimizerService) detectUnattachedDisks(ctx context.Context, tenantID int64) ([]domain.Recommendation, error) {
 	now := time.Now()
 	endDate := now.Format("2006-01-02")
 	startDate := now.AddDate(0, 0, -7).Format("2006-01-02")
@@ -295,7 +295,7 @@ func (s *OptimizerService) detectUnattachedDisks(ctx context.Context, tenantID s
 }
 
 // detectOnDemandConvert 检测按量转包年包月候选
-func (s *OptimizerService) detectOnDemandConvert(ctx context.Context, tenantID string) ([]domain.Recommendation, error) {
+func (s *OptimizerService) detectOnDemandConvert(ctx context.Context, tenantID int64) ([]domain.Recommendation, error) {
 	now := time.Now()
 	endDate := now.Format("2006-01-02")
 	startDate := now.AddDate(0, 0, -onDemandRunningDays).Format("2006-01-02")
@@ -367,7 +367,7 @@ func (s *OptimizerService) detectOnDemandConvert(ctx context.Context, tenantID s
 }
 
 // filterDismissed 过滤已忽略且未过期的建议
-func (s *OptimizerService) filterDismissed(ctx context.Context, tenantID string, recs []domain.Recommendation) []domain.Recommendation {
+func (s *OptimizerService) filterDismissed(ctx context.Context, tenantID int64, recs []domain.Recommendation) []domain.Recommendation {
 	now := time.Now()
 	var filtered []domain.Recommendation
 	for _, rec := range recs {
@@ -395,7 +395,7 @@ func (s *OptimizerService) filterDismissed(ctx context.Context, tenantID string,
 }
 
 // ListRecommendations 获取优化建议列表
-func (s *OptimizerService) ListRecommendations(ctx context.Context, tenantID string, filter repository.RecommendationFilter) ([]domain.Recommendation, int64, error) {
+func (s *OptimizerService) ListRecommendations(ctx context.Context, tenantID int64, filter repository.RecommendationFilter) ([]domain.Recommendation, int64, error) {
 	filter.TenantID = tenantID
 	recs, err := s.optimizerDAO.List(ctx, filter)
 	if err != nil {

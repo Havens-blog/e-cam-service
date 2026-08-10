@@ -278,7 +278,7 @@ func (s *cloudUserService) validateCreateUserRequest(req *domain.CreateCloudUser
 	if req.CloudAccountID == 0 {
 		return fmt.Errorf("云账号ID不能为空")
 	}
-	if req.TenantID == "" {
+	if req.TenantID == 0 {
 		return fmt.Errorf("租户ID不能为空")
 	}
 
@@ -295,7 +295,7 @@ func (s *cloudUserService) validateCreateUserRequest(req *domain.CreateCloudUser
 	return nil
 }
 
-func (s *cloudUserService) validatePermissionGroups(ctx context.Context, groupIDs []int64, tenantID string) error {
+func (s *cloudUserService) validatePermissionGroups(ctx context.Context, groupIDs []int64, tenantID int64) error {
 	for _, groupID := range groupIDs {
 		group, err := s.groupRepo.GetByID(ctx, groupID)
 		if err != nil {
@@ -644,7 +644,7 @@ func (s *cloudUserService) AssignPermissionGroups(ctx context.Context, userIDs [
 		return fmt.Errorf("权限组ID列表不能为空")
 	}
 
-	var tenantID string
+	var tenantID int64
 	userGroupMap := make(map[int64][]int64)
 	for _, userID := range userIDs {
 		user, err := s.userRepo.GetByID(ctx, userID)
@@ -654,7 +654,7 @@ func (s *cloudUserService) AssignPermissionGroups(ctx context.Context, userIDs [
 			}
 			return fmt.Errorf("获取用户失败: %w", err)
 		}
-		if tenantID == "" {
+		if tenantID == 0 {
 			tenantID = user.TenantID
 		} else if tenantID != user.TenantID {
 			return fmt.Errorf("用户必须属于同一租户")

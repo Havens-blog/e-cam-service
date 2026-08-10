@@ -33,7 +33,7 @@ func (h *EnvHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	}
 }
 
-func (h *EnvHandler) getTenantID(c *gin.Context) string {
+func (h *EnvHandler) getTenantID(c *gin.Context) int64 {
 	return middleware.GetTenantID(c)
 }
 
@@ -178,7 +178,7 @@ func (h *EnvHandler) InitDefaultEnvs(c *gin.Context) (ginx.Result, error) {
 	// 调试日志
 	println("InitDefaultEnvs tenantID:", tenantID)
 
-	if tenantID == "" {
+	if tenantID == 0 {
 		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
 	}
 

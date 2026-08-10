@@ -16,9 +16,9 @@ import (
 // NodeAssetService 节点资产查询服务
 type NodeAssetService interface {
 	ListNodeAssets(ctx context.Context, filter domain.NodeAssetFilter) ([]domain.NodeAssetVO, int64, error)
-	GetAssetNode(ctx context.Context, tenantID string, resourceID int64) (domain.ServiceTreeNode, error)
-	GetNodeAssetStats(ctx context.Context, tenantID string, nodeID int64, includeChildren bool) (domain.AssetStats, error)
-	GetGlobalAssetStats(ctx context.Context, tenantID string) (domain.AssetStats, error)
+	GetAssetNode(ctx context.Context, tenantID int64, resourceID int64) (domain.ServiceTreeNode, error)
+	GetNodeAssetStats(ctx context.Context, tenantID int64, nodeID int64, includeChildren bool) (domain.AssetStats, error)
+	GetGlobalAssetStats(ctx context.Context, tenantID int64) (domain.AssetStats, error)
 }
 
 type nodeAssetService struct {
@@ -180,7 +180,7 @@ func (s *nodeAssetService) instancesToNodeAssetVOs(instances []cmdbdomain.Instan
 	return result
 }
 
-func (s *nodeAssetService) GetAssetNode(ctx context.Context, tenantID string, resourceID int64) (domain.ServiceTreeNode, error) {
+func (s *nodeAssetService) GetAssetNode(ctx context.Context, tenantID int64, resourceID int64) (domain.ServiceTreeNode, error) {
 	binding, err := s.bindingRepo.GetByResource(ctx, tenantID, domain.ResourceTypeInstance, resourceID)
 	if err != nil {
 		return domain.ServiceTreeNode{}, err
@@ -188,7 +188,7 @@ func (s *nodeAssetService) GetAssetNode(ctx context.Context, tenantID string, re
 	return s.nodeRepo.GetByID(ctx, binding.NodeID)
 }
 
-func (s *nodeAssetService) GetNodeAssetStats(ctx context.Context, tenantID string, nodeID int64, includeChildren bool) (domain.AssetStats, error) {
+func (s *nodeAssetService) GetNodeAssetStats(ctx context.Context, tenantID int64, nodeID int64, includeChildren bool) (domain.AssetStats, error) {
 	// 查节点判断是否根节点
 	node, err := s.nodeRepo.GetByID(ctx, nodeID)
 	if err != nil {
@@ -255,7 +255,7 @@ func (s *nodeAssetService) GetNodeAssetStats(ctx context.Context, tenantID strin
 }
 
 // GetGlobalAssetStats 全局资产统计（不区分节点，按产品类别聚合）
-func (s *nodeAssetService) GetGlobalAssetStats(ctx context.Context, tenantID string) (domain.AssetStats, error) {
+func (s *nodeAssetService) GetGlobalAssetStats(ctx context.Context, tenantID int64) (domain.AssetStats, error) {
 	result, err := s.cmdbRepo.AggregateAllStats(ctx, tenantID)
 	if err != nil {
 		return domain.AssetStats{}, fmt.Errorf("统计全局资产失败: %w", err)

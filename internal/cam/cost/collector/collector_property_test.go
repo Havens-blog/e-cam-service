@@ -205,7 +205,7 @@ func TestProperty4_CollectLogFieldCompleteness(t *testing.T) {
 			Provider:   provider,
 			Status:     "running",
 			StartTime:  startTime,
-			TenantID:   "test-tenant",
+			TenantID:   12,
 			CreateTime: time.Now().Unix(),
 		}
 

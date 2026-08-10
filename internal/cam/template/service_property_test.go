@@ -44,7 +44,7 @@ func (d *inMemoryTemplateDAO) Insert(_ context.Context, tmpl VMTemplate) (int64,
 	return tmpl.ID, nil
 }
 
-func (d *inMemoryTemplateDAO) Update(_ context.Context, tenantID string, id int64, req UpdateTemplateReq) error {
+func (d *inMemoryTemplateDAO) Update(_ context.Context, tenantID int64, id int64, req UpdateTemplateReq) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	tmpl, ok := d.templates[id]
@@ -115,7 +115,7 @@ func (d *inMemoryTemplateDAO) Update(_ context.Context, tenantID string, id int6
 	return nil
 }
 
-func (d *inMemoryTemplateDAO) Delete(_ context.Context, tenantID string, id int64) error {
+func (d *inMemoryTemplateDAO) Delete(_ context.Context, tenantID int64, id int64) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	tmpl, ok := d.templates[id]
@@ -126,7 +126,7 @@ func (d *inMemoryTemplateDAO) Delete(_ context.Context, tenantID string, id int6
 	return nil
 }
 
-func (d *inMemoryTemplateDAO) GetByID(_ context.Context, tenantID string, id int64) (VMTemplate, error) {
+func (d *inMemoryTemplateDAO) GetByID(_ context.Context, tenantID int64, id int64) (VMTemplate, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	tmpl, ok := d.templates[id]
@@ -136,7 +136,7 @@ func (d *inMemoryTemplateDAO) GetByID(_ context.Context, tenantID string, id int
 	return tmpl, nil
 }
 
-func (d *inMemoryTemplateDAO) GetByName(_ context.Context, tenantID, name string) (VMTemplate, error) {
+func (d *inMemoryTemplateDAO) GetByName(_ context.Context, tenantID int64, name string) (VMTemplate, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for _, tmpl := range d.templates {
@@ -248,7 +248,7 @@ func (d *inMemoryProvisionTaskDAO) UpdateSyncStatus(_ context.Context, taskID, s
 	return nil
 }
 
-func (d *inMemoryProvisionTaskDAO) GetByID(_ context.Context, tenantID, taskID string) (ProvisionTask, error) {
+func (d *inMemoryProvisionTaskDAO) GetByID(_ context.Context, tenantID int64, taskID string) (ProvisionTask, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	task, ok := d.tasks[taskID]
@@ -280,7 +280,7 @@ func (d *inMemoryProvisionTaskDAO) List(_ context.Context, filter ProvisionTaskF
 	return result, int64(len(result)), nil
 }
 
-func (d *inMemoryProvisionTaskDAO) CountRunningByTemplateID(_ context.Context, tenantID string, templateID int64) (int64, error) {
+func (d *inMemoryProvisionTaskDAO) CountRunningByTemplateID(_ context.Context, tenantID int64, templateID int64) (int64, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	var count int64
@@ -298,8 +298,8 @@ func (d *inMemoryProvisionTaskDAO) CountRunningByTemplateID(_ context.Context, t
 // Generators
 // ============================================================================
 
-func genTenantID() *rapid.Generator[string] {
-	return rapid.StringMatching(`tenant_[a-z]{3,8}`)
+func genTenantID() *rapid.Generator[int64] {
+	return rapid.Int64Range(1, 1000)
 }
 
 func genTemplateName() *rapid.Generator[string] {
@@ -435,7 +435,7 @@ func TestProperty_TemplateListFiltering(t *testing.T) {
 		taskDAO := newInMemoryProvisionTaskDAO()
 		svc := NewTemplateService(tmplDAO, taskDAO, nil)
 		ctx := context.Background()
-		tenantID := "tenant_test"
+		tenantID := int64(11)
 
 		// Create multiple templates with different providers
 		providers := []string{"aliyun", "aws", "huawei"}

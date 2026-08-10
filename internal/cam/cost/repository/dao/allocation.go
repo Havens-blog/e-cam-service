@@ -96,7 +96,7 @@ func (d *allocationDAO) ListRules(ctx context.Context, filter repository.Allocat
 	return rules, err
 }
 
-func (d *allocationDAO) ListActiveRules(ctx context.Context, tenantID string) ([]domain.AllocationRule, error) {
+func (d *allocationDAO) ListActiveRules(ctx context.Context, tenantID int64) ([]domain.AllocationRule, error) {
 	filter := bson.M{
 		"tenant_id": tenantID,
 		"status":    "active",
@@ -139,7 +139,7 @@ func (d *allocationDAO) SaveDefaultPolicy(ctx context.Context, policy domain.Def
 	return err
 }
 
-func (d *allocationDAO) GetDefaultPolicy(ctx context.Context, tenantID string) (domain.DefaultAllocationPolicy, error) {
+func (d *allocationDAO) GetDefaultPolicy(ctx context.Context, tenantID int64) (domain.DefaultAllocationPolicy, error) {
 	var policy domain.DefaultAllocationPolicy
 	filter := bson.M{"tenant_id": tenantID}
 	err := d.db.Collection(DefaultPolicyCollection).FindOne(ctx, filter).Decode(&policy)
@@ -181,7 +181,7 @@ func (d *allocationDAO) InsertAllocations(ctx context.Context, allocs []domain.C
 	return int64(len(result.InsertedIDs)), nil
 }
 
-func (d *allocationDAO) DeleteAllocationsByPeriod(ctx context.Context, tenantID string, period string) error {
+func (d *allocationDAO) DeleteAllocationsByPeriod(ctx context.Context, tenantID int64, period string) error {
 	filter := bson.M{
 		"tenant_id": tenantID,
 		"period":    period,
@@ -192,7 +192,7 @@ func (d *allocationDAO) DeleteAllocationsByPeriod(ctx context.Context, tenantID 
 
 func (d *allocationDAO) ListAllocations(ctx context.Context, filter repository.AllocationFilter) ([]domain.CostAllocation, error) {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.DimType != "" {
@@ -222,7 +222,7 @@ func (d *allocationDAO) ListAllocations(ctx context.Context, filter repository.A
 	return allocs, err
 }
 
-func (d *allocationDAO) GetAllocationByDimension(ctx context.Context, tenantID, dimType, dimValue, period string) ([]domain.CostAllocation, error) {
+func (d *allocationDAO) GetAllocationByDimension(ctx context.Context, tenantID int64, dimType, dimValue, period string) ([]domain.CostAllocation, error) {
 	filter := bson.M{
 		"tenant_id": tenantID,
 		"dim_type":  dimType,
@@ -240,7 +240,7 @@ func (d *allocationDAO) GetAllocationByDimension(ctx context.Context, tenantID, 
 	return allocs, err
 }
 
-func (d *allocationDAO) GetAllocationByNode(ctx context.Context, tenantID string, nodeID int64, period string) ([]domain.CostAllocation, error) {
+func (d *allocationDAO) GetAllocationByNode(ctx context.Context, tenantID int64, nodeID int64, period string) ([]domain.CostAllocation, error) {
 	filter := bson.M{
 		"tenant_id": tenantID,
 		"node_id":   nodeID,
@@ -259,7 +259,7 @@ func (d *allocationDAO) GetAllocationByNode(ctx context.Context, tenantID string
 
 func (d *allocationDAO) buildRuleQuery(filter repository.AllocationRuleFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.RuleType != "" {

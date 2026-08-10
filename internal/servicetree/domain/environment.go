@@ -24,7 +24,7 @@ type Environment struct {
 	ID          int64  // 环境ID
 	Code        string // 环境代码 (dev/test/staging/prod)
 	Name        string // 环境名称
-	TenantID    string // 租户ID
+	TenantID    int64  // 租户ID
 	Description string // 描述
 	Color       string // 显示颜色 (用于前端区分)
 	Order       int    // 排序权重
@@ -41,7 +41,7 @@ func (e *Environment) Validate() error {
 	if e.Name == "" {
 		return fmt.Errorf("环境名称不能为空")
 	}
-	if e.TenantID == "" {
+	if e.TenantID == 0 {
 		return fmt.Errorf("租户ID不能为空")
 	}
 	return nil
@@ -54,7 +54,7 @@ func (e *Environment) IsProduction() bool {
 
 // EnvironmentFilter 环境过滤条件
 type EnvironmentFilter struct {
-	TenantID string
+	TenantID int64
 	Code     string
 	Status   *int
 	Offset   int64
@@ -62,7 +62,7 @@ type EnvironmentFilter struct {
 }
 
 // DefaultEnvironments 默认环境列表
-func DefaultEnvironments(tenantID string) []Environment {
+func DefaultEnvironments(tenantID int64) []Environment {
 	return []Environment{
 		{Code: EnvCodeDev, Name: "开发环境", TenantID: tenantID, Color: "#52c41a", Order: 1, Status: EnvStatusEnabled},
 		{Code: EnvCodeTest, Name: "测试环境", TenantID: tenantID, Color: "#1890ff", Order: 2, Status: EnvStatusEnabled},

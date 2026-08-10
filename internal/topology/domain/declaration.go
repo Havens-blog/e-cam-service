@@ -12,7 +12,7 @@ type LinkDeclaration struct {
 	Collector string            `bson:"collector" json:"collector"` // 采集方式: manual/api/agent/log
 	Node      DeclarationNode   `bson:"node" json:"node"`
 	Links     []DeclarationLink `bson:"links" json:"links"`
-	TenantID  string            `bson:"tenant_id" json:"tenant_id"`
+	TenantID  int64             `bson:"tenant_id" json:"tenant_id"`
 	CreatedAt time.Time         `bson:"created_at" json:"created_at"`
 	UpdatedAt time.Time         `bson:"updated_at" json:"updated_at"`
 }
@@ -50,7 +50,7 @@ func (d *LinkDeclaration) Validate() error {
 	if d.Collector != "" && !ValidCollectorTypes[d.Collector] {
 		return fmt.Errorf("invalid collector type: %s", d.Collector)
 	}
-	if d.TenantID == "" {
+	if d.TenantID == 0 {
 		return fmt.Errorf("tenant_id is required")
 	}
 

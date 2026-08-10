@@ -30,7 +30,7 @@ type PolicyTemplate struct {
 	Policies       []PermissionPolicy `bson:"policies"`
 	CloudPlatforms []CloudProvider    `bson:"cloud_platforms"`
 	IsBuiltIn      bool               `bson:"is_built_in"`
-	TenantID       string             `bson:"tenant_id"`
+	TenantID       int64              `bson:"tenant_id"`
 	CreateTime     time.Time          `bson:"create_time"`
 	UpdateTime     time.Time          `bson:"update_time"`
 	CTime          int64              `bson:"ctime"`
@@ -41,7 +41,7 @@ type PolicyTemplate struct {
 type TemplateFilter struct {
 	Category  TemplateCategory
 	IsBuiltIn *bool
-	TenantID  string
+	TenantID  int64
 	Keyword   string
 	Offset    int64
 	Limit     int64
@@ -52,7 +52,7 @@ type PolicyTemplateDAO interface {
 	Create(ctx context.Context, template PolicyTemplate) (int64, error)
 	Update(ctx context.Context, template PolicyTemplate) error
 	GetByID(ctx context.Context, id int64) (PolicyTemplate, error)
-	GetByName(ctx context.Context, name, tenantID string) (PolicyTemplate, error)
+	GetByName(ctx context.Context, name string, tenantID int64) (PolicyTemplate, error)
 	List(ctx context.Context, filter TemplateFilter) ([]PolicyTemplate, error)
 	Count(ctx context.Context, filter TemplateFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
@@ -124,7 +124,7 @@ func (dao *policyTemplateDAO) GetByID(ctx context.Context, id int64) (PolicyTemp
 }
 
 // GetByName 根据名称和租户ID获取策略模板
-func (dao *policyTemplateDAO) GetByName(ctx context.Context, name, tenantID string) (PolicyTemplate, error) {
+func (dao *policyTemplateDAO) GetByName(ctx context.Context, name string, tenantID int64) (PolicyTemplate, error) {
 	var template PolicyTemplate
 	filter := bson.M{
 		"name":      name,
@@ -147,7 +147,7 @@ func (dao *policyTemplateDAO) List(ctx context.Context, filter TemplateFilter) (
 	if filter.IsBuiltIn != nil {
 		query["is_built_in"] = *filter.IsBuiltIn
 	}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["$or"] = []bson.M{
 			{"tenant_id": filter.TenantID},
 			{"is_built_in": true}, // 内置模板对所有租户可见
@@ -190,7 +190,7 @@ func (dao *policyTemplateDAO) Count(ctx context.Context, filter TemplateFilter) 
 	if filter.IsBuiltIn != nil {
 		query["is_built_in"] = *filter.IsBuiltIn
 	}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["$or"] = []bson.M{
 			{"tenant_id": filter.TenantID},
 			{"is_built_in": true},

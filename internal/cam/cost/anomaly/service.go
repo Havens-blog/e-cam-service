@@ -58,7 +58,7 @@ func (s *AnomalyService) SetThreshold(pct float64) {
 }
 
 // DetectAnomalies 每日异常检测
-func (s *AnomalyService) DetectAnomalies(ctx context.Context, tenantID, date string) error {
+func (s *AnomalyService) DetectAnomalies(ctx context.Context, tenantID int64, date string) error {
 	// 计算基线窗口
 	targetDate, err := time.Parse("2006-01-02", date)
 	if err != nil {
@@ -74,7 +74,7 @@ func (s *AnomalyService) DetectAnomalies(ctx context.Context, tenantID, date str
 		if err != nil {
 			s.logger.Error("detect anomalies for dimension failed",
 				elog.String("dimension", dim),
-				elog.String("tenant_id", tenantID),
+				elog.Int64("tenant_id", tenantID),
 				elog.FieldErr(err))
 			continue
 		}
@@ -106,7 +106,7 @@ func (s *AnomalyService) DetectAnomalies(ctx context.Context, tenantID, date str
 // detectForDimension 对单个维度执行异常检测
 func (s *AnomalyService) detectForDimension(
 	ctx context.Context,
-	tenantID, dimension, date, baselineStart, baselineEnd string,
+	tenantID int64, dimension, date, baselineStart, baselineEnd string,
 ) ([]costdomain.CostAnomaly, error) {
 	// 获取基线数据：过去 30 天按维度聚合的日均成本
 	baselineDays, err := s.billDAO.AggregateDailyAmount(ctx, tenantID, baselineStart, baselineEnd, repository.UnifiedBillFilter{
@@ -170,7 +170,7 @@ func (s *AnomalyService) detectForDimension(
 // computeBaseline 计算各维度值的日均基线
 func (s *AnomalyService) computeBaseline(
 	ctx context.Context,
-	tenantID, dimension, startDate, endDate string,
+	tenantID int64, dimension, startDate, endDate string,
 ) (map[string]float64, error) {
 	results, err := s.billDAO.AggregateByField(ctx, tenantID, dimension, startDate, endDate, repository.UnifiedBillFilter{})
 	if err != nil {
@@ -244,7 +244,7 @@ func (s *AnomalyService) emitAlert(ctx context.Context, anomaly costdomain.CostA
 }
 
 // GetAnomalyEvents 获取异常事件列表
-func (s *AnomalyService) GetAnomalyEvents(ctx context.Context, tenantID string, filter repository.AnomalyFilter) ([]costdomain.CostAnomaly, int64, error) {
+func (s *AnomalyService) GetAnomalyEvents(ctx context.Context, tenantID int64, filter repository.AnomalyFilter) ([]costdomain.CostAnomaly, int64, error) {
 	filter.TenantID = tenantID
 	anomalies, err := s.anomalyDAO.List(ctx, filter)
 	if err != nil {

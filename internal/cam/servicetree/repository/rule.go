@@ -15,7 +15,7 @@ type RuleRepository interface {
 	Update(ctx context.Context, rule domain.BindingRule) error
 	GetByID(ctx context.Context, id int64) (domain.BindingRule, error)
 	List(ctx context.Context, filter domain.RuleFilter) ([]domain.BindingRule, error)
-	ListEnabled(ctx context.Context, tenantID string) ([]domain.BindingRule, error)
+	ListEnabled(ctx context.Context, tenantID int64) ([]domain.BindingRule, error)
 	Count(ctx context.Context, filter domain.RuleFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByNodeID(ctx context.Context, nodeID int64) error
@@ -62,7 +62,7 @@ func (r *ruleRepository) List(ctx context.Context, filter domain.RuleFilter) ([]
 	return rules, nil
 }
 
-func (r *ruleRepository) ListEnabled(ctx context.Context, tenantID string) ([]domain.BindingRule, error) {
+func (r *ruleRepository) ListEnabled(ctx context.Context, tenantID int64) ([]domain.BindingRule, error) {
 	daoRules, err := r.dao.ListEnabled(ctx, tenantID)
 	if err != nil {
 		return nil, err

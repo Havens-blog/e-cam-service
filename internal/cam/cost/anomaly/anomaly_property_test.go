@@ -79,7 +79,7 @@ func TestProperty26_AnomalyDetectionAndEventCompleteness(t *testing.T) {
 				DeviationPct:   deviationPct,
 				Severity:       severity,
 				PossibleCause:  "cost spike detected",
-				TenantID:       "tenant1",
+				TenantID:       3,
 			}
 
 			assert.NotEmpty(rt, anomaly.Dimension, "Dimension must be non-empty")
@@ -149,7 +149,7 @@ func TestProperty27_AnomalySeveritySortOrder(t *testing.T) {
 				DeviationPct:   deviation,
 				Severity:       sev,
 				PossibleCause:  "test",
-				TenantID:       "t1",
+				TenantID:       1,
 			}
 		}
 

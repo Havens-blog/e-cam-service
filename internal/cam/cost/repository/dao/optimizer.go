@@ -111,7 +111,7 @@ func (d *optimizerDAO) Count(ctx context.Context, filter repository.Recommendati
 	return d.db.Collection(RecommendationCollection).CountDocuments(ctx, query)
 }
 
-func (d *optimizerDAO) FindByResourceAndType(ctx context.Context, tenantID, resourceID, recType string) (domain.Recommendation, error) {
+func (d *optimizerDAO) FindByResourceAndType(ctx context.Context, tenantID int64, resourceID, recType string) (domain.Recommendation, error) {
 	var rec domain.Recommendation
 	filter := bson.M{
 		"tenant_id":   tenantID,
@@ -125,7 +125,7 @@ func (d *optimizerDAO) FindByResourceAndType(ctx context.Context, tenantID, reso
 
 func (d *optimizerDAO) buildQuery(filter repository.RecommendationFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.Type != "" {

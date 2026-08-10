@@ -15,7 +15,7 @@ type InstanceRepository interface {
 	CreateBatch(ctx context.Context, instances []domain.Instance) (int64, error)
 	Update(ctx context.Context, instance domain.Instance) error
 	GetByID(ctx context.Context, id int64) (domain.Instance, error)
-	GetByAssetID(ctx context.Context, tenantID, modelUID, assetID string) (domain.Instance, error)
+	GetByAssetID(ctx context.Context, tenantID int64, modelUID, assetID string) (domain.Instance, error)
 	List(ctx context.Context, filter domain.InstanceFilter) ([]domain.Instance, error)
 	ListByIDs(ctx context.Context, ids []int64) ([]domain.Instance, error)
 	Count(ctx context.Context, filter domain.InstanceFilter) (int64, error)
@@ -23,15 +23,15 @@ type InstanceRepository interface {
 	DeleteByAccountID(ctx context.Context, accountID int64) error
 	Upsert(ctx context.Context, instance domain.Instance) error
 	// ListUnbound 查询未绑定到服务树的资产
-	ListUnbound(ctx context.Context, tenantID string, offset, limit int64) ([]domain.Instance, error)
+	ListUnbound(ctx context.Context, tenantID int64, offset, limit int64) ([]domain.Instance, error)
 	// CountUnbound 统计未绑定资产数量
-	CountUnbound(ctx context.Context, tenantID string) (int64, error)
+	CountUnbound(ctx context.Context, tenantID int64) (int64, error)
 	// AggregateStatsByIDs 根据资源ID列表聚合统计（高性能）
 	AggregateStatsByIDs(ctx context.Context, ids []int64) (*dao.AssetStatsResult, error)
 	// AggregateAllStats 聚合统计全部资产
-	AggregateAllStats(ctx context.Context, tenantID string) (*dao.AssetStatsResult, error)
+	AggregateAllStats(ctx context.Context, tenantID int64) (*dao.AssetStatsResult, error)
 	// AggregateUnboundStats 聚合统计未绑定资产
-	AggregateUnboundStats(ctx context.Context, tenantID string) (*dao.AssetStatsResult, error)
+	AggregateUnboundStats(ctx context.Context, tenantID int64) (*dao.AssetStatsResult, error)
 }
 
 type instanceRepository struct {
@@ -70,7 +70,7 @@ func (r *instanceRepository) GetByID(ctx context.Context, id int64) (domain.Inst
 	return r.toDomain(daoInstance), nil
 }
 
-func (r *instanceRepository) GetByAssetID(ctx context.Context, tenantID, modelUID, assetID string) (domain.Instance, error) {
+func (r *instanceRepository) GetByAssetID(ctx context.Context, tenantID int64, modelUID, assetID string) (domain.Instance, error) {
 	daoInstance, err := r.dao.GetByAssetID(ctx, tenantID, modelUID, assetID)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -125,7 +125,7 @@ func (r *instanceRepository) Upsert(ctx context.Context, instance domain.Instanc
 	return r.dao.Upsert(ctx, r.toDAO(instance))
 }
 
-func (r *instanceRepository) ListUnbound(ctx context.Context, tenantID string, offset, limit int64) ([]domain.Instance, error) {
+func (r *instanceRepository) ListUnbound(ctx context.Context, tenantID int64, offset, limit int64) ([]domain.Instance, error) {
 	daoInstances, err := r.dao.ListUnbound(ctx, tenantID, offset, limit)
 	if err != nil {
 		return nil, err
@@ -137,7 +137,7 @@ func (r *instanceRepository) ListUnbound(ctx context.Context, tenantID string, o
 	return instances, nil
 }
 
-func (r *instanceRepository) CountUnbound(ctx context.Context, tenantID string) (int64, error) {
+func (r *instanceRepository) CountUnbound(ctx context.Context, tenantID int64) (int64, error) {
 	return r.dao.CountUnbound(ctx, tenantID)
 }
 
@@ -145,11 +145,11 @@ func (r *instanceRepository) AggregateStatsByIDs(ctx context.Context, ids []int6
 	return r.dao.AggregateStatsByIDs(ctx, ids)
 }
 
-func (r *instanceRepository) AggregateAllStats(ctx context.Context, tenantID string) (*dao.AssetStatsResult, error) {
+func (r *instanceRepository) AggregateAllStats(ctx context.Context, tenantID int64) (*dao.AssetStatsResult, error) {
 	return r.dao.AggregateAllStats(ctx, tenantID)
 }
 
-func (r *instanceRepository) AggregateUnboundStats(ctx context.Context, tenantID string) (*dao.AssetStatsResult, error) {
+func (r *instanceRepository) AggregateUnboundStats(ctx context.Context, tenantID int64) (*dao.AssetStatsResult, error) {
 	return r.dao.AggregateUnboundStats(ctx, tenantID)
 }
 

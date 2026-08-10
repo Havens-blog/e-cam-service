@@ -15,9 +15,9 @@ type NodeRepository interface {
 	Update(ctx context.Context, node domain.ServiceTreeNode) error
 	UpdatePath(ctx context.Context, id int64, path string) error
 	GetByID(ctx context.Context, id int64) (domain.ServiceTreeNode, error)
-	GetByUID(ctx context.Context, tenantID, uid string) (domain.ServiceTreeNode, error)
+	GetByUID(ctx context.Context, tenantID int64, uid string) (domain.ServiceTreeNode, error)
 	List(ctx context.Context, filter domain.NodeFilter) ([]domain.ServiceTreeNode, error)
-	ListByPath(ctx context.Context, tenantID, pathPrefix string) ([]domain.ServiceTreeNode, error)
+	ListByPath(ctx context.Context, tenantID int64, pathPrefix string) ([]domain.ServiceTreeNode, error)
 	Count(ctx context.Context, filter domain.NodeFilter) (int64, error)
 	CountChildren(ctx context.Context, parentID int64) (int64, error)
 	Delete(ctx context.Context, id int64) error
@@ -55,7 +55,7 @@ func (r *nodeRepository) GetByID(ctx context.Context, id int64) (domain.ServiceT
 	return r.toDomain(daoNode), nil
 }
 
-func (r *nodeRepository) GetByUID(ctx context.Context, tenantID, uid string) (domain.ServiceTreeNode, error) {
+func (r *nodeRepository) GetByUID(ctx context.Context, tenantID int64, uid string) (domain.ServiceTreeNode, error) {
 	daoNode, err := r.dao.GetByUID(ctx, tenantID, uid)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -79,7 +79,7 @@ func (r *nodeRepository) List(ctx context.Context, filter domain.NodeFilter) ([]
 	return nodes, nil
 }
 
-func (r *nodeRepository) ListByPath(ctx context.Context, tenantID, pathPrefix string) ([]domain.ServiceTreeNode, error) {
+func (r *nodeRepository) ListByPath(ctx context.Context, tenantID int64, pathPrefix string) ([]domain.ServiceTreeNode, error) {
 	daoNodes, err := r.dao.ListByPath(ctx, tenantID, pathPrefix)
 	if err != nil {
 		return nil, err

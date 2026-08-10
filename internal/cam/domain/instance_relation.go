@@ -8,7 +8,7 @@ type InstanceRelation struct {
 	SourceInstanceID int64  // 源实例ID
 	TargetInstanceID int64  // 目标实例ID
 	RelationTypeUID  string // 关系类型UID
-	TenantID         string // 租户ID
+	TenantID         int64  // 租户ID
 	CreateTime       time.Time
 }
 
@@ -17,7 +17,7 @@ type InstanceRelationFilter struct {
 	SourceInstanceID int64
 	TargetInstanceID int64
 	RelationTypeUID  string
-	TenantID         string
+	TenantID         int64
 	Offset           int64
 	Limit            int64
 }

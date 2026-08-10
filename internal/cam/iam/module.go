@@ -2,7 +2,7 @@ package iam
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/web"
-	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -22,7 +22,6 @@ type Module struct {
 func (m *Module) RegisterRoutes(r *gin.Engine) {
 	// 创建IAM路由组，应用租户中间件
 	iamGroup := r.Group("/api/v1/cam/iam")
-	iamGroup.Use(middleware.TenantMiddleware(m.Logger))
 
 	{
 		// 需要租户ID的路由组

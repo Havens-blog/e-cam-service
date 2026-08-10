@@ -21,7 +21,7 @@ type InstanceService interface {
 	// GetByID 根据ID获取实例
 	GetByID(ctx context.Context, id int64) (domain.Instance, error)
 	// GetByAssetID 根据云厂商资产ID获取实例
-	GetByAssetID(ctx context.Context, tenantID, modelUID, assetID string) (domain.Instance, error)
+	GetByAssetID(ctx context.Context, tenantID int64, modelUID, assetID string) (domain.Instance, error)
 	// List 获取实例列表
 	List(ctx context.Context, filter domain.InstanceFilter) ([]domain.Instance, int64, error)
 	// Delete 删除实例
@@ -112,7 +112,7 @@ func (s *instanceService) GetByID(ctx context.Context, id int64) (domain.Instanc
 }
 
 // GetByAssetID 根据云厂商资产ID获取实例
-func (s *instanceService) GetByAssetID(ctx context.Context, tenantID, modelUID, assetID string) (domain.Instance, error) {
+func (s *instanceService) GetByAssetID(ctx context.Context, tenantID int64, modelUID, assetID string) (domain.Instance, error) {
 	return s.repo.GetByAssetID(ctx, tenantID, modelUID, assetID)
 }
 

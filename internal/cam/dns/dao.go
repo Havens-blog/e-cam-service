@@ -24,7 +24,7 @@ type DnsDomainDoc struct {
 	Provider    string `bson:"provider"`
 	AccountID   int64  `bson:"account_id"`
 	AccountName string `bson:"account_name"`
-	TenantID    string `bson:"tenant_id"`
+	TenantID    int64  `bson:"tenant_id"`
 	RecordCount int64  `bson:"record_count"`
 	Status      string `bson:"status"`
 	Ctime       int64  `bson:"ctime"`
@@ -44,7 +44,7 @@ type DnsRecordDoc struct {
 	Status    string `bson:"status"`
 	Provider  string `bson:"provider"`
 	AccountID int64  `bson:"account_id"`
-	TenantID  string `bson:"tenant_id"`
+	TenantID  int64  `bson:"tenant_id"`
 	Ctime     int64  `bson:"ctime"`
 	Utime     int64  `bson:"utime"`
 }
@@ -89,7 +89,7 @@ func (d *DnsDomainDAO) UpsertDomain(ctx context.Context, doc DnsDomainDoc) error
 }
 
 // ListDomains 查询域名列表（支持过滤+分页）
-func (d *DnsDomainDAO) ListDomains(ctx context.Context, tenantID string, filter DomainFilter) ([]DnsDomainDoc, int64, error) {
+func (d *DnsDomainDAO) ListDomains(ctx context.Context, tenantID int64, filter DomainFilter) ([]DnsDomainDoc, int64, error) {
 	query := bson.M{"tenant_id": tenantID}
 	if filter.Keyword != "" {
 		query["domain_name"] = bson.M{"$regex": filter.Keyword, "$options": "i"}
@@ -134,12 +134,12 @@ func (d *DnsDomainDAO) ListDomains(ctx context.Context, tenantID string, filter 
 }
 
 // CountDomains 统计域名总数
-func (d *DnsDomainDAO) CountDomains(ctx context.Context, tenantID string) (int64, error) {
+func (d *DnsDomainDAO) CountDomains(ctx context.Context, tenantID int64) (int64, error) {
 	return d.coll.CountDocuments(ctx, bson.M{"tenant_id": tenantID})
 }
 
 // CountDomainsByProvider 按云厂商统计域名数
-func (d *DnsDomainDAO) CountDomainsByProvider(ctx context.Context, tenantID string) (map[string]int64, error) {
+func (d *DnsDomainDAO) CountDomainsByProvider(ctx context.Context, tenantID int64) (map[string]int64, error) {
 	pipeline := mongo.Pipeline{
 		{{Key: "$match", Value: bson.M{"tenant_id": tenantID}}},
 		{{Key: "$group", Value: bson.M{
@@ -170,7 +170,7 @@ func (d *DnsDomainDAO) CountDomainsByProvider(ctx context.Context, tenantID stri
 }
 
 // DeleteStaleDomains 删除不再存在的域名
-func (d *DnsDomainDAO) DeleteStaleDomains(ctx context.Context, tenantID string, accountID int64, currentNames []string) error {
+func (d *DnsDomainDAO) DeleteStaleDomains(ctx context.Context, tenantID int64, accountID int64, currentNames []string) error {
 	filter := bson.M{
 		"tenant_id":  tenantID,
 		"account_id": accountID,
@@ -226,7 +226,7 @@ func (d *DnsRecordDAO) UpsertRecord(ctx context.Context, doc DnsRecordDoc) error
 }
 
 // ListRecords 查询解析记录列表（支持过滤+分页）
-func (d *DnsRecordDAO) ListRecords(ctx context.Context, tenantID string, domain string, filter RecordFilter) ([]DnsRecordDoc, int64, error) {
+func (d *DnsRecordDAO) ListRecords(ctx context.Context, tenantID int64, domain string, filter RecordFilter) ([]DnsRecordDoc, int64, error) {
 	query := bson.M{
 		"tenant_id": tenantID,
 		"domain":    domain,
@@ -274,7 +274,7 @@ func (d *DnsRecordDAO) ListRecords(ctx context.Context, tenantID string, domain 
 }
 
 // SearchRecords 跨域名搜索解析记录（按 RR 或完整子域名模糊匹配）
-func (d *DnsRecordDAO) SearchRecords(ctx context.Context, tenantID string, keyword string, limit int64) ([]DnsRecordDoc, int64, error) {
+func (d *DnsRecordDAO) SearchRecords(ctx context.Context, tenantID int64, keyword string, limit int64) ([]DnsRecordDoc, int64, error) {
 	query := bson.M{
 		"tenant_id": tenantID,
 		"$or": bson.A{
@@ -311,7 +311,7 @@ func (d *DnsRecordDAO) SearchRecords(ctx context.Context, tenantID string, keywo
 }
 
 // CountRecordsByType 按记录类型统计
-func (d *DnsRecordDAO) CountRecordsByType(ctx context.Context, tenantID string) (map[string]int64, error) {
+func (d *DnsRecordDAO) CountRecordsByType(ctx context.Context, tenantID int64) (map[string]int64, error) {
 	pipeline := mongo.Pipeline{
 		{{Key: "$match", Value: bson.M{"tenant_id": tenantID}}},
 		{{Key: "$group", Value: bson.M{
@@ -342,7 +342,7 @@ func (d *DnsRecordDAO) CountRecordsByType(ctx context.Context, tenantID string) 
 }
 
 // DeleteStaleRecords 删除不再存在的记录
-func (d *DnsRecordDAO) DeleteStaleRecords(ctx context.Context, tenantID string, accountID int64, domain string, currentIDs []string) error {
+func (d *DnsRecordDAO) DeleteStaleRecords(ctx context.Context, tenantID int64, accountID int64, domain string, currentIDs []string) error {
 	filter := bson.M{
 		"tenant_id":  tenantID,
 		"account_id": accountID,

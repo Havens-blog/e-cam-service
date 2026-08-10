@@ -27,7 +27,7 @@ func NewChangeDetector(alertService *service.AlertService, logger *elog.Componen
 // oldInstances: 同步前的资产列表, newInstances: 同步后的资产列表
 func (d *ChangeDetector) DetectChanges(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	accountID int64,
 	provider string,
 	region string,
@@ -118,7 +118,7 @@ func (d *ChangeDetector) DetectChanges(
 
 func (d *ChangeDetector) emitChangeEvent(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	accountID int64,
 	provider, region, resourceType string,
 	changes []domain.ResourceChange,
@@ -160,7 +160,7 @@ func (d *ChangeDetector) emitChangeEvent(
 // DetectSyncFailure 检测同步失败并触发告警
 func (d *ChangeDetector) DetectSyncFailure(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	taskID string,
 	accountID int64,
 	accountName string,
@@ -186,7 +186,7 @@ func (d *ChangeDetector) DetectSyncFailure(
 // DetectExpiration 检测资源过期
 func (d *ChangeDetector) DetectExpiration(
 	ctx context.Context,
-	tenantID string,
+	tenantID int64,
 	instances []camdomain.Instance,
 	reminderDays []int, // e.g. [7, 3, 1]
 ) error {

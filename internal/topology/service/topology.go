@@ -17,11 +17,11 @@ type TopologyService interface {
 	// GetInstanceTopology 获取实例归属拓扑（树模式）
 	GetInstanceTopology(ctx context.Context, params domain.TopologyQueryParams) (*domain.TopoGraph, error)
 	// GetNodeDetail 获取单个节点详情（含上下游关系）
-	GetNodeDetail(ctx context.Context, tenantID, nodeID string) (*domain.NodeDetail, error)
+	GetNodeDetail(ctx context.Context, tenantID int64, nodeID string) (*domain.NodeDetail, error)
 	// GetDomains 获取所有 DNS 入口域名列表
-	GetDomains(ctx context.Context, tenantID string) ([]domain.DomainItem, error)
+	GetDomains(ctx context.Context, tenantID int64) ([]domain.DomainItem, error)
 	// GetStats 获取拓扑统计信息
-	GetStats(ctx context.Context, tenantID string) (*domain.TopoStats, error)
+	GetStats(ctx context.Context, tenantID int64) (*domain.TopoStats, error)
 }
 
 type topologyService struct {
@@ -271,7 +271,7 @@ func (s *topologyService) GetInstanceTopology(ctx context.Context, params domain
 }
 
 // GetNodeDetail 获取单个节点详情
-func (s *topologyService) GetNodeDetail(ctx context.Context, tenantID, nodeID string) (*domain.NodeDetail, error) {
+func (s *topologyService) GetNodeDetail(ctx context.Context, tenantID int64, nodeID string) (*domain.NodeDetail, error) {
 	node, err := s.nodeRepo.FindByID(ctx, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find node: %w", err)
@@ -321,7 +321,7 @@ func (s *topologyService) GetNodeDetail(ctx context.Context, tenantID, nodeID st
 }
 
 // getNodeDetailFromLive 从 live builder 实时构建拓扑并查找节点详情
-func (s *topologyService) getNodeDetailFromLive(ctx context.Context, tenantID, nodeID string) (*domain.NodeDetail, error) {
+func (s *topologyService) getNodeDetailFromLive(ctx context.Context, tenantID int64, nodeID string) (*domain.NodeDetail, error) {
 	// 从 nodeID 推断域名过滤条件
 	domainFilter := ""
 	if strings.HasPrefix(nodeID, "dns-") {
@@ -375,7 +375,7 @@ func (s *topologyService) getNodeDetailFromLive(ctx context.Context, tenantID, n
 }
 
 // GetDomains 获取所有 DNS 入口域名列表
-func (s *topologyService) GetDomains(ctx context.Context, tenantID string) ([]domain.DomainItem, error) {
+func (s *topologyService) GetDomains(ctx context.Context, tenantID int64) ([]domain.DomainItem, error) {
 	dnsNodes, err := s.nodeRepo.FindDNSEntries(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find DNS entries: %w", err)
@@ -393,7 +393,7 @@ func (s *topologyService) GetDomains(ctx context.Context, tenantID string) ([]do
 }
 
 // GetStats 获取拓扑统计信息
-func (s *topologyService) GetStats(ctx context.Context, tenantID string) (*domain.TopoStats, error) {
+func (s *topologyService) GetStats(ctx context.Context, tenantID int64) (*domain.TopoStats, error) {
 	nodeCount, err := s.nodeRepo.Count(ctx, domain.NodeFilter{TenantID: tenantID})
 	if err != nil {
 		return nil, err
@@ -502,7 +502,7 @@ func (s *topologyService) filterByDomain(nodes []domain.TopoNode, edges []domain
 // bridgeELBToAPM 自动匹配 ELB 后端 ENI 的 IP 和 APM 服务的 service_ips，建立桥接边。
 // 逻辑：遍历所有 ELB/SLB 类型的节点，找到其下游 ENI 节点的 private_ip，
 // 然后匹配 APM 服务节点 attributes 中的 service_ips，匹配到就建立 ELB→APM 服务的边。
-func (s *topologyService) bridgeELBToAPM(nodes []domain.TopoNode, edges []domain.TopoEdge, tenantID string) ([]domain.TopoNode, []domain.TopoEdge) {
+func (s *topologyService) bridgeELBToAPM(nodes []domain.TopoNode, edges []domain.TopoEdge, tenantID int64) ([]domain.TopoNode, []domain.TopoEdge) {
 	// 1. 收集所有 ENI 节点的 private_ip → 其父节点（ELB）的 ID
 	eniParent := make(map[string]string) // ENI private_ip → ELB node ID
 	nodeMap := make(map[string]*domain.TopoNode, len(nodes))
@@ -602,7 +602,7 @@ func extractIPsFromAttr(val interface{}) []string {
 }
 
 // clearLiveBuilderCache 清除指定域名的 LiveBuilder 缓存数据（dns_api 和 cloud_api 来源的节点和边）
-func (s *topologyService) clearLiveBuilderCache(ctx context.Context, tenantID, domainName string) {
+func (s *topologyService) clearLiveBuilderCache(ctx context.Context, tenantID int64, domainName string) {
 	// 找到该域名的 DNS 入口节点
 	dnsNodeID := ""
 	nodes, _ := s.nodeRepo.Find(ctx, domain.NodeFilter{TenantID: tenantID})

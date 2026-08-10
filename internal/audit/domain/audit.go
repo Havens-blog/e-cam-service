@@ -31,7 +31,7 @@ type AuditLog struct {
 	OperationType AuditOperationType `json:"operation_type" bson:"operation_type"`
 	OperatorID    string             `json:"operator_id" bson:"operator_id"`
 	OperatorName  string             `json:"operator_name" bson:"operator_name"`
-	TenantID      string             `json:"tenant_id" bson:"tenant_id"`
+	TenantID      int64              `json:"tenant_id" bson:"tenant_id"`
 	HTTPMethod    string             `json:"http_method" bson:"http_method"`
 	APIPath       string             `json:"api_path" bson:"api_path"`
 	RequestBody   string             `json:"request_body" bson:"request_body"`
@@ -48,7 +48,7 @@ type AuditLog struct {
 type AuditLogFilter struct {
 	OperationType AuditOperationType `json:"operation_type"`
 	OperatorID    string             `json:"operator_id"`
-	TenantID      string             `json:"tenant_id"`
+	TenantID      int64              `json:"tenant_id"`
 	HTTPMethod    string             `json:"http_method"`
 	APIPath       string             `json:"api_path"` // 前缀匹配
 	RequestID     string             `json:"request_id"`

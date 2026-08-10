@@ -36,7 +36,7 @@ type UserGroup struct {
 	Policies       []PermissionPolicy `bson:"policies"`
 	CloudPlatforms []CloudProvider    `bson:"cloud_platforms"`
 	UserCount      int                `bson:"user_count"`
-	TenantID       string             `bson:"tenant_id"`
+	TenantID       int64              `bson:"tenant_id"`
 	CreateTime     time.Time          `bson:"create_time"`
 	UpdateTime     time.Time          `bson:"update_time"`
 	CTime          int64              `bson:"ctime"`
@@ -45,7 +45,7 @@ type UserGroup struct {
 
 // UserGroupFilter DAO层过滤条件
 type UserGroupFilter struct {
-	TenantID string
+	TenantID int64
 	Keyword  string
 	Offset   int64
 	Limit    int64
@@ -56,7 +56,7 @@ type UserGroupDAO interface {
 	Create(ctx context.Context, group UserGroup) (int64, error)
 	Update(ctx context.Context, group UserGroup) error
 	GetByID(ctx context.Context, id int64) (UserGroup, error)
-	GetByName(ctx context.Context, name, tenantID string) (UserGroup, error)
+	GetByName(ctx context.Context, name string, tenantID int64) (UserGroup, error)
 	List(ctx context.Context, filter UserGroupFilter) ([]UserGroup, error)
 	Count(ctx context.Context, filter UserGroupFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
@@ -134,7 +134,7 @@ func (dao *userGroupDAO) GetByID(ctx context.Context, id int64) (UserGroup, erro
 }
 
 // GetByName 根据名称和租户ID获取用户组
-func (dao *userGroupDAO) GetByName(ctx context.Context, name, tenantID string) (UserGroup, error) {
+func (dao *userGroupDAO) GetByName(ctx context.Context, name string, tenantID int64) (UserGroup, error) {
 	var group UserGroup
 	filter := bson.M{
 		"name":      name,
@@ -151,7 +151,7 @@ func (dao *userGroupDAO) List(ctx context.Context, filter UserGroupFilter) ([]Us
 
 	// 构建查询条件
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.Keyword != "" {
@@ -185,7 +185,7 @@ func (dao *userGroupDAO) List(ctx context.Context, filter UserGroupFilter) ([]Us
 func (dao *userGroupDAO) Count(ctx context.Context, filter UserGroupFilter) (int64, error) {
 	// 构建查询条件
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.Keyword != "" {

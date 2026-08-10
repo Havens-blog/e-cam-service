@@ -5,8 +5,8 @@ import (
 	"strconv"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/service"
-	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -50,7 +50,7 @@ func (h *UserGroupHandler) CreateGroup(c *gin.Context) {
 	})
 
 	if err != nil {
-		h.logger.Error("创建用户组失败", elog.String("tenant_id", tenantID), elog.FieldErr(err))
+		h.logger.Error("创建用户组失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -78,7 +78,7 @@ func (h *UserGroupHandler) GetGroup(c *gin.Context) {
 
 	group, err := h.groupService.GetGroup(c.Request.Context(), id)
 	if err != nil {
-		h.logger.Error("获取用户组失败", elog.String("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
+		h.logger.Error("获取用户组失败", elog.Int64("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -122,7 +122,7 @@ func (h *UserGroupHandler) ListGroups(c *gin.Context) {
 	})
 
 	if err != nil {
-		h.logger.Error("查询用户组列表失败", elog.String("tenant_id", tenantID), elog.FieldErr(err))
+		h.logger.Error("查询用户组列表失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -163,7 +163,7 @@ func (h *UserGroupHandler) UpdateGroup(c *gin.Context) {
 	})
 
 	if err != nil {
-		h.logger.Error("更新用户组失败", elog.String("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
+		h.logger.Error("更新用户组失败", elog.Int64("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -191,7 +191,7 @@ func (h *UserGroupHandler) DeleteGroup(c *gin.Context) {
 
 	err = h.groupService.DeleteGroup(c.Request.Context(), id)
 	if err != nil {
-		h.logger.Error("删除用户组失败", elog.String("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
+		h.logger.Error("删除用户组失败", elog.Int64("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -227,7 +227,7 @@ func (h *UserGroupHandler) UpdatePolicies(c *gin.Context) {
 
 	err = h.groupService.UpdatePolicies(c.Request.Context(), id, req.Policies)
 	if err != nil {
-		h.logger.Error("更新权限策略失败", elog.String("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
+		h.logger.Error("更新权限策略失败", elog.Int64("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -255,7 +255,7 @@ func (h *UserGroupHandler) GetGroupMembers(c *gin.Context) {
 
 	members, err := h.groupService.GetGroupMembers(c.Request.Context(), id)
 	if err != nil {
-		h.logger.Error("获取用户组成员失败", elog.String("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
+		h.logger.Error("获取用户组成员失败", elog.Int64("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
 		c.JSON(500, Error(err))
 		return
 	}
@@ -308,7 +308,7 @@ func (h *UserGroupHandler) SyncGroups(c *gin.Context) {
 	result, err := h.groupService.SyncGroups(c.Request.Context(), cloudAccountID)
 	if err != nil {
 		h.logger.Error("同步用户组失败",
-			elog.String("tenant_id", tenantID),
+			elog.Int64("tenant_id", tenantID),
 			elog.Int64("cloud_account_id", cloudAccountID),
 			elog.FieldErr(err))
 		c.JSON(500, Error(err))

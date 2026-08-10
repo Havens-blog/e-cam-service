@@ -16,7 +16,7 @@ func TestLinkDeclaration_Validate(t *testing.T) {
 		Links: []DeclarationLink{
 			{Target: "user-svc", Relation: RelationRoute, Direction: DirectionOutbound},
 		},
-		TenantID: "t1",
+		TenantID: 1,
 	}
 
 	t.Run("valid declaration", func(t *testing.T) {
@@ -37,7 +37,7 @@ func TestLinkDeclaration_Validate(t *testing.T) {
 
 	t.Run("missing tenant_id", func(t *testing.T) {
 		d := validDecl
-		d.TenantID = ""
+		d.TenantID = 0
 		assert.ErrorContains(t, d.Validate(), "tenant_id is required")
 	})
 
@@ -97,7 +97,7 @@ func TestLinkDeclaration_ToTopoNode(t *testing.T) {
 			ID: "gw-01", Name: "Gateway", Type: NodeTypeGateway,
 			Category: CategoryGateway, Provider: ProviderSelfHosted, Region: "cn-hangzhou",
 		},
-		TenantID: "t1",
+		TenantID: 1,
 	}
 
 	node := decl.ToTopoNode()
@@ -105,7 +105,7 @@ func TestLinkDeclaration_ToTopoNode(t *testing.T) {
 	assert.Equal(t, "Gateway", node.Name)
 	assert.Equal(t, NodeTypeGateway, node.Type)
 	assert.Equal(t, SourceDeclaration, node.SourceCollector)
-	assert.Equal(t, "t1", node.TenantID)
+	assert.Equal(t, int64(1), node.TenantID)
 }
 
 func TestLinkDeclaration_ToTopoNode_LogCollector(t *testing.T) {
@@ -114,7 +114,7 @@ func TestLinkDeclaration_ToTopoNode_LogCollector(t *testing.T) {
 		Node: DeclarationNode{
 			ID: "svc-01", Name: "user-svc", Type: NodeTypeK8sService, Category: CategoryContainer,
 		},
-		TenantID: "t1",
+		TenantID: 1,
 	}
 
 	node := decl.ToTopoNode()
@@ -129,7 +129,7 @@ func TestLinkDeclaration_ToTopoEdges(t *testing.T) {
 			{Target: "user-svc", Relation: RelationRoute, Direction: DirectionOutbound},
 			{Target: "order-svc", Relation: RelationRoute, Direction: DirectionOutbound},
 		},
-		TenantID: "t1",
+		TenantID: 1,
 	}
 
 	edges := decl.ToTopoEdges()

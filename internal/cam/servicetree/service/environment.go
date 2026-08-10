@@ -15,9 +15,9 @@ type EnvironmentService interface {
 	Update(ctx context.Context, env domain.Environment) error
 	Delete(ctx context.Context, id int64) error
 	GetByID(ctx context.Context, id int64) (domain.Environment, error)
-	GetByCode(ctx context.Context, tenantID, code string) (domain.Environment, error)
+	GetByCode(ctx context.Context, tenantID int64, code string) (domain.Environment, error)
 	List(ctx context.Context, filter domain.EnvironmentFilter) ([]domain.Environment, int64, error)
-	InitDefaultEnvs(ctx context.Context, tenantID string) error
+	InitDefaultEnvs(ctx context.Context, tenantID int64) error
 }
 
 type environmentService struct {
@@ -104,7 +104,7 @@ func (s *environmentService) GetByID(ctx context.Context, id int64) (domain.Envi
 	return s.envRepo.GetByID(ctx, id)
 }
 
-func (s *environmentService) GetByCode(ctx context.Context, tenantID, code string) (domain.Environment, error) {
+func (s *environmentService) GetByCode(ctx context.Context, tenantID int64, code string) (domain.Environment, error) {
 	return s.envRepo.GetByCode(ctx, tenantID, code)
 }
 
@@ -123,14 +123,14 @@ func (s *environmentService) List(ctx context.Context, filter domain.Environment
 }
 
 // InitDefaultEnvs 初始化默认环境
-func (s *environmentService) InitDefaultEnvs(ctx context.Context, tenantID string) error {
+func (s *environmentService) InitDefaultEnvs(ctx context.Context, tenantID int64) error {
 	// 检查是否已有环境
 	count, err := s.envRepo.Count(ctx, domain.EnvironmentFilter{TenantID: tenantID})
 	if err != nil {
 		return err
 	}
 	if count > 0 {
-		s.logger.Info("租户已有环境，跳过初始化", elog.String("tenantID", tenantID))
+		s.logger.Info("租户已有环境，跳过初始化", elog.Int64("tenantID", tenantID))
 		return nil
 	}
 
@@ -141,6 +141,6 @@ func (s *environmentService) InitDefaultEnvs(ctx context.Context, tenantID strin
 		return err
 	}
 
-	s.logger.Info("初始化默认环境成功", elog.String("tenantID", tenantID), elog.Int("count", len(defaultEnvs)))
+	s.logger.Info("初始化默认环境成功", elog.Int64("tenantID", tenantID), elog.Int("count", len(defaultEnvs)))
 	return nil
 }

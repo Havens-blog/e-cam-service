@@ -141,7 +141,7 @@ func (d *changeRecordDAO) buildQuery(filter domain.ChangeFilter) bson.M {
 	if filter.AssetID != "" {
 		query["asset_id"] = filter.AssetID
 	}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.ModelUID != "" {

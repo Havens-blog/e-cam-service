@@ -10,17 +10,17 @@ import (
 // DashboardService 仪表盘服务接口
 type DashboardService interface {
 	// GetOverview 获取资产总览
-	GetOverview(ctx context.Context, tenantID string) (*DashboardOverview, error)
+	GetOverview(ctx context.Context, tenantID int64) (*DashboardOverview, error)
 	// CountByProvider 按云厂商统计
-	CountByProvider(ctx context.Context, tenantID string) ([]dao.GroupCount, error)
+	CountByProvider(ctx context.Context, tenantID int64) ([]dao.GroupCount, error)
 	// CountByRegion 按地域统计
-	CountByRegion(ctx context.Context, tenantID string) ([]dao.GroupCount, error)
+	CountByRegion(ctx context.Context, tenantID int64) ([]dao.GroupCount, error)
 	// CountByAssetType 按资产类型统计
-	CountByAssetType(ctx context.Context, tenantID string) ([]dao.GroupCount, error)
+	CountByAssetType(ctx context.Context, tenantID int64) ([]dao.GroupCount, error)
 	// CountByAccount 按云账号统计
-	CountByAccount(ctx context.Context, tenantID string) ([]dao.GroupCount, error)
+	CountByAccount(ctx context.Context, tenantID int64) ([]dao.GroupCount, error)
 	// GetExpiringResources 获取即将过期的资源
-	GetExpiringResources(ctx context.Context, tenantID string, days int, offset, limit int64) ([]dao.Instance, int64, error)
+	GetExpiringResources(ctx context.Context, tenantID int64, days int, offset, limit int64) ([]dao.Instance, int64, error)
 }
 
 // DashboardOverview 仪表盘总览数据
@@ -45,7 +45,7 @@ func NewDashboardService(dao dao.DashboardDAO) DashboardService {
 }
 
 // GetOverview 获取资产总览
-func (s *dashboardService) GetOverview(ctx context.Context, tenantID string) (*DashboardOverview, error) {
+func (s *dashboardService) GetOverview(ctx context.Context, tenantID int64) (*DashboardOverview, error) {
 	total, err := s.dao.GetTotalCount(ctx, tenantID)
 	if err != nil {
 		return nil, err
@@ -75,26 +75,26 @@ func (s *dashboardService) GetOverview(ctx context.Context, tenantID string) (*D
 }
 
 // CountByProvider 按云厂商统计
-func (s *dashboardService) CountByProvider(ctx context.Context, tenantID string) ([]dao.GroupCount, error) {
+func (s *dashboardService) CountByProvider(ctx context.Context, tenantID int64) ([]dao.GroupCount, error) {
 	return s.dao.CountByProvider(ctx, tenantID)
 }
 
 // CountByRegion 按地域统计
-func (s *dashboardService) CountByRegion(ctx context.Context, tenantID string) ([]dao.GroupCount, error) {
+func (s *dashboardService) CountByRegion(ctx context.Context, tenantID int64) ([]dao.GroupCount, error) {
 	return s.dao.CountByRegion(ctx, tenantID)
 }
 
 // CountByAssetType 按资产类型统计
-func (s *dashboardService) CountByAssetType(ctx context.Context, tenantID string) ([]dao.GroupCount, error) {
+func (s *dashboardService) CountByAssetType(ctx context.Context, tenantID int64) ([]dao.GroupCount, error) {
 	return s.dao.CountByAssetType(ctx, tenantID)
 }
 
 // CountByAccount 按云账号统计
-func (s *dashboardService) CountByAccount(ctx context.Context, tenantID string) ([]dao.GroupCount, error) {
+func (s *dashboardService) CountByAccount(ctx context.Context, tenantID int64) ([]dao.GroupCount, error) {
 	return s.dao.CountByAccountID(ctx, tenantID)
 }
 
 // GetExpiringResources 获取即将过期的资源
-func (s *dashboardService) GetExpiringResources(ctx context.Context, tenantID string, days int, offset, limit int64) ([]dao.Instance, int64, error) {
+func (s *dashboardService) GetExpiringResources(ctx context.Context, tenantID int64, days int, offset, limit int64) ([]dao.Instance, int64, error) {
 	return s.dao.GetExpiringInstances(ctx, tenantID, days, offset, limit)
 }

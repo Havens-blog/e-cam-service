@@ -117,7 +117,7 @@ type TopoNode struct {
 	Status          string                 `bson:"status" json:"status"`
 	SourceCollector string                 `bson:"source_collector" json:"source_collector"`
 	Attributes      map[string]interface{} `bson:"attributes,omitempty" json:"attributes,omitempty"`
-	TenantID        string                 `bson:"tenant_id" json:"tenant_id"`
+	TenantID        int64                  `bson:"tenant_id" json:"tenant_id"`
 	DagDepth        int                    `bson:"-" json:"dag_depth,omitempty"`
 	UpdatedAt       time.Time              `bson:"updated_at" json:"updated_at"`
 }
@@ -142,7 +142,7 @@ func (n *TopoNode) Validate() error {
 	if n.SourceCollector != "" && !ValidSourceCollectors[n.SourceCollector] {
 		return fmt.Errorf("invalid source_collector: %s", n.SourceCollector)
 	}
-	if n.TenantID == "" {
+	if n.TenantID == 0 {
 		return fmt.Errorf("tenant_id is required")
 	}
 	return nil

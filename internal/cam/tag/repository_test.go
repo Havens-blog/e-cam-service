@@ -71,7 +71,7 @@ func TestMockTagDAO_InsertPolicy(t *testing.T) {
 	dao := &mockTagDAO{
 		insertPolicyFn: func(_ context.Context, policy TagPolicy) (int64, error) {
 			assert.Equal(t, "基础标签规范", policy.Name)
-			assert.Equal(t, "tenant1", policy.TenantID)
+			assert.Equal(t, int64(3), policy.TenantID)
 			assert.Equal(t, []string{"env", "team"}, policy.RequiredKeys)
 			return 100, nil
 		},
@@ -79,7 +79,7 @@ func TestMockTagDAO_InsertPolicy(t *testing.T) {
 
 	id, err := dao.InsertPolicy(context.Background(), TagPolicy{
 		Name:         "基础标签规范",
-		TenantID:     "tenant1",
+		TenantID:     3,
 		RequiredKeys: []string{"env", "team"},
 		Status:       "enabled",
 	})
@@ -111,7 +111,7 @@ func TestMockTagDAO_UpdatePolicy(t *testing.T) {
 	err := dao.UpdatePolicy(context.Background(), TagPolicy{
 		ID:           100,
 		Name:         "更新后的策略",
-		TenantID:     "tenant1",
+		TenantID:     3,
 		RequiredKeys: []string{"env", "team", "project"},
 		Status:       "enabled",
 	})
@@ -128,7 +128,7 @@ func TestMockTagDAO_UpdatePolicy_NotFound(t *testing.T) {
 		},
 	}
 
-	err := dao.UpdatePolicy(context.Background(), TagPolicy{ID: 999, TenantID: "tenant1"})
+	err := dao.UpdatePolicy(context.Background(), TagPolicy{ID: 999, TenantID: 3})
 	assert.Error(t, err)
 }
 
@@ -164,7 +164,7 @@ func TestMockTagDAO_GetPolicyByID(t *testing.T) {
 			return TagPolicy{
 				ID:           id,
 				Name:         "基础标签规范",
-				TenantID:     "tenant1",
+				TenantID:     3,
 				RequiredKeys: []string{"env"},
 				Status:       "enabled",
 			}, nil
@@ -175,7 +175,7 @@ func TestMockTagDAO_GetPolicyByID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(100), policy.ID)
 	assert.Equal(t, "基础标签规范", policy.Name)
-	assert.Equal(t, "tenant1", policy.TenantID)
+	assert.Equal(t, int64(3), policy.TenantID)
 }
 
 func TestMockTagDAO_GetPolicyByID_NotFound(t *testing.T) {
@@ -192,18 +192,18 @@ func TestMockTagDAO_GetPolicyByID_NotFound(t *testing.T) {
 func TestMockTagDAO_ListPolicies(t *testing.T) {
 	dao := &mockTagDAO{
 		listPoliciesFn: func(_ context.Context, filter PolicyFilter) ([]TagPolicy, int64, error) {
-			assert.Equal(t, "tenant1", filter.TenantID)
+			assert.Equal(t, int64(3), filter.TenantID)
 			assert.Equal(t, int64(0), filter.Offset)
 			assert.Equal(t, int64(20), filter.Limit)
 			return []TagPolicy{
-				{ID: 1, Name: "策略A", TenantID: "tenant1"},
-				{ID: 2, Name: "策略B", TenantID: "tenant1"},
+				{ID: 1, Name: "策略A", TenantID: 3},
+				{ID: 2, Name: "策略B", TenantID: 3},
 			}, 2, nil
 		},
 	}
 
 	policies, total, err := dao.ListPolicies(context.Background(), PolicyFilter{
-		TenantID: "tenant1",
+		TenantID: 3,
 		Offset:   0,
 		Limit:    20,
 	})
@@ -222,7 +222,7 @@ func TestMockTagDAO_ListPolicies_Empty(t *testing.T) {
 	}
 
 	policies, total, err := dao.ListPolicies(context.Background(), PolicyFilter{
-		TenantID: "tenant1",
+		TenantID: 3,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), total)
@@ -236,7 +236,7 @@ func TestMockTagDAO_ListPolicies_Error(t *testing.T) {
 		},
 	}
 
-	_, _, err := dao.ListPolicies(context.Background(), PolicyFilter{TenantID: "tenant1"})
+	_, _, err := dao.ListPolicies(context.Background(), PolicyFilter{TenantID: 3})
 	assert.Error(t, err)
 }
 
@@ -280,7 +280,7 @@ func TestMockTagDAO_InsertPolicy_WithConstraints(t *testing.T) {
 
 	id, err := dao.InsertPolicy(context.Background(), TagPolicy{
 		Name:         "完整策略",
-		TenantID:     "tenant1",
+		TenantID:     3,
 		RequiredKeys: []string{"env"},
 		KeyValueConstraints: map[string][]string{
 			"env": {"production", "staging", "development"},
@@ -305,7 +305,7 @@ func TestMockTagDAO_UpdatePolicy_AllFields(t *testing.T) {
 		ID:           100,
 		Name:         "更新策略",
 		Description:  "更新描述",
-		TenantID:     "tenant1",
+		TenantID:     3,
 		RequiredKeys: []string{"env", "team"},
 		KeyValueConstraints: map[string][]string{
 			"env": {"prod", "dev"},

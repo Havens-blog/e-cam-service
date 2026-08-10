@@ -150,7 +150,7 @@ type CloudAccount struct {
 	Description     string               `json:"description"`
 	Status          string               `json:"status"`
 	Config          CloudAccountConfigVO `json:"config"`
-	TenantID        string               `json:"tenant_id"`
+	TenantID        int64                `json:"tenant_id"`
 	LastSyncTime    *time.Time           `json:"last_sync_time"`
 	LastTestTime    *time.Time           `json:"last_test_time"`
 	AssetCount      int64                `json:"asset_count"`
@@ -200,7 +200,7 @@ type ListCloudAccountsReq struct {
 	Provider    string `json:"provider"`
 	Environment string `json:"environment"`
 	Status      string `json:"status"`
-	TenantID    string `json:"tenant_id"`
+	TenantID    int64  `json:"tenant_id"`
 }
 
 // CloudAccountListResp 云账号列表响应

@@ -95,11 +95,10 @@ func (s *auditService) ListAuditLogs(ctx context.Context, filter domain.AuditLog
 	return logPtrs, total, nil
 }
 
-
 func (s *auditService) ExportAuditLogs(ctx context.Context, filter domain.AuditLogFilter, format domain.ExportFormat) ([]byte, error) {
 	s.logger.Info("导出审计日志",
 		elog.String("format", string(format)),
-		elog.String("tenant_id", filter.TenantID))
+		elog.Int64("tenant_id", filter.TenantID))
 
 	startTime := time.Now()
 
@@ -140,7 +139,7 @@ func (s *auditService) ExportAuditLogs(ctx context.Context, filter domain.AuditL
 
 func (s *auditService) GenerateAuditReport(ctx context.Context, req *domain.AuditReportRequest) (*domain.AuditReport, error) {
 	s.logger.Info("生成审计报告",
-		elog.String("tenant_id", req.TenantID),
+		elog.Int64("tenant_id", req.TenantID),
 		elog.String("start_time", req.StartTime.Format("2006-01-02 15:04:05")),
 		elog.String("end_time", req.EndTime.Format("2006-01-02 15:04:05")))
 
@@ -226,7 +225,7 @@ func (s *auditService) validateAuditLog(log *domain.AuditLog) error {
 	if log.OperatorID == "" {
 		return fmt.Errorf("操作人ID不能为空")
 	}
-	if log.TenantID == "" {
+	if log.TenantID == 0 {
 		return fmt.Errorf("租户ID不能为空")
 	}
 
@@ -256,7 +255,7 @@ func (s *auditService) validateReportRequest(req *domain.AuditReportRequest) err
 	if req.EndTime == nil {
 		return fmt.Errorf("结束时间不能为空")
 	}
-	if req.TenantID == "" {
+	if req.TenantID == 0 {
 		return fmt.Errorf("租户ID不能为空")
 	}
 	if req.EndTime.Before(*req.StartTime) {

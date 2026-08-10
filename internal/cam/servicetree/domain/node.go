@@ -27,7 +27,7 @@ type ServiceTreeNode struct {
 	ParentID    int64    // 父节点ID (0表示根节点)
 	Level       int      // 层级 (1=业务线, 2=产品, 3=模块...)
 	Path        string   // 完整路径 (如 /1/5/12/)，便于查询子树
-	TenantID    string   // 租户ID
+	TenantID    int64    // 租户ID
 	Owner       string   // 负责人
 	Team        string   // 所属团队
 	Description string   // 描述
@@ -43,7 +43,7 @@ func (n *ServiceTreeNode) Validate() error {
 	if n.Name == "" {
 		return fmt.Errorf("节点名称不能为空")
 	}
-	if n.TenantID == "" {
+	if n.TenantID == 0 {
 		return fmt.Errorf("租户ID不能为空")
 	}
 	// Level 由服务层根据 ParentID 自动计算，不在此处验证
@@ -70,7 +70,7 @@ func (n *ServiceTreeNode) BuildPath(parentPath string) string {
 
 // NodeFilter 节点过滤条件
 type NodeFilter struct {
-	TenantID string // 租户ID
+	TenantID int64  // 租户ID
 	ParentID *int64 // 父节点ID (nil表示不过滤)
 	Level    int    // 层级
 	Status   *int   // 状态

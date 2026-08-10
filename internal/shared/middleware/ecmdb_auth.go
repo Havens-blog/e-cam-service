@@ -16,6 +16,10 @@ const (
 	CtxUidKey = "uid"
 	// CtxUsernameKey 用户名在上下文中的键
 	CtxUsernameKey = "username"
+	// TenantIDKey 租户ID在上下文中的键。
+	// 值类型为 int64，唯一写入方是本文件的认证中间件（取自 JWT claims）。
+	// 客户端不得指定租户：X-Tenant-ID 头与 tenant_id 查询参数均已废弃。
+	TenantIDKey = "tenant_id"
 )
 
 // AuthConfig 认证中间件配置
@@ -64,9 +68,17 @@ func EcmdbAuthMiddlewareWithConfig(sp session.Provider, cfg AuthConfig, logger *
 			c.Header("X-Request-User", username)
 		}
 
-		// 同时注入 tenant_id（从 session 中获取，如果有的话）
-		if tenantID, ok := claims.Data["tenant_id"]; ok && tenantID != "" {
-			c.Set(TenantIDKey, tenantID)
+		// 注入租户：JWT claims 里是 strconv.FormatInt 后的字符串（eiam 侧写入），
+		// 此处统一解析为 int64，全仓下游只见 int64。
+		// 解析失败或缺失时不设置该键，GetTenantID 将返回 0，由 RequireTenant 拒绝。
+		if raw, ok := claims.Data["tenant_id"]; ok && raw != "" {
+			if tid, err := strconv.ParseInt(raw, 10, 64); err == nil {
+				c.Set(TenantIDKey, tid)
+			} else {
+				logger.Warn("JWT 中的 tenant_id 无法解析为 int64",
+					elog.String("raw", raw),
+					elog.String("path", c.Request.URL.Path))
+			}
 		}
 
 		// 保存 session 到上下文，供后续中间件使用
@@ -104,6 +116,18 @@ func GetUid(c *gin.Context) int64 {
 		case string:
 			id, _ := strconv.ParseInt(v, 10, 64)
 			return id
+		}
+	}
+	return 0
+}
+
+// GetTenantID 从上下文取出租户 ID。
+// 返回 0 表示会话未选定租户（eiam 以 tenant_id=0 表示等待选择的临时凭证），
+// 调用方不得把 0 当作「全部租户」通配，那会导致跨租户数据泄露。
+func GetTenantID(c *gin.Context) int64 {
+	if v, exists := c.Get(TenantIDKey); exists {
+		if tid, ok := v.(int64); ok {
+			return tid
 		}
 	}
 	return 0

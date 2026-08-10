@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -12,12 +12,12 @@ import (
 
 // BindingService 资源绑定服务接口
 type BindingService interface {
-	BindResource(ctx context.Context, nodeID, envID int64, resourceType string, resourceID int64, tenantID string) (int64, error)
+	BindResource(ctx context.Context, nodeID, envID int64, resourceType string, resourceID int64, tenantID int64) (int64, error)
 	BindResourceBatch(ctx context.Context, req domain.BatchBindRequest) (int64, error)
-	UnbindResource(ctx context.Context, tenantID, resourceType string, resourceID int64) error
+	UnbindResource(ctx context.Context, tenantID int64, resourceType string, resourceID int64) error
 	UnbindByID(ctx context.Context, bindingID int64) error
 	GetBinding(ctx context.Context, id int64) (domain.ResourceBinding, error)
-	GetResourceBinding(ctx context.Context, tenantID, resourceType string, resourceID int64) (domain.ResourceBinding, error)
+	GetResourceBinding(ctx context.Context, tenantID int64, resourceType string, resourceID int64) (domain.ResourceBinding, error)
 	ListBindings(ctx context.Context, filter domain.BindingFilter) ([]domain.ResourceBinding, int64, error)
 	GetNodeResourceCount(ctx context.Context, nodeID int64) (int64, error)
 	GetNodeEnvResourceCount(ctx context.Context, nodeID, envID int64) (int64, error)
@@ -42,7 +42,7 @@ func NewBindingService(
 	}
 }
 
-func (s *bindingService) BindResource(ctx context.Context, nodeID, envID int64, resourceType string, resourceID int64, tenantID string) (int64, error) {
+func (s *bindingService) BindResource(ctx context.Context, nodeID, envID int64, resourceType string, resourceID int64, tenantID int64) (int64, error) {
 	if resourceType != domain.ResourceTypeInstance && resourceType != domain.ResourceTypeAsset {
 		return 0, domain.ErrInvalidResourceType
 	}
@@ -136,7 +136,7 @@ func (s *bindingService) BindResourceBatch(ctx context.Context, req domain.Batch
 	return count, nil
 }
 
-func (s *bindingService) UnbindResource(ctx context.Context, tenantID, resourceType string, resourceID int64) error {
+func (s *bindingService) UnbindResource(ctx context.Context, tenantID int64, resourceType string, resourceID int64) error {
 	return s.bindingRepo.DeleteByResource(ctx, tenantID, resourceType, resourceID)
 }
 
@@ -148,7 +148,7 @@ func (s *bindingService) GetBinding(ctx context.Context, id int64) (domain.Resou
 	return s.bindingRepo.GetByID(ctx, id)
 }
 
-func (s *bindingService) GetResourceBinding(ctx context.Context, tenantID, resourceType string, resourceID int64) (domain.ResourceBinding, error) {
+func (s *bindingService) GetResourceBinding(ctx context.Context, tenantID int64, resourceType string, resourceID int64) (domain.ResourceBinding, error) {
 	return s.bindingRepo.GetByResource(ctx, tenantID, resourceType, resourceID)
 }
 

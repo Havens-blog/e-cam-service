@@ -106,7 +106,7 @@ func (d *collectLogDAO) Count(ctx context.Context, filter repository.CollectLogF
 
 func (d *collectLogDAO) buildQuery(filter repository.CollectLogFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.AccountID > 0 {

@@ -24,9 +24,9 @@ type NodeRepository interface {
 	// Delete 删除节点
 	Delete(ctx context.Context, id string) error
 	// DeleteBySource 按数据来源批量删除节点
-	DeleteBySource(ctx context.Context, tenantID, source string) (int64, error)
+	DeleteBySource(ctx context.Context, tenantID int64, source string) (int64, error)
 	// FindDNSEntries 查询所有 DNS 入口节点
-	FindDNSEntries(ctx context.Context, tenantID string) ([]domain.TopoNode, error)
+	FindDNSEntries(ctx context.Context, tenantID int64) ([]domain.TopoNode, error)
 	// InitIndexes 初始化索引
 	InitIndexes(ctx context.Context) error
 }
@@ -69,11 +69,11 @@ func (r *nodeRepository) Delete(ctx context.Context, id string) error {
 	return r.dao.Delete(ctx, id)
 }
 
-func (r *nodeRepository) DeleteBySource(ctx context.Context, tenantID, source string) (int64, error) {
+func (r *nodeRepository) DeleteBySource(ctx context.Context, tenantID int64, source string) (int64, error) {
 	return r.dao.DeleteBySource(ctx, tenantID, source)
 }
 
-func (r *nodeRepository) FindDNSEntries(ctx context.Context, tenantID string) ([]domain.TopoNode, error) {
+func (r *nodeRepository) FindDNSEntries(ctx context.Context, tenantID int64) ([]domain.TopoNode, error) {
 	return r.dao.FindDNSEntries(ctx, tenantID)
 }
 

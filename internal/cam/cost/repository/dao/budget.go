@@ -94,7 +94,7 @@ func (d *budgetDAO) Count(ctx context.Context, filter repository.BudgetFilter) (
 	return d.db.Collection(BudgetCollection).CountDocuments(ctx, query)
 }
 
-func (d *budgetDAO) ListActive(ctx context.Context, tenantID string) ([]domain.BudgetRule, error) {
+func (d *budgetDAO) ListActive(ctx context.Context, tenantID int64) ([]domain.BudgetRule, error) {
 	filter := bson.M{
 		"tenant_id": tenantID,
 		"status":    "active",
@@ -138,7 +138,7 @@ func (d *budgetDAO) Delete(ctx context.Context, id int64) error {
 
 func (d *budgetDAO) buildQuery(filter repository.BudgetFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.ScopeType != "" {

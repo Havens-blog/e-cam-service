@@ -234,7 +234,7 @@ func (h *AllocationHandler) ReAllocateHistory(ctx *gin.Context, req ReAllocateRe
 		bgCtx := context.Background()
 		if err := h.allocationSvc.ReAllocateHistory(bgCtx, tenantID, req.Period); err != nil {
 			h.allocationSvc.Logger().Warn("async ReAllocateHistory failed",
-				elog.String("tenant_id", tenantID),
+				elog.Int64("tenant_id", tenantID),
 				elog.String("period", req.Period),
 				elog.FieldErr(err))
 		}

@@ -20,7 +20,7 @@ type Node struct {
 	ParentID    int64    `bson:"parent_id"`
 	Level       int      `bson:"level"`
 	Path        string   `bson:"path"`
-	TenantID    string   `bson:"tenant_id"`
+	TenantID    int64    `bson:"tenant_id"`
 	Owner       string   `bson:"owner"`
 	Team        string   `bson:"team"`
 	Description string   `bson:"description"`
@@ -33,7 +33,7 @@ type Node struct {
 
 // NodeFilter DAO 层过滤条件
 type NodeFilter struct {
-	TenantID string
+	TenantID int64
 	ParentID *int64
 	Level    int
 	Status   *int
@@ -50,9 +50,9 @@ type NodeDAO interface {
 	Update(ctx context.Context, node Node) error
 	UpdatePath(ctx context.Context, id int64, path string) error
 	GetByID(ctx context.Context, id int64) (Node, error)
-	GetByUID(ctx context.Context, tenantID, uid string) (Node, error)
+	GetByUID(ctx context.Context, tenantID int64, uid string) (Node, error)
 	List(ctx context.Context, filter NodeFilter) ([]Node, error)
-	ListByPath(ctx context.Context, tenantID, pathPrefix string) ([]Node, error)
+	ListByPath(ctx context.Context, tenantID int64, pathPrefix string) ([]Node, error)
 	Count(ctx context.Context, filter NodeFilter) (int64, error)
 	CountChildren(ctx context.Context, parentID int64) (int64, error)
 	Delete(ctx context.Context, id int64) error
@@ -136,7 +136,7 @@ func (d *nodeDAO) GetByID(ctx context.Context, id int64) (Node, error) {
 	return node, err
 }
 
-func (d *nodeDAO) GetByUID(ctx context.Context, tenantID, uid string) (Node, error) {
+func (d *nodeDAO) GetByUID(ctx context.Context, tenantID int64, uid string) (Node, error) {
 	var node Node
 	filter := bson.M{"tenant_id": tenantID, "uid": uid}
 	err := d.db.Collection(NodeCollection).FindOne(ctx, filter).Decode(&node)
@@ -166,7 +166,7 @@ func (d *nodeDAO) List(ctx context.Context, filter NodeFilter) ([]Node, error) {
 	return nodes, err
 }
 
-func (d *nodeDAO) ListByPath(ctx context.Context, tenantID, pathPrefix string) ([]Node, error) {
+func (d *nodeDAO) ListByPath(ctx context.Context, tenantID int64, pathPrefix string) ([]Node, error) {
 	filter := bson.M{
 		"tenant_id": tenantID,
 		"path":      bson.M{"$regex": "^" + pathPrefix},
@@ -204,7 +204,7 @@ func (d *nodeDAO) Delete(ctx context.Context, id int64) error {
 func (d *nodeDAO) buildQuery(filter NodeFilter) bson.M {
 	query := bson.M{}
 
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.ParentID != nil {

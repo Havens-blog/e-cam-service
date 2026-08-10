@@ -22,7 +22,7 @@ type DictDAO interface {
 	UpdateType(ctx context.Context, dt DictType) error
 	DeleteType(ctx context.Context, id int64) error
 	GetTypeByID(ctx context.Context, id int64) (DictType, error)
-	GetTypeByCode(ctx context.Context, tenantID, code string) (DictType, error)
+	GetTypeByCode(ctx context.Context, tenantID int64, code string) (DictType, error)
 	ListTypes(ctx context.Context, filter TypeFilter) ([]DictType, int64, error)
 	UpdateTypeStatus(ctx context.Context, id int64, status string) error
 
@@ -89,7 +89,7 @@ func (d *dictDAO) GetTypeByID(ctx context.Context, id int64) (DictType, error) {
 	return dt, err
 }
 
-func (d *dictDAO) GetTypeByCode(ctx context.Context, tenantID, code string) (DictType, error) {
+func (d *dictDAO) GetTypeByCode(ctx context.Context, tenantID int64, code string) (DictType, error) {
 	var dt DictType
 	filter := bson.M{"tenant_id": tenantID, "code": code}
 	err := d.db.Collection(DictTypeCollection).FindOne(ctx, filter).Decode(&dt)

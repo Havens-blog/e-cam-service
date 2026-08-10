@@ -13,7 +13,7 @@ type Instance struct {
 	ModelUID   string
 	AssetID    string
 	AssetName  string
-	TenantID   string
+	TenantID   int64
 	AccountID  int64
 	Attributes map[string]interface{}
 	CreateTime time.Time
@@ -23,7 +23,7 @@ type Instance struct {
 // InstanceFilter 实例过滤条件
 type InstanceFilter struct {
 	ModelUID   string
-	TenantID   string
+	TenantID   int64
 	AccountID  int64
 	AssetID    string
 	AssetName  string
@@ -44,7 +44,7 @@ type TagFilter struct {
 
 // SearchFilter 统一搜索过滤条件
 type SearchFilter struct {
-	TenantID   string
+	TenantID   int64
 	Keyword    string
 	AssetTypes []string
 	Provider   string
@@ -68,7 +68,7 @@ func (i *Instance) Validate() error {
 	if i.AssetID == "" {
 		return errs.ErrInvalidAssetID
 	}
-	if i.TenantID == "" {
+	if i.TenantID == 0 {
 		return errs.ErrInvalidTenantID
 	}
 	return nil

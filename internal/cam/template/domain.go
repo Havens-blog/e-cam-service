@@ -9,7 +9,7 @@ type VMTemplate struct {
 	ID          int64  `bson:"id" json:"id"`
 	Name        string `bson:"name" json:"name"`
 	Description string `bson:"description" json:"description"`
-	TenantID    string `bson:"tenant_id" json:"tenant_id"`
+	TenantID    int64  `bson:"tenant_id" json:"tenant_id"`
 
 	// 云厂商信息
 	Provider       string `bson:"provider" json:"provider"`
@@ -75,7 +75,7 @@ const (
 // ProvisionTask 创建任务
 type ProvisionTask struct {
 	ID       string `bson:"_id" json:"id"`
-	TenantID string `bson:"tenant_id" json:"tenant_id"`
+	TenantID int64  `bson:"tenant_id" json:"tenant_id"`
 
 	// 创建来源
 	Source     string `bson:"source" json:"source"`
@@ -229,7 +229,7 @@ type DirectProvisionReq struct {
 
 // TemplateFilter 模板查询过滤条件
 type TemplateFilter struct {
-	TenantID       string `json:"tenant_id"`
+	TenantID       int64  `json:"tenant_id"`
 	Name           string `json:"name"`
 	Provider       string `json:"provider"`
 	CloudAccountID int64  `json:"cloud_account_id"`
@@ -239,7 +239,7 @@ type TemplateFilter struct {
 
 // ProvisionTaskFilter 创建任务查询过滤条件
 type ProvisionTaskFilter struct {
-	TenantID   string `json:"tenant_id"`
+	TenantID   int64  `json:"tenant_id"`
 	TemplateID int64  `json:"template_id"`
 	Status     string `json:"status"`
 	Source     string `json:"source"`

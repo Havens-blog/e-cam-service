@@ -22,10 +22,10 @@ const (
 // TemplateDAO 模板数据访问接口
 type TemplateDAO interface {
 	Insert(ctx context.Context, tmpl VMTemplate) (int64, error)
-	Update(ctx context.Context, tenantID string, id int64, req UpdateTemplateReq) error
-	Delete(ctx context.Context, tenantID string, id int64) error
-	GetByID(ctx context.Context, tenantID string, id int64) (VMTemplate, error)
-	GetByName(ctx context.Context, tenantID, name string) (VMTemplate, error)
+	Update(ctx context.Context, tenantID int64, id int64, req UpdateTemplateReq) error
+	Delete(ctx context.Context, tenantID int64, id int64) error
+	GetByID(ctx context.Context, tenantID int64, id int64) (VMTemplate, error)
+	GetByName(ctx context.Context, tenantID int64, name string) (VMTemplate, error)
 	List(ctx context.Context, filter TemplateFilter) ([]VMTemplate, int64, error)
 }
 
@@ -52,7 +52,7 @@ func (d *templateDAO) Insert(ctx context.Context, tmpl VMTemplate) (int64, error
 	return tmpl.ID, nil
 }
 
-func (d *templateDAO) Update(ctx context.Context, tenantID string, id int64, req UpdateTemplateReq) error {
+func (d *templateDAO) Update(ctx context.Context, tenantID int64, id int64, req UpdateTemplateReq) error {
 	filter := bson.M{"id": id, "tenant_id": tenantID}
 	setFields := bson.M{"utime": time.Now().UnixMilli()}
 
@@ -122,20 +122,20 @@ func (d *templateDAO) Update(ctx context.Context, tenantID string, id int64, req
 	return err
 }
 
-func (d *templateDAO) Delete(ctx context.Context, tenantID string, id int64) error {
+func (d *templateDAO) Delete(ctx context.Context, tenantID int64, id int64) error {
 	filter := bson.M{"id": id, "tenant_id": tenantID}
 	_, err := d.db.Collection(VMTemplateCollection).DeleteOne(ctx, filter)
 	return err
 }
 
-func (d *templateDAO) GetByID(ctx context.Context, tenantID string, id int64) (VMTemplate, error) {
+func (d *templateDAO) GetByID(ctx context.Context, tenantID int64, id int64) (VMTemplate, error) {
 	var tmpl VMTemplate
 	filter := bson.M{"id": id, "tenant_id": tenantID}
 	err := d.db.Collection(VMTemplateCollection).FindOne(ctx, filter).Decode(&tmpl)
 	return tmpl, err
 }
 
-func (d *templateDAO) GetByName(ctx context.Context, tenantID, name string) (VMTemplate, error) {
+func (d *templateDAO) GetByName(ctx context.Context, tenantID int64, name string) (VMTemplate, error) {
 	var tmpl VMTemplate
 	filter := bson.M{"tenant_id": tenantID, "name": name}
 	err := d.db.Collection(VMTemplateCollection).FindOne(ctx, filter).Decode(&tmpl)
@@ -192,9 +192,9 @@ type ProvisionTaskDAO interface {
 	UpdateProgress(ctx context.Context, taskID string, progress, successCount, failedCount int) error
 	UpdateInstances(ctx context.Context, taskID string, instances []ProvisionInstanceResult) error
 	UpdateSyncStatus(ctx context.Context, taskID, syncStatus string) error
-	GetByID(ctx context.Context, tenantID, taskID string) (ProvisionTask, error)
+	GetByID(ctx context.Context, tenantID int64, taskID string) (ProvisionTask, error)
 	List(ctx context.Context, filter ProvisionTaskFilter) ([]ProvisionTask, int64, error)
-	CountRunningByTemplateID(ctx context.Context, tenantID string, templateID int64) (int64, error)
+	CountRunningByTemplateID(ctx context.Context, tenantID int64, templateID int64) (int64, error)
 }
 
 type provisionTaskDAO struct {
@@ -265,10 +265,13 @@ func (d *provisionTaskDAO) UpdateSyncStatus(ctx context.Context, taskID, syncSta
 	return err
 }
 
-func (d *provisionTaskDAO) GetByID(ctx context.Context, tenantID, taskID string) (ProvisionTask, error) {
+func (d *provisionTaskDAO) GetByID(ctx context.Context, tenantID int64, taskID string) (ProvisionTask, error) {
 	var task ProvisionTask
+	// 此处的租户条件是「按唯一 _id 取单条后的附加校验」，而非聚合类查询的范围过滤：
+	// 缺少它只会少一层归属校验，不会像聚合查询那样退化为返回全部租户的数据。
+	// executor 作为无会话的后台任务，只能按唯一 taskID 取记录，故允许传 0。
 	filter := bson.M{"_id": taskID}
-	if tenantID != "" {
+	if tenantID != 0 {
 		filter["tenant_id"] = tenantID
 	}
 	err := d.db.Collection(ProvisionTaskCollection).FindOne(ctx, filter).Decode(&task)
@@ -326,7 +329,7 @@ func (d *provisionTaskDAO) List(ctx context.Context, filter ProvisionTaskFilter)
 	return tasks, total, nil
 }
 
-func (d *provisionTaskDAO) CountRunningByTemplateID(ctx context.Context, tenantID string, templateID int64) (int64, error) {
+func (d *provisionTaskDAO) CountRunningByTemplateID(ctx context.Context, tenantID int64, templateID int64) (int64, error) {
 	filter := bson.M{
 		"tenant_id":   tenantID,
 		"template_id": templateID,

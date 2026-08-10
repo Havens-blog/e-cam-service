@@ -50,7 +50,7 @@ func TestProperty16_BudgetRuleCreationRoundTrip(t *testing.T) {
 		amountLimit := rapid.Float64Range(0.01, 1e8).Draw(rt, "amountLimit")
 		thresholds := genSortedThresholds(rt)
 		scopeType := rapid.SampledFrom([]string{"all", "provider", "account"}).Draw(rt, "scopeType")
-		tenantID := rapid.StringMatching(`[a-z]{3,10}`).Draw(rt, "tenantID")
+		tenantID := rapid.Int64Range(1, 1000).Draw(rt, "tenantID")
 
 		var captured costdomain.BudgetRule
 		budgetDAO := &mockBudgetDAO{
@@ -98,7 +98,7 @@ func TestProperty17_BudgetThresholdAlertTrigger(t *testing.T) {
 
 		budgetID := rapid.Int64Range(1, 10000).Draw(rt, "budgetID")
 		budgetName := rapid.StringMatching(`[a-zA-Z][a-zA-Z0-9]{0,19}`).Draw(rt, "budgetName")
-		tenantID := rapid.StringMatching(`[a-z]{3,10}`).Draw(rt, "tenantID")
+		tenantID := rapid.Int64Range(1, 1000).Draw(rt, "tenantID")
 
 		alertDAO := &mockAlertDAO{
 			listRulesFn: func(_ context.Context, filter alertdomain.AlertRuleFilter) ([]alertdomain.AlertRule, int64, error) {
@@ -106,7 +106,7 @@ func TestProperty17_BudgetThresholdAlertTrigger(t *testing.T) {
 			},
 		}
 		budgetDAO := &mockBudgetDAO{
-			listActiveFn: func(_ context.Context, _ string) ([]costdomain.BudgetRule, error) {
+			listActiveFn: func(_ context.Context, _ int64) ([]costdomain.BudgetRule, error) {
 				return []costdomain.BudgetRule{{
 					ID:          budgetID,
 					Name:        budgetName,
@@ -189,7 +189,7 @@ func TestProperty18_BudgetProgressCalculation(t *testing.T) {
 					Name:        "Test Budget",
 					AmountLimit: amountLimit,
 					ScopeType:   "all",
-					TenantID:    "t1",
+					TenantID:    1,
 					Status:      "active",
 				}, nil
 			},

@@ -18,7 +18,7 @@ type InstanceRelation struct {
 	SourceInstanceID int64  `bson:"source_instance_id"`
 	TargetInstanceID int64  `bson:"target_instance_id"`
 	RelationTypeUID  string `bson:"relation_type_uid"`
-	TenantID         string `bson:"tenant_id"`
+	TenantID         int64  `bson:"tenant_id"`
 	Ctime            int64  `bson:"ctime"`
 }
 
@@ -27,7 +27,7 @@ type InstanceRelationFilter struct {
 	SourceInstanceID int64
 	TargetInstanceID int64
 	RelationTypeUID  string
-	TenantID         string
+	TenantID         int64
 	Offset           int64
 	Limit            int64
 }
@@ -190,7 +190,7 @@ func (d *instanceRelationDAO) buildQuery(filter InstanceRelationFilter) bson.M {
 	if filter.RelationTypeUID != "" {
 		query["relation_type_uid"] = filter.RelationTypeUID
 	}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 

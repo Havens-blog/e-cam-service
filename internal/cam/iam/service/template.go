@@ -107,7 +107,7 @@ func (s *policyTemplateService) GetTemplate(ctx context.Context, id int64) (*dom
 func (s *policyTemplateService) ListTemplates(ctx context.Context, filter domain.TemplateFilter) ([]*domain.PolicyTemplate, int64, error) {
 	s.logger.Debug("获取策略模板列表",
 		elog.String("category", string(filter.Category)),
-		elog.String("tenant_id", filter.TenantID))
+		elog.Int64("tenant_id", filter.TenantID))
 
 	if filter.Limit == 0 {
 		filter.Limit = 20
@@ -282,7 +282,7 @@ func (s *policyTemplateService) validateCreateTemplateRequest(req *domain.Create
 	if len(req.CloudPlatforms) == 0 {
 		return fmt.Errorf("云平台列表不能为空")
 	}
-	if req.TenantID == "" {
+	if req.TenantID == 0 {
 		return fmt.Errorf("租户ID不能为空")
 	}
 
@@ -305,7 +305,7 @@ func (s *policyTemplateService) InitBuiltInTemplates(ctx context.Context) error 
 	templates := s.getBuiltInTemplates()
 
 	for _, template := range templates {
-		existing, err := s.templateRepo.GetByName(ctx, template.Name, "")
+		existing, err := s.templateRepo.GetByName(ctx, template.Name, 0)
 		if err == nil && existing.ID > 0 {
 			s.logger.Debug("内置模板已存在，跳过",
 				elog.String("name", template.Name))
@@ -361,7 +361,7 @@ func (s *policyTemplateService) getBuiltInTemplates() []domain.PolicyTemplate {
 				domain.CloudProviderTencent,
 			},
 			IsBuiltIn:  true,
-			TenantID:   "",
+			TenantID:   0,
 			CreateTime: now,
 			UpdateTime: now,
 			CTime:      now.Unix(),
@@ -394,7 +394,7 @@ func (s *policyTemplateService) getBuiltInTemplates() []domain.PolicyTemplate {
 				domain.CloudProviderTencent,
 			},
 			IsBuiltIn:  true,
-			TenantID:   "",
+			TenantID:   0,
 			CreateTime: now,
 			UpdateTime: now,
 			CTime:      now.Unix(),
@@ -435,7 +435,7 @@ func (s *policyTemplateService) getBuiltInTemplates() []domain.PolicyTemplate {
 				domain.CloudProviderTencent,
 			},
 			IsBuiltIn:  true,
-			TenantID:   "",
+			TenantID:   0,
 			CreateTime: now,
 			UpdateTime: now,
 			CTime:      now.Unix(),

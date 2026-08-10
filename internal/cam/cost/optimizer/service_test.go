@@ -22,7 +22,7 @@ type mockOptimizerDAO struct {
 	updateFn             func(ctx context.Context, rec costdomain.Recommendation) error
 	listFn               func(ctx context.Context, filter repository.RecommendationFilter) ([]costdomain.Recommendation, error)
 	countFn              func(ctx context.Context, filter repository.RecommendationFilter) (int64, error)
-	findByResourceTypeFn func(ctx context.Context, tenantID, resourceID, recType string) (costdomain.Recommendation, error)
+	findByResourceTypeFn func(ctx context.Context, tenantID int64, resourceID, recType string) (costdomain.Recommendation, error)
 	createdRecs          []costdomain.Recommendation
 	updatedRecs          []costdomain.Recommendation
 }
@@ -72,7 +72,7 @@ func (m *mockOptimizerDAO) Count(ctx context.Context, filter repository.Recommen
 	return 0, nil
 }
 
-func (m *mockOptimizerDAO) FindByResourceAndType(ctx context.Context, tenantID, resourceID, recType string) (costdomain.Recommendation, error) {
+func (m *mockOptimizerDAO) FindByResourceAndType(ctx context.Context, tenantID int64, resourceID, recType string) (costdomain.Recommendation, error) {
 	if m.findByResourceTypeFn != nil {
 		return m.findByResourceTypeFn(ctx, tenantID, resourceID, recType)
 	}
@@ -118,10 +118,10 @@ func (m *mockBillDAO) GetUnifiedBillByID(_ context.Context, _ int64) (costdomain
 func (m *mockBillDAO) CountUnifiedBills(_ context.Context, _ repository.UnifiedBillFilter) (int64, error) {
 	return 0, nil
 }
-func (m *mockBillDAO) AggregateByField(_ context.Context, _, _, _, _ string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
+func (m *mockBillDAO) AggregateByField(_ context.Context, _ int64, _, _, _ string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
 	return nil, nil
 }
-func (m *mockBillDAO) AggregateDailyAmount(_ context.Context, _, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+func (m *mockBillDAO) AggregateDailyAmount(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 	return nil, nil
 }
 func (m *mockBillDAO) SumAmount(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) {
@@ -134,7 +134,7 @@ func (m *mockBillDAO) DeleteRawBillsByAccountAndRange(_ context.Context, _ int64
 func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndRange(_ context.Context, _ int64, _, _ string) (int64, error) {
 	return 0, nil
 }
-func (m *mockBillDAO) AggregateByTag(_ context.Context, _ string, _, _ string) ([]repository.AggregateResult, error) {
+func (m *mockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([]repository.AggregateResult, error) {
 	return nil, nil
 }
 
@@ -149,7 +149,7 @@ func setupTestService(t *testing.T, optDAO *mockOptimizerDAO, billDAO *mockBillD
 // ========== Tests ==========
 
 // generateComputeBills creates compute bills for a resource spanning consecutive days
-func generateComputeBills(resourceID, resourceName, provider, tenantID string, accountID int64, days int, dailyAmount float64) []costdomain.UnifiedBill {
+func generateComputeBills(resourceID, resourceName, provider string, tenantID int64, accountID int64, days int, dailyAmount float64) []costdomain.UnifiedBill {
 	now := time.Now()
 	var bills []costdomain.UnifiedBill
 	for i := 0; i < days; i++ {
@@ -176,7 +176,7 @@ func generateComputeBills(resourceID, resourceName, provider, tenantID string, a
 func TestGenerateRecommendations_DownsizeCandidates(t *testing.T) {
 	optDAO := &mockOptimizerDAO{}
 	// Generate 8 days of compute bills for a resource (>= 7 days threshold)
-	computeBills := generateComputeBills("i-123", "test-ecs", "aliyun", "tenant1", 100, 8, 10.0)
+	computeBills := generateComputeBills("i-123", "test-ecs", "aliyun", 3, 100, 8, 10.0)
 
 	billDAO := &mockBillDAO{
 		listUnifiedBillsFn: func(_ context.Context, filter repository.UnifiedBillFilter) ([]costdomain.UnifiedBill, error) {
@@ -188,7 +188,7 @@ func TestGenerateRecommendations_DownsizeCandidates(t *testing.T) {
 	}
 
 	svc := setupTestService(t, optDAO, billDAO)
-	err := svc.GenerateRecommendations(context.Background(), "tenant1")
+	err := svc.GenerateRecommendations(context.Background(), 3)
 	require.NoError(t, err)
 
 	// Should have created a downsize recommendation
@@ -202,7 +202,7 @@ func TestGenerateRecommendations_DownsizeCandidates(t *testing.T) {
 			assert.Equal(t, StatusPending, rec.Status)
 			assert.Greater(t, rec.EstimatedSaving, 0.0)
 			assert.NotEmpty(t, rec.Reason)
-			assert.Equal(t, "tenant1", rec.TenantID)
+			assert.Equal(t, int64(3), rec.TenantID)
 		}
 	}
 	assert.True(t, found, "expected downsize recommendation for i-123")
@@ -219,14 +219,14 @@ func TestGenerateRecommendations_UnattachedDiskCandidates(t *testing.T) {
 			ResourceID: "d-disk-001", ResourceName: "orphan-disk",
 			ServiceType: "storage", Region: "cn-shanghai",
 			Amount: 5.0, AmountCNY: 5.0, Currency: "CNY",
-			TenantID: "tenant1", BillingDate: now.AddDate(0, 0, -1).Format("2006-01-02"),
+			TenantID: 3, BillingDate: now.AddDate(0, 0, -1).Format("2006-01-02"),
 		},
 		{
 			ID: 2, Provider: "aliyun", AccountID: 100,
 			ResourceID: "d-disk-001", ResourceName: "orphan-disk",
 			ServiceType: "storage", Region: "cn-shanghai",
 			Amount: 5.0, AmountCNY: 5.0, Currency: "CNY",
-			TenantID: "tenant1", BillingDate: now.AddDate(0, 0, -2).Format("2006-01-02"),
+			TenantID: 3, BillingDate: now.AddDate(0, 0, -2).Format("2006-01-02"),
 		},
 	}
 
@@ -244,7 +244,7 @@ func TestGenerateRecommendations_UnattachedDiskCandidates(t *testing.T) {
 	}
 
 	svc := setupTestService(t, optDAO, billDAO)
-	err := svc.GenerateRecommendations(context.Background(), "tenant1")
+	err := svc.GenerateRecommendations(context.Background(), 3)
 	require.NoError(t, err)
 
 	found := false
@@ -272,7 +272,7 @@ func TestGenerateRecommendations_ConvertPrepaidCandidates(t *testing.T) {
 			ResourceID: "i-aws-001", ResourceName: "long-running-ec2",
 			ServiceType: "compute", Region: "us-east-1",
 			Amount: 20.0, AmountCNY: 140.0, Currency: "USD",
-			ChargeType: "postpaid", TenantID: "tenant1",
+			ChargeType: "postpaid", TenantID: 3,
 			BillingDate: date,
 		})
 	}
@@ -291,7 +291,7 @@ func TestGenerateRecommendations_ConvertPrepaidCandidates(t *testing.T) {
 	}
 
 	svc := setupTestService(t, optDAO, billDAO)
-	err := svc.GenerateRecommendations(context.Background(), "tenant1")
+	err := svc.GenerateRecommendations(context.Background(), 3)
 	require.NoError(t, err)
 
 	found := false
@@ -313,7 +313,7 @@ func TestGenerateRecommendations_SkipDismissedResources(t *testing.T) {
 	expiry := now.Add(24 * time.Hour) // still within dismiss window
 
 	optDAO := &mockOptimizerDAO{
-		findByResourceTypeFn: func(_ context.Context, tenantID, resourceID, recType string) (costdomain.Recommendation, error) {
+		findByResourceTypeFn: func(_ context.Context, tenantID int64, resourceID, recType string) (costdomain.Recommendation, error) {
 			if resourceID == "i-dismissed" {
 				return costdomain.Recommendation{
 					ID:            1,
@@ -330,7 +330,7 @@ func TestGenerateRecommendations_SkipDismissedResources(t *testing.T) {
 	}
 
 	// Generate bills for dismissed resource
-	computeBills := generateComputeBills("i-dismissed", "dismissed-ecs", "aliyun", "tenant1", 100, 8, 10.0)
+	computeBills := generateComputeBills("i-dismissed", "dismissed-ecs", "aliyun", 3, 100, 8, 10.0)
 
 	billDAO := &mockBillDAO{
 		listUnifiedBillsFn: func(_ context.Context, filter repository.UnifiedBillFilter) ([]costdomain.UnifiedBill, error) {
@@ -342,7 +342,7 @@ func TestGenerateRecommendations_SkipDismissedResources(t *testing.T) {
 	}
 
 	svc := setupTestService(t, optDAO, billDAO)
-	err := svc.GenerateRecommendations(context.Background(), "tenant1")
+	err := svc.GenerateRecommendations(context.Background(), 3)
 	require.NoError(t, err)
 
 	// Should NOT have created any recommendations (dismissed resource filtered out)
@@ -353,12 +353,12 @@ func TestGenerateRecommendations_SkipDismissedResources(t *testing.T) {
 
 func TestListRecommendations(t *testing.T) {
 	expected := []costdomain.Recommendation{
-		{ID: 1, Type: RecTypeDownsize, ResourceID: "i-1", TenantID: "t1", EstimatedSaving: 100},
-		{ID: 2, Type: RecTypeReleaseDisk, ResourceID: "d-1", TenantID: "t1", EstimatedSaving: 50},
+		{ID: 1, Type: RecTypeDownsize, ResourceID: "i-1", TenantID: 1, EstimatedSaving: 100},
+		{ID: 2, Type: RecTypeReleaseDisk, ResourceID: "d-1", TenantID: 1, EstimatedSaving: 50},
 	}
 	optDAO := &mockOptimizerDAO{
 		listFn: func(_ context.Context, f repository.RecommendationFilter) ([]costdomain.Recommendation, error) {
-			assert.Equal(t, "t1", f.TenantID)
+			assert.Equal(t, int64(1), f.TenantID)
 			return expected, nil
 		},
 		countFn: func(_ context.Context, f repository.RecommendationFilter) (int64, error) {
@@ -367,7 +367,7 @@ func TestListRecommendations(t *testing.T) {
 	}
 
 	svc := setupTestService(t, optDAO, &mockBillDAO{})
-	recs, count, err := svc.ListRecommendations(context.Background(), "t1", repository.RecommendationFilter{})
+	recs, count, err := svc.ListRecommendations(context.Background(), 1, repository.RecommendationFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), count)
 	assert.Len(t, recs, 2)
@@ -383,7 +383,7 @@ func TestDismissRecommendation(t *testing.T) {
 				Type:       RecTypeDownsize,
 				ResourceID: "i-123",
 				Status:     StatusPending,
-				TenantID:   "t1",
+				TenantID:   1,
 			}, nil
 		},
 	}
@@ -418,7 +418,7 @@ func TestDismissRecommendation_AlreadyDismissed(t *testing.T) {
 				Status:        StatusDismissed,
 				DismissedAt:   &now,
 				DismissExpiry: &expiry,
-				TenantID:      "t1",
+				TenantID:      1,
 			}, nil
 		},
 	}

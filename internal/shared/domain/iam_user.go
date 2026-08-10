@@ -50,7 +50,7 @@ type CloudUser struct {
 	Policies       []PermissionPolicy `json:"policies" bson:"policies"`             // 用户的个人权限策略列表
 	Metadata       CloudUserMetadata  `json:"metadata" bson:"metadata"`
 	Status         CloudUserStatus    `json:"status" bson:"status"`
-	TenantID       string             `json:"tenant_id" bson:"tenant_id"`
+	TenantID       int64              `json:"tenant_id" bson:"tenant_id"`
 	CreateTime     time.Time          `json:"create_time" bson:"create_time"`
 	UpdateTime     time.Time          `json:"update_time" bson:"update_time"`
 	CTime          int64              `json:"ctime" bson:"ctime"`
@@ -63,7 +63,7 @@ type CloudUserFilter struct {
 	UserType       CloudUserType   `json:"user_type"`
 	Status         CloudUserStatus `json:"status"`
 	CloudAccountID int64           `json:"cloud_account_id"`
-	TenantID       string          `json:"tenant_id"`
+	TenantID       int64           `json:"tenant_id"`
 	Keyword        string          `json:"keyword"`
 	Offset         int64           `json:"offset"`
 	Limit          int64           `json:"limit"`
@@ -77,7 +77,7 @@ type CreateCloudUserRequest struct {
 	DisplayName    string        `json:"display_name" binding:"max=200"`
 	Email          string        `json:"email" binding:"omitempty,email"`
 	UserGroups     []int64       `json:"user_groups"` // 用户组ID列表
-	TenantID       string        `json:"tenant_id"`
+	TenantID       int64         `json:"tenant_id"`
 }
 
 // UpdateCloudUserRequest 更新云用户请求
@@ -109,7 +109,7 @@ func (u *CloudUser) Validate() error {
 	if u.Provider == "" {
 		return fmt.Errorf("provider cannot be empty")
 	}
-	if u.TenantID == "" {
+	if u.TenantID == 0 {
 		return fmt.Errorf("tenant id cannot be empty")
 	}
 	return nil

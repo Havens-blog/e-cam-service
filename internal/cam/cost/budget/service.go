@@ -157,7 +157,7 @@ func (s *BudgetService) ListBudgets(ctx context.Context, filter repository.Budge
 }
 
 // CheckBudgets 检查所有预算规则的消耗进度（每日定时执行）
-func (s *BudgetService) CheckBudgets(ctx context.Context, tenantID string) error {
+func (s *BudgetService) CheckBudgets(ctx context.Context, tenantID int64) error {
 	budgets, err := s.budgetDAO.ListActive(ctx, tenantID)
 	if err != nil {
 		return fmt.Errorf("list active budgets: %w", err)
@@ -262,7 +262,7 @@ func (s *BudgetService) checkSingleBudget(ctx context.Context, budget costdomain
 }
 
 // DeactivateBudgetsByScope 预算失效处理：适用范围对应的云账号被删除时标记为 inactive
-func (s *BudgetService) DeactivateBudgetsByScope(ctx context.Context, tenantID string, scopeType string, scopeValue string) error {
+func (s *BudgetService) DeactivateBudgetsByScope(ctx context.Context, tenantID int64, scopeType string, scopeValue string) error {
 	filter := repository.BudgetFilter{
 		TenantID:  tenantID,
 		ScopeType: scopeType,

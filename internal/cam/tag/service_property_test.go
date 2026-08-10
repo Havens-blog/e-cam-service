@@ -134,7 +134,7 @@ func (d *inMemoryTagDAO) ListRules(_ context.Context, filter RuleFilter) ([]TagR
 	}
 	return result, int64(len(result)), nil
 }
-func (d *inMemoryTagDAO) ListEnabledRules(_ context.Context, tenantID string) ([]TagRule, error) {
+func (d *inMemoryTagDAO) ListEnabledRules(_ context.Context, tenantID int64) ([]TagRule, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	var result []TagRule
@@ -150,8 +150,8 @@ func (d *inMemoryTagDAO) ListEnabledRules(_ context.Context, tenantID string) ([
 // Generators
 // ============================================================================
 
-func genTenantID() *rapid.Generator[string] {
-	return rapid.StringMatching(`tenant_[a-z]{3,8}`)
+func genTenantID() *rapid.Generator[int64] {
+	return rapid.Int64Range(1, 1000)
 }
 
 func genTagKey() *rapid.Generator[string] {
@@ -869,7 +869,7 @@ func TestCreatePolicy_ValidInput(t *testing.T) {
 	svc := &tagService{dao: dao}
 	ctx := context.Background()
 
-	policy, err := svc.CreatePolicy(ctx, "tenant1", CreatePolicyReq{
+	policy, err := svc.CreatePolicy(ctx, 3, CreatePolicyReq{
 		Name:         "基础标签规范",
 		Description:  "所有资源必须包含 env 和 team 标签",
 		RequiredKeys: []string{"env", "team"},
@@ -880,7 +880,7 @@ func TestCreatePolicy_ValidInput(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, "基础标签规范", policy.Name)
-	assert.Equal(t, "tenant1", policy.TenantID)
+	assert.Equal(t, int64(3), policy.TenantID)
 	assert.Equal(t, "enabled", policy.Status)
 	assert.NotZero(t, policy.ID)
 }
@@ -890,7 +890,7 @@ func TestDeletePolicy_NotFound(t *testing.T) {
 	svc := &tagService{dao: dao}
 	ctx := context.Background()
 
-	err := svc.DeletePolicy(ctx, "tenant1", 999)
+	err := svc.DeletePolicy(ctx, 3, 999)
 	assert.ErrorIs(t, err, ErrPolicyNotFound)
 }
 
@@ -900,7 +900,7 @@ func TestUpdatePolicy_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	name := "updated"
-	err := svc.UpdatePolicy(ctx, "tenant1", 999, UpdatePolicyReq{Name: &name})
+	err := svc.UpdatePolicy(ctx, 3, 999, UpdatePolicyReq{Name: &name})
 	assert.ErrorIs(t, err, ErrPolicyNotFound)
 }
 
@@ -909,14 +909,14 @@ func TestUpdatePolicy_WrongTenant(t *testing.T) {
 	svc := &tagService{dao: dao}
 	ctx := context.Background()
 
-	policy, err := svc.CreatePolicy(ctx, "tenant1", CreatePolicyReq{
+	policy, err := svc.CreatePolicy(ctx, 3, CreatePolicyReq{
 		Name:         "test",
 		RequiredKeys: []string{"env"},
 	})
 	assert.NoError(t, err)
 
 	name := "updated"
-	err = svc.UpdatePolicy(ctx, "tenant2", policy.ID, UpdatePolicyReq{Name: &name})
+	err = svc.UpdatePolicy(ctx, 4, policy.ID, UpdatePolicyReq{Name: &name})
 	assert.ErrorIs(t, err, ErrPolicyNotFound)
 }
 
@@ -925,13 +925,13 @@ func TestDeletePolicy_WrongTenant(t *testing.T) {
 	svc := &tagService{dao: dao}
 	ctx := context.Background()
 
-	policy, err := svc.CreatePolicy(ctx, "tenant1", CreatePolicyReq{
+	policy, err := svc.CreatePolicy(ctx, 3, CreatePolicyReq{
 		Name:         "test",
 		RequiredKeys: []string{"env"},
 	})
 	assert.NoError(t, err)
 
-	err = svc.DeletePolicy(ctx, "tenant2", policy.ID)
+	err = svc.DeletePolicy(ctx, 4, policy.ID)
 	assert.ErrorIs(t, err, ErrPolicyNotFound)
 }
 

@@ -24,7 +24,7 @@ type PolicyTemplate struct {
 	Policies       []PermissionPolicy `json:"policies" bson:"policies"`
 	CloudPlatforms []CloudProvider    `json:"cloud_platforms" bson:"cloud_platforms"`
 	IsBuiltIn      bool               `json:"is_built_in" bson:"is_built_in"`
-	TenantID       string             `json:"tenant_id" bson:"tenant_id"`
+	TenantID       int64              `json:"tenant_id" bson:"tenant_id"`
 	CreateTime     time.Time          `json:"create_time" bson:"create_time"`
 	UpdateTime     time.Time          `json:"update_time" bson:"update_time"`
 	CTime          int64              `json:"ctime" bson:"ctime"`
@@ -35,7 +35,7 @@ type PolicyTemplate struct {
 type TemplateFilter struct {
 	Category  TemplateCategory `json:"category"`
 	IsBuiltIn *bool            `json:"is_built_in"`
-	TenantID  string           `json:"tenant_id"`
+	TenantID  int64            `json:"tenant_id"`
 	Keyword   string           `json:"keyword"`
 	Offset    int64            `json:"offset"`
 	Limit     int64            `json:"limit"`
@@ -48,7 +48,7 @@ type CreateTemplateRequest struct {
 	Category       TemplateCategory   `json:"category" binding:"required"`
 	Policies       []PermissionPolicy `json:"policies"`
 	CloudPlatforms []CloudProvider    `json:"cloud_platforms" binding:"required,min=1"`
-	TenantID       string             `json:"tenant_id"`
+	TenantID       int64              `json:"tenant_id"`
 }
 
 // UpdateTemplateRequest 更新模板请求
@@ -72,7 +72,7 @@ func (t *PolicyTemplate) Validate() error {
 	if len(t.CloudPlatforms) == 0 {
 		return fmt.Errorf("cloud platforms cannot be empty")
 	}
-	if !t.IsBuiltIn && t.TenantID == "" {
+	if !t.IsBuiltIn && t.TenantID == 0 {
 		return fmt.Errorf("tenant id cannot be empty for custom template")
 	}
 	return nil

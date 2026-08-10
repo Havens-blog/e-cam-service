@@ -30,7 +30,7 @@ type syncBillingParams struct {
 	AccountID int64  `json:"account_id"`
 	StartTime string `json:"start_time"`
 	EndTime   string `json:"end_time"`
-	TenantID  string `json:"tenant_id"`
+	TenantID  int64  `json:"tenant_id"`
 }
 
 // SyncBillingExecutor 账单采集任务执行器

@@ -18,7 +18,7 @@ func TestInstance_Validate(t *testing.T) {
 			inst: Instance{
 				ModelUID: "ecs",
 				AssetID:  "i-bp1234",
-				TenantID: "tenant-001",
+				TenantID: 6,
 			},
 			wantErr: false,
 		},
@@ -26,7 +26,7 @@ func TestInstance_Validate(t *testing.T) {
 			name: "缺少ModelUID",
 			inst: Instance{
 				AssetID:  "i-bp1234",
-				TenantID: "tenant-001",
+				TenantID: 6,
 			},
 			wantErr: true,
 		},
@@ -34,7 +34,7 @@ func TestInstance_Validate(t *testing.T) {
 			name: "缺少AssetID",
 			inst: Instance{
 				ModelUID: "ecs",
-				TenantID: "tenant-001",
+				TenantID: 6,
 			},
 			wantErr: true,
 		},

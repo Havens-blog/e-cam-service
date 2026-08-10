@@ -72,7 +72,9 @@ func (s *AuditService) exportCSV(logs []domain.AuditLog) ([]byte, error) {
 			string(log.OperationType),
 			log.OperatorID,
 			log.OperatorName,
-			log.TenantID,
+			// CSV 是文本呈现边界，与同列的 ID/StatusCode 一致用 %d 格式化，
+			// 而非把领域类型退回字符串。
+			fmt.Sprintf("%d", log.TenantID),
 			log.HTTPMethod,
 			log.APIPath,
 			fmt.Sprintf("%d", log.StatusCode),
@@ -88,7 +90,7 @@ func (s *AuditService) exportCSV(logs []domain.AuditLog) ([]byte, error) {
 }
 
 // GenerateReport 生成审计报告
-func (s *AuditService) GenerateReport(ctx context.Context, tenantID string, startTime, endTime int64) (*domain.AuditReport, error) {
+func (s *AuditService) GenerateReport(ctx context.Context, tenantID int64, startTime, endTime int64) (*domain.AuditReport, error) {
 	filter := domain.AuditLogFilter{
 		TenantID:  tenantID,
 		StartTime: &startTime,

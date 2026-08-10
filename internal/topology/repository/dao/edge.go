@@ -70,7 +70,7 @@ func (d *EdgeDAO) Find(ctx context.Context, filter domain.EdgeFilter) ([]domain.
 }
 
 // FindBySourceID 查询指定源节点的所有出边
-func (d *EdgeDAO) FindBySourceID(ctx context.Context, tenantID, sourceID string) ([]domain.TopoEdge, error) {
+func (d *EdgeDAO) FindBySourceID(ctx context.Context, tenantID int64, sourceID string) ([]domain.TopoEdge, error) {
 	cursor, err := d.col().Find(ctx, bson.M{"tenant_id": tenantID, "source_id": sourceID})
 	if err != nil {
 		return nil, err
@@ -84,7 +84,7 @@ func (d *EdgeDAO) FindBySourceID(ctx context.Context, tenantID, sourceID string)
 }
 
 // FindByTargetID 查询指定目标节点的所有入边
-func (d *EdgeDAO) FindByTargetID(ctx context.Context, tenantID, targetID string) ([]domain.TopoEdge, error) {
+func (d *EdgeDAO) FindByTargetID(ctx context.Context, tenantID int64, targetID string) ([]domain.TopoEdge, error) {
 	cursor, err := d.col().Find(ctx, bson.M{"tenant_id": tenantID, "target_id": targetID})
 	if err != nil {
 		return nil, err
@@ -98,7 +98,7 @@ func (d *EdgeDAO) FindByTargetID(ctx context.Context, tenantID, targetID string)
 }
 
 // FindByNodeID 查询与指定节点相关的所有边（入边 + 出边）
-func (d *EdgeDAO) FindByNodeID(ctx context.Context, tenantID, nodeID string) ([]domain.TopoEdge, error) {
+func (d *EdgeDAO) FindByNodeID(ctx context.Context, tenantID int64, nodeID string) ([]domain.TopoEdge, error) {
 	cursor, err := d.col().Find(ctx, bson.M{
 		"tenant_id": tenantID,
 		"$or": []bson.M{
@@ -130,7 +130,7 @@ func (d *EdgeDAO) Delete(ctx context.Context, id string) error {
 }
 
 // DeleteBySource 按数据来源批量删除连线
-func (d *EdgeDAO) DeleteBySource(ctx context.Context, tenantID, source string) (int64, error) {
+func (d *EdgeDAO) DeleteBySource(ctx context.Context, tenantID int64, source string) (int64, error) {
 	result, err := d.col().DeleteMany(ctx, bson.M{
 		"tenant_id":        tenantID,
 		"source_collector": source,
@@ -142,7 +142,7 @@ func (d *EdgeDAO) DeleteBySource(ctx context.Context, tenantID, source string) (
 }
 
 // DeleteByNodeID 删除与指定节点相关的所有边
-func (d *EdgeDAO) DeleteByNodeID(ctx context.Context, tenantID, nodeID string) (int64, error) {
+func (d *EdgeDAO) DeleteByNodeID(ctx context.Context, tenantID int64, nodeID string) (int64, error) {
 	result, err := d.col().DeleteMany(ctx, bson.M{
 		"tenant_id": tenantID,
 		"$or": []bson.M{
@@ -157,7 +157,7 @@ func (d *EdgeDAO) DeleteByNodeID(ctx context.Context, tenantID, nodeID string) (
 }
 
 // UpdatePendingEdges 将目标节点匹配的 pending 边激活为 active
-func (d *EdgeDAO) UpdatePendingEdges(ctx context.Context, tenantID, targetID string) (int64, error) {
+func (d *EdgeDAO) UpdatePendingEdges(ctx context.Context, tenantID int64, targetID string) (int64, error) {
 	result, err := d.col().UpdateMany(ctx,
 		bson.M{"tenant_id": tenantID, "target_id": targetID, "status": domain.EdgeStatusPending},
 		bson.M{"$set": bson.M{"status": domain.EdgeStatusActive, "updated_at": time.Now()}},
@@ -169,13 +169,13 @@ func (d *EdgeDAO) UpdatePendingEdges(ctx context.Context, tenantID, targetID str
 }
 
 // CountPending 统计 pending 状态的边数量
-func (d *EdgeDAO) CountPending(ctx context.Context, tenantID string) (int64, error) {
+func (d *EdgeDAO) CountPending(ctx context.Context, tenantID int64) (int64, error) {
 	return d.col().CountDocuments(ctx, bson.M{"tenant_id": tenantID, "status": domain.EdgeStatusPending})
 }
 
 func (d *EdgeDAO) buildEdgeQuery(filter domain.EdgeFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if len(filter.SourceIDs) > 0 {

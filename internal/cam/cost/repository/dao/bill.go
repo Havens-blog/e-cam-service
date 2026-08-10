@@ -166,13 +166,13 @@ func (d *billDAO) CountUnifiedBills(ctx context.Context, filter repository.Unifi
 	return d.db.Collection(UnifiedBillCollection).CountDocuments(ctx, query)
 }
 
-func (d *billDAO) AggregateByField(ctx context.Context, tenantID string, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
+func (d *billDAO) AggregateByField(ctx context.Context, tenantID int64, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
 	match := bson.M{
 		"billing_date": bson.M{"$gte": startDate, "$lte": endDate},
 	}
-	if tenantID != "" {
-		match["tenant_id"] = tenantID
-	}
+	// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集，
+	// 而不是退化为「不加过滤」从而返回全部租户数据。
+	match["tenant_id"] = tenantID
 	if filter.Provider != "" {
 		match["provider"] = filter.Provider
 	}
@@ -208,13 +208,13 @@ func (d *billDAO) AggregateByField(ctx context.Context, tenantID string, field s
 	return results, err
 }
 
-func (d *billDAO) AggregateDailyAmount(ctx context.Context, tenantID string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+func (d *billDAO) AggregateDailyAmount(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 	match := bson.M{
 		"billing_date": bson.M{"$gte": startDate, "$lte": endDate},
 	}
-	if tenantID != "" {
-		match["tenant_id"] = tenantID
-	}
+	// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集，
+	// 而不是退化为「不加过滤」从而返回全部租户数据。
+	match["tenant_id"] = tenantID
 	if filter.Provider != "" {
 		match["provider"] = filter.Provider
 	}
@@ -279,7 +279,7 @@ func (d *billDAO) SumAmount(ctx context.Context, filter repository.UnifiedBillFi
 	return results[0].AmountCNY, nil
 }
 
-func (d *billDAO) DeleteUnifiedBillsByPeriod(ctx context.Context, tenantID string, period string) error {
+func (d *billDAO) DeleteUnifiedBillsByPeriod(ctx context.Context, tenantID int64, period string) error {
 	filter := bson.M{
 		"tenant_id": tenantID,
 		"billing_date": bson.M{
@@ -341,14 +341,14 @@ func (d *billDAO) DeleteUnifiedBillsByAccountAndMonth(ctx context.Context, accou
 	return result.DeletedCount, nil
 }
 
-func (d *billDAO) AggregateByTag(ctx context.Context, tenantID string, startDate, endDate string) ([]repository.AggregateResult, error) {
+func (d *billDAO) AggregateByTag(ctx context.Context, tenantID int64, startDate, endDate string) ([]repository.AggregateResult, error) {
 	match := bson.M{
 		"billing_date": bson.M{"$gte": startDate, "$lte": endDate},
 		"tags":         bson.M{"$ne": nil, "$type": "object"},
 	}
-	if tenantID != "" {
-		match["tenant_id"] = tenantID
-	}
+	// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集，
+	// 而不是退化为「不加过滤」从而返回全部租户数据。
+	match["tenant_id"] = tenantID
 
 	// 将 tags map 展开为 k/v 数组，按 value 聚合金额
 	pipeline := bson.A{
@@ -378,7 +378,7 @@ func (d *billDAO) AggregateByTag(ctx context.Context, tenantID string, startDate
 
 func (d *billDAO) buildUnifiedBillQuery(filter repository.UnifiedBillFilter) bson.M {
 	query := bson.M{}
-	if filter.TenantID != "" {
+	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
 	}
 	if filter.Provider != "" {

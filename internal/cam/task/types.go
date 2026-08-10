@@ -49,7 +49,7 @@ type SyncBillingParams struct {
 	AccountID int64  `json:"account_id"`
 	StartTime string `json:"start_time"` // RFC3339
 	EndTime   string `json:"end_time"`   // RFC3339
-	TenantID  string `json:"tenant_id"`
+	TenantID  int64  `json:"tenant_id"`
 }
 
 // SyncBillingResult 账单采集任务结果

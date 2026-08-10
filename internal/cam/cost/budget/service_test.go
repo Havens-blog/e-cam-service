@@ -20,7 +20,7 @@ type mockBudgetDAO struct {
 	getByIDFn        func(ctx context.Context, id int64) (costdomain.BudgetRule, error)
 	listFn           func(ctx context.Context, filter repository.BudgetFilter) ([]costdomain.BudgetRule, error)
 	countFn          func(ctx context.Context, filter repository.BudgetFilter) (int64, error)
-	listActiveFn     func(ctx context.Context, tenantID string) ([]costdomain.BudgetRule, error)
+	listActiveFn     func(ctx context.Context, tenantID int64) ([]costdomain.BudgetRule, error)
 	updateStatusFn   func(ctx context.Context, id int64, status string) error
 	updateNotifiedFn func(ctx context.Context, id int64, notifiedAt map[string]time.Time) error
 	deleteFn         func(ctx context.Context, id int64) error
@@ -56,7 +56,7 @@ func (m *mockBudgetDAO) Count(ctx context.Context, filter repository.BudgetFilte
 	}
 	return 0, nil
 }
-func (m *mockBudgetDAO) ListActive(ctx context.Context, tenantID string) ([]costdomain.BudgetRule, error) {
+func (m *mockBudgetDAO) ListActive(ctx context.Context, tenantID int64) ([]costdomain.BudgetRule, error) {
 	if m.listActiveFn != nil {
 		return m.listActiveFn(ctx, tenantID)
 	}
@@ -121,10 +121,10 @@ func (m *mockBillDAO) ListUnifiedBills(_ context.Context, _ repository.UnifiedBi
 func (m *mockBillDAO) CountUnifiedBills(_ context.Context, _ repository.UnifiedBillFilter) (int64, error) {
 	return 0, nil
 }
-func (m *mockBillDAO) AggregateByField(_ context.Context, _ string, _ string, _, _ string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
+func (m *mockBillDAO) AggregateByField(_ context.Context, _ int64, _ string, _, _ string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
 	return nil, nil
 }
-func (m *mockBillDAO) AggregateDailyAmount(_ context.Context, _ string, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+func (m *mockBillDAO) AggregateDailyAmount(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 	return nil, nil
 }
 func (m *mockBillDAO) DeleteUnifiedBillsByPeriod(_ context.Context, _, _ string) error { return nil }
@@ -134,7 +134,7 @@ func (m *mockBillDAO) DeleteRawBillsByAccountAndRange(_ context.Context, _ int64
 func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndRange(_ context.Context, _ int64, _, _ string) (int64, error) {
 	return 0, nil
 }
-func (m *mockBillDAO) AggregateByTag(_ context.Context, _ string, _, _ string) ([]repository.AggregateResult, error) {
+func (m *mockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([]repository.AggregateResult, error) {
 	return nil, nil
 }
 
@@ -208,7 +208,7 @@ func TestCreateBudget_Success(t *testing.T) {
 	id, err := svc.CreateBudget(context.Background(), costdomain.BudgetRule{
 		Name: "Monthly AWS Budget", AmountLimit: 10000,
 		ScopeType: "provider", ScopeValue: "aws",
-		Thresholds: []float64{50, 80, 100}, TenantID: "tenant1",
+		Thresholds: []float64{50, 80, 100}, TenantID: 3,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), id)
@@ -244,7 +244,7 @@ func TestCreateBudget_InvalidThresholds(t *testing.T) {
 func TestGetBudgetProgress(t *testing.T) {
 	budgetDAO := &mockBudgetDAO{
 		getByIDFn: func(_ context.Context, id int64) (costdomain.BudgetRule, error) {
-			return costdomain.BudgetRule{ID: id, Name: "Test Budget", AmountLimit: 10000, ScopeType: "all", TenantID: "t1", Status: "active"}, nil
+			return costdomain.BudgetRule{ID: id, Name: "Test Budget", AmountLimit: 10000, ScopeType: "all", TenantID: 1, Status: "active"}, nil
 		},
 	}
 	billDAO := &mockBillDAO{sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) { return 7500, nil }}
@@ -261,7 +261,7 @@ func TestGetBudgetProgress(t *testing.T) {
 func TestGetBudgetProgress_OverBudget(t *testing.T) {
 	budgetDAO := &mockBudgetDAO{
 		getByIDFn: func(_ context.Context, _ int64) (costdomain.BudgetRule, error) {
-			return costdomain.BudgetRule{ID: 1, Name: "T", AmountLimit: 1000, ScopeType: "all", TenantID: "t1", Status: "active"}, nil
+			return costdomain.BudgetRule{ID: 1, Name: "T", AmountLimit: 1000, ScopeType: "all", TenantID: 1, Status: "active"}, nil
 		},
 	}
 	billDAO := &mockBillDAO{sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) { return 1500, nil }}
@@ -276,14 +276,14 @@ func TestCheckBudgets_TriggersAlert(t *testing.T) {
 	alertDAO := &mockAlertDAO{listRulesFn: func(_ context.Context, filter alertdomain.AlertRuleFilter) ([]alertdomain.AlertRule, int64, error) {
 		return []alertdomain.AlertRule{{ID: 1, Type: filter.Type, Enabled: true}}, 1, nil
 	}}
-	budgetDAO := &mockBudgetDAO{listActiveFn: func(_ context.Context, _ string) ([]costdomain.BudgetRule, error) {
-		return []costdomain.BudgetRule{{ID: 1, Name: "Test", AmountLimit: 10000, ScopeType: "all", Thresholds: []float64{50, 80, 100}, TenantID: "t1", Status: "active"}}, nil
+	budgetDAO := &mockBudgetDAO{listActiveFn: func(_ context.Context, _ int64) ([]costdomain.BudgetRule, error) {
+		return []costdomain.BudgetRule{{ID: 1, Name: "Test", AmountLimit: 10000, ScopeType: "all", Thresholds: []float64{50, 80, 100}, TenantID: 1, Status: "active"}}, nil
 	}}
 	billDAO := &mockBillDAO{sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) { return 8500, nil }}
 	var notifiedAt map[string]time.Time
 	budgetDAO.updateNotifiedFn = func(_ context.Context, _ int64, na map[string]time.Time) error { notifiedAt = na; return nil }
 	svc := setupTestService(t, budgetDAO, billDAO, alertDAO)
-	err := svc.CheckBudgets(context.Background(), "t1")
+	err := svc.CheckBudgets(context.Background(), 1)
 	require.NoError(t, err)
 	assert.Len(t, alertDAO.emittedEvents, 2) // 50% and 80% thresholds
 	assert.NotNil(t, notifiedAt)
@@ -293,12 +293,12 @@ func TestCheckBudgets_TriggersAlert(t *testing.T) {
 
 func TestCheckBudgets_NoAlertBelowThreshold(t *testing.T) {
 	alertDAO := &mockAlertDAO{}
-	budgetDAO := &mockBudgetDAO{listActiveFn: func(_ context.Context, _ string) ([]costdomain.BudgetRule, error) {
-		return []costdomain.BudgetRule{{ID: 1, Name: "T", AmountLimit: 10000, ScopeType: "all", Thresholds: []float64{50, 80, 100}, TenantID: "t1", Status: "active"}}, nil
+	budgetDAO := &mockBudgetDAO{listActiveFn: func(_ context.Context, _ int64) ([]costdomain.BudgetRule, error) {
+		return []costdomain.BudgetRule{{ID: 1, Name: "T", AmountLimit: 10000, ScopeType: "all", Thresholds: []float64{50, 80, 100}, TenantID: 1, Status: "active"}}, nil
 	}}
 	billDAO := &mockBillDAO{sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) { return 3000, nil }}
 	svc := setupTestService(t, budgetDAO, billDAO, alertDAO)
-	err := svc.CheckBudgets(context.Background(), "t1")
+	err := svc.CheckBudgets(context.Background(), 1)
 	require.NoError(t, err)
 	assert.Empty(t, alertDAO.emittedEvents)
 }
@@ -307,16 +307,16 @@ func TestCheckBudgets_SkipsAlreadyNotified(t *testing.T) {
 	alertDAO := &mockAlertDAO{listRulesFn: func(_ context.Context, filter alertdomain.AlertRuleFilter) ([]alertdomain.AlertRule, int64, error) {
 		return []alertdomain.AlertRule{{ID: 1, Type: filter.Type, Enabled: true}}, 1, nil
 	}}
-	budgetDAO := &mockBudgetDAO{listActiveFn: func(_ context.Context, _ string) ([]costdomain.BudgetRule, error) {
+	budgetDAO := &mockBudgetDAO{listActiveFn: func(_ context.Context, _ int64) ([]costdomain.BudgetRule, error) {
 		return []costdomain.BudgetRule{{
 			ID: 1, Name: "T", AmountLimit: 10000, ScopeType: "all", Thresholds: []float64{50, 80},
-			NotifiedAt: map[string]time.Time{"50": time.Now()}, TenantID: "t1", Status: "active",
+			NotifiedAt: map[string]time.Time{"50": time.Now()}, TenantID: 1, Status: "active",
 		}}, nil
 	}}
 	billDAO := &mockBillDAO{sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) { return 8500, nil }}
 	budgetDAO.updateNotifiedFn = func(_ context.Context, _ int64, _ map[string]time.Time) error { return nil }
 	svc := setupTestService(t, budgetDAO, billDAO, alertDAO)
-	err := svc.CheckBudgets(context.Background(), "t1")
+	err := svc.CheckBudgets(context.Background(), 1)
 	require.NoError(t, err)
 	assert.Len(t, alertDAO.emittedEvents, 1) // Only 80% (50% already notified)
 }
@@ -329,8 +329,8 @@ func TestDeactivateBudgetsByScope(t *testing.T) {
 	budgetDAO := &mockBudgetDAO{
 		listFn: func(_ context.Context, _ repository.BudgetFilter) ([]costdomain.BudgetRule, error) {
 			return []costdomain.BudgetRule{
-				{ID: 1, Name: "A", ScopeType: "account", ScopeValue: "123", TenantID: "t1"},
-				{ID: 2, Name: "B", ScopeType: "account", ScopeValue: "456", TenantID: "t1"},
+				{ID: 1, Name: "A", ScopeType: "account", ScopeValue: "123", TenantID: 1},
+				{ID: 2, Name: "B", ScopeType: "account", ScopeValue: "456", TenantID: 1},
 			}, nil
 		},
 		updateStatusFn: func(_ context.Context, id int64, status string) error {
@@ -340,7 +340,7 @@ func TestDeactivateBudgetsByScope(t *testing.T) {
 		},
 	}
 	svc := setupTestService(t, budgetDAO, &mockBillDAO{}, alertDAO)
-	err := svc.DeactivateBudgetsByScope(context.Background(), "t1", "account", "123")
+	err := svc.DeactivateBudgetsByScope(context.Background(), 1, "account", "123")
 	require.NoError(t, err)
 	assert.Equal(t, []int64{1}, deactivatedIDs)
 	assert.Len(t, alertDAO.emittedEvents, 1)

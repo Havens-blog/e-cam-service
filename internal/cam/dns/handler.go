@@ -5,8 +5,8 @@ import (
 	"strconv"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
-	"github.com/Havens-blog/e-cam-service/internal/cam/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -39,9 +39,9 @@ func (h *DNSHandler) ListDomains(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 
 	logger := elog.DefaultLogger
+	// 不再记录 X-Tenant-ID 请求头：该头已不是租户来源，打印它会让人误以为仍然生效。
 	logger.Info("DNS ListDomains 请求",
-		elog.String("tenantID", tenantID),
-		elog.String("X-Tenant-ID-header", ctx.GetHeader("X-Tenant-ID")))
+		elog.Int64("tenantID", tenantID))
 
 	offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
 	limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "20"), 10, 64)

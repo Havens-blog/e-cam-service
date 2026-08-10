@@ -44,7 +44,7 @@ type AuditLog struct {
 	ErrorMessage  string             `json:"error_message" bson:"error_message"`
 	IPAddress     string             `json:"ip_address" bson:"ip_address"`
 	UserAgent     string             `json:"user_agent" bson:"user_agent"`
-	TenantID      string             `json:"tenant_id" bson:"tenant_id"`
+	TenantID      int64              `json:"tenant_id" bson:"tenant_id"`
 	CreateTime    time.Time          `json:"create_time" bson:"create_time"`
 	CTime         int64              `json:"ctime" bson:"ctime"`
 }
@@ -55,7 +55,7 @@ type AuditLogFilter struct {
 	OperatorID    string             `json:"operator_id"`
 	TargetType    string             `json:"target_type"`
 	CloudPlatform CloudProvider      `json:"cloud_platform"`
-	TenantID      string             `json:"tenant_id"`
+	TenantID      int64              `json:"tenant_id"`
 	StartTime     *time.Time         `json:"start_time"`
 	EndTime       *time.Time         `json:"end_time"`
 	Offset        int64              `json:"offset"`
@@ -74,20 +74,20 @@ const (
 type AuditReportRequest struct {
 	StartTime *time.Time `json:"start_time" binding:"required"`
 	EndTime   *time.Time `json:"end_time" binding:"required"`
-	TenantID  string     `json:"tenant_id"`
+	TenantID  int64      `json:"tenant_id"`
 }
 
 // AuditReport 审计报告
 type AuditReport struct {
-	StartTime      time.Time                     `json:"start_time"`
-	EndTime        time.Time                     `json:"end_time"`
-	TotalOps       int64                         `json:"total_ops"`
-	SuccessOps     int64                         `json:"success_ops"`
-	FailedOps      int64                         `json:"failed_ops"`
-	OpsByType      map[AuditOperationType]int64  `json:"ops_by_type"`
-	OpsByPlatform  map[CloudProvider]int64       `json:"ops_by_platform"`
-	TopOperators   []OperatorStats               `json:"top_operators"`
-	GeneratedAt    time.Time                     `json:"generated_at"`
+	StartTime     time.Time                    `json:"start_time"`
+	EndTime       time.Time                    `json:"end_time"`
+	TotalOps      int64                        `json:"total_ops"`
+	SuccessOps    int64                        `json:"success_ops"`
+	FailedOps     int64                        `json:"failed_ops"`
+	OpsByType     map[AuditOperationType]int64 `json:"ops_by_type"`
+	OpsByPlatform map[CloudProvider]int64      `json:"ops_by_platform"`
+	TopOperators  []OperatorStats              `json:"top_operators"`
+	GeneratedAt   time.Time                    `json:"generated_at"`
 }
 
 // OperatorStats 操作人统计

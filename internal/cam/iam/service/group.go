@@ -76,7 +76,7 @@ func NewUserGroupService(
 func (s *userGroupService) CreateGroup(ctx context.Context, req *domain.CreateUserGroupRequest) (*domain.UserGroup, error) {
 	s.logger.Info("创建用户组",
 		elog.String("name", req.Name),
-		elog.String("tenant_id", req.TenantID))
+		elog.Int64("tenant_id", req.TenantID))
 
 	if err := s.validateCreateGroupRequest(req); err != nil {
 		s.logger.Error("创建用户组参数验证失败", elog.FieldErr(err))
@@ -144,7 +144,7 @@ func (s *userGroupService) GetGroup(ctx context.Context, id int64) (*domain.User
 
 func (s *userGroupService) ListGroups(ctx context.Context, filter domain.UserGroupFilter) ([]*domain.UserGroup, int64, error) {
 	s.logger.Debug("获取用户组列表",
-		elog.String("tenant_id", filter.TenantID),
+		elog.Int64("tenant_id", filter.TenantID),
 		elog.String("keyword", filter.Keyword))
 
 	if filter.Limit == 0 {
@@ -260,7 +260,7 @@ func (s *userGroupService) validateCreateGroupRequest(req *domain.CreateUserGrou
 	if len(req.CloudPlatforms) == 0 {
 		return fmt.Errorf("云平台列表不能为空")
 	}
-	if req.TenantID == "" {
+	if req.TenantID == 0 {
 		return fmt.Errorf("租户ID不能为空")
 	}
 	return nil
@@ -367,7 +367,7 @@ func (s *userGroupService) logPolicyUpdate(ctx context.Context, groupID int64, g
 		BeforeValue:   beforeValue,
 		AfterValue:    afterValue,
 		Result:        domain.AuditResultSuccess,
-		TenantID:      "", // TODO: 从context中获取租户ID
+		TenantID:      0, // TODO: 从context中获取租户ID
 		CreateTime:    now,
 		CTime:         now.Unix(),
 	}
@@ -376,7 +376,7 @@ func (s *userGroupService) logPolicyUpdate(ctx context.Context, groupID int64, g
 	return err
 }
 
-func (s *userGroupService) triggerPermissionSync(ctx context.Context, groupID int64, tenantID string) error {
+func (s *userGroupService) triggerPermissionSync(ctx context.Context, groupID int64, tenantID int64) error {
 	// 获取使用该用户组的所有用户
 	filter := domain.CloudUserFilter{
 		TenantID: tenantID,
@@ -716,7 +716,7 @@ func (s *userGroupService) getGroupMemberCount(ctx context.Context, groupID int6
 
 	s.logger.Debug("开始查询用户组成员",
 		elog.Int64("group_id", groupID),
-		elog.String("tenant_id", group.TenantID))
+		elog.Int64("tenant_id", group.TenantID))
 
 	// 查询包含该用户组的所有用户
 	members, err := s.userRepo.GetByGroupID(ctx, groupID, group.TenantID)

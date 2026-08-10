@@ -36,7 +36,7 @@ type UserGroup struct {
 	CloudGroupID   string             `json:"cloud_group_id" bson:"cloud_group_id"`     // 云端用户组ID
 	UserCount      int                `json:"user_count" bson:"user_count"`
 	MemberCount    int                `json:"member_count" bson:"member_count"` // 成员数量（同步时使用）
-	TenantID       string             `json:"tenant_id" bson:"tenant_id"`
+	TenantID       int64              `json:"tenant_id" bson:"tenant_id"`
 	CreateTime     time.Time          `json:"create_time" bson:"create_time"`
 	UpdateTime     time.Time          `json:"update_time" bson:"update_time"`
 	CTime          int64              `json:"ctime" bson:"ctime"`
@@ -45,7 +45,7 @@ type UserGroup struct {
 
 // UserGroupFilter 用户组查询过滤器
 type UserGroupFilter struct {
-	TenantID string `json:"tenant_id"`
+	TenantID int64  `json:"tenant_id"`
 	Keyword  string `json:"keyword"`
 	Offset   int64  `json:"offset"`
 	Limit    int64  `json:"limit"`
@@ -57,7 +57,7 @@ type CreateUserGroupRequest struct {
 	Description    string             `json:"description" binding:"max=500"`
 	Policies       []PermissionPolicy `json:"policies"`
 	CloudPlatforms []CloudProvider    `json:"cloud_platforms" binding:"required,min=1"`
-	TenantID       string             `json:"tenant_id"`
+	TenantID       int64              `json:"tenant_id"`
 }
 
 // UpdateUserGroupRequest 更新用户组请求
@@ -77,7 +77,7 @@ func (g *UserGroup) Validate() error {
 	if len(g.CloudPlatforms) == 0 {
 		return fmt.Errorf("cloud platforms cannot be empty")
 	}
-	if g.TenantID == "" {
+	if g.TenantID == 0 {
 		return fmt.Errorf("tenant id cannot be empty")
 	}
 	return nil

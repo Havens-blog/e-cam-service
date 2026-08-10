@@ -18,7 +18,7 @@ type CloudAccountRepository interface {
 	GetByID(ctx context.Context, id int64) (domain.CloudAccount, error)
 
 	// GetByName 根据名称和租户ID获取云账号
-	GetByName(ctx context.Context, name, tenantID string) (domain.CloudAccount, error)
+	GetByName(ctx context.Context, name string, tenantID int64) (domain.CloudAccount, error)
 
 	// List 获取云账号列表
 	List(ctx context.Context, filter domain.CloudAccountFilter) ([]domain.CloudAccount, int64, error)
@@ -66,7 +66,7 @@ func (repo *cloudAccountRepository) GetByID(ctx context.Context, id int64) (doma
 }
 
 // GetByName 根据名称和租户ID获取云账号
-func (repo *cloudAccountRepository) GetByName(ctx context.Context, name, tenantID string) (domain.CloudAccount, error) {
+func (repo *cloudAccountRepository) GetByName(ctx context.Context, name string, tenantID int64) (domain.CloudAccount, error) {
 	daoAccount, err := repo.dao.GetAccountByName(ctx, name, tenantID)
 	if err != nil {
 		return domain.CloudAccount{}, err

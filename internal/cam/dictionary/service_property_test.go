@@ -79,7 +79,7 @@ func (d *inMemoryDAO) GetTypeByID(_ context.Context, id int64) (DictType, error)
 	return dt, nil
 }
 
-func (d *inMemoryDAO) GetTypeByCode(_ context.Context, tenantID, code string) (DictType, error) {
+func (d *inMemoryDAO) GetTypeByCode(_ context.Context, tenantID int64, code string) (DictType, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for _, dt := range d.types {
@@ -239,8 +239,8 @@ func genValue() *rapid.Generator[string] {
 	return rapid.StringMatching(`[a-z][a-z0-9_]{1,15}`)
 }
 
-func genTenantID() *rapid.Generator[string] {
-	return rapid.StringMatching(`tenant_[a-z]{3,8}`)
+func genTenantID() *rapid.Generator[int64] {
+	return rapid.Int64Range(1, 1000)
 }
 
 // ==================== Property Tests ====================
@@ -425,8 +425,8 @@ func TestProperty_TenantDataIsolation(t *testing.T) {
 		svc := NewDictService(dao)
 		ctx := context.Background()
 
-		tenantA := "tenant_aaa"
-		tenantB := "tenant_bbb"
+		tenantA := int64(9)
+		tenantB := int64(10)
 		code := genCode().Draw(rt, "code")
 
 		// Create type under tenant A

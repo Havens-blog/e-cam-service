@@ -26,22 +26,22 @@ const cacheTTL = 5 * time.Minute
 // DictService 业务逻辑层接口
 type DictService interface {
 	// 字典类型
-	CreateType(ctx context.Context, tenantID string, req CreateTypeReq) (DictType, error)
-	UpdateType(ctx context.Context, tenantID string, id int64, req UpdateTypeReq) error
-	DeleteType(ctx context.Context, tenantID string, id int64) error
-	ListTypes(ctx context.Context, tenantID string, filter TypeFilter) ([]DictType, int64, error)
-	UpdateTypeStatus(ctx context.Context, tenantID string, id int64, status string) error
+	CreateType(ctx context.Context, tenantID int64, req CreateTypeReq) (DictType, error)
+	UpdateType(ctx context.Context, tenantID int64, id int64, req UpdateTypeReq) error
+	DeleteType(ctx context.Context, tenantID int64, id int64) error
+	ListTypes(ctx context.Context, tenantID int64, filter TypeFilter) ([]DictType, int64, error)
+	UpdateTypeStatus(ctx context.Context, tenantID int64, id int64, status string) error
 
 	// 字典项
-	CreateItem(ctx context.Context, tenantID string, typeID int64, req CreateItemReq) (DictItem, error)
-	UpdateItem(ctx context.Context, tenantID string, id int64, req UpdateItemReq) error
-	DeleteItem(ctx context.Context, tenantID string, id int64) error
-	ListItems(ctx context.Context, tenantID string, typeID int64) ([]DictItem, error)
-	UpdateItemStatus(ctx context.Context, tenantID string, id int64, status string) error
+	CreateItem(ctx context.Context, tenantID int64, typeID int64, req CreateItemReq) (DictItem, error)
+	UpdateItem(ctx context.Context, tenantID int64, id int64, req UpdateItemReq) error
+	DeleteItem(ctx context.Context, tenantID int64, id int64) error
+	ListItems(ctx context.Context, tenantID int64, typeID int64) ([]DictItem, error)
+	UpdateItemStatus(ctx context.Context, tenantID int64, id int64, status string) error
 
 	// 数据查询
-	GetByCode(ctx context.Context, tenantID string, code string) ([]DictItem, error)
-	BatchGetByCodes(ctx context.Context, tenantID string, codes []string) (map[string][]DictItem, error)
+	GetByCode(ctx context.Context, tenantID int64, code string) ([]DictItem, error)
+	BatchGetByCodes(ctx context.Context, tenantID int64, codes []string) (map[string][]DictItem, error)
 }
 
 // cacheEntry 缓存条目
@@ -63,7 +63,7 @@ func NewDictService(dao DictDAO) DictService {
 
 // ==================== 字典类型操作 ====================
 
-func (s *dictService) CreateType(ctx context.Context, tenantID string, req CreateTypeReq) (DictType, error) {
+func (s *dictService) CreateType(ctx context.Context, tenantID int64, req CreateTypeReq) (DictType, error) {
 	// 校验 code 唯一性
 	_, err := s.dao.GetTypeByCode(ctx, tenantID, req.Code)
 	if err == nil {
@@ -92,7 +92,7 @@ func (s *dictService) CreateType(ctx context.Context, tenantID string, req Creat
 	return dt, nil
 }
 
-func (s *dictService) UpdateType(ctx context.Context, tenantID string, id int64, req UpdateTypeReq) error {
+func (s *dictService) UpdateType(ctx context.Context, tenantID int64, id int64, req UpdateTypeReq) error {
 	dt := DictType{
 		ID:          id,
 		TenantID:    tenantID,
@@ -102,7 +102,7 @@ func (s *dictService) UpdateType(ctx context.Context, tenantID string, id int64,
 	return s.dao.UpdateType(ctx, dt)
 }
 
-func (s *dictService) DeleteType(ctx context.Context, tenantID string, id int64) error {
+func (s *dictService) DeleteType(ctx context.Context, tenantID int64, id int64) error {
 	count, err := s.dao.CountItemsByTypeID(ctx, id)
 	if err != nil {
 		return err
@@ -113,12 +113,12 @@ func (s *dictService) DeleteType(ctx context.Context, tenantID string, id int64)
 	return s.dao.DeleteType(ctx, id)
 }
 
-func (s *dictService) ListTypes(ctx context.Context, tenantID string, filter TypeFilter) ([]DictType, int64, error) {
+func (s *dictService) ListTypes(ctx context.Context, tenantID int64, filter TypeFilter) ([]DictType, int64, error) {
 	filter.TenantID = tenantID
 	return s.dao.ListTypes(ctx, filter)
 }
 
-func (s *dictService) UpdateTypeStatus(ctx context.Context, tenantID string, id int64, status string) error {
+func (s *dictService) UpdateTypeStatus(ctx context.Context, tenantID int64, id int64, status string) error {
 	err := s.dao.UpdateTypeStatus(ctx, id, status)
 	if err != nil {
 		return err
@@ -130,7 +130,7 @@ func (s *dictService) UpdateTypeStatus(ctx context.Context, tenantID string, id 
 
 // ==================== 字典项操作 ====================
 
-func (s *dictService) CreateItem(ctx context.Context, tenantID string, typeID int64, req CreateItemReq) (DictItem, error) {
+func (s *dictService) CreateItem(ctx context.Context, tenantID int64, typeID int64, req CreateItemReq) (DictItem, error) {
 	// 校验 value 唯一性
 	_, err := s.dao.GetItemByValue(ctx, typeID, req.Value)
 	if err == nil {
@@ -163,7 +163,7 @@ func (s *dictService) CreateItem(ctx context.Context, tenantID string, typeID in
 	return item, nil
 }
 
-func (s *dictService) UpdateItem(ctx context.Context, tenantID string, id int64, req UpdateItemReq) error {
+func (s *dictService) UpdateItem(ctx context.Context, tenantID int64, id int64, req UpdateItemReq) error {
 	// 获取 item 以找到 typeID 用于缓存失效
 	item, err := s.dao.GetItemByID(ctx, id)
 	if err != nil {
@@ -189,7 +189,7 @@ func (s *dictService) UpdateItem(ctx context.Context, tenantID string, id int64,
 	return nil
 }
 
-func (s *dictService) DeleteItem(ctx context.Context, tenantID string, id int64) error {
+func (s *dictService) DeleteItem(ctx context.Context, tenantID int64, id int64) error {
 	// 获取 item 以找到 typeID 用于缓存失效
 	item, err := s.dao.GetItemByID(ctx, id)
 	if err != nil {
@@ -208,11 +208,11 @@ func (s *dictService) DeleteItem(ctx context.Context, tenantID string, id int64)
 	return nil
 }
 
-func (s *dictService) ListItems(ctx context.Context, tenantID string, typeID int64) ([]DictItem, error) {
+func (s *dictService) ListItems(ctx context.Context, tenantID int64, typeID int64) ([]DictItem, error) {
 	return s.dao.ListItemsByTypeID(ctx, typeID)
 }
 
-func (s *dictService) UpdateItemStatus(ctx context.Context, tenantID string, id int64, status string) error {
+func (s *dictService) UpdateItemStatus(ctx context.Context, tenantID int64, id int64, status string) error {
 	// 获取 item 以找到 typeID 用于缓存失效
 	item, err := s.dao.GetItemByID(ctx, id)
 	if err != nil {
@@ -233,8 +233,8 @@ func (s *dictService) UpdateItemStatus(ctx context.Context, tenantID string, id 
 
 // ==================== 数据查询 ====================
 
-func (s *dictService) GetByCode(ctx context.Context, tenantID string, code string) ([]DictItem, error) {
-	cacheKey := fmt.Sprintf("%s:%s", tenantID, code)
+func (s *dictService) GetByCode(ctx context.Context, tenantID int64, code string) ([]DictItem, error) {
+	cacheKey := fmt.Sprintf("%d:%s", tenantID, code)
 
 	// 查缓存
 	if val, ok := s.cache.Load(cacheKey); ok {
@@ -283,7 +283,7 @@ func (s *dictService) GetByCode(ctx context.Context, tenantID string, code strin
 	return items, nil
 }
 
-func (s *dictService) BatchGetByCodes(ctx context.Context, tenantID string, codes []string) (map[string][]DictItem, error) {
+func (s *dictService) BatchGetByCodes(ctx context.Context, tenantID int64, codes []string) (map[string][]DictItem, error) {
 	result := make(map[string][]DictItem, len(codes))
 	for _, code := range codes {
 		items, err := s.GetByCode(ctx, tenantID, code)
@@ -298,11 +298,11 @@ func (s *dictService) BatchGetByCodes(ctx context.Context, tenantID string, code
 // ==================== 缓存辅助 ====================
 
 // invalidateCacheByTypeID 根据 typeID 查找对应的 code 并清除缓存
-func (s *dictService) invalidateCacheByTypeID(ctx context.Context, tenantID string, typeID int64) {
+func (s *dictService) invalidateCacheByTypeID(ctx context.Context, tenantID int64, typeID int64) {
 	dt, err := s.dao.GetTypeByID(ctx, typeID)
 	if err != nil {
 		return
 	}
-	cacheKey := fmt.Sprintf("%s:%s", tenantID, dt.Code)
+	cacheKey := fmt.Sprintf("%d:%s", tenantID, dt.Code)
 	s.cache.Delete(cacheKey)
 }

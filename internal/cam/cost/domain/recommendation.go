@@ -16,7 +16,7 @@ type Recommendation struct {
 	Status          string     `bson:"status" json:"status"`
 	DismissedAt     *time.Time `bson:"dismissed_at" json:"dismissed_at"`
 	DismissExpiry   *time.Time `bson:"dismiss_expiry" json:"dismiss_expiry"`
-	TenantID        string     `bson:"tenant_id" json:"tenant_id"`
+	TenantID        int64      `bson:"tenant_id" json:"tenant_id"`
 	CreateTime      int64      `bson:"ctime" json:"ctime"`
 	UpdateTime      int64      `bson:"utime" json:"utime"`
 }

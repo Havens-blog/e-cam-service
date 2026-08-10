@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -20,8 +20,8 @@ type RuleEngineService interface {
 	DeleteRule(ctx context.Context, id int64) error
 	GetRule(ctx context.Context, id int64) (domain.BindingRule, error)
 	ListRules(ctx context.Context, filter domain.RuleFilter) ([]domain.BindingRule, int64, error)
-	MatchInstance(ctx context.Context, tenantID string, instance assetdomain.Instance) (*domain.RuleMatchResult, error)
-	ExecuteRules(ctx context.Context, tenantID string) (int64, error)
+	MatchInstance(ctx context.Context, tenantID int64, instance assetdomain.Instance) (*domain.RuleMatchResult, error)
+	ExecuteRules(ctx context.Context, tenantID int64) (int64, error)
 }
 
 type ruleEngineService struct {
@@ -92,7 +92,7 @@ func (s *ruleEngineService) ListRules(ctx context.Context, filter domain.RuleFil
 	return rules, total, nil
 }
 
-func (s *ruleEngineService) MatchInstance(ctx context.Context, tenantID string, instance assetdomain.Instance) (*domain.RuleMatchResult, error) {
+func (s *ruleEngineService) MatchInstance(ctx context.Context, tenantID int64, instance assetdomain.Instance) (*domain.RuleMatchResult, error) {
 	rules, err := s.ruleRepo.ListEnabled(ctx, tenantID)
 	if err != nil {
 		return nil, err
@@ -117,15 +117,15 @@ func (s *ruleEngineService) MatchInstance(ctx context.Context, tenantID string, 
 	}, nil
 }
 
-func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID string) (int64, error) {
-	s.logger.Info("开始执行规则匹配", elog.String("tenantID", tenantID))
+func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID int64) (int64, error) {
+	s.logger.Info("开始执行规则匹配", elog.Int64("tenantID", tenantID))
 
 	rules, err := s.ruleRepo.ListEnabled(ctx, tenantID)
 	if err != nil {
 		return 0, fmt.Errorf("获取规则列表失败: %w", err)
 	}
 	if len(rules) == 0 {
-		s.logger.Info("无启用的规则", elog.String("tenantID", tenantID))
+		s.logger.Info("无启用的规则", elog.Int64("tenantID", tenantID))
 		return 0, nil
 	}
 
@@ -137,7 +137,7 @@ func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID string) (
 		return 0, fmt.Errorf("获取实例列表失败: %w", err)
 	}
 	if len(instances) == 0 {
-		s.logger.Info("无实例数据", elog.String("tenantID", tenantID))
+		s.logger.Info("无实例数据", elog.Int64("tenantID", tenantID))
 		return 0, nil
 	}
 
@@ -181,7 +181,7 @@ func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID string) (
 	}
 
 	if len(newBindings) == 0 {
-		s.logger.Info("无新的匹配绑定", elog.String("tenantID", tenantID))
+		s.logger.Info("无新的匹配绑定", elog.Int64("tenantID", tenantID))
 		return 0, nil
 	}
 
@@ -191,7 +191,7 @@ func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID string) (
 	}
 
 	s.logger.Info("规则匹配完成",
-		elog.String("tenantID", tenantID),
+		elog.Int64("tenantID", tenantID),
 		elog.Int("ruleCount", len(rules)),
 		elog.Int("instanceCount", len(instances)),
 		elog.Int64("newBindingCount", count),

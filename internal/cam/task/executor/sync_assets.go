@@ -865,7 +865,7 @@ func (e *SyncAssetsExecutor) syncRegionRDS(
 	e.logger.Info("开始同步RDS实例",
 		elog.String("region", region),
 		elog.String("model_uid", modelUID),
-		elog.String("tenant_id", account.TenantID))
+		elog.Int64("tenant_id", account.TenantID))
 
 	// 获取云端实例
 	rdsAdapter := adapter.RDS()
@@ -919,7 +919,7 @@ func (e *SyncAssetsExecutor) syncRegionRDS(
 			elog.String("asset_id", inst.InstanceID),
 			elog.String("asset_name", inst.InstanceName),
 			elog.String("model_uid", instance.ModelUID),
-			elog.String("tenant_id", instance.TenantID),
+			elog.Int64("tenant_id", instance.TenantID),
 			elog.Int64("account_id", instance.AccountID))
 		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
 			e.logger.Error("保存RDS实例失败", elog.String("asset_id", inst.InstanceID), elog.FieldErr(err))
@@ -1792,7 +1792,7 @@ func (e *SyncAssetsExecutor) syncRegionNAS(
 	e.logger.Info("开始同步NAS文件系统",
 		elog.String("region", region),
 		elog.String("model_uid", modelUID),
-		elog.String("tenant_id", account.TenantID))
+		elog.Int64("tenant_id", account.TenantID))
 
 	// 获取云端实例
 	nasAdapter := adapter.NAS()
@@ -1870,7 +1870,7 @@ func (e *SyncAssetsExecutor) syncRegionOSS(
 	e.logger.Info("开始同步OSS存储桶",
 		elog.String("region", region),
 		elog.String("model_uid", modelUID),
-		elog.String("tenant_id", account.TenantID))
+		elog.Int64("tenant_id", account.TenantID))
 
 	// 获取云端实例
 	ossAdapter := adapter.OSS()
@@ -2055,7 +2055,7 @@ func (e *SyncAssetsExecutor) syncRegionKafka(
 	e.logger.Info("开始同步Kafka实例",
 		elog.String("region", region),
 		elog.String("model_uid", modelUID),
-		elog.String("tenant_id", account.TenantID))
+		elog.Int64("tenant_id", account.TenantID))
 
 	// 获取云端实例
 	kafkaAdapter := adapter.Kafka()
@@ -2133,7 +2133,7 @@ func (e *SyncAssetsExecutor) syncRegionElasticsearch(
 	e.logger.Info("开始同步Elasticsearch实例",
 		elog.String("region", region),
 		elog.String("model_uid", modelUID),
-		elog.String("tenant_id", account.TenantID))
+		elog.Int64("tenant_id", account.TenantID))
 
 	// 获取云端实例
 	esAdapter := adapter.Elasticsearch()
@@ -2388,7 +2388,7 @@ func (e *SyncAssetsExecutor) syncRegionDisk(
 	e.logger.Info("开始同步云盘",
 		elog.String("region", region),
 		elog.String("model_uid", modelUID),
-		elog.String("tenant_id", account.TenantID))
+		elog.Int64("tenant_id", account.TenantID))
 
 	diskAdapter := adapter.Disk()
 	if diskAdapter == nil {
@@ -2461,7 +2461,7 @@ func (e *SyncAssetsExecutor) syncRegionSnapshot(
 	e.logger.Info("开始同步快照",
 		elog.String("region", region),
 		elog.String("model_uid", modelUID),
-		elog.String("tenant_id", account.TenantID))
+		elog.Int64("tenant_id", account.TenantID))
 
 	snapshotAdapter := adapter.Snapshot()
 	if snapshotAdapter == nil {
@@ -2534,7 +2534,7 @@ func (e *SyncAssetsExecutor) syncRegionSecurityGroup(
 	e.logger.Info("开始同步安全组",
 		elog.String("region", region),
 		elog.String("model_uid", modelUID),
-		elog.String("tenant_id", account.TenantID))
+		elog.Int64("tenant_id", account.TenantID))
 
 	sgAdapter := adapter.SecurityGroup()
 	if sgAdapter == nil {
@@ -2854,7 +2854,7 @@ func (e *SyncAssetsExecutor) syncRegionImage(
 	e.logger.Info("开始同步镜像",
 		elog.String("region", region),
 		elog.String("model_uid", modelUID),
-		elog.String("tenant_id", account.TenantID))
+		elog.Int64("tenant_id", account.TenantID))
 
 	imageAdapter := adapter.Image()
 	if imageAdapter == nil {
