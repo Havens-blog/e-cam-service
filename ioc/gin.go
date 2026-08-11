@@ -76,11 +76,7 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 	camGroup := server.Group("/api/v1/cam")
 
 	// tenantScoped 返回一个挂了 RequireTenant 的 camGroup 子组。
-	//
-	// 为什么必须在这里挂，而不是在 internal/cam/module.go：
-	// cam.Module.RegisterRoutes 虽然也写了同样的拦截，但它**没有任何调用方**
-	// （全仓 grep `camModule.RegisterRoutes` 为 0）；线上生效的注册路径是
-	// ioc/wire_gen.go:42 → 本函数。写在那边的 RequireTenant 一律不生效。
+	// 各 sub-handler 在此直接注册，租户边界由下方 tenantScoped() 统一挂载。
 	//
 	// 为什么这些组需要拦截：这些 handler 全部以 middleware.GetTenantID(ctx) 构造
 	// filter，而多数 filter 的 DAO 保留了「if filter.TenantID != 0 才加租户谓词」
