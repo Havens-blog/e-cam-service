@@ -54,7 +54,7 @@ func TestConvertToLBInstance(t *testing.T) {
 			expected: types.LBInstance{
 				LoadBalancerID:     "lb-test-001",
 				LoadBalancerName:   "web-slb",
-				LoadBalancerType:   "slb",
+				LoadBalancerType:   "clb",
 				Status:             "active",
 				Region:             "cn-hangzhou",
 				Zone:               "cn-hangzhou-a",
@@ -80,20 +80,20 @@ func TestConvertToLBInstance(t *testing.T) {
 			lb:     slb.LoadBalancer{},
 			region: "cn-shanghai",
 			expected: types.LBInstance{
-				LoadBalancerType: "slb",
+				LoadBalancerType: "clb",
 				Region:           "cn-shanghai",
 				Tags:             map[string]string{},
 				Provider:         "aliyun",
 			},
 		},
 		{
-			name: "有LoadBalancerSpec时类型为slb",
+			name: "有LoadBalancerSpec时类型为clb",
 			lb: slb.LoadBalancer{
 				LoadBalancerSpec: "slb.s3.large",
 			},
 			region: "cn-beijing",
 			expected: types.LBInstance{
-				LoadBalancerType: "slb",
+				LoadBalancerType: "clb",
 				LoadBalancerSpec: "slb.s3.large",
 				Region:           "cn-beijing",
 				Tags:             map[string]string{},
@@ -101,14 +101,14 @@ func TestConvertToLBInstance(t *testing.T) {
 			},
 		},
 		{
-			name: "无LoadBalancerSpec时类型仍为slb",
+			name: "无LoadBalancerSpec时类型仍为clb",
 			lb: slb.LoadBalancer{
 				LoadBalancerId: "lb-no-spec",
 			},
 			region: "cn-shenzhen",
 			expected: types.LBInstance{
 				LoadBalancerID:   "lb-no-spec",
-				LoadBalancerType: "slb",
+				LoadBalancerType: "clb",
 				Region:           "cn-shenzhen",
 				Tags:             map[string]string{},
 				Provider:         "aliyun",
@@ -172,7 +172,7 @@ func TestConvertDetailToLBInstance(t *testing.T) {
 			expected: types.LBInstance{
 				LoadBalancerID:     "lb-detail-001",
 				LoadBalancerName:   "detail-slb",
-				LoadBalancerType:   "slb",
+				LoadBalancerType:   "clb",
 				Status:             "active",
 				Region:             "cn-hangzhou",
 				Zone:               "cn-hangzhou-a",
@@ -214,7 +214,7 @@ func TestConvertDetailToLBInstance(t *testing.T) {
 			expected: types.LBInstance{
 				LoadBalancerID:   "lb-empty",
 				LoadBalancerName: "empty-slb",
-				LoadBalancerType: "slb",
+				LoadBalancerType: "clb",
 				Region:           "cn-shanghai",
 				Tags:             map[string]string{},
 				Description:      "empty-slb",
@@ -226,7 +226,7 @@ func TestConvertDetailToLBInstance(t *testing.T) {
 			resp:   &slb.DescribeLoadBalancerAttributeResponse{},
 			region: "cn-beijing",
 			expected: types.LBInstance{
-				LoadBalancerType: "slb",
+				LoadBalancerType: "clb",
 				Region:           "cn-beijing",
 				Tags:             map[string]string{},
 				Provider:         "aliyun",
@@ -250,7 +250,7 @@ func TestConvertDetailToLBInstance(t *testing.T) {
 			region: "cn-hangzhou",
 			expected: types.LBInstance{
 				LoadBalancerID:     "lb-single",
-				LoadBalancerType:   "slb",
+				LoadBalancerType:   "clb",
 				Region:             "cn-hangzhou",
 				ListenerCount:      1,
 				BackendServerCount: 1,
