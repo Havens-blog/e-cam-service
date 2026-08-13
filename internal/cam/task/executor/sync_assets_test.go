@@ -333,6 +333,15 @@ func (m *mockCloudAdapter) EIP() cloudx.EIPAdapter {
 	return args.Get(0).(cloudx.EIPAdapter)
 }
 
+func (m *mockCloudAdapter) VSwitch() cloudx.VSwitchAdapter             { return nil }
+func (m *mockCloudAdapter) CDN() cloudx.CDNAdapter                     { return nil }
+func (m *mockCloudAdapter) WAF() cloudx.WAFAdapter                     { return nil }
+func (m *mockCloudAdapter) DNS() cloudx.DNSAdapter                     { return nil }
+func (m *mockCloudAdapter) ENI() cloudx.ENIAdapter                     { return nil }
+func (m *mockCloudAdapter) Tag() cloudx.TagAdapter                     { return nil }
+func (m *mockCloudAdapter) ECSCreate() cloudx.ECSCreateAdapter         { return nil }
+func (m *mockCloudAdapter) ResourceQuery() cloudx.ResourceQueryAdapter { return nil }
+
 // ============================================================================
 // Mock: RDSAdapter
 // ============================================================================
@@ -467,7 +476,7 @@ func TestSyncRegionRDS_Success(t *testing.T) {
 	}, nil)
 
 	// 本地没有已有实例
-	instanceRepo.On("ListAssetIDsByRegion", ctx, 6, "aliyun_rds", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", ctx, int64(6), "aliyun_rds", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 
 	// Upsert 每个实例
@@ -499,11 +508,11 @@ func TestSyncRegionRDS_WithDeletion(t *testing.T) {
 	}, nil)
 
 	// 本地有2个实例（rm-002 已不存在于云端）
-	instanceRepo.On("ListAssetIDsByRegion", ctx, 6, "aliyun_rds", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", ctx, int64(6), "aliyun_rds", int64(100), "cn-hangzhou").
 		Return([]string{"rm-001", "rm-002"}, nil)
 
 	// 应该删除 rm-002
-	instanceRepo.On("DeleteByAssetIDs", ctx, 6, "aliyun_rds", []string{"rm-002"}).
+	instanceRepo.On("DeleteByAssetIDs", ctx, int64(6), "aliyun_rds", []string{"rm-002"}).
 		Return(int64(1), nil)
 
 	instanceRepo.On("Upsert", ctx, mock.Anything).Return(nil)
@@ -514,7 +523,7 @@ func TestSyncRegionRDS_WithDeletion(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
 
-	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", ctx, 6, "aliyun_rds", []string{"rm-002"})
+	instanceRepo.AssertCalled(t, "DeleteByAssetIDs", ctx, int64(6), "aliyun_rds", []string{"rm-002"})
 }
 
 func TestSyncRegionRDS_AdapterError(t *testing.T) {
@@ -569,7 +578,7 @@ func TestSyncRegionVPC_Success(t *testing.T) {
 		},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", ctx, 6, "aliyun_vpc", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", ctx, int64(6), "aliyun_vpc", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 
 	instanceRepo.On("Upsert", ctx, mock.MatchedBy(func(inst camdomain.Instance) bool {
@@ -599,7 +608,7 @@ func TestSyncRegionRDS_UpsertError(t *testing.T) {
 		{InstanceID: "rm-002", InstanceName: "prod-mysql-02", Region: "cn-hangzhou"},
 	}, nil)
 
-	instanceRepo.On("ListAssetIDsByRegion", ctx, 6, "aliyun_rds", int64(100), "cn-hangzhou").
+	instanceRepo.On("ListAssetIDsByRegion", ctx, int64(6), "aliyun_rds", int64(100), "cn-hangzhou").
 		Return([]string{}, nil)
 
 	// 第一个 Upsert 失败，第二个成功
