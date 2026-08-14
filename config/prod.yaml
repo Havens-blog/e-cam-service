@@ -45,10 +45,14 @@ session:
     domain: ".example.com"
     name: "ecmdb-token-key"
 
+# db 必须与 eiam 保持一致（统一为 1）。
+# eiam 通过 ginRedis.NewSessionProvider 往该 db 写 session，
+# 本服务从同一 db 读取校验；不一致会导致"会话无效或已过期"。
+# 注意：本服务 session 与成本分析缓存共用这一个 Redis 客户端。
 redis:
   addr: "106.52.187.69:6379"
   password: "1234567890"
-  db: 3
+  db: 1
 
 casbin:
   redis:

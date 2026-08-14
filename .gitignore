@@ -64,6 +64,7 @@ config/*.local.yaml
 *.bak
 *.backup
 bak/
+docs/
 
 # Archives
 *.zip
@@ -82,3 +83,12 @@ cmd/apm-push/deploy/secret.yaml
 
 # Go workspace
 go.work
+# Forge
+.forge/state.json
+.forge/test-state.json
+.forge/worktrees/
+.forge/logs/
+docs/features/*/tasks/process/
+docs/features/*/tasks/index.json.lock
+docs/features/*/testing/results/
+tests/results/
