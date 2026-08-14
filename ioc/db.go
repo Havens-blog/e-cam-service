@@ -70,7 +70,12 @@ func InitMongoDB() *mongox.Mongo {
 
 	opts := options.Client().
 		ApplyURI(uri).
-		SetMonitor(monitor)
+		SetMonitor(monitor).
+		SetMaxPoolSize(100).           // 最大连接数，限制资源消耗
+		SetMinPoolSize(10).            // 最小连接数
+		SetMaxConnecting(10).         // 最大同时连接数
+		SetServerSelectionTimeout(5*time.Second).
+		SetConnectTimeout(10*time.Second)
 
 	logger.Info("正在连接MongoDB服务器...")
 	client, err := mongo.Connect(ctx, opts)
