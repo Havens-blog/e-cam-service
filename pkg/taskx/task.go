@@ -34,6 +34,8 @@ type Task struct {
 	StartedAt   *time.Time             `json:"started_at,omitempty" bson:"started_at"`     // 开始时间
 	CompletedAt *time.Time             `json:"completed_at,omitempty" bson:"completed_at"` // 完成时间
 	Duration    int64                  `json:"duration,omitempty" bson:"duration"`         // 执行时长（秒）
+	RetryCount  int                    `json:"retry_count,omitempty" bson:"retry_count"`   // 重试次数
+	MaxRetries  int                    `json:"max_retries,omitempty" bson:"max_retries"`   // 最大重试次数（默认3）
 }
 
 // TaskExecutor 任务执行器接口

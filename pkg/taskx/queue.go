@@ -39,7 +39,7 @@ func NewQueue(
 	}
 
 	if config.BufferSize <= 0 {
-		config.BufferSize = 100 // 默认缓冲100个任务
+		config.BufferSize = 500 // 默认缓冲500个任务（增加以处理大量积压）
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -76,6 +76,9 @@ func (q *Queue) Start() {
 		q.wg.Add(1)
 		go q.worker(i)
 	}
+
+	// 恢复 pending 和 running 状态的任务（服务重启后遗留的任务）
+	q.recoverPendingTasks()
 }
 
 // Stop 停止任务队列
@@ -87,6 +90,113 @@ func (q *Queue) Stop() {
 	q.wg.Wait()
 
 	q.logger.Info("任务队列已停止")
+}
+
+// recoverPendingTasks 恢复 pending 和 running 状态的任务
+func (q *Queue) recoverPendingTasks() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+
+	// 先处理遗留的 running 任务（一次性处理）
+	filter := TaskFilter{
+		Status: TaskStatusRunning,
+		Limit:  1000,
+	}
+	runningTasks, err := q.repo.List(ctx, filter)
+	if err != nil {
+		q.logger.Error("查询 running 任务失败", elog.FieldErr(err))
+	} else if len(runningTasks) > 0 {
+		q.logger.Info("发现遗留的 running 任务，重置为 pending",
+			elog.Int("count", len(runningTasks)))
+
+		for _, task := range runningTasks {
+			// 重置为 pending 状态
+			if err := q.repo.UpdateStatus(ctx, task.ID, TaskStatusPending, "服务重启，任务重新排队"); err != nil {
+				q.logger.Error("重置任务状态失败",
+					elog.String("task_id", task.ID),
+					elog.FieldErr(err))
+				continue
+			}
+		}
+		q.logger.Info("遗留 running 任务已重置为 pending", elog.Int("count", len(runningTasks)))
+	}
+	cancel()
+
+	// 启动后台协程持续恢复 pending 任务
+	q.wg.Add(1)
+	go q.pendingTaskRecoverLoop()
+}
+
+// pendingTaskRecoverLoop 持续从数据库恢复 pending 任务
+func (q *Queue) pendingTaskRecoverLoop() {
+	defer q.wg.Done()
+
+	q.logger.Info("启动 pending 任务恢复协程")
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	batchSize := int64(100) // 每次处理100条
+	processedCount := 0
+
+	for {
+		select {
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+			// 查询 pending 任务
+			filter := TaskFilter{
+				Status: TaskStatusPending,
+				Limit:  batchSize,
+			}
+			pendingTasks, err := q.repo.List(ctx, filter)
+			cancel()
+
+			if err != nil {
+				q.logger.Error("查询 pending 任务失败", elog.FieldErr(err))
+				continue
+			}
+
+			if len(pendingTasks) == 0 {
+				continue
+			}
+
+			q.logger.Info("发现 pending 任务", elog.Int("count", len(pendingTasks)))
+
+			recovered := 0
+			for _, task := range pendingTasks {
+				// 检查是否已有对应的执行器
+				q.mu.RLock()
+				_, ok := q.executors[task.Type]
+				q.mu.RUnlock()
+
+				if !ok {
+					continue
+				}
+
+				// 尝试重新入队（非阻塞）
+				select {
+				case q.taskChan <- &task:
+					recovered++
+					processedCount++
+				case <-q.ctx.Done():
+					return
+				default:
+					// 队列满了，下次再试
+				}
+			}
+
+			if recovered > 0 {
+				q.logger.Info("本轮恢复任务",
+					elog.Int("recovered", recovered),
+					elog.Int("total_processed", processedCount))
+			}
+
+		case <-q.ctx.Done():
+			q.logger.Info("pending 任务恢复协程退出",
+				elog.Int("total_processed", processedCount))
+			return
+		}
+	}
 }
 
 // Submit 提交任务
@@ -186,12 +296,52 @@ func (q *Queue) executeTask(workerID int, task *Task) {
 	if err != nil {
 		q.logger.Error("任务执行失败",
 			elog.String("task_id", task.ID),
+			elog.Int("retry_count", task.RetryCount),
 			elog.FieldErr(err))
 
-		// 更新任务状态为失败
-		task.Status = TaskStatusFailed
-		task.Error = err.Error()
-		q.repo.UpdateStatus(ctx, task.ID, TaskStatusFailed, err.Error())
+		// 检查是否需要重试
+		maxRetries := task.MaxRetries
+		if maxRetries == 0 {
+			maxRetries = 3 // 默认重试3次
+		}
+
+		if task.RetryCount < maxRetries {
+			// 增加重试计数并重新入队
+			task.RetryCount++
+			task.Status = TaskStatusPending
+			task.Error = err.Error()
+
+			if updateErr := q.repo.Update(ctx, *task); updateErr != nil {
+				q.logger.Error("更新任务重试计数失败",
+					elog.String("task_id", task.ID),
+					elog.FieldErr(updateErr))
+			}
+
+			// 重新入队
+			select {
+			case q.taskChan <- task:
+				q.logger.Info("任务重新入队",
+					elog.String("task_id", task.ID),
+					elog.Int("retry_count", task.RetryCount),
+					elog.Int("max_retries", maxRetries))
+			case <-q.ctx.Done():
+				q.logger.Warn("队列已关闭，任务无法重新入队",
+					elog.String("task_id", task.ID))
+			default:
+				q.logger.Warn("任务队列已满，任务将延迟重试",
+					elog.String("task_id", task.ID))
+				// 队列满时，任务仍在数据库中，下次启动时会被恢复
+			}
+		} else {
+			// 达到最大重试次数，标记为失败
+			q.logger.Error("任务达到最大重试次数，标记为失败",
+				elog.String("task_id", task.ID),
+				elog.Int("retry_count", task.RetryCount))
+
+			task.Status = TaskStatusFailed
+			task.Error = fmt.Sprintf("重试%d次后仍失败: %s", task.RetryCount, err.Error())
+			q.repo.UpdateStatus(ctx, task.ID, TaskStatusFailed, task.Error)
+		}
 	} else {
 		q.logger.Info("任务执行成功",
 			elog.String("task_id", task.ID))
