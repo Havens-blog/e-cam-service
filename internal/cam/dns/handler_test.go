@@ -18,21 +18,24 @@ import (
 
 // mockDNSService 模拟 DNSService
 type mockDNSService struct {
-	listDomainsResult  []DNSDomainVO
-	listDomainsTotal   int64
-	listDomainsErr     error
-	listRecordsResult  []DNSRecordVO
-	listRecordsTotal   int64
-	listRecordsErr     error
-	createRecordResult *DNSRecordVO
-	createRecordErr    error
-	updateRecordResult *DNSRecordVO
-	updateRecordErr    error
-	deleteRecordErr    error
-	batchDeleteResult  *BatchDeleteResult
-	batchDeleteErr     error
-	statsResult        *DNSStats
-	statsErr           error
+	listDomainsResult   []DNSDomainVO
+	listDomainsTotal    int64
+	listDomainsErr      error
+	listRecordsResult   []DNSRecordVO
+	listRecordsTotal    int64
+	listRecordsErr      error
+	searchRecordsResult []DNSRecordVO
+	searchRecordsTotal  int64
+	searchRecordsErr    error
+	createRecordResult  *DNSRecordVO
+	createRecordErr     error
+	updateRecordResult  *DNSRecordVO
+	updateRecordErr     error
+	deleteRecordErr     error
+	batchDeleteResult   *BatchDeleteResult
+	batchDeleteErr      error
+	statsResult         *DNSStats
+	statsErr            error
 }
 
 func (m *mockDNSService) ListDomains(_ context.Context, _ int64, _ DomainFilter) ([]DNSDomainVO, int64, error) {
@@ -41,6 +44,10 @@ func (m *mockDNSService) ListDomains(_ context.Context, _ int64, _ DomainFilter)
 
 func (m *mockDNSService) ListRecords(_ context.Context, _ int64, _ string, _ RecordFilter) ([]DNSRecordVO, int64, error) {
 	return m.listRecordsResult, m.listRecordsTotal, m.listRecordsErr
+}
+
+func (m *mockDNSService) SearchRecords(_ context.Context, _ int64, _ string, _ int64) ([]DNSRecordVO, int64, error) {
+	return m.searchRecordsResult, m.searchRecordsTotal, m.searchRecordsErr
 }
 
 func (m *mockDNSService) CreateRecord(_ context.Context, _ int64, _ string, _ CreateRecordReq) (*DNSRecordVO, error) {
