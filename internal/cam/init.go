@@ -196,16 +196,21 @@ func initCostModule(module *Module, db *mongox.Mongo, redisClient redis.Cmdable,
 	dailySummaryDAO := costdao.NewDailySummaryDAO(db, logger)
 	costSvc.SetSummaryDAO(dailySummaryDAO)
 
-	// 异步初始化汇总表索引和数据
+	// 异步初始化汇总表索引和数据（仅在数据为空时重建，且限制时间范围）
 	go func() {
-		bgCtx, bgCancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		bgCtx, bgCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer bgCancel()
 		if err := dailySummaryDAO.InitIndexes(bgCtx); err != nil {
 			logger.Error("初始化汇总表索引失败", elog.FieldErr(err))
 		}
 		if !dailySummaryDAO.HasData(bgCtx) {
-			logger.Info("汇总表为空，开始从明细表重建...")
-			if err := dailySummaryDAO.RebuildFromSource(bgCtx, "", ""); err != nil {
+			// 只重建最近 30 天的数据，避免全量扫描
+			today := time.Now().Format("2006-01-02")
+			thirtyDaysAgo := time.Now().AddDate(0, 0, -30).Format("2006-01-02")
+			logger.Info("汇总表为空，开始从明细表重建（最近30天）...",
+				elog.String("start_date", thirtyDaysAgo),
+				elog.String("end_date", today))
+			if err := dailySummaryDAO.RebuildFromSource(bgCtx, thirtyDaysAgo, today); err != nil {
 				logger.Error("重建汇总表失败", elog.FieldErr(err))
 			} else {
 				logger.Info("汇总表重建完成")
