@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
@@ -75,13 +76,19 @@ func (m *propertyMockBillDAO) ListUnifiedBills(_ context.Context, _ repository.U
 func (m *propertyMockBillDAO) CountUnifiedBills(_ context.Context, _ repository.UnifiedBillFilter) (int64, error) {
 	return 0, nil
 }
-func (m *propertyMockBillDAO) DeleteUnifiedBillsByPeriod(_ context.Context, _, _ string) error {
+func (m *propertyMockBillDAO) DeleteUnifiedBillsByPeriod(_ context.Context, _ int64, _ string) error {
 	return nil
 }
 func (m *propertyMockBillDAO) DeleteRawBillsByAccountAndRange(_ context.Context, _ int64, _, _ string) (int64, error) {
 	return 0, nil
 }
 func (m *propertyMockBillDAO) DeleteUnifiedBillsByAccountAndRange(_ context.Context, _ int64, _, _ string) (int64, error) {
+	return 0, nil
+}
+func (m *propertyMockBillDAO) DeleteRawBillsByAccountAndMonth(_ context.Context, _ int64, _ string) (int64, error) {
+	return 0, nil
+}
+func (m *propertyMockBillDAO) DeleteUnifiedBillsByAccountAndMonth(_ context.Context, _ int64, _ string) (int64, error) {
 	return 0, nil
 }
 func (m *propertyMockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([]repository.AggregateResult, error) {
@@ -107,13 +114,20 @@ const floatTolerance = 1e-9
 func TestProperty11_CostSummaryCompleteness(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		currentAmount := rapid.Float64Range(0, 1e8).Draw(rt, "currentAmount")
-		lastAmount := rapid.Float64Range(0, 1e8).Draw(rt, "lastAmount")
+		// Use integer cents converted to float to avoid subnormal floats
+		// that cause +Inf overflow when used as divisor.
+		lastCents := rapid.IntRange(0, 1e10).Draw(rt, "lastCents")
+		lastAmount := float64(lastCents) / 100.0
 
-		callCount := 0
+		// GetCostSummary queries SumAmount via concurrent goroutines for three
+		// date ranges, so call order is non-deterministic. Route by StartDate:
+		// the current-month query starts on the 1st of the current month, while
+		// both last-month queries start on the 1st of last month.
+		now := time.Now()
+		currentMonthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
 		dao := &propertyMockBillDAO{
-			sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) {
-				callCount++
-				if callCount == 1 {
+			sumAmountFn: func(_ context.Context, f repository.UnifiedBillFilter) (float64, error) {
+				if f.StartDate >= currentMonthStart {
 					return currentAmount, nil
 				}
 				return lastAmount, nil
@@ -121,7 +135,7 @@ func TestProperty11_CostSummaryCompleteness(t *testing.T) {
 		}
 		svc := newPropertyCostService(t, dao)
 
-		summary, err := svc.GetCostSummary(context.Background(), CostFilter{TenantID: "prop-test"})
+		summary, err := svc.GetCostSummary(context.Background(), CostFilter{TenantID: 1})
 		assert.NoError(rt, err)
 		if err != nil {
 			return
@@ -167,14 +181,14 @@ func TestProperty12_CostDistributionConservation(t *testing.T) {
 		}
 
 		dao := &propertyMockBillDAO{
-			aggregateByFieldFn: func(_ context.Context, _ string, _ string, _, _ string) ([]repository.AggregateResult, error) {
+			aggregateByFieldFn: func(_ context.Context, _ int64, _ string, _, _ string) ([]repository.AggregateResult, error) {
 				return results, nil
 			},
 		}
 		svc := newPropertyCostService(t, dao)
 
 		items, err := svc.GetCostDistribution(context.Background(), CostFilter{
-			TenantID:  "prop-test",
+			TenantID:  1,
 			StartDate: "2024-01-01",
 			EndDate:   "2024-01-31",
 		}, "provider")
@@ -387,11 +401,14 @@ func TestProperty15_ComparisonCalculation(t *testing.T) {
 			previousCents := rapid.IntRange(0, 1e10).Draw(rt, "previousCents")
 			previousAmount := float64(previousCents) / 100.0
 
-			callCount := 0
+			// GetYoYComparison queries SumAmount via concurrent goroutines for the
+			// current and previous-year periods, so call order is non-deterministic.
+			// Route by StartDate: the current query keeps the filter's start date,
+			// while the previous query shifts it back one year.
+			const currentStart = "2024-01-01"
 			dao := &propertyMockBillDAO{
-				sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) {
-					callCount++
-					if callCount == 1 {
+				sumAmountFn: func(_ context.Context, f repository.UnifiedBillFilter) (float64, error) {
+					if f.StartDate == currentStart {
 						return currentAmount, nil
 					}
 					return previousAmount, nil
@@ -400,8 +417,8 @@ func TestProperty15_ComparisonCalculation(t *testing.T) {
 			svc := newPropertyCostService(t, dao)
 
 			result, err := svc.GetYoYComparison(context.Background(), CostFilter{
-				TenantID:  "prop-test",
-				StartDate: "2024-01-01",
+				TenantID:  1,
+				StartDate: currentStart,
 				EndDate:   "2024-01-31",
 			})
 			assert.NoError(rt, err)
@@ -429,13 +446,18 @@ func TestProperty15_ComparisonCalculation(t *testing.T) {
 	t.Run("mom_comparison", func(t *testing.T) {
 		rapid.Check(t, func(rt *rapid.T) {
 			currentAmount := rapid.Float64Range(0, 1e8).Draw(rt, "currentAmount")
-			lastAmount := rapid.Float64Range(0, 1e8).Draw(rt, "lastAmount")
+			// Use integer cents converted to float to avoid subnormal floats
+			// that cause +Inf overflow when used as divisor.
+			lastCents := rapid.IntRange(0, 1e10).Draw(rt, "lastCents")
+			lastAmount := float64(lastCents) / 100.0
 
-			callCount := 0
+			// GetCostSummary queries SumAmount via concurrent goroutines, so call
+			// order is non-deterministic. Route by StartDate instead.
+			now := time.Now()
+			currentMonthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
 			dao := &propertyMockBillDAO{
-				sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) {
-					callCount++
-					if callCount == 1 {
+				sumAmountFn: func(_ context.Context, f repository.UnifiedBillFilter) (float64, error) {
+					if f.StartDate >= currentMonthStart {
 						return currentAmount, nil
 					}
 					return lastAmount, nil
@@ -443,7 +465,7 @@ func TestProperty15_ComparisonCalculation(t *testing.T) {
 			}
 			svc := newPropertyCostService(t, dao)
 
-			summary, err := svc.GetCostSummary(context.Background(), CostFilter{TenantID: "prop-test"})
+			summary, err := svc.GetCostSummary(context.Background(), CostFilter{TenantID: 1})
 			assert.NoError(rt, err)
 			if err != nil {
 				return

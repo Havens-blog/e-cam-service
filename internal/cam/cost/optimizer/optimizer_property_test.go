@@ -355,7 +355,7 @@ func TestProperty31_DismissedRecommendationFiltering(t *testing.T) {
 		isExpired := expiryTime.Before(now) || expiryTime.Equal(now)
 
 		optDAO := &mockOptimizerDAO{
-			findByResourceTypeFn: func(_ context.Context, tid, rid, rtype string) (costdomain.Recommendation, error) {
+			findByResourceTypeFn: func(_ context.Context, tid int64, rid, rtype string) (costdomain.Recommendation, error) {
 				if rid == resourceID && rtype == recType {
 					return costdomain.Recommendation{
 						ID:            1,

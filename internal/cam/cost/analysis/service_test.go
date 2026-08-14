@@ -73,11 +73,19 @@ func (m *mockBillDAO) ListUnifiedBills(_ context.Context, _ repository.UnifiedBi
 func (m *mockBillDAO) CountUnifiedBills(_ context.Context, _ repository.UnifiedBillFilter) (int64, error) {
 	return 0, nil
 }
-func (m *mockBillDAO) DeleteUnifiedBillsByPeriod(_ context.Context, _, _ string) error { return nil }
+func (m *mockBillDAO) DeleteUnifiedBillsByPeriod(_ context.Context, _ int64, _ string) error {
+	return nil
+}
 func (m *mockBillDAO) DeleteRawBillsByAccountAndRange(_ context.Context, _ int64, _, _ string) (int64, error) {
 	return 0, nil
 }
 func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndRange(_ context.Context, _ int64, _, _ string) (int64, error) {
+	return 0, nil
+}
+func (m *mockBillDAO) DeleteRawBillsByAccountAndMonth(_ context.Context, _ int64, _ string) (int64, error) {
+	return 0, nil
+}
+func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndMonth(_ context.Context, _ int64, _ string) (int64, error) {
 	return 0, nil
 }
 func (m *mockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([]repository.AggregateResult, error) {
@@ -97,11 +105,13 @@ func setupTestService(t *testing.T, dao *mockBillDAO) (*CostService, *miniredis.
 // --- Tests ---
 
 func TestGetCostSummary(t *testing.T) {
-	callCount := 0
+	now := time.Now()
+	currentMonthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
 	dao := &mockBillDAO{
-		sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) {
-			callCount++
-			if callCount == 1 {
+		sumAmountFn: func(_ context.Context, f repository.UnifiedBillFilter) (float64, error) {
+			// GetCostSummary issues SumAmount via concurrent goroutines; route by
+			// StartDate so the current-month query is deterministic.
+			if f.StartDate == currentMonthStart {
 				return 1500.0, nil
 			}
 			return 1000.0, nil
@@ -117,11 +127,11 @@ func TestGetCostSummary(t *testing.T) {
 }
 
 func TestGetCostSummary_LastMonthZero(t *testing.T) {
-	callCount := 0
+	now := time.Now()
+	currentMonthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
 	dao := &mockBillDAO{
-		sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) {
-			callCount++
-			if callCount == 1 {
+		sumAmountFn: func(_ context.Context, f repository.UnifiedBillFilter) (float64, error) {
+			if f.StartDate == currentMonthStart {
 				return 500.0, nil
 			}
 			return 0, nil
@@ -138,19 +148,17 @@ func TestGetCostSummary_LastMonthZero(t *testing.T) {
 
 func TestGetCostSummary_Cache(t *testing.T) {
 	callCount := 0
+	now := time.Now()
+	currentMonthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
 	dao := &mockBillDAO{
-		sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) {
+		sumAmountFn: func(_ context.Context, f repository.UnifiedBillFilter) (float64, error) {
 			callCount++
-			if callCount <= 3 {
-				if callCount == 1 {
-					return 100.0, nil // 当月
-				}
-				if callCount == 2 {
-					return 80.0, nil // 上月整月
-				}
-				return 50.0, nil // 上月同期
+			// GetCostSummary issues SumAmount via concurrent goroutines; route
+			// by StartDate so the current-month query is deterministic.
+			if f.StartDate == currentMonthStart {
+				return 100.0, nil // 当月
 			}
-			return 999.0, nil
+			return 50.0, nil // 上月整月 / 上月同期
 		},
 	}
 	svc, _ := setupTestService(t, dao)
@@ -170,7 +178,7 @@ func TestGetCostSummary_Cache(t *testing.T) {
 
 func TestGetCostTrend_Daily(t *testing.T) {
 	dao := &mockBillDAO{
-		aggregateDailyFn: func(_ context.Context, _ string, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+		aggregateDailyFn: func(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 			return []repository.DailyAmount{
 				{Date: "2024-01-03", Amount: 30, AmountCNY: 30},
 				{Date: "2024-01-01", Amount: 10, AmountCNY: 10},
@@ -193,7 +201,7 @@ func TestGetCostTrend_Daily(t *testing.T) {
 
 func TestGetCostTrend_Weekly(t *testing.T) {
 	dao := &mockBillDAO{
-		aggregateDailyFn: func(_ context.Context, _ string, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+		aggregateDailyFn: func(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 			return []repository.DailyAmount{
 				{Date: "2024-01-01", Amount: 10, AmountCNY: 10}, // Monday
 				{Date: "2024-01-02", Amount: 20, AmountCNY: 20}, // Tuesday (same week)
@@ -217,7 +225,7 @@ func TestGetCostTrend_Weekly(t *testing.T) {
 
 func TestGetCostTrend_Monthly(t *testing.T) {
 	dao := &mockBillDAO{
-		aggregateDailyFn: func(_ context.Context, _ string, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+		aggregateDailyFn: func(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 			return []repository.DailyAmount{
 				{Date: "2024-01-15", Amount: 100, AmountCNY: 100},
 				{Date: "2024-01-20", Amount: 50, AmountCNY: 50},
@@ -241,7 +249,7 @@ func TestGetCostTrend_Monthly(t *testing.T) {
 
 func TestGetCostDistribution(t *testing.T) {
 	dao := &mockBillDAO{
-		aggregateByFieldFn: func(_ context.Context, _ string, _ string, _, _ string) ([]repository.AggregateResult, error) {
+		aggregateByFieldFn: func(_ context.Context, _ int64, _ string, _, _ string) ([]repository.AggregateResult, error) {
 			return []repository.AggregateResult{
 				{Key: "aliyun", Amount: 300, AmountCNY: 300},
 				{Key: "aws", Amount: 200, AmountCNY: 200},
@@ -265,7 +273,7 @@ func TestGetCostDistribution(t *testing.T) {
 
 func TestGetCostDistribution_Empty(t *testing.T) {
 	dao := &mockBillDAO{
-		aggregateByFieldFn: func(_ context.Context, _ string, _ string, _, _ string) ([]repository.AggregateResult, error) {
+		aggregateByFieldFn: func(_ context.Context, _ int64, _ string, _, _ string) ([]repository.AggregateResult, error) {
 			return []repository.AggregateResult{}, nil
 		},
 	}
@@ -277,11 +285,12 @@ func TestGetCostDistribution_Empty(t *testing.T) {
 }
 
 func TestGetYoYComparison(t *testing.T) {
-	callCount := 0
+	const currentStart = "2024-01-01"
 	dao := &mockBillDAO{
-		sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) {
-			callCount++
-			if callCount == 1 {
+		sumAmountFn: func(_ context.Context, f repository.UnifiedBillFilter) (float64, error) {
+			// GetYoYComparison issues SumAmount via concurrent goroutines; route
+			// by StartDate so the current-period query is deterministic.
+			if f.StartDate == currentStart {
 				return 1200.0, nil
 			}
 			return 1000.0, nil
@@ -291,7 +300,7 @@ func TestGetYoYComparison(t *testing.T) {
 
 	result, err := svc.GetYoYComparison(context.Background(), CostFilter{
 		TenantID:  1,
-		StartDate: "2024-01-01",
+		StartDate: currentStart,
 		EndDate:   "2024-01-31",
 	})
 	require.NoError(t, err)
@@ -303,11 +312,10 @@ func TestGetYoYComparison(t *testing.T) {
 }
 
 func TestGetYoYComparison_PreviousZero(t *testing.T) {
-	callCount := 0
+	const currentStart = "2024-06-01"
 	dao := &mockBillDAO{
-		sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) {
-			callCount++
-			if callCount == 1 {
+		sumAmountFn: func(_ context.Context, f repository.UnifiedBillFilter) (float64, error) {
+			if f.StartDate == currentStart {
 				return 500.0, nil
 			}
 			return 0, nil
@@ -317,7 +325,7 @@ func TestGetYoYComparison_PreviousZero(t *testing.T) {
 
 	result, err := svc.GetYoYComparison(context.Background(), CostFilter{
 		TenantID:  1,
-		StartDate: "2024-06-01",
+		StartDate: currentStart,
 		EndDate:   "2024-06-30",
 	})
 	require.NoError(t, err)
@@ -415,9 +423,17 @@ func TestGetCostSummary_DateRanges(t *testing.T) {
 
 	now := time.Now()
 	expectedCurrentStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
-	assert.Equal(t, expectedCurrentStart, capturedFilters[0].StartDate)
+	lastMonthStart := time.Date(now.Year(), now.Month()-1, 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
 
-	// 第三个查询是上月同期
-	lastMonthSameDay := time.Date(now.Year(), now.Month()-1, 1, 0, 0, 0, 0, now.Location())
-	assert.Equal(t, lastMonthSameDay.Format("2006-01-02"), capturedFilters[2].StartDate)
+	// GetCostSummary issues the three SumAmount queries via concurrent
+	// goroutines, so the capture order is non-deterministic. Assert on the
+	// multiset of queried start dates instead of positional indices.
+	queriedStarts := make(map[string]int)
+	for _, f := range capturedFilters {
+		queriedStarts[f.StartDate]++
+	}
+	assert.Equal(t, 1, queriedStarts[expectedCurrentStart],
+		"current-month range should be queried exactly once")
+	assert.Equal(t, 2, queriedStarts[lastMonthStart],
+		"both last-month ranges (full month and same-period) should be queried")
 }

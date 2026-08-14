@@ -167,11 +167,19 @@ func (m *mockBillDAO) AggregateByField(_ context.Context, _ int64, _ string, _, 
 func (m *mockBillDAO) AggregateDailyAmount(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 	return nil, nil
 }
-func (m *mockBillDAO) DeleteUnifiedBillsByPeriod(_ context.Context, _, _ string) error { return nil }
+func (m *mockBillDAO) DeleteUnifiedBillsByPeriod(_ context.Context, _ int64, _ string) error {
+	return nil
+}
 func (m *mockBillDAO) DeleteRawBillsByAccountAndRange(_ context.Context, _ int64, _, _ string) (int64, error) {
 	return 0, nil
 }
 func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndRange(_ context.Context, _ int64, _, _ string) (int64, error) {
+	return 0, nil
+}
+func (m *mockBillDAO) DeleteRawBillsByAccountAndMonth(_ context.Context, _ int64, _ string) (int64, error) {
+	return 0, nil
+}
+func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndMonth(_ context.Context, _ int64, _ string) (int64, error) {
 	return 0, nil
 }
 func (m *mockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([]repository.AggregateResult, error) {

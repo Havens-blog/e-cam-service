@@ -120,11 +120,19 @@ func (m *mockBillDAO) ListUnifiedBills(_ context.Context, _ repository.UnifiedBi
 func (m *mockBillDAO) CountUnifiedBills(_ context.Context, _ repository.UnifiedBillFilter) (int64, error) {
 	return 0, nil
 }
-func (m *mockBillDAO) DeleteUnifiedBillsByPeriod(_ context.Context, _, _ string) error { return nil }
+func (m *mockBillDAO) DeleteUnifiedBillsByPeriod(_ context.Context, _ int64, _ string) error {
+	return nil
+}
 func (m *mockBillDAO) DeleteRawBillsByAccountAndRange(_ context.Context, _ int64, _, _ string) (int64, error) {
 	return 0, nil
 }
 func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndRange(_ context.Context, _ int64, _, _ string) (int64, error) {
+	return 0, nil
+}
+func (m *mockBillDAO) DeleteRawBillsByAccountAndMonth(_ context.Context, _ int64, _ string) (int64, error) {
+	return 0, nil
+}
+func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndMonth(_ context.Context, _ int64, _ string) (int64, error) {
 	return 0, nil
 }
 func (m *mockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([]repository.AggregateResult, error) {
@@ -210,7 +218,7 @@ func TestDetectAnomalies_WithAnomaliesFound(t *testing.T) {
 				{Key: "ecs", AmountCNY: 3000},
 			}, nil
 		},
-		aggregateDailyFn: func(_ context.Context, _, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+		aggregateDailyFn: func(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 			return make([]repository.DailyAmount, 30), nil
 		},
 	}
@@ -250,7 +258,7 @@ func TestDetectAnomalies_NoAnomalies(t *testing.T) {
 	anomalyDAO := &mockAnomalyDAO{}
 	// Baseline avg = 100, current = 120 → deviation = 20% < 50% threshold
 	billDAO := &mockBillDAO{
-		aggregateByFieldFn: func(_ context.Context, _, field, startDate, endDate string) ([]repository.AggregateResult, error) {
+		aggregateByFieldFn: func(_ context.Context, _ int64, field, startDate, endDate string) ([]repository.AggregateResult, error) {
 			if startDate == endDate {
 				return []repository.AggregateResult{
 					{Key: "ecs", AmountCNY: 120},
@@ -260,7 +268,7 @@ func TestDetectAnomalies_NoAnomalies(t *testing.T) {
 				{Key: "ecs", AmountCNY: 3000},
 			}, nil
 		},
-		aggregateDailyFn: func(_ context.Context, _, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+		aggregateDailyFn: func(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 			return make([]repository.DailyAmount, 30), nil
 		},
 	}
@@ -318,7 +326,7 @@ func TestDetectAnomalies_SeverityLevels(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			anomalyDAO := &mockAnomalyDAO{}
 			billDAO := &mockBillDAO{
-				aggregateByFieldFn: func(_ context.Context, _, _, startDate, endDate string) ([]repository.AggregateResult, error) {
+				aggregateByFieldFn: func(_ context.Context, _ int64, _, startDate, endDate string) ([]repository.AggregateResult, error) {
 					if startDate == endDate {
 						return []repository.AggregateResult{
 							{Key: "ecs", AmountCNY: tt.currentAmount},
@@ -328,7 +336,7 @@ func TestDetectAnomalies_SeverityLevels(t *testing.T) {
 						{Key: "ecs", AmountCNY: tt.baselineTotal},
 					}, nil
 				},
-				aggregateDailyFn: func(_ context.Context, _, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+				aggregateDailyFn: func(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 					return make([]repository.DailyAmount, 30), nil
 				},
 			}
@@ -391,7 +399,7 @@ func TestDetectAnomalies_AlertIntegration(t *testing.T) {
 	anomalyDAO := &mockAnomalyDAO{}
 	// Deviation > 200% → critical
 	billDAO := &mockBillDAO{
-		aggregateByFieldFn: func(_ context.Context, _, _, startDate, endDate string) ([]repository.AggregateResult, error) {
+		aggregateByFieldFn: func(_ context.Context, _ int64, _, startDate, endDate string) ([]repository.AggregateResult, error) {
 			if startDate == endDate {
 				return []repository.AggregateResult{
 					{Key: "account-1", AmountCNY: 500},
@@ -401,7 +409,7 @@ func TestDetectAnomalies_AlertIntegration(t *testing.T) {
 				{Key: "account-1", AmountCNY: 3000}, // avg=100
 			}, nil
 		},
-		aggregateDailyFn: func(_ context.Context, _, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+		aggregateDailyFn: func(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 			return make([]repository.DailyAmount, 30), nil
 		},
 	}
@@ -436,7 +444,7 @@ func TestDetectAnomalies_ZeroBaseline(t *testing.T) {
 	anomalyDAO := &mockAnomalyDAO{}
 	// No baseline data → should skip
 	billDAO := &mockBillDAO{
-		aggregateByFieldFn: func(_ context.Context, _, _, startDate, endDate string) ([]repository.AggregateResult, error) {
+		aggregateByFieldFn: func(_ context.Context, _ int64, _, startDate, endDate string) ([]repository.AggregateResult, error) {
 			if startDate == endDate {
 				return []repository.AggregateResult{
 					{Key: "ecs", AmountCNY: 100},
@@ -445,7 +453,7 @@ func TestDetectAnomalies_ZeroBaseline(t *testing.T) {
 			// No baseline data
 			return nil, nil
 		},
-		aggregateDailyFn: func(_ context.Context, _, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+		aggregateDailyFn: func(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 			return nil, nil
 		},
 	}
@@ -462,10 +470,10 @@ func TestDetectAnomalies_ZeroBaseline(t *testing.T) {
 func TestDetectAnomalies_EmptyBills(t *testing.T) {
 	anomalyDAO := &mockAnomalyDAO{}
 	billDAO := &mockBillDAO{
-		aggregateByFieldFn: func(_ context.Context, _, _, _, _ string) ([]repository.AggregateResult, error) {
+		aggregateByFieldFn: func(_ context.Context, _ int64, _, _, _ string) ([]repository.AggregateResult, error) {
 			return nil, nil
 		},
-		aggregateDailyFn: func(_ context.Context, _, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+		aggregateDailyFn: func(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
 			return nil, nil
 		},
 	}

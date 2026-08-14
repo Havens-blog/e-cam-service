@@ -220,7 +220,7 @@ func TestProperty20_AllocationRatioSumValidation(t *testing.T) {
 			Name:            "Ratio Test",
 			RuleType:        "dimension_combo",
 			DimensionCombos: combos,
-			TenantID:        "t-prop",
+			TenantID:        1,
 		}
 
 		_, err := svc.CreateAllocationRule(context.Background(), rule)
