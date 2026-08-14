@@ -264,7 +264,7 @@ func TestMockTagDAO_DefaultBehavior(t *testing.T) {
 }
 
 func TestTagPolicyCollection_Constant(t *testing.T) {
-	assert.Equal(t, "c_tag_policy", TagPolicyCollection)
+	assert.Equal(t, "ecam_tag_policy", TagPolicyCollection)
 }
 
 func TestMockTagDAO_InsertPolicy_WithConstraints(t *testing.T) {

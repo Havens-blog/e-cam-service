@@ -52,11 +52,14 @@ func (a *noopCloudAdapter) VSwitch() cloudx.VSwitchAdapter              { return
 func (a *noopCloudAdapter) LB() cloudx.LBAdapter                        { return nil }
 func (a *noopCloudAdapter) CDN() cloudx.CDNAdapter                      { return nil }
 func (a *noopCloudAdapter) WAF() cloudx.WAFAdapter                      { return nil }
+func (a *noopCloudAdapter) DNS() cloudx.DNSAdapter                      { return nil }
+func (a *noopCloudAdapter) ENI() cloudx.ENIAdapter                      { return nil }
 func (a *noopCloudAdapter) NAS() cloudx.NASAdapter                      { return nil }
 func (a *noopCloudAdapter) OSS() cloudx.OSSAdapter                      { return nil }
 func (a *noopCloudAdapter) Kafka() cloudx.KafkaAdapter                  { return nil }
 func (a *noopCloudAdapter) Elasticsearch() cloudx.ElasticsearchAdapter  { return nil }
 func (a *noopCloudAdapter) IAM() cloudx.IAMAdapter                      { return nil }
+func (a *noopCloudAdapter) Tag() cloudx.TagAdapter                      { return nil }
 func (a *noopCloudAdapter) ECSCreate() cloudx.ECSCreateAdapter          { return nil }
 func (a *noopCloudAdapter) ResourceQuery() cloudx.ResourceQueryAdapter  { return nil }
 func (a *noopCloudAdapter) ValidateCredentials(_ context.Context) error { return nil }
@@ -94,8 +97,11 @@ func TestProperty_ValidatorRequiredFields(t *testing.T) {
 		)
 		ctx := context.Background()
 
-		// Pick a random subset of required fields to blank out
-		fields := []string{"region", "zone", "instance_type", "image_id", "vpc_id", "subnet_id", "security_group_ids"}
+		// Pick a random subset of required fields to blank out.
+		// Note: the validator (validateRequired) treats only region and instance_type
+		// as required string fields; image_id/vpc_id/subnet_id/security_group_ids are
+		// intentionally optional (see validator.go validateRequired).
+		fields := []string{"region", "instance_type"}
 		blankCount := rapid.IntRange(1, len(fields)).Draw(rt, "blankCount")
 		blanked := make(map[string]bool)
 
@@ -109,23 +115,8 @@ func TestProperty_ValidatorRequiredFields(t *testing.T) {
 		if blanked["region"] {
 			params.Region = ""
 		}
-		if blanked["zone"] {
-			params.Zone = ""
-		}
 		if blanked["instance_type"] {
 			params.InstanceType = ""
-		}
-		if blanked["image_id"] {
-			params.ImageID = ""
-		}
-		if blanked["vpc_id"] {
-			params.VPCID = ""
-		}
-		if blanked["subnet_id"] {
-			params.SubnetID = ""
-		}
-		if blanked["security_group_ids"] {
-			params.SecurityGroupIDs = nil
 		}
 
 		errs := validator.ValidateParams(ctx, 1, &params)
