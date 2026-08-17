@@ -1,7 +1,7 @@
 ---
 feature: "ssl-cert-management"
 created: "2026-08-14"
-status: prd
+status: design
 ---
 
 # Feature: ssl-cert-management
@@ -15,6 +15,7 @@ status: prd
 | PRD Spec | prd/prd-spec.md | 证书托管/引用发现/到期监控/一键批量更换的完整需求规格（含流程图、数据流、安全需求与评估遗留项消解） |
 | User Stories | prd/prd-user-stories.md | 6 个故事覆盖三角色：导入、引用查看、批量更换、存量导入、审计配置、到期看板 |
 | UI Functions | prd/prd-ui-functions.md | 5 个 UI 功能（台账/引用关系/到期看板/变更向导与管理/全局配置），web 平台 6 个新页面 |
+| UI Design | ui/ui-design.md | Vercel 风格设计规格：6 页面组件布局/状态/交互/数据绑定，全局状态语义色与模式 |
 
 ## Traceability
 
