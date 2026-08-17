@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>全局配置 — SSL 证书管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-ro-intercept="true">
+  <a href="#main" class="skip-link">跳转到主内容</a>
+  <header class="topnav">
+    <div class="topnav-inner">
+      <button class="nav-toggle" aria-label="打开菜单" aria-controls="nav-drawer">☰</button>
+      <a href="index.html" class="nav-brand">证书管理</a>
+      <span class="nav-context">证书管理 <span class="sep">›</span> 全局配置</span>
+      <nav class="nav-links" aria-label="主导航">
+        <a href="certs.html" class="nav-link">证书台账</a>
+        <a href="dashboard.html" class="nav-link">到期看板</a>
+        <a href="changes.html" class="nav-link active">变更管理</a>
+      </nav>
+    </div>
+  </header>
+  <div class="nav-drawer" id="nav-drawer" aria-label="移动导航">
+    <a href="certs.html" class="nav-link">证书台账</a>
+    <a href="dashboard.html" class="nav-link">到期看板</a>
+    <a href="changes.html" class="nav-link active">变更管理</a>
+  </div>
+  <div class="nav-backdrop" id="nav-backdrop"></div>
+
+  <nav class="breadcrumb" aria-label="面包屑">
+    <a href="changes.html">变更管理</a><span class="sep">/</span><span class="current">配置</span>
+  </nav>
+
+  <main id="main">
+    <div class="container page" data-state-container>
+      <div class="page-header">
+        <div>
+          <h1>全局配置</h1>
+          <p class="text-secondary text-sm mt-8">仅运维主管 / 审计角色可见，所有配置变更留审计。</p>
+        </div>
+        <div class="state-switcher" role="group" aria-label="切换页面状态">
+          <button data-state-switch="state-default" class="active">默认</button>
+          <button data-state-switch="state-loading">读取中</button>
+          <button data-state-switch="state-read-error">读取失败</button>
+          <button data-state-switch="state-empty">空态</button>
+        </div>
+      </div>
+
+      <!-- 渠道未确认提示横幅 -->
+      <div class="banner banner-warning" id="banner-channel">
+        <span class="banner-icon">⚠</span>
+        <div>
+          <div class="banner-title">告警渠道未确认，相关验收标准不在范围</div>
+          <div class="banner-body">请先确认 webhook 与邮件接收组可用，渠道就绪后本提示消失。</div>
+        </div>
+      </div>
+
+      <!-- Default -->
+      <section id="state-default" class="state-view active">
+        <!-- 卡1 告警接收 -->
+        <div class="card mb-16">
+          <div class="card-header"><h2>告警接收</h2></div>
+          <div class="field">
+            <label for="cfg-webhook">Webhook URL</label>
+            <input type="url" id="cfg-webhook" class="input mono" value="https://hooks.example.com/alerts/ssl-cert">
+          </div>
+          <div class="field">
+            <label for="cfg-emails">邮件接收组</label>
+            <input type="text" id="cfg-emails" class="input" value="ops-team@example.com, sre-oncall@example.com">
+            <span class="hint">多个邮箱以英文逗号分隔</span>
+          </div>
+          <div class="row">
+            <button class="btn btn-secondary" onclick="window.showToast('测试告警已发送','info')">发送测试</button>
+            <button class="btn btn-primary" onclick="saveAlert()">保存</button>
+            <span class="text-error text-sm hidden" id="alert-save-error">保存失败：服务暂时不可用</span>
+          </div>
+        </div>
+
+        <!-- 卡2 探测豁免清单 -->
+        <div class="card mb-16">
+          <div class="card-header">
+            <h2>探测豁免清单</h2>
+            <button class="btn btn-secondary btn-sm" data-open-modal="modal-add-exempt">添加豁免</button>
+          </div>
+          <div class="table-wrap mt-16">
+            <table class="data-table">
+              <thead><tr><th scope="col">子域名</th><th scope="col">加入原因</th><th scope="col" class="hide-sm">操作人</th><th scope="col" class="hide-sm">时间</th><th scope="col" class="col-actions">操作</th></tr></thead>
+              <tbody>
+                <tr><td data-label="子域名" class="mono">intranet.example.com</td><td data-label="加入原因">内网域名，外网不可达</td><td data-label="操作人" class="hide-sm">ops-lead</td><td data-label="时间" class="hide-sm text-secondary">2026-07-20</td><td data-label="操作" class="col-actions"><button class="btn-link btn-sm text-error" onclick="removeExempt(this)">移除</button></td></tr>
+                <tr><td data-label="子域名" class="mono">monitor.example.com</td><td data-label="加入原因">探测端口被防火墙拦截</td><td data-label="操作人" class="hide-sm">ops-lead</td><td data-label="时间" class="hide-sm text-secondary">2026-07-22</td><td data-label="操作" class="col-actions"><button class="btn-link btn-sm text-error" onclick="removeExempt(this)">移除</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 卡3 阈值参数 -->
+        <div class="card">
+          <div class="card-header"><h2>阈值参数</h2></div>
+          <div class="grid grid-3">
+            <div class="field">
+              <label for="cfg-scan">扫描新鲜度（小时）</label>
+              <input type="number" id="cfg-scan" class="input" value="24" min="1" max="168" oninput="validateThreshold(this,1,168)">
+              <span class="hint">默认 24h</span>
+              <span class="error-text hidden">合法区间 1~168 小时</span>
+            </div>
+            <div class="field">
+              <label for="cfg-window">验证窗口（小时）</label>
+              <input type="number" id="cfg-window" class="input" value="24" min="2" max="24" oninput="validateThreshold(this,2,24)">
+              <span class="hint">2 ~ 24h</span>
+              <span class="error-text hidden">合法区间 2~24 小时</span>
+            </div>
+            <div class="field">
+              <label for="cfg-protect">回滚保护期（天）</label>
+              <input type="number" id="cfg-protect" class="input" value="14" min="7" max="14" oninput="validateThreshold(this,7,14)">
+              <span class="hint">7 ~ 14 天，且 ≥ 验证窗口</span>
+              <span class="error-text hidden">合法区间 7~14 天，且 ≥ 验证窗口</span>
+            </div>
+          </div>
+          <div class="row mt-16">
+            <button class="btn btn-primary" onclick="saveThresholds()">保存</button>
+            <span class="text-secondary text-sm">全部配置变更留审计</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Loading -->
+      <section id="state-loading" class="state-view">
+        <div class="card mb-16"><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-block"></div></div>
+        <div class="card mb-16"><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-block"></div></div>
+        <div class="card"><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-block"></div></div>
+      </section>
+
+      <!-- 读取失败 -->
+      <section id="state-read-error" class="state-view">
+        <div class="card">
+          <div class="error-state">
+            <div class="icon text-error" aria-hidden="true">⚠</div>
+            <div class="title">配置读取失败</div>
+            <div class="desc">配置服务暂时不可用，表单不可编辑，重试成功后恢复。</div>
+            <button class="btn btn-secondary mt-8" onclick="retryLoad()">重试</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 空态 -->
+      <section id="state-empty" class="state-view">
+        <div class="card">
+          <div class="empty-state">
+            <div class="icon" aria-hidden="true">⚙️</div>
+            <div class="title">尚未配置接收人</div>
+            <div class="desc">首次配置：填写告警接收人与探测豁免清单。</div>
+            <button class="btn btn-primary mt-8" onclick="window.switchState('state-default');syncSwitcher('state-default')">开始配置</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- 添加豁免 Modal -->
+  <div class="modal-backdrop" id="modal-add-exempt" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-header"><h3>添加探测豁免</h3><button class="modal-close" data-close-modal aria-label="关闭">×</button></div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="exempt-domain">子域名</label>
+          <input type="text" id="exempt-domain" class="input mono" placeholder="intranet.example.com">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="exempt-reason">加入原因</label>
+          <textarea id="exempt-reason" class="textarea" rows="3" placeholder="说明为何豁免探测"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close-modal>取消</button>
+        <button class="btn btn-primary" data-close-modal onclick="window.showToast('豁免已添加，审计已记录','success')">确认添加</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    function saveAlert() {
+      var url = document.getElementById('cfg-webhook').value;
+      var emails = document.getElementById('cfg-emails').value;
+      if (!/^https?:\/\/.+/.test(url)) { showToast('Webhook URL 格式不正确', 'error'); return; }
+      var bad = emails.split(',').map(function(s){return s.trim();}).some(function(e){ return e && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e); });
+      if (bad) { showToast('存在格式不正确的邮箱', 'error'); return; }
+      document.getElementById('banner-channel').classList.add('hidden');
+      window.showToast('告警配置已保存', 'success');
+    }
+
+    function removeExempt(btn) {
+      if (confirm('确认移除该豁免？')) {
+        btn.closest('tr').remove();
+        window.showToast('豁免已移除，审计已记录', 'success');
+      }
+    }
+
+    function validateThreshold(input, min, max) {
+      var v = Number(input.value);
+      var err = input.parentElement.querySelector('.error-text');
+      var ok = !isNaN(v) && v >= min && v <= max;
+      input.classList.toggle('invalid', !ok);
+      if (err) err.classList.toggle('hidden', ok);
+      // 保护期 ≥ 验证窗口
+      if (input.id === 'cfg-window') {
+        var protect = document.getElementById('cfg-protect');
+        var pv = Number(protect.value);
+        var protectOk = pv >= v;
+        protect.classList.toggle('invalid', !protectOk);
+        var pErr = protect.parentElement.querySelector('.error-text');
+        if (pErr) pErr.classList.toggle('hidden', protectOk);
+      }
+    }
+
+    function saveThresholds() {
+      var scan = document.getElementById('cfg-scan');
+      var win = document.getElementById('cfg-window');
+      var prot = document.getElementById('cfg-protect');
+      validateThreshold(scan,1,168); validateThreshold(win,2,24); validateThreshold(prot,7,14);
+      if (scan.classList.contains('invalid') || win.classList.contains('invalid') || prot.classList.contains('invalid')) {
+        showToast('阈值越界，请修正后再保存', 'error');
+        return;
+      }
+      showToast('阈值已保存（审计已记录）', 'success');
+    }
+
+    function retryLoad() {
+      window.switchState('state-loading');
+      setTimeout(function () { window.switchState('state-default'); syncSwitcher('state-default'); }, 900);
+    }
+    function syncSwitcher(id) {
+      document.querySelectorAll('.state-switcher button').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-state-switch') === id);
+      });
+    }
+  </script>
+</body>
+</html>

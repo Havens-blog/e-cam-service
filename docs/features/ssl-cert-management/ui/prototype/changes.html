@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>变更管理 — SSL 证书管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-ro-intercept="true">
+  <a href="#main" class="skip-link">跳转到主内容</a>
+  <header class="topnav">
+    <div class="topnav-inner">
+      <button class="nav-toggle" aria-label="打开菜单" aria-controls="nav-drawer">☰</button>
+      <a href="index.html" class="nav-brand">证书管理</a>
+      <span class="nav-context">证书管理 <span class="sep">›</span> 变更管理</span>
+      <nav class="nav-links" aria-label="主导航">
+        <a href="certs.html" class="nav-link">证书台账</a>
+        <a href="dashboard.html" class="nav-link">到期看板</a>
+        <a href="changes.html" class="nav-link active">变更管理</a>
+      </nav>
+    </div>
+  </header>
+  <div class="nav-drawer" id="nav-drawer" aria-label="移动导航">
+    <a href="certs.html" class="nav-link">证书台账</a>
+    <a href="dashboard.html" class="nav-link">到期看板</a>
+    <a href="changes.html" class="nav-link active">变更管理</a>
+  </div>
+  <div class="nav-backdrop" id="nav-backdrop"></div>
+
+  <main id="main">
+    <div class="container page" data-state-container>
+      <div class="page-header">
+        <h1>变更管理</h1>
+        <div class="actions">
+          <div class="state-switcher" role="group" aria-label="切换页面状态">
+            <button data-state-switch="state-populated" class="active">已加载</button>
+            <button data-state-switch="state-loading">加载中</button>
+            <button data-state-switch="state-empty">空态</button>
+            <button data-state-switch="state-error">错误</button>
+          </div>
+          <a href="settings.html" class="btn btn-secondary">配置</a>
+          <a href="changes-new.html" class="btn btn-primary">新建变更</a>
+        </div>
+      </div>
+
+      <!-- Populated -->
+      <section id="state-populated" class="state-view active">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="all" data-tab-group="chg">全部 <span class="count">7</span></button>
+          <button class="tab" data-tab="pending" data-tab-group="chg">待确认 <span class="count">2</span></button>
+          <button class="tab" data-tab="running" data-tab-group="chg">执行中 <span class="count">1</span></button>
+          <button class="tab" data-tab="verifying" data-tab-group="chg">验证中 <span class="count">1</span></button>
+          <button class="tab" data-tab="partial" data-tab-group="chg">部分完成 <span class="count">1</span></button>
+          <button class="tab" data-tab="done" data-tab-group="chg">已完成 <span class="count">1</span></button>
+          <button class="tab" data-tab="rollback" data-tab-group="chg">已回滚 / 回滚失败 <span class="count">2</span></button>
+        </div>
+
+        <div class="card card-flush">
+          <div class="table-wrap" style="border:none;background:transparent;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">变更单号</th>
+                  <th scope="col">旧证书 → 新证书</th>
+                  <th scope="col">状态</th>
+                  <th scope="col" class="hide-sm">进度</th>
+                  <th scope="col" class="hide-sm">发起人</th>
+                  <th scope="col" class="hide-sm">时间</th>
+                  <th scope="col" class="col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="clickable" data-chg-state="running" onclick="location.href='change-report.html'">
+                  <td data-label="变更单号" class="cell-mono col-sticky-first">CHG-0042</td>
+                  <td data-label="旧→新"><div class="cell-truncate"><span class="text-secondary">*.example.com</span> <span class="badge badge-protect"><span class="badge-icon">🔒</span>保护期 5 天</span> <span class="text-secondary">→</span> shop.example.com</div></td>
+                  <td data-label="状态"><span class="badge badge-accent"><span class="spinner sm"></span>执行中</span></td>
+                  <td data-label="进度" class="hide-sm">8/10 · <span class="text-error">2 失败</span></td>
+                  <td data-label="发起人" class="hide-sm">ops@team</td>
+                  <td data-label="时间" class="hide-sm text-secondary">2026-08-14 10:20</td>
+                  <td data-label="操作" class="col-actions"><a href="change-report.html" class="btn-link btn-sm" onclick="event.stopPropagation()">详情</a></td>
+                </tr>
+                <tr class="clickable" data-chg-state="verifying" onclick="location.href='change-report.html'">
+                  <td data-label="变更单号" class="cell-mono col-sticky-first">CHG-0041</td>
+                  <td data-label="旧→新"><div class="cell-truncate">api.example.com → www.example.com</div></td>
+                  <td data-label="状态"><span class="badge badge-verifying"><span class="badge-icon">◐</span>验证中</span></td>
+                  <td data-label="进度" class="hide-sm">10/10 · 验证 6/10</td>
+                  <td data-label="发起人" class="hide-sm">ops@team</td>
+                  <td data-label="时间" class="hide-sm text-secondary">2026-08-14 09:00</td>
+                  <td data-label="操作" class="col-actions"><a href="change-report.html" class="btn-link btn-sm" onclick="event.stopPropagation()">详情</a></td>
+                </tr>
+                <tr class="clickable" data-chg-state="partial" onclick="location.href='change-report.html'">
+                  <td data-label="变更单号" class="cell-mono col-sticky-first">CHG-0040</td>
+                  <td data-label="旧→新"><div class="cell-truncate">legacy.example.com → cdn.example.com</div></td>
+                  <td data-label="状态"><span class="badge badge-warning"><span class="badge-icon">⚠</span>部分完成</span></td>
+                  <td data-label="进度" class="hide-sm">10/10 · 2 未达标</td>
+                  <td data-label="发起人" class="hide-sm">ops@team</td>
+                  <td data-label="时间" class="hide-sm text-secondary">2026-08-13 16:30</td>
+                  <td data-label="操作" class="col-actions"><a href="change-report.html" class="btn-link btn-sm" onclick="event.stopPropagation()">详情</a></td>
+                </tr>
+                <tr class="clickable" data-chg-state="pending" onclick="location.href='change-report.html'">
+                  <td data-label="变更单号" class="cell-mono col-sticky-first">CHG-0039</td>
+                  <td data-label="旧→新"><div class="cell-truncate">static.example.com → www.example.com</div></td>
+                  <td data-label="状态"><span class="badge badge-secondary">待确认</span></td>
+                  <td data-label="进度" class="hide-sm">清单 14 项</td>
+                  <td data-label="发起人" class="hide-sm">ops@team</td>
+                  <td data-label="时间" class="hide-sm text-secondary">2026-08-14 08:10</td>
+                  <td data-label="操作" class="col-actions"><a href="changes-new.html" class="btn-link btn-sm" onclick="event.stopPropagation()">继续编辑</a></td>
+                </tr>
+                <tr class="clickable" data-chg-state="done" onclick="location.href='change-report.html'">
+                  <td data-label="变更单号" class="cell-mono col-sticky-first">CHG-0038</td>
+                  <td data-label="旧→新"><div class="cell-truncate">*.old.example.com → *.new.example.com</div></td>
+                  <td data-label="状态"><span class="badge badge-success"><span class="badge-icon">✓</span>已完成</span></td>
+                  <td data-label="进度" class="hide-sm">12/12 达标</td>
+                  <td data-label="发起人" class="hide-sm">ops@team</td>
+                  <td data-label="时间" class="hide-sm text-secondary">2026-08-10 14:00</td>
+                  <td data-label="操作" class="col-actions"><a href="change-report.html" class="btn-link btn-sm" onclick="event.stopPropagation()">详情</a></td>
+                </tr>
+                <tr class="clickable" data-chg-state="rollback" onclick="location.href='change-report.html'">
+                  <td data-label="变更单号" class="cell-mono col-sticky-first">CHG-0037</td>
+                  <td data-label="旧→新"><div class="cell-truncate">app.example.com → www.example.com</div></td>
+                  <td data-label="状态"><span class="badge badge-secondary">已回滚</span></td>
+                  <td data-label="进度" class="hide-sm">8/12 已回滚</td>
+                  <td data-label="发起人" class="hide-sm">ops@team</td>
+                  <td data-label="时间" class="hide-sm text-secondary">2026-08-08 11:20</td>
+                  <td data-label="操作" class="col-actions"><a href="change-report.html" class="btn-link btn-sm" onclick="event.stopPropagation()">详情</a></td>
+                </tr>
+                <tr class="clickable" data-chg-state="rollback" onclick="location.href='change-report.html'">
+                  <td data-label="变更单号" class="cell-mono col-sticky-first">CHG-0036</td>
+                  <td data-label="旧→新"><div class="cell-truncate">pay.example.com → *.new.example.com</div></td>
+                  <td data-label="状态"><span class="badge badge-error"><span class="badge-icon">⚠</span>回滚失败</span></td>
+                  <td data-label="进度" class="hide-sm">已转人工</td>
+                  <td data-label="发起人" class="hide-sm">ops@team</td>
+                  <td data-label="时间" class="hide-sm text-secondary">2026-08-05 09:45</td>
+                  <td data-label="操作" class="col-actions"><a href="change-report.html" class="btn-link btn-sm" onclick="event.stopPropagation()">详情</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Loading -->
+      <section id="state-loading" class="state-view">
+        <div class="skeleton skeleton-line short mb-16" style="width:60%;height:32px;"></div>
+        <div class="card card-flush">
+          <div class="table-wrap" style="border:none;background:transparent;">
+            <table class="data-table"><tbody>
+              <tr class="skeleton-row"><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="col-actions"><div class="skeleton"></div></td></tr>
+              <tr class="skeleton-row"><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="col-actions"><div class="skeleton"></div></td></tr>
+              <tr class="skeleton-row"><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="col-actions"><div class="skeleton"></div></td></tr>
+              <tr class="skeleton-row"><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="col-actions"><div class="skeleton"></div></td></tr>
+              <tr class="skeleton-row"><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="col-actions"><div class="skeleton"></div></td></tr>
+            </tbody></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Empty -->
+      <section id="state-empty" class="state-view">
+        <div class="card">
+          <div class="empty-state">
+            <div class="icon" aria-hidden="true">🔄</div>
+            <div class="title">暂无变更单</div>
+            <div class="desc">尚未发起任何证书变更，可从台账或此处新建变更。</div>
+            <a href="changes-new.html" class="btn btn-primary mt-8">新建变更</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Error -->
+      <section id="state-error" class="state-view">
+        <div class="card">
+          <div class="error-state">
+            <div class="icon text-error" aria-hidden="true">⚠</div>
+            <div class="title">变更列表加载失败</div>
+            <div class="desc">变更服务暂时不可用，请稍后重试。</div>
+            <button class="btn btn-secondary mt-8" onclick="retryLoad()">重试</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+    /* 状态 Tab 过滤行（页面专属） */
+    document.querySelector('.tabs').addEventListener('click', function (e) {
+      var tab = e.target.closest('[data-tab]');
+      if (!tab) return;
+      var state = tab.getAttribute('data-tab');
+      document.querySelectorAll('[data-chg-state]').forEach(function (row) {
+        row.style.display = (state === 'all' || row.getAttribute('data-chg-state') === state) ? '' : 'none';
+      });
+    });
+
+    function retryLoad() {
+      window.switchState('state-loading');
+      setTimeout(function () { window.switchState('state-populated'); syncSwitcher('state-populated'); }, 900);
+    }
+    function syncSwitcher(id) {
+      document.querySelectorAll('.state-switcher button').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-state-switch') === id);
+      });
+    }
+  </script>
+</body>
+</html>

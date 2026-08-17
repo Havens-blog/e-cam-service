@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>证书详情 *.example.com — SSL 证书管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a href="#main" class="skip-link">跳转到主内容</a>
+  <header class="topnav">
+    <div class="topnav-inner">
+      <button class="nav-toggle" aria-label="打开菜单" aria-controls="nav-drawer">☰</button>
+      <a href="index.html" class="nav-brand">证书管理</a>
+      <span class="nav-context">证书管理 <span class="sep">›</span> 证书详情</span>
+      <nav class="nav-links" aria-label="主导航">
+        <a href="certs.html" class="nav-link active">证书台账</a>
+        <a href="dashboard.html" class="nav-link">到期看板</a>
+        <a href="changes.html" class="nav-link">变更管理</a>
+      </nav>
+    </div>
+  </header>
+  <div class="nav-drawer" id="nav-drawer" aria-label="移动导航">
+    <a href="certs.html" class="nav-link active">证书台账</a>
+    <a href="dashboard.html" class="nav-link">到期看板</a>
+    <a href="changes.html" class="nav-link">变更管理</a>
+  </div>
+  <div class="nav-backdrop" id="nav-backdrop"></div>
+
+  <nav class="breadcrumb" aria-label="面包屑">
+    <a href="certs.html">证书台账</a><span class="sep">/</span><span class="current">*.example.com</span>
+  </nav>
+
+  <main id="main">
+    <div class="container page" data-state-container>
+      <div class="page-header">
+        <div>
+          <h1 class="mono" style="font-family:var(--font-body);">*.example.com</h1>
+          <div class="row mt-8">
+            <span class="badge badge-accent">完整托管</span>
+            <span class="text-secondary text-sm">证书 ID <span class="mono">cert-001</span></span>
+          </div>
+        </div>
+        <div class="state-switcher" role="group" aria-label="切换页面状态">
+          <button data-state-switch="state-populated" class="active">已加载</button>
+          <button data-state-switch="state-loading">加载中</button>
+          <button data-state-switch="state-error">引用区错误</button>
+        </div>
+      </div>
+
+      <!-- Populated -->
+      <section id="state-populated" class="state-view active">
+        <!-- 证书要素卡 -->
+        <div class="grid grid-2 mb-16">
+          <div class="card">
+            <h2 style="font-size:16px;margin-bottom:16px;">证书要素</h2>
+            <dl class="kv">
+              <dt>签发者</dt><dd>DigiCert Inc · EV RSA CA G2</dd>
+              <dt>指纹</dt>
+              <dd class="mono cell-copy">
+                <span>a1b2c3d4…9f0e1d2c</span>
+                <button class="btn-icon" data-copy="a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef01" aria-label="复制完整指纹">⧉</button>
+              </dd>
+              <dt>托管状态</dt><dd><span class="badge badge-accent">完整托管</span></dd>
+            </dl>
+            <div class="text-sm text-secondary mb-8">SAN 列表</div>
+            <div class="row">
+              <span class="chip">*.example.com</span>
+              <span class="chip">example.com</span>
+              <span class="chip">www.example.com</span>
+              <span class="chip chip-more" tabindex="0" title="api.example.com&#10;static.example.com">+2</span>
+            </div>
+          </div>
+          <div class="card">
+            <h2 style="font-size:16px;margin-bottom:16px;">有效期与托管</h2>
+            <dl class="kv">
+              <dt>有效期</dt><dd>2026-06-02 ~ 2026-11-30</dd>
+              <dt>剩余</dt>
+              <dd>
+                <span class="badge badge-success"><span class="badge-icon">✓</span>74 天</span>
+                <div class="validity-progress"><div class="progress-bar success" style="width:42%;"></div></div>
+                <span class="text-secondary text-sm">已消耗 58%</span>
+              </dd>
+              <dt>私钥</dt><dd><span class="badge badge-secondary">🔒 已加密托管</span></dd>
+            </dl>
+            <div class="text-sm text-secondary mb-8">关联变更历史</div>
+            <div class="link-list">
+              <a href="change-report.html">
+                <div class="row"><span class="mono">CHG-0042</span><span class="badge badge-accent"><span class="spinner sm"></span>执行中</span><span class="desc">8/10 · 2 失败</span></div>
+              </a>
+              <a href="change-report.html">
+                <div class="row"><span class="mono">CHG-0031</span><span class="badge badge-success"><span class="badge-icon">✓</span>已完成</span><span class="desc">2026-05-14</span></div>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- 引用关系卡 -->
+        <div class="card">
+          <div class="card-header">
+            <h2>引用关系</h2>
+          </div>
+          <div class="tabs" role="tablist">
+            <button class="tab active" role="tab" aria-selected="true" data-tab="forward" data-tab-group="refs">正向引用</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="reverse" data-tab-group="refs">反向查询</button>
+          </div>
+
+          <!-- 正向 -->
+          <div data-tab-panel="forward" data-tab-group="refs">
+            <div class="banner banner-warning">
+              <span class="banner-icon" aria-hidden="true">⚠</span>
+              <div><div class="banner-title">盲区声明</div><div class="banner-body">本视图不含 VM Nginx 配置级引用。</div></div>
+            </div>
+
+            <div class="meta-row mb-16" id="scan-meta">
+              <span class="meta-item">最近扫描 2h 前</span><span class="meta-dot"></span>
+              <span class="meta-item">覆盖率：阿里 99%</span><span class="meta-dot"></span>
+              <span class="meta-item">腾讯 98%</span><span class="meta-dot"></span>
+              <span class="meta-item">K8s 5 集群</span>
+              <span class="spacer"></span>
+              <button class="btn btn-secondary btn-sm" id="btn-scan" onclick="startScan()">立即扫描</button>
+            </div>
+
+            <div class="toolbar">
+              <select class="select" aria-label="筛选云">
+                <option>云：全部</option><option>阿里云</option><option>腾讯云</option><option>K8s</option>
+              </select>
+              <select class="select" aria-label="筛选产品">
+                <option>产品：全部</option><option>DCDN</option><option>CDN</option><option>SLB</option><option>Ingress</option>
+              </select>
+              <select class="select" aria-label="筛选集群">
+                <option>集群：全部</option><option>prod-sh-1</option><option>prod-bj-2</option>
+              </select>
+              <div class="spacer"></div>
+              <div class="search-input">
+                <input type="search" class="input" placeholder="搜索资源名 / 资源 ID（300ms 防抖）" aria-label="搜索资源" style="width:280px;">
+              </div>
+            </div>
+
+            <div class="accordion-item open">
+              <button class="accordion-header" data-accordion aria-expanded="true">
+                <span class="chevron" aria-hidden="true">▸</span> 阿里云 · DCDN <span class="badge badge-secondary">8</span>
+              </button>
+              <div class="accordion-body">
+                <table class="data-table">
+                  <thead><tr><th scope="col">资源 ID</th><th scope="col">域名</th><th scope="col">证书 ID</th><th scope="col">账号</th></tr></thead>
+                  <tbody>
+                    <tr class="clickable" data-open-drawer="drawer-resource">
+                      <td data-label="资源 ID" class="cell-mono col-sticky-first">dcdn-2g8vk1x0</td>
+                      <td data-label="域名">www.example.com</td>
+                      <td data-label="证书 ID" class="cell-mono">1997-****-****-4310</td>
+                      <td data-label="账号">main-prod</td>
+                    </tr>
+                    <tr class="clickable" data-open-drawer="drawer-resource">
+                      <td data-label="资源 ID" class="cell-mono col-sticky-first">dcdn-9jp3lmz7</td>
+                      <td data-label="域名">static.example.com</td>
+                      <td data-label="证书 ID" class="cell-mono">1997-****-****-8802</td>
+                      <td data-label="账号">main-prod</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="accordion-item open">
+              <button class="accordion-header" data-accordion aria-expanded="true">
+                <span class="chevron" aria-hidden="true">▸</span> 阿里云 · SLB <span class="badge badge-secondary">3</span>
+              </button>
+              <div class="accordion-body">
+                <table class="data-table">
+                  <thead><tr><th scope="col">资源 ID</th><th scope="col">域名</th><th scope="col">证书 ID</th><th scope="col">账号</th></tr></thead>
+                  <tbody>
+                    <tr class="clickable" data-open-drawer="drawer-resource">
+                      <td data-label="资源 ID" class="cell-mono">slb-bp1q8k2z</td>
+                      <td data-label="域名">api.example.com</td>
+                      <td data-label="证书 ID" class="cell-mono">1997-****-****-2214</td>
+                      <td data-label="账号">main-prod</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <button class="accordion-header" data-accordion aria-expanded="false">
+                <span class="chevron" aria-hidden="true">▸</span> 腾讯云 · CDN <span class="badge badge-secondary">1</span>
+              </button>
+              <div class="accordion-body"></div>
+            </div>
+          </div>
+
+          <!-- 反向 -->
+          <div data-tab-panel="reverse" data-tab-group="refs" class="hidden">
+            <div class="toolbar">
+              <div class="search-input" style="flex:1;">
+                <input type="search" class="input" id="reverse-query" placeholder="输入域名 / 资源名查询其引用的证书" aria-label="反向查询" style="width:100%;">
+              </div>
+              <button class="btn btn-primary" onclick="runReverseQuery()">查询</button>
+            </div>
+            <div id="reverse-results"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Loading -->
+      <section id="state-loading" class="state-view">
+        <div class="grid grid-2 mb-16">
+          <div class="card"><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div><div class="skeleton skeleton-block"></div></div>
+          <div class="card"><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div><div class="skeleton skeleton-block"></div></div>
+        </div>
+        <div class="card"><div class="skeleton skeleton-line short mb-16"></div><div class="skeleton skeleton-block mb-8"></div><div class="skeleton skeleton-block"></div></div>
+      </section>
+
+      <!-- 引用区错误（要素卡独立加载不受影响） -->
+      <section id="state-error" class="state-view">
+        <div class="grid grid-2 mb-16">
+          <div class="card">
+            <h2 style="font-size:16px;margin-bottom:16px;">证书要素</h2>
+            <dl class="kv">
+              <dt>签发者</dt><dd>DigiCert Inc · EV RSA CA G2</dd>
+              <dt>托管状态</dt><dd><span class="badge badge-accent">完整托管</span></dd>
+            </dl>
+            <div class="row"><span class="chip">*.example.com</span><span class="chip">example.com</span><span class="chip chip-more">+3</span></div>
+          </div>
+          <div class="card">
+            <h2 style="font-size:16px;margin-bottom:16px;">有效期与托管</h2>
+            <dl class="kv"><dt>剩余</dt><dd><span class="badge badge-success"><span class="badge-icon">✓</span>74 天</span></dd><dt>私钥</dt><dd><span class="badge badge-secondary">🔒 已加密托管</span></dd></dl>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h2>引用关系</h2></div>
+          <div class="error-state">
+            <div class="icon text-error" aria-hidden="true">⚠</div>
+            <div class="title">引用扫描结果加载失败</div>
+            <div class="desc">扫描结果服务暂时不可用，请稍后重试。</div>
+            <button class="btn btn-secondary mt-8" onclick="window.switchState('state-populated');syncSwitcher('state-populated')">重试</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- 引用资源抽屉 -->
+  <div class="drawer-backdrop" id="drawer-resource-backdrop" aria-hidden="true"></div>
+  <aside class="drawer" id="drawer-resource" role="dialog" aria-modal="true" aria-label="引用资源详情">
+    <div class="drawer-header">
+      <h3 class="mono" style="font-family:var(--font-body);">dcdn-2g8vk1x0</h3>
+      <button class="modal-close" data-close-drawer aria-label="关闭">×</button>
+    </div>
+    <div class="drawer-body">
+      <dl class="kv">
+        <dt>资源 ID</dt><dd class="mono">dcdn-2g8vk1x0</dd>
+        <dt>云 / 产品</dt><dd>阿里云 · DCDN</dd>
+        <dt>云账号</dt><dd>main-prod（1210000000123456）</dd>
+        <dt>证书 ID</dt><dd class="mono">1997-abcd-ef01-4310</dd>
+        <dt>证书名字段</dt><dd class="mono">www.example.com</dd>
+        <dt>域名</dt><dd>www.example.com</dd>
+      </dl>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn btn-secondary full-width" data-close-drawer>关闭</button>
+    </div>
+  </aside>
+
+  <script src="app.js"></script>
+  <script>
+    /* 立即扫描：进行中 disabled + 文案「扫描中」，防重入 */
+    var scanning = false;
+    function startScan() {
+      if (scanning) return;
+      scanning = true;
+      var btn = document.getElementById('btn-scan');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner sm"></span> 扫描中';
+      setTimeout(function () {
+        scanning = false;
+        btn.disabled = false;
+        btn.textContent = '立即扫描';
+        var meta = document.getElementById('scan-meta');
+        if (meta) meta.firstElementChild.textContent = '刚刚';
+        window.showToast('引用扫描完成，元数据已刷新', 'success');
+      }, 1800);
+    }
+
+    /* 反向查询（模拟结果；无匹配给空态文案） */
+    function runReverseQuery() {
+      var q = (document.getElementById('reverse-query').value || '').trim();
+      var box = document.getElementById('reverse-results');
+      if (!q) {
+        box.innerHTML = '<div class="empty-state"><div class="icon" aria-hidden="true">🔍</div><div class="text-secondary">输入域名或资源名后查询其引用的证书</div></div>';
+        return;
+      }
+      var hit = q.indexOf('example.com') !== -1;
+      box.innerHTML = hit
+        ? '<div class="card" style="margin-bottom:8px;"><div class="row"><span class="chip">www.example.com</span><span class="badge badge-accent">完整托管</span></div><dl class="kv mt-8"><dt>指纹</dt><dd class="mono">a1b2c3d4…9f0e1d2c</dd><dt>引用资源</dt><dd>dcdn-2g8vk1x0 · slb-bp1q8k2z</dd></dl></div>'
+        : '<div class="empty-state"><div class="icon" aria-hidden="true">🔍</div><div class="title">未查询到引用该域名/资源的证书</div></div>';
+    }
+
+    function syncSwitcher(id) {
+      document.querySelectorAll('.state-switcher button').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-state-switch') === id);
+      });
+    }
+  </script>
+</body>
+</html>

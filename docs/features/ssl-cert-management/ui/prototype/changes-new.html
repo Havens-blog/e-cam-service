@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>新建变更 — 变更向导 — SSL 证书管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-ro-intercept="true">
+  <a href="#main" class="skip-link">跳转到主内容</a>
+  <header class="topnav">
+    <div class="topnav-inner">
+      <button class="nav-toggle" aria-label="打开菜单" aria-controls="nav-drawer">☰</button>
+      <a href="index.html" class="nav-brand">证书管理</a>
+      <span class="nav-context">证书管理 <span class="sep">›</span> 变更向导</span>
+      <nav class="nav-links" aria-label="主导航">
+        <a href="certs.html" class="nav-link">证书台账</a>
+        <a href="dashboard.html" class="nav-link">到期看板</a>
+        <a href="changes.html" class="nav-link active">变更管理</a>
+      </nav>
+    </div>
+  </header>
+  <div class="nav-drawer" id="nav-drawer" aria-label="移动导航">
+    <a href="certs.html" class="nav-link">证书台账</a>
+    <a href="dashboard.html" class="nav-link">到期看板</a>
+    <a href="changes.html" class="nav-link active">变更管理</a>
+  </div>
+  <div class="nav-backdrop" id="nav-backdrop"></div>
+
+  <nav class="breadcrumb" aria-label="面包屑">
+    <a href="changes.html">变更管理</a><span class="sep">/</span><span class="current">新建变更</span>
+  </nav>
+
+  <main id="main">
+    <div class="container page">
+      <div class="page-header">
+        <div>
+          <h1>变更向导</h1>
+          <div class="row mt-8">
+            <span class="text-secondary text-sm">变更单 <span class="mono">CHG-NEW（草稿）</span></span>
+            <span class="badge badge-secondary" id="readonly-badge" style="display:none;">只读回看</span>
+          </div>
+        </div>
+        <div class="actions">
+          <select class="select" id="state-jump" onchange="jumpState(this.value)" aria-label="跳转向导关键态">
+            <option value="edit">编辑中（Step1~4）</option>
+            <option value="exec">执行中（Step5）</option>
+            <option value="verify">验证中（Step6）</option>
+            <option value="partial">部分完成</option>
+            <option value="rollback-fail">回滚失败</option>
+            <option value="done">已完成（Step7）</option>
+            <option value="mutex">在途互斥</option>
+          </select>
+          <button class="btn btn-secondary" onclick="saveDraft()">存为草稿</button>
+          <button class="btn btn-ghost" data-open-modal="modal-cancel">取消</button>
+        </div>
+      </div>
+
+      <!-- 步骤条 -->
+      <div class="card mb-16">
+        <div class="stepbar" id="stepbar" role="list">
+          <button class="step active" role="listitem" onclick="goStep(1)"><span class="step-num">1</span>选择证书<span class="step-connector"></span></button>
+          <button class="step" role="listitem" onclick="goStep(2)"><span class="step-num">2</span>前置校验<span class="step-connector"></span></button>
+          <button class="step" role="listitem" onclick="goStep(3)"><span class="step-num">3</span>变更清单<span class="step-connector"></span></button>
+          <button class="step" role="listitem" onclick="goStep(4)"><span class="step-num">4</span>确认执行<span class="step-connector"></span></button>
+          <button class="step" role="listitem" onclick="goStep(5)"><span class="step-num">5</span>执行进度<span class="step-connector"></span></button>
+          <button class="step" role="listitem" onclick="goStep(6)"><span class="step-num">6</span>验证窗口<span class="step-connector"></span></button>
+          <button class="step" role="listitem" onclick="goStep(7)"><span class="step-num">7</span>报告入口</button>
+        </div>
+      </div>
+
+      <!-- 在途互斥（覆盖层，默认隐藏） -->
+      <div class="banner banner-error hidden" id="banner-mutex">
+        <span class="banner-icon">⚠</span>
+        <div>
+          <div class="banner-title">存在在途变更单 CHG-0042</div>
+          <div class="banner-body">该旧证书已有未完成的变更单，不允许重复发起。</div>
+        </div>
+        <div class="banner-actions"><a class="btn btn-secondary btn-sm" href="change-report.html">跳转到 CHG-0042</a></div>
+      </div>
+
+      <!-- Step 1 选择证书 -->
+      <section class="step-panel" id="step-1">
+        <div class="card mb-16">
+          <h2>选择旧证书与新证书</h2>
+          <p class="text-secondary text-md mt-8">新证书须先在台账导入为「完整托管」（向导内不提供上传入口）。若台账无完整托管证书，请返回台账导入。</p>
+        </div>
+        <div class="grid grid-2 mb-16">
+          <div class="card">
+            <h3 class="mb-16">旧证书</h3>
+            <div class="search-input mb-16"><input type="search" class="input" placeholder="按域名 / SAN / 指纹（支持前缀）检索" aria-label="搜索旧证书"></div>
+            <div class="card" style="padding:12px;border-color:var(--color-accent);">
+              <div class="row"><strong>*.example.com</strong><span class="badge badge-accent">完整托管</span><span class="badge badge-success">74 天</span></div>
+              <div class="text-secondary text-sm mt-8 mono">a1b2c3d4…9f0e1d2c · 引用 12</div>
+            </div>
+          </div>
+          <div class="card">
+            <h3 class="mb-16">新证书</h3>
+            <div class="search-input mb-16"><input type="search" class="input" placeholder="检索台账「完整托管」证书" aria-label="搜索新证书"></div>
+            <div class="card" style="padding:12px;border-color:var(--color-accent);">
+              <div class="row"><strong>shop.example.com</strong><span class="badge badge-accent">完整托管</span><span class="badge badge-success">152 天</span></div>
+              <div class="text-secondary text-sm mt-8 mono">b3c4d5e6…0f1e2d3c</div>
+            </div>
+          </div>
+        </div>
+        <div class="banner banner-info hidden" id="step1-empty-new">
+          <span class="banner-icon">🔐</span>
+          <div><div class="banner-title">暂无完整托管证书</div><div class="banner-body">台账中无完整托管证书可选。</div></div>
+          <div class="banner-actions"><a class="btn btn-secondary btn-sm" href="certs.html">返回台账导入</a></div>
+        </div>
+      </section>
+
+      <!-- Step 2 前置校验 -->
+      <section class="step-panel hidden" id="step-2">
+        <div class="card mb-16">
+          <h2>前置校验</h2>
+          <p class="text-secondary text-md mt-8">进入本步自动执行扫描新鲜度与 SAN 覆盖预检。</p>
+        </div>
+        <!-- 扫描新鲜度：通过 -->
+        <div class="card mb-16">
+          <div class="row"><span class="badge badge-success"><span class="badge-icon">✓</span>通过</span><h3>扫描新鲜度</h3></div>
+          <p class="text-secondary text-sm mt-8">最近扫描 2h 前，在新鲜度阈值（默认 24h）内。</p>
+        </div>
+        <!-- SAN 预检：通过 -->
+        <div class="card mb-16">
+          <div class="row"><span class="badge badge-success"><span class="badge-icon">✓</span>通过</span><h3>SAN 覆盖预检</h3></div>
+          <p class="text-secondary text-sm mt-8">新证书 SAN ⊇ 旧证书目标域名集合，可覆盖全部引用。</p>
+        </div>
+      </section>
+
+      <!-- Step 2 阻断态（演示） -->
+      <section class="step-panel hidden" id="step-2-blocked">
+        <div class="card mb-16" style="border-color:rgba(238,0,0,0.4);">
+          <div class="banner banner-error" style="border:none;background:transparent;margin:0;">
+            <span class="banner-icon">✗</span>
+            <div><div class="banner-title">扫描新鲜度超期，阻断清单生成</div><div class="banner-body">旧证书最近扫描于 3 天前，超出 24h 新鲜度阈值。请重新扫描后再生成清单。</div></div>
+          </div>
+          <div class="row mt-16"><button class="btn btn-primary">立即扫描</button><button class="btn btn-secondary" onclick="goStep(1)">返回上一步</button></div>
+        </div>
+      </section>
+
+      <!-- Step 3 变更清单 -->
+      <section class="step-panel hidden" id="step-3">
+        <div class="banner banner-warning mb-16">
+          <span class="banner-icon">⚠</span>
+          <div><div class="banner-title">盲区声明</div><div class="banner-body">本清单不含 VM Nginx 配置级引用，需在变更后人工核对。</div></div>
+        </div>
+        <div class="meta-row mb-16">
+          <span class="meta-item">清单绑定扫描快照：2h 前</span><span class="meta-dot"></span>
+          <span class="meta-item">可执行项 12</span><span class="meta-dot"></span>
+          <span class="meta-item">不可执行项 5</span>
+        </div>
+        <h3 class="section-title">可执行项</h3>
+        <div class="card card-flush mb-16">
+          <div class="table-wrap" style="border:none;background:transparent;">
+            <table class="data-table">
+              <thead><tr><th scope="col">资源</th><th scope="col">云 / 产品</th><th scope="col">计划动作</th><th scope="col">原证书 ID</th></tr></thead>
+              <tbody>
+                <tr><td data-label="资源" class="cell-mono">dcdn-2g8vk1x0</td><td data-label="云/产品">阿里云 · DCDN</td><td data-label="计划动作">替换证书</td><td data-label="原证书ID" class="cell-mono">1997-****-4310</td></tr>
+                <tr><td data-label="资源" class="cell-mono">slb-bp1q8k2z</td><td data-label="云/产品">阿里云 · SLB</td><td data-label="计划动作">替换证书</td><td data-label="原证书ID" class="cell-mono">1997-****-2214</td></tr>
+                <tr><td data-label="资源" class="cell-mono">ingress-prod-sh-1</td><td data-label="云/产品">K8s · Ingress</td><td data-label="计划动作">替换 TLS Secret</td><td data-label="原证书ID" class="cell-mono">k8s-secret/tls-example</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <h3 class="section-title">不可执行项 / 不可自动变更</h3>
+        <div class="card" style="background:rgba(245,166,35,0.06);border-color:rgba(245,166,35,0.25);">
+          <div class="table-wrap" style="border:none;background:transparent;">
+            <table class="data-table">
+              <thead><tr><th scope="col">资源</th><th scope="col">云 / 产品</th><th scope="col">原因</th><th scope="col">出路</th></tr></thead>
+              <tbody>
+                <tr><td data-label="资源" class="cell-mono">elb-cn-north-1</td><td data-label="云/产品">华为云 · ELB</td><td data-label="原因">首期无部署器</td><td data-label="出路">二期或手工更换</td></tr>
+                <tr><td data-label="资源" class="cell-mono">acm-us-east-1</td><td data-label="云/产品">AWS · ACM</td><td data-label="原因">首期无部署器</td><td data-label="出路">二期或手工更换</td></tr>
+                <tr><td data-label="资源" class="cell-mono">appgw-east</td><td data-label="云/产品">Azure · App Gateway</td><td data-label="原因">首期无部署器</td><td data-label="出路">二期或手工更换</td></tr>
+                <tr><td data-label="资源" class="cell-mono">argocd-tls</td><td data-label="云/产品">GitOps</td><td data-label="原因">GitOps/控制器管理</td><td data-label="出路">走其管理链路</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Step 4 确认执行 -->
+      <section class="step-panel hidden" id="step-4">
+        <div class="card mb-16">
+          <h2>确认执行</h2>
+          <p class="text-secondary text-md mt-8">清单共 12 项。确认时服务端将重校验清单快照新鲜度与引用一致性，不一致将拦截并回退 Step2 重新预检。</p>
+        </div>
+        <div class="grid grid-2 mb-16">
+          <div class="stat-card"><div class="stat-label">清单总量</div><div class="stat-value">12</div></div>
+          <div class="stat-card"><div class="stat-label">分批</div><div class="stat-value">需分批</div><div class="stat-sub">首批上限 floor(50%) = 6</div></div>
+        </div>
+        <div class="card mb-16">
+          <h3 class="mb-16">同单分批勾选</h3>
+          <div class="field" style="margin-bottom:0;">
+            <label for="batch-size">首批数量（≤ 6）</label>
+            <input type="number" id="batch-size" class="input" style="width:120px;" value="6" min="1" max="6">
+            <span class="hint">总量 ≤1 时免分批；首批执行且验证通过后展示「执行剩余批」入口。</span>
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn btn-primary" data-open-modal="modal-confirm-exec">确认执行</button>
+          <span class="text-secondary text-sm">仅运维工程师角色可确认，全程留审计</span>
+        </div>
+      </section>
+
+      <!-- Step 5 执行进度 -->
+      <section class="step-panel hidden" id="step-5">
+        <div class="banner banner-error mb-16 hidden" id="banner-fail">
+          <span class="banner-icon">⚠</span>
+          <div><div class="banner-title">出现失败项，已成功项可回滚</div><div class="banner-body">失败项引用未被改动，无需回滚。</div></div>
+          <div class="banner-actions"><button class="btn btn-secondary btn-sm" data-open-modal="modal-rollback">回滚成功项</button></div>
+        </div>
+        <div class="card card-flush">
+          <div class="table-wrap" style="border:none;background:transparent;">
+            <table class="data-table">
+              <thead><tr><th scope="col">资源</th><th scope="col">云 / 产品</th><th scope="col">状态</th><th scope="col" class="hide-sm">错误信息</th></tr></thead>
+              <tbody>
+                <tr><td data-label="资源" class="cell-mono">dcdn-2g8vk1x0</td><td data-label="云/产品">阿里云 · DCDN</td><td data-label="状态"><span class="badge badge-success"><span class="badge-icon">✓</span>成功</span></td><td data-label="错误信息" class="hide-sm text-secondary">—</td></tr>
+                <tr><td data-label="资源" class="cell-mono">slb-bp1q8k2z</td><td data-label="云/产品">阿里云 · SLB</td><td data-label="状态"><span class="badge badge-warning"><span class="badge-icon">⚠</span>限流重试中</span></td><td data-label="错误信息" class="hide-sm text-secondary">API 限流，3s 后重试</td></tr>
+                <tr><td data-label="资源" class="cell-mono">ingress-prod-sh-1</td><td data-label="云/产品">K8s · Ingress</td><td data-label="状态"><span class="badge badge-accent"><span class="spinner sm"></span>执行中</span></td><td data-label="错误信息" class="hide-sm text-secondary">—</td></tr>
+                <tr><td data-label="资源" class="cell-mono">dcdn-9jp3lmz7</td><td data-label="云/产品">阿里云 · DCDN</td><td data-label="状态"><span class="badge badge-error"><span class="badge-icon">✗</span>失败</span></td><td data-label="错误信息" class="hide-sm">权限不足：DCDN 写权限缺失</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination">
+            <span class="page-info" aria-live="polite">已完成 1/4，失败 1</span>
+            <div class="progress" style="flex:1;max-width:200px;margin-right:16px;"><div class="progress-bar" style="width:25%;"></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Step 6 验证窗口 -->
+      <section class="step-panel hidden" id="step-6">
+        <div class="card mb-16">
+          <h2>验证窗口</h2>
+          <div class="meta-row mt-8">
+            <span class="meta-item" id="countdown" aria-label="验证窗口剩余 23 小时 59 分">23:59:59</span>
+            <span class="meta-dot"></span>
+            <span class="meta-item text-secondary">窗口关闭后未达标项转常规差异告警</span>
+          </div>
+        </div>
+        <div class="card card-flush mb-16">
+          <div class="table-wrap" style="border:none;background:transparent;">
+            <table class="data-table">
+              <thead><tr><th scope="col">资源</th><th scope="col">预期终态</th><th scope="col">实际</th><th scope="col">判定</th></tr></thead>
+              <tbody>
+                <tr><td data-label="资源" class="cell-mono">dcdn-2g8vk1x0</td><td data-label="预期终态" class="mono">b3c4d5e6…</td><td data-label="实际" class="mono">b3c4d5e6…</td><td data-label="判定"><span class="badge badge-success"><span class="badge-icon">✓</span>达标</span></td></tr>
+                <tr><td data-label="资源" class="cell-mono">slb-bp1q8k2z</td><td data-label="预期终态" class="mono">b3c4d5e6…</td><td data-label="实际" class="mono">a1b2c3d4…</td><td data-label="判定"><span class="badge badge-error"><span class="badge-icon">✗</span>差异 · <a href="#" class="btn-link btn-sm">关联告警</a></span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn btn-secondary" data-open-modal="modal-rollback">回滚成功项</button>
+          <button class="btn btn-ghost" onclick="finishEarly()">提前完成（二次确认）</button>
+        </div>
+      </section>
+
+      <!-- Step 7 报告入口 -->
+      <section class="step-panel hidden" id="step-7">
+        <div class="card mb-16">
+          <div class="row"><span class="badge badge-success"><span class="badge-icon">✓</span>已完成</span><h2>变更完成</h2></div>
+          <p class="text-secondary text-md mt-8">全部清单项达标，变更报告已生成。旧证书进入回滚保护期。</p>
+          <div class="meta-row mt-8"><span class="meta-item"><span class="badge badge-protect"><span class="badge-icon">🔒</span>保护期剩余 14 天</span></span></div>
+        </div>
+        <a class="btn btn-primary" href="change-report.html">查看变更报告</a>
+      </section>
+
+      <!-- 部分完成态（演示，覆盖在 Step7 上方） -->
+      <section class="step-panel hidden" id="state-partial">
+        <div class="card mb-16">
+          <div class="row"><span class="badge badge-warning"><span class="badge-icon">⚠</span>部分完成</span><h2>部分完成</h2></div>
+          <p class="text-secondary text-md mt-8">验证窗口已关闭，存在未达标/失败项。仍在回滚保护期内，可回滚成功项。</p>
+          <div class="meta-row mt-8"><span class="meta-item"><span class="badge badge-protect"><span class="badge-icon">🔒</span>保护期剩余 9 天</span></span></div>
+        </div>
+        <div class="row"><button class="btn btn-secondary" data-open-modal="modal-rollback">回滚成功项</button><a class="btn btn-primary" href="change-report.html">查看变更报告</a></div>
+      </section>
+
+      <!-- 回滚失败态 -->
+      <section class="step-panel hidden" id="state-rollback-fail">
+        <div class="banner banner-error mb-16">
+          <span class="banner-icon">⚠</span>
+          <div><div class="banner-title">回滚失败，已转人工处理</div><div class="banner-body">告警同步触发，请联系运维主管介入。</div></div>
+        </div>
+        <a class="btn btn-primary" href="change-report.html">查看变更报告</a>
+      </section>
+
+      <!-- 步骤导航 -->
+      <div class="row mt-16">
+        <button class="btn btn-secondary" id="btn-prev" onclick="prevStep()">上一步</button>
+        <button class="btn btn-primary" id="btn-next" onclick="nextStep()">下一步</button>
+        <span class="text-secondary text-sm" id="next-hint" style="display:none;">下一步需满足：旧/新证书均已选定</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- 取消确认 Modal -->
+  <div class="modal-backdrop" id="modal-cancel" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-header"><h3>确认取消</h3><button class="modal-close" data-close-modal aria-label="关闭">×</button></div>
+      <div class="modal-body">
+        <div class="banner banner-error">
+          <span class="banner-icon">⚠</span>
+          <div><div class="banner-title">未保存的选择将丢弃；已存草稿不受影响</div></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close-modal>继续编辑</button>
+        <button class="btn btn-danger" onclick="location.href='changes.html'">确认取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 确认执行 Modal -->
+  <div class="modal-backdrop" id="modal-confirm-exec" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-header"><h3>确认执行变更</h3><button class="modal-close" data-close-modal aria-label="关闭">×</button></div>
+      <div class="modal-body">
+        <p class="mb-16">本次变更将影响 <strong>12 项资源</strong>，首批执行 6 项。确认后立即进入执行进度，全程留审计。</p>
+        <p class="text-secondary text-sm">服务端将重校验清单快照新鲜度与引用一致性。</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close-modal>取消</button>
+        <button class="btn btn-primary" data-close-modal onclick="confirmExec()">确认执行</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 回滚 Modal -->
+  <div class="modal-backdrop" id="modal-rollback" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal modal-md">
+      <div class="modal-header"><h3>回滚成功项</h3><button class="modal-close" data-close-modal aria-label="关闭">×</button></div>
+      <div class="modal-body">
+        <p class="mb-16">回滚范围：仅本次执行成功项（3 项）。</p>
+        <div class="banner banner-info mb-16">
+          <span class="banner-icon">ℹ</span>
+          <div><div class="banner-body">目标有效性预检：云侧旧证书有效，可回滚。</div></div>
+        </div>
+        <div class="banner banner-error hidden" id="rollback-manual">
+          <span class="banner-icon">⚠</span>
+          <div><div class="banner-title">云侧旧证书无效</div><div class="banner-body">转人工决策路径。</div></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close-modal>取消</button>
+        <button class="btn btn-danger" data-close-modal onclick="window.showToast('回滚已提交','info')">执行回滚</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    var currentStep = 1;
+    var TOTAL = 7;
+
+    function renderStepbar() {
+      var steps = document.querySelectorAll('#stepbar .step');
+      steps.forEach(function (s, i) {
+        var n = i + 1;
+        s.classList.remove('active', 'done', 'locked');
+        if (n < currentStep) s.classList.add('done');
+        else if (n === currentStep) s.classList.add('active');
+        else s.classList.add('locked');
+      });
+    }
+
+    function showPanel(id) {
+      document.querySelectorAll('.step-panel').forEach(function (p) { p.classList.add('hidden'); });
+      var el = document.getElementById(id);
+      if (el) el.classList.remove('hidden');
+    }
+
+    function goStep(n) {
+      if (n < 1 || n > TOTAL) return;
+      currentStep = n;
+      hideAllStatePanels();
+      showPanel('step-' + n);
+      renderStepbar();
+      updateNav();
+    }
+    function nextStep() {
+      if (currentStep === 1) {
+        var next = document.getElementById('btn-next');
+        var hint = document.getElementById('next-hint');
+        next.disabled = true;
+        if (hint) { hint.style.display = ''; }
+        setTimeout(function () {
+          hint.style.display = 'none';
+          next.disabled = false;
+          goStep(2);
+        }, 1200);
+        return;
+      }
+      if (currentStep < TOTAL) goStep(currentStep + 1);
+      else if (currentStep === TOTAL) { location.href = 'change-report.html'; }
+    }
+    function prevStep() {
+      if (currentStep > 1) {
+        document.getElementById('readonly-badge').style.display = 'inline-flex';
+        goStep(currentStep - 1);
+      }
+    }
+    function updateNav() {
+      document.getElementById('btn-prev').disabled = currentStep === 1;
+      document.getElementById('btn-next').textContent = currentStep === TOTAL ? '查看报告' : '下一步';
+    }
+    function hideAllStatePanels() {
+      ['state-partial', 'state-rollback-fail', 'banner-mutex'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+      });
+      var fb = document.getElementById('banner-fail'); if (fb) fb.classList.add('hidden');
+    }
+
+    function confirmExec() {
+      goStep(5);
+      document.getElementById('banner-fail').classList.remove('hidden');
+      window.showToast('变更已进入执行，进度实时刷新', 'success');
+    }
+
+    function saveDraft() {
+      window.showToast('已存为草稿（CHG-NEW），可从变更管理列表恢复', 'success');
+    }
+
+    function finishEarly() {
+      if (confirm('验证窗口未关闭，确认提前完成？')) goStep(7);
+    }
+
+    /* 倒计时演示（秒级，aria 静态；归零发一次 polite） */
+    var cd;
+    function startCountdown() {
+      var el = document.getElementById('countdown'); if (!el) return;
+      clearInterval(cd);
+      var total = 23 * 3600 + 59 * 60 + 59;
+      cd = setInterval(function () {
+        total--; if (total < 0) total = 0;
+        var h = Math.floor(total / 3600);
+        var m = Math.floor((total % 3600) / 60);
+        var s = total % 60;
+        el.textContent = pad(h) + ':' + pad(m) + ':' + pad(s);
+      }, 1000);
+    }
+    function pad(v) { return v < 10 ? '0' + v : '' + v; }
+
+    /* 关键态跳转 */
+    function jumpState(v) {
+      hideAllStatePanels();
+      if (v === 'edit') { goStep(1); }
+      else if (v === 'exec') { goStep(5); document.getElementById('banner-fail').classList.remove('hidden'); }
+      else if (v === 'verify') { goStep(6); startCountdown(); }
+      else if (v === 'partial') { goStep(7); document.getElementById('state-partial').classList.remove('hidden'); document.getElementById('step-7').classList.add('hidden'); }
+      else if (v === 'rollback-fail') { goStep(7); document.getElementById('state-rollback-fail').classList.remove('hidden'); document.getElementById('step-7').classList.add('hidden'); }
+      else if (v === 'done') { goStep(7); }
+      else if (v === 'mutex') { goStep(1); document.getElementById('banner-mutex').classList.remove('hidden'); }
+    }
+
+    /* ?certId= 预选（演示）：若带 certId 进入，Step1 预选旧证书且不锁选择器 */
+    (function () {
+      var qs = new URLSearchParams(location.search);
+      if (qs.get('certId')) {
+        window.showToast('已预选旧证书 certId=' + qs.get('certId') + '（仍可手动更换）', 'info');
+      }
+    })();
+
+    renderStepbar();
+    updateNav();
+  </script>
+</body>
+</html>

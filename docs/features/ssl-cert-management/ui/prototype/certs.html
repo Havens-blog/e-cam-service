@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>证书台账 — SSL 证书管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-ro-intercept="true">
+  <a href="#main" class="skip-link">跳转到主内容</a>
+  <header class="topnav">
+    <div class="topnav-inner">
+      <button class="nav-toggle" aria-label="打开菜单" aria-controls="nav-drawer">☰</button>
+      <a href="index.html" class="nav-brand">证书管理</a>
+      <span class="nav-context">证书管理 <span class="sep">›</span> 证书台账</span>
+      <nav class="nav-links" aria-label="主导航">
+        <a href="certs.html" class="nav-link active">证书台账</a>
+        <a href="dashboard.html" class="nav-link">到期看板</a>
+        <a href="changes.html" class="nav-link">变更管理</a>
+      </nav>
+    </div>
+  </header>
+  <div class="nav-drawer" id="nav-drawer" aria-label="移动导航">
+    <a href="certs.html" class="nav-link active">证书台账</a>
+    <a href="dashboard.html" class="nav-link">到期看板</a>
+    <a href="changes.html" class="nav-link">变更管理</a>
+  </div>
+  <div class="nav-backdrop" id="nav-backdrop"></div>
+
+  <main id="main">
+    <div class="container page" data-state-container>
+      <div class="page-header">
+        <h1>证书台账</h1>
+        <div class="actions">
+          <div class="state-switcher" role="group" aria-label="切换页面状态">
+            <button data-state-switch="state-populated" class="active">已加载</button>
+            <button data-state-switch="state-loading">加载中</button>
+            <button data-state-switch="state-empty">空态</button>
+            <button data-state-switch="state-error">错误</button>
+          </div>
+          <button class="btn btn-secondary" data-open-modal="modal-batch-import">批量导入</button>
+          <button class="btn btn-primary" data-open-modal="modal-import">导入证书</button>
+        </div>
+      </div>
+
+      <!-- Populated -->
+      <section id="state-populated" class="state-view active">
+        <div class="grid grid-3 mb-16">
+          <div class="stat-card">
+            <div class="stat-label">完整托管</div>
+            <div class="stat-value">42</div>
+            <div class="stat-sub">含私钥加密托管，可发起更换</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">仅指纹登记</div>
+            <div class="stat-value">18 <span class="text-secondary text-sm">· 占比 30%</span></div>
+            <div class="stat-sub">私钥未托管，需补传后可更换</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">覆盖率</div>
+            <div class="stat-value">91% <span class="text-secondary text-sm">登记 ≥90% 目标</span></div>
+            <div class="stat-sub"><span class="accent">可更换托管 70%</span></div>
+          </div>
+        </div>
+
+        <div class="card card-flush">
+          <div style="padding:16px 24px 0;">
+            <div class="toolbar">
+              <div class="search-input">
+                <input type="search" class="input" placeholder="按域名 / SAN / 指纹片段搜索" aria-label="搜索证书" style="width:320px;">
+              </div>
+              <div class="spacer"></div>
+              <select class="select" aria-label="筛选托管状态">
+                <option>托管状态：全部</option>
+                <option>完整托管</option>
+                <option>仅指纹登记</option>
+              </select>
+              <select class="select" aria-label="筛选剩余天数">
+                <option>剩余天数：全部</option>
+                <option>≤7 天</option>
+                <option>≤14 天</option>
+                <option>≤30 天</option>
+                <option>&gt;30 天</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap" style="border:none;background:transparent;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">域名 / SAN</th>
+                  <th scope="col" class="hide-sm">签发者</th>
+                  <th scope="col" class="hide-sm">有效期至</th>
+                  <th scope="col">剩余</th>
+                  <th scope="col">托管状态</th>
+                  <th scope="col">保护期</th>
+                  <th scope="col" class="hide-sm">引用数</th>
+                  <th scope="col" class="col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="clickable" onclick="location.href='cert-detail.html'">
+                  <td data-label="域名/SAN"><strong>*.example.com</strong></td>
+                  <td data-label="签发者" class="hide-sm">DigiCert</td>
+                  <td data-label="有效期至" class="hide-sm">2026-11-30</td>
+                  <td data-label="剩余"><span class="badge badge-success"><span class="badge-icon">✓</span>74 天</span></td>
+                  <td data-label="托管状态"><span class="badge badge-accent">完整托管</span></td>
+                  <td data-label="保护期"><span class="badge badge-protect"><span class="badge-icon">🔒</span>保护期 5 天</span></td>
+                  <td data-label="引用数" class="hide-sm">12</td>
+                  <td data-label="操作" class="col-actions">
+                    <a href="cert-detail.html" class="btn-link btn-sm" onclick="event.stopPropagation()">详情</a>
+                    <a href="changes-new.html?certId=cert-001" class="btn-link btn-sm" onclick="event.stopPropagation()">发起更换</a>
+                    <div class="dropdown" onclick="event.stopPropagation()">
+                      <button class="btn-ghost btn-icon" data-toggle-dropdown aria-label="更多操作">⋯</button>
+                      <div class="dropdown-menu">
+                        <button class="dropdown-item danger" data-open-modal="modal-delete-intercept">删除</button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                <tr class="clickable" onclick="location.href='cert-detail.html'">
+                  <td data-label="域名/SAN"><strong>shop.example.com</strong></td>
+                  <td data-label="签发者" class="hide-sm">Let's Encrypt</td>
+                  <td data-label="有效期至" class="hide-sm">2026-09-02</td>
+                  <td data-label="剩余"><span class="badge badge-warning"><span class="badge-icon">⚠</span>19 天</span></td>
+                  <td data-label="托管状态"><span class="badge badge-accent">完整托管</span></td>
+                  <td data-label="保护期"><span class="text-secondary">—</span></td>
+                  <td data-label="引用数" class="hide-sm">6</td>
+                  <td data-label="操作" class="col-actions">
+                    <a href="cert-detail.html" class="btn-link btn-sm" onclick="event.stopPropagation()">详情</a>
+                    <a href="changes-new.html?certId=cert-002" class="btn-link btn-sm" onclick="event.stopPropagation()">发起更换</a>
+                    <div class="dropdown" onclick="event.stopPropagation()">
+                      <button class="btn-ghost btn-icon" data-toggle-dropdown aria-label="更多操作">⋯</button>
+                      <div class="dropdown-menu">
+                        <button class="dropdown-item danger" data-open-modal="modal-delete-confirm">删除</button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                <tr class="clickable" onclick="location.href='cert-detail.html'">
+                  <td data-label="域名/SAN"><strong>api.example.com</strong> <span class="text-secondary text-sm">+3 SAN</span></td>
+                  <td data-label="签发者" class="hide-sm">DigiCert</td>
+                  <td data-label="有效期至" class="hide-sm">2026-08-21</td>
+                  <td data-label="剩余"><span class="badge badge-error"><span class="badge-icon">✗</span>7 天</span></td>
+                  <td data-label="托管状态"><span class="badge badge-secondary">仅指纹登记</span></td>
+                  <td data-label="保护期"><span class="text-secondary">—</span></td>
+                  <td data-label="引用数" class="hide-sm">3</td>
+                  <td data-label="操作" class="col-actions">
+                    <a href="cert-detail.html" class="btn-link btn-sm" onclick="event.stopPropagation()">详情</a>
+                    <button class="btn-link btn-sm" data-open-modal="modal-supply-key" onclick="event.stopPropagation()">补传私钥</button>
+                    <div class="dropdown" onclick="event.stopPropagation()">
+                      <button class="btn-ghost btn-icon" data-toggle-dropdown aria-label="更多操作">⋯</button>
+                      <div class="dropdown-menu">
+                        <button class="dropdown-item danger" data-open-modal="modal-delete-confirm">删除</button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                <tr class="clickable" onclick="location.href='cert-detail.html'">
+                  <td data-label="域名/SAN"><strong>legacy.example.com</strong></td>
+                  <td data-label="签发者" class="hide-sm">Sectigo</td>
+                  <td data-label="有效期至" class="hide-sm">2026-08-15</td>
+                  <td data-label="剩余"><span class="badge badge-error"><span class="badge-icon">✗</span>已过期 2 天</span></td>
+                  <td data-label="托管状态"><span class="badge badge-secondary">仅指纹登记</span></td>
+                  <td data-label="保护期"><span class="text-secondary">—</span></td>
+                  <td data-label="引用数" class="hide-sm">0</td>
+                  <td data-label="操作" class="col-actions">
+                    <a href="cert-detail.html" class="btn-link btn-sm" onclick="event.stopPropagation()">详情</a>
+                    <div class="dropdown" onclick="event.stopPropagation()">
+                      <button class="btn-ghost btn-icon" data-toggle-dropdown aria-label="更多操作">⋯</button>
+                      <div class="dropdown-menu">
+                        <button class="dropdown-item" data-open-modal="modal-supply-key">补传私钥</button>
+                        <button class="dropdown-item danger" data-open-modal="modal-delete-confirm">删除</button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                <tr class="clickable" onclick="location.href='cert-detail.html'">
+                  <td data-label="域名/SAN"><strong>cdn.example.com</strong></td>
+                  <td data-label="签发者" class="hide-sm">DigiCert</td>
+                  <td data-label="有效期至" class="hide-sm">2027-01-12</td>
+                  <td data-label="剩余"><span class="badge badge-success"><span class="badge-icon">✓</span>152 天</span></td>
+                  <td data-label="托管状态"><span class="badge badge-accent">完整托管</span></td>
+                  <td data-label="保护期"><span class="text-secondary">—</span></td>
+                  <td data-label="引用数" class="hide-sm">8</td>
+                  <td data-label="操作" class="col-actions">
+                    <a href="cert-detail.html" class="btn-link btn-sm" onclick="event.stopPropagation()">详情</a>
+                    <a href="changes-new.html?certId=cert-005" class="btn-link btn-sm" onclick="event.stopPropagation()">发起更换</a>
+                    <div class="dropdown" onclick="event.stopPropagation()">
+                      <button class="btn-ghost btn-icon" data-toggle-dropdown aria-label="更多操作">⋯</button>
+                      <div class="dropdown-menu">
+                        <button class="dropdown-item danger" data-open-modal="modal-delete-confirm">删除</button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination">
+            <span class="page-info">共 60 条 · 第 1/3 页</span>
+            <button class="btn btn-secondary btn-sm" disabled>上一页</button>
+            <button class="btn btn-secondary btn-sm">下一页</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Loading -->
+      <section id="state-loading" class="state-view">
+        <div class="grid grid-3 mb-16">
+          <div class="stat-card"><div class="skeleton skeleton-block"></div></div>
+          <div class="stat-card"><div class="skeleton skeleton-block"></div></div>
+          <div class="stat-card"><div class="skeleton skeleton-block"></div></div>
+        </div>
+        <div class="card card-flush">
+          <div class="table-wrap" style="border:none;background:transparent;">
+            <table class="data-table">
+              <tbody>
+                <tr class="skeleton-row" repeat="5"><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="col-actions"><div class="skeleton"></div></td></tr>
+                <tr class="skeleton-row"><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="col-actions"><div class="skeleton"></div></td></tr>
+                <tr class="skeleton-row"><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="col-actions"><div class="skeleton"></div></td></tr>
+                <tr class="skeleton-row"><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="col-actions"><div class="skeleton"></div></td></tr>
+                <tr class="skeleton-row"><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td class="col-actions"><div class="skeleton"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Empty -->
+      <section id="state-empty" class="state-view">
+        <div class="card">
+          <div class="empty-state">
+            <div class="icon" aria-hidden="true">🔐</div>
+            <div class="title">暂无证书</div>
+            <div class="desc">尚未导入任何证书，可批量导入存量证书完成首次登记。</div>
+            <button class="btn btn-primary mt-8" data-open-modal="modal-batch-import">批量导入存量证书</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Error -->
+      <section id="state-error" class="state-view">
+        <div class="card">
+          <div class="error-state">
+            <div class="icon text-error" aria-hidden="true">⚠</div>
+            <div class="title">证书列表加载失败</div>
+            <div class="desc">证书台账服务暂时不可用，请稍后重试。</div>
+            <button class="btn btn-secondary mt-8" onclick="retryLoad()">重试</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- 导入证书 Modal -->
+  <div class="modal-backdrop" id="modal-import" role="dialog" aria-modal="true" aria-labelledby="modal-import-title" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-import-title">导入证书</h3>
+        <button class="modal-close" data-close-modal aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="import-cert">证书文件（PEM）</label>
+          <div class="card" style="padding:24px;text-align:center;border-style:dashed;">
+            <div class="text-secondary text-md">拖拽 PEM 文件到此处，或点击选择</div>
+            <input type="file" id="import-cert" accept=".pem,.crt" style="margin-top:8px;">
+          </div>
+        </div>
+        <div class="field">
+          <label for="import-key">私钥文件（可选）</label>
+          <input type="file" id="import-key" accept=".key,.pem" class="input">
+          <span class="hint">未提供私钥将走仅指纹登记</span>
+        </div>
+        <div class="field">
+          <label for="import-domain">预期域名（可选，仅提示性比对）</label>
+          <input type="text" id="import-domain" class="input" placeholder="example.com">
+        </div>
+        <div class="banner banner-error hidden" id="import-error">
+          <span class="banner-icon">✗</span>
+          <div><div class="banner-title">校验失败</div><div class="banner-body">私钥不匹配：私钥与证书公钥不对应。</div></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close-modal>取消</button>
+        <button class="btn btn-primary" onclick="simulateImport()">提交</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 批量导入 Modal -->
+  <div class="modal-backdrop" id="modal-batch-import" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal modal-md">
+      <div class="modal-header">
+        <h3>批量导入</h3>
+        <button class="modal-close" data-close-modal aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="card" style="padding:24px;text-align:center;border-style:dashed;margin-bottom:16px;">
+          <div class="text-secondary text-md">多文件选择 / 拖拽上传 PEM，逐文件可附加私钥；支持 zip 解包</div>
+          <input type="file" multiple accept=".pem,.crt,.zip" style="margin-top:8px;">
+        </div>
+        <div class="text-sm text-secondary mb-8">逐文件结果</div>
+        <div class="result-list">
+          <div class="result-row">
+            <span class="filename">shop.example.com.pem</span>
+            <span class="badge badge-accent">成功 · 完整托管</span>
+            <span class="text-secondary text-sm">cert-009</span>
+          </div>
+          <div class="result-row">
+            <span class="filename">api.example.com.pem</span>
+            <span class="badge badge-secondary">成功 · 仅指纹登记</span>
+            <span class="text-secondary text-sm">未附私钥</span>
+          </div>
+          <div class="result-row">
+            <span class="filename">bad.example.com.pem</span>
+            <span class="badge badge-error">失败</span>
+            <span class="text-secondary text-sm">SAN 结构无法解析</span>
+            <button class="btn btn-secondary btn-sm" style="margin-left:auto;">重试</button>
+          </div>
+          <div class="result-row">
+            <span class="filename">dup.example.com.pem</span>
+            <span class="badge badge-error">失败</span>
+            <span class="text-secondary text-sm">重复指纹</span>
+            <button class="btn btn-secondary btn-sm" style="margin-left:auto;">重试</button>
+          </div>
+        </div>
+        <div class="progress mt-16"><div class="progress-bar" style="width:100%;"></div></div>
+        <div class="text-sm text-secondary mt-8">已完成 4/4 · 成功 2 · 失败 2</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close-modal>关闭</button>
+        <button class="btn btn-primary" data-close-modal>完成</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 删除拦截 Modal（活跃引用 / 保护期内） -->
+  <div class="modal-backdrop" id="modal-delete-intercept" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-header"><h3>无法删除</h3><button class="modal-close" data-close-modal aria-label="关闭">×</button></div>
+      <div class="modal-body">
+        <div class="banner banner-warning">
+          <span class="banner-icon">🔒</span>
+          <div>
+            <div class="banner-title">该证书处于回滚保护期 / 存在活跃引用</div>
+            <div class="banner-body">12 个活跃引用 · 回滚保护期至 2026-08-19。请先解除引用或等待保护期结束后再删除。</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary" data-close-modal>知道了</button></div>
+    </div>
+  </div>
+
+  <!-- 删除二次确认 Modal -->
+  <div class="modal-backdrop" id="modal-delete-confirm" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-header"><h3>确认删除证书</h3><button class="modal-close" data-close-modal aria-label="关闭">×</button></div>
+      <div class="modal-body">
+        <div class="banner banner-error">
+          <span class="banner-icon">✗</span>
+          <div>
+            <div class="banner-title">该操作不可逆</div>
+            <div class="banner-body">删除后证书及其指纹记录将永久移除，无法恢复。确认删除 *.example.com？</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close-modal>取消</button>
+        <button class="btn btn-danger" data-close-modal onclick="window.showToast('证书已删除','success')">确认删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 补传私钥 Modal -->
+  <div class="modal-backdrop" id="modal-supply-key" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-header"><h3>补传私钥</h3><button class="modal-close" data-close-modal aria-label="关闭">×</button></div>
+      <div class="modal-body">
+        <p class="text-secondary text-md mb-16">上传私钥后系统将进行匹配校验，通过后证书即时升级为完整托管。私钥仅以加密形式托管，不返回明文。</p>
+        <div class="field">
+          <label for="supply-key-file">私钥文件</label>
+          <input type="file" id="supply-key-file" accept=".key,.pem" class="input">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close-modal>取消</button>
+        <button class="btn btn-primary" data-close-modal onclick="window.showToast('匹配校验通过，已升级为完整托管','success')">提交校验</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    function simulateImport() {
+      var err = document.getElementById('import-error');
+      if (err) { err.className = 'banner banner-error'; }
+    }
+    function retryLoad() {
+      window.switchState('state-loading');
+      syncSwitcher('state-loading');
+      setTimeout(function () { window.switchState('state-populated'); syncSwitcher('state-populated'); }, 800);
+    }
+    function syncSwitcher(id) {
+      document.querySelectorAll('.state-switcher button').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-state-switch') === id);
+      });
+    }
+  </script>
+</body>
+</html>

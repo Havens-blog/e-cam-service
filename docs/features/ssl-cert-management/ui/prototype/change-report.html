@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>变更报告 CHG-0042 — SSL 证书管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-ro-intercept="true">
+  <a href="#main" class="skip-link">跳转到主内容</a>
+  <header class="topnav">
+    <div class="topnav-inner">
+      <button class="nav-toggle" aria-label="打开菜单" aria-controls="nav-drawer">☰</button>
+      <a href="index.html" class="nav-brand">证书管理</a>
+      <span class="nav-context">证书管理 <span class="sep">›</span> 变更报告</span>
+      <nav class="nav-links" aria-label="主导航">
+        <a href="certs.html" class="nav-link">证书台账</a>
+        <a href="dashboard.html" class="nav-link">到期看板</a>
+        <a href="changes.html" class="nav-link active">变更管理</a>
+      </nav>
+    </div>
+  </header>
+  <div class="nav-drawer" id="nav-drawer" aria-label="移动导航">
+    <a href="certs.html" class="nav-link">证书台账</a>
+    <a href="dashboard.html" class="nav-link">到期看板</a>
+    <a href="changes.html" class="nav-link active">变更管理</a>
+  </div>
+  <div class="nav-backdrop" id="nav-backdrop"></div>
+
+  <nav class="breadcrumb" aria-label="面包屑">
+    <a href="changes.html">变更管理</a><span class="sep">/</span><span class="current mono">CHG-0042</span>
+  </nav>
+
+  <main id="main">
+    <div class="container page" data-state-container>
+      <div class="page-header">
+        <div>
+          <h1><span class="mono">CHG-0042</span> <span class="badge badge-accent"><span class="spinner sm"></span>执行中</span></h1>
+          <div class="row mt-8">
+            <span class="text-secondary text-sm">*.example.com → shop.example.com</span>
+            <span class="text-secondary text-sm">指纹</span>
+            <span class="mono text-sm">a1b2c3d4…9f0e1d2c</span>
+            <button class="btn-icon" data-copy="a1b2c3d4e5f60718293a4b5c6d7e8f90" aria-label="复制旧证书指纹">⧉</button>
+          </div>
+        </div>
+        <div class="actions">
+          <div class="state-switcher" role="group" aria-label="切换页面状态">
+            <button data-state-switch="state-default" class="active">默认（执行中）</button>
+            <button data-state-switch="state-loading">加载中</button>
+            <button data-state-switch="state-error">错误</button>
+          </div>
+          <button class="btn btn-secondary" onclick="window.showToast('报告导出已开始（PDF/JSON）','info')">导出</button>
+          <button class="btn btn-secondary" data-open-modal="modal-remaining-batch">执行剩余批</button>
+        </div>
+      </div>
+
+      <!-- Default：只读恢复区 + 5 卡报告 -->
+      <section id="state-default" class="state-view active">
+        <!-- 只读恢复区（执行中 → 内嵌 Step5 组件） -->
+        <div class="card mb-16" style="border-color:rgba(0,112,243,0.35);">
+          <div class="card-header">
+            <h2>只读恢复视图 · 执行进度</h2>
+            <span class="text-secondary text-sm">断网/关闭浏览器后重入不丢进度，轮询自动恢复（2s）</span>
+          </div>
+          <div class="banner banner-error mb-16">
+            <span class="banner-icon">⚠</span>
+            <div><div class="banner-title">出现失败项，已成功项可回滚</div><div class="banner-body">失败项引用未被改动，无需回滚。</div></div>
+            <div class="banner-actions"><button class="btn btn-secondary btn-sm" data-open-modal="modal-rollback">回滚成功项</button></div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th scope="col">资源</th><th scope="col">云 / 产品</th><th scope="col">状态</th><th scope="col" class="hide-sm">错误信息</th></tr></thead>
+              <tbody>
+                <tr><td data-label="资源" class="cell-mono">dcdn-2g8vk1x0</td><td data-label="云/产品">阿里云 · DCDN</td><td data-label="状态"><span class="badge badge-success"><span class="badge-icon">✓</span>成功</span></td><td data-label="错误信息" class="hide-sm text-secondary">—</td></tr>
+                <tr><td data-label="资源" class="cell-mono">slb-bp1q8k2z</td><td data-label="云/产品">阿里云 · SLB</td><td data-label="状态"><span class="badge badge-warning"><span class="badge-icon">⚠</span>限流重试中</span></td><td data-label="错误信息" class="hide-sm text-secondary">API 限流，3s 后重试</td></tr>
+                <tr><td data-label="资源" class="cell-mono">dcdn-9jp3lmz7</td><td data-label="云/产品">阿里云 · DCDN</td><td data-label="状态"><span class="badge badge-error"><span class="badge-icon">✗</span>失败</span></td><td data-label="错误信息" class="hide-sm">权限不足：DCDN 写权限缺失</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 卡1 变更清单 -->
+        <div class="card mb-16" id="card-list">
+          <h2>变更清单</h2>
+          <div class="table-wrap mt-16">
+            <table class="data-table">
+              <thead><tr><th scope="col">资源</th><th scope="col">云 / 产品</th><th scope="col">计划动作</th><th scope="col">原证书 ID</th><th scope="col">可执行性</th></tr></thead>
+              <tbody>
+                <tr><td data-label="资源" class="cell-mono">dcdn-2g8vk1x0</td><td data-label="云/产品">阿里云 · DCDN</td><td data-label="计划动作">替换证书</td><td data-label="原证书ID" class="cell-mono">1997-****-4310</td><td data-label="可执行性"><span class="badge badge-success"><span class="badge-icon">✓</span>可执行</span></td></tr>
+                <tr style="background:rgba(245,166,35,0.05);"><td data-label="资源" class="cell-mono">elb-cn-north-1</td><td data-label="云/产品">华为云 · ELB</td><td data-label="计划动作">—</td><td data-label="原证书ID" class="cell-mono">—</td><td data-label="可执行性"><span class="badge badge-warning"><span class="badge-icon">⚠</span>不可执行</span><div class="text-secondary text-sm">首期无部署器，二期或手工</div></td></tr>
+                <tr style="background:rgba(245,166,35,0.05);"><td data-label="资源" class="cell-mono">argocd-tls</td><td data-label="云/产品">GitOps</td><td data-label="计划动作">—</td><td data-label="原证书ID" class="cell-mono">—</td><td data-label="可执行性"><span class="badge badge-warning"><span class="badge-icon">⚠</span>不可自动变更</span><div class="text-secondary text-sm">GitOps/控制器管理，走其管理链路</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 卡2 逐项执行结果 -->
+        <div class="card mb-16" id="card-results">
+          <h2>逐项执行结果</h2>
+          <div class="row mt-8 mb-16"><div class="segmented"><button class="active">全部</button><button>仅失败</button><button>仅限流重试</button></div></div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th scope="col">资源</th><th scope="col">结果</th><th scope="col" class="hide-sm">错误信息</th><th scope="col" class="hide-sm">批次</th></tr></thead>
+              <tbody>
+                <tr><td data-label="资源" class="cell-mono">dcdn-2g8vk1x0</td><td data-label="结果"><span class="badge badge-success"><span class="badge-icon">✓</span>成功</span></td><td data-label="错误信息" class="hide-sm text-secondary">—</td><td data-label="批次" class="hide-sm">1</td></tr>
+                <tr class="clickable"><td data-label="资源" class="cell-mono">dcdn-9jp3lmz7</td><td data-label="结果"><span class="badge badge-error"><span class="badge-icon">✗</span>失败</span></td><td data-label="错误信息" class="hide-sm">权限不足：DCDN 写权限缺失</td><td data-label="批次" class="hide-sm">1</td></tr>
+                <tr><td data-label="资源" class="cell-mono">slb-bp1q8k2z</td><td data-label="结果"><span class="badge badge-warning"><span class="badge-icon">◐</span>限流重试中</span></td><td data-label="错误信息" class="hide-sm text-secondary">API 限流</td><td data-label="批次" class="hide-sm">1</td></tr>
+                <tr><td data-label="资源" class="cell-mono">elb-cn-north-1</td><td data-label="结果"><span class="text-secondary">— 跳过</span></td><td data-label="错误信息" class="hide-sm text-secondary">不可执行项</td><td data-label="批次" class="hide-sm">—</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 卡3 回滚状态 -->
+        <div class="card mb-16" id="card-rollback">
+          <h2>回滚状态</h2>
+          <p class="text-secondary text-md mt-8">未执行回滚</p>
+        </div>
+
+        <!-- 卡4 验证结论 -->
+        <div class="card mb-16" id="card-verify">
+          <h2>验证结论</h2>
+          <p class="text-secondary text-md mt-8 mb-16">验证窗口未开启（执行未完成）。窗口关闭时间与结论摘要将在完成后展示。</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th scope="col">资源</th><th scope="col">预期终态</th><th scope="col">实际</th><th scope="col">判定</th></tr></thead>
+              <tbody>
+                <tr><td data-label="资源" class="cell-mono">dcdn-2g8vk1x0</td><td data-label="预期终态" class="mono">b3c4d5e6…</td><td data-label="实际" class="mono text-secondary">待验证</td><td data-label="判定"><span class="text-secondary">待窗口开启</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 卡5 孤儿证书补偿清理 -->
+        <div class="card" id="card-orphan">
+          <h2>孤儿证书补偿清理</h2>
+          <div class="table-wrap mt-16">
+            <table class="data-table">
+              <thead><tr><th scope="col">云 / 资源</th><th scope="col">清理动作</th><th scope="col">结果</th></tr></thead>
+              <tbody>
+                <tr><td data-label="云/资源">阿里云 · dcdn-2g8vk1x0</td><td data-label="清理动作">删除旧证书绑定</td><td data-label="结果"><span class="badge badge-success"><span class="badge-icon">✓</span>成功</span></td></tr>
+                <tr><td data-label="云/资源">阿里云 · dcdn-9jp3lmz7</td><td data-label="清理动作">删除旧证书绑定</td><td data-label="结果"><span class="badge badge-error"><span class="badge-icon">✗</span>失败 · 云侧 API 超时</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Loading -->
+      <section id="state-loading" class="state-view">
+        <div class="card mb-16"><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div></div>
+        <div class="grid grid-2 mb-16"><div class="card"><div class="skeleton skeleton-block"></div></div><div class="card"><div class="skeleton skeleton-block"></div></div></div>
+        <div class="card mb-16"><div class="skeleton skeleton-block mb-8"></div><div class="skeleton skeleton-block"></div></div>
+      </section>
+
+      <!-- Error -->
+      <section id="state-error" class="state-view">
+        <div class="card">
+          <div class="error-state">
+            <div class="icon text-error" aria-hidden="true">⚠</div>
+            <div class="title">报告加载失败</div>
+            <div class="desc">报告服务暂时不可用；恢复态轮询将自动退避重试（2s→10s），不中断。</div>
+            <button class="btn btn-secondary mt-8" onclick="window.switchState('state-default');syncSwitcher('state-default')">重试</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- 执行剩余批 Modal -->
+  <div class="modal-backdrop" id="modal-remaining-batch" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal modal-md">
+      <div class="modal-header"><h3>执行剩余批</h3><button class="modal-close" data-close-modal aria-label="关闭">×</button></div>
+      <div class="modal-body">
+        <p class="mb-16">首批 6 项已执行且验证通过。剩余批共 6 项，同样需人工确认后执行。</p>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th scope="col">资源</th><th scope="col">云 / 产品</th></tr></thead>
+            <tbody>
+              <tr><td data-label="资源" class="cell-mono">slb-bp1q8k2z</td><td data-label="云/产品">阿里云 · SLB</td></tr>
+              <tr><td data-label="资源" class="cell-mono">ingress-prod-bj-2</td><td data-label="云/产品">K8s · Ingress</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close-modal>取消</button>
+        <button class="btn btn-primary" data-close-modal onclick="window.showToast('剩余批已进入执行','success')">确认执行</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 回滚 Modal -->
+  <div class="modal-backdrop" id="modal-rollback" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal modal-md">
+      <div class="modal-header"><h3>回滚成功项</h3><button class="modal-close" data-close-modal aria-label="关闭">×</button></div>
+      <div class="modal-body">
+        <p class="mb-16">回滚范围：仅本次执行成功项（1 项）。</p>
+        <div class="banner banner-info">
+          <span class="banner-icon">ℹ</span>
+          <div><div class="banner-body">目标有效性预检：云侧旧证书有效，可回滚。</div></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close-modal>取消</button>
+        <button class="btn btn-danger" data-close-modal onclick="window.showToast('回滚已提交','info')">执行回滚</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    function syncSwitcher(id) {
+      document.querySelectorAll('.state-switcher button').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-state-switch') === id);
+      });
+    }
+  </script>
+</body>
+</html>

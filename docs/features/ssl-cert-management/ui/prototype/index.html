@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSL 证书管理 — 原型导航</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a href="#main" class="skip-link">跳转到主内容</a>
+  <header class="topnav">
+    <div class="topnav-inner">
+      <a href="index.html" class="nav-brand">证书管理</a>
+      <span class="nav-context">证书管理 <span class="sep">›</span> 原型导航</span>
+      <nav class="nav-links" aria-label="主导航">
+        <a href="certs.html" class="nav-link">证书台账</a>
+        <a href="dashboard.html" class="nav-link">到期看板</a>
+        <a href="changes.html" class="nav-link">变更管理</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="container page">
+      <div class="page-header">
+        <div>
+          <h1>SSL 证书管理功能域 — 原型导航</h1>
+          <p class="text-secondary text-md mt-8">证书统一托管与更换全流程：台账、引用关系、到期看板、变更向导与报告、全局配置。</p>
+        </div>
+        <div class="role-toggle card" style="padding:12px 16px;">
+          <div class="text-sm text-secondary mb-8">角色（只读模拟）</div>
+          <div class="segmented" id="role-toggle">
+            <button data-role="ops" class="active">运维工程师</button>
+            <button data-role="readonly">只读查看者</button>
+          </div>
+          <p id="role-note" class="text-sm text-secondary mt-8 hidden"></p>
+        </div>
+      </div>
+
+      <div class="hub-grid">
+        <a href="certs.html" class="hub-card">
+          <span class="hub-icon" aria-hidden="true">🔐</span>
+          <h3>证书台账</h3>
+          <p>证书列表、统计概览、单张/批量导入、删除拦截、补传私钥、发起更换入口。</p>
+          <span class="hub-path">/certs · certs.html</span>
+        </a>
+        <a href="cert-detail.html" class="hub-card">
+          <span class="hub-icon" aria-hidden="true">🔗</span>
+          <h3>证书详情与引用关系</h3>
+          <p>证书要素、有效期进度、正/反向引用查询、盲区声明、扫描元数据、资源抽屉。</p>
+          <span class="hub-path">/certs/:id · cert-detail.html</span>
+        </a>
+        <a href="dashboard.html" class="hub-card">
+          <span class="hub-icon" aria-hidden="true">📋</span>
+          <h3>到期看板</h3>
+          <p>分级总览卡、子域名探测状态、差异告警、探测豁免、子域名抽屉（只读者唯一可见页）。</p>
+          <span class="hub-path">/certs/dashboard · dashboard.html</span>
+        </a>
+        <a href="changes.html" class="hub-card">
+          <span class="hub-icon" aria-hidden="true">🔄</span>
+          <h3>变更管理列表</h3>
+          <p>状态 Tab、变更单表格、保护期标记、进度、新建变更入口、配置入口（主管）。</p>
+          <span class="hub-path">/certs/changes · changes.html</span>
+        </a>
+        <a href="changes-new.html" class="hub-card">
+          <span class="hub-icon" aria-hidden="true">🧭</span>
+          <h3>变更向导（7 步）</h3>
+          <p>选证书 → 前置校验 → 变更清单 → 确认执行 → 执行进度 → 验证窗口 → 报告入口。</p>
+          <span class="hub-path">/certs/changes/new · changes-new.html</span>
+        </a>
+        <a href="change-report.html" class="hub-card">
+          <span class="hub-icon" aria-hidden="true">📄</span>
+          <h3>变更报告详情</h3>
+          <p>清单 / 逐项结果 / 回滚状态 / 验证结论 / 孤儿证书补偿清理 五卡；含只读恢复视图。</p>
+          <span class="hub-path">/certs/changes/:id · change-report.html</span>
+        </a>
+        <a href="settings.html" class="hub-card">
+          <span class="hub-icon" aria-hidden="true">⚙️</span>
+          <h3>全局配置（主管）</h3>
+          <p>告警接收（webhook + 邮件组）、探测豁免清单、阈值参数（新鲜度/窗口/保护期）。</p>
+          <span class="hub-path">/certs/settings · settings.html</span>
+        </a>
+      </div>
+
+      <section class="card mt-16" aria-label="只读角色说明">
+        <h2>只读查看者路由</h2>
+        <p class="text-secondary text-md mt-8">只读查看者仅可访问到期看板（默认页与唯一菜单入口）与证书详情（只读模式，经看板抽屉「查看证书详情」进入）。以下路由被前端 + EIAM 同步拦截并提示「无权限访问，仅到期看板可见」：</p>
+        <ul class="link-list mt-8">
+          <li><span>/certs（台账） · <span class="text-secondary">certs.html</span></span></li>
+          <li><span>/certs/changes、/certs/changes/new、/certs/changes/:id · <span class="text-secondary">changes.html / changes-new.html / change-report.html</span></span></li>
+          <li><span>/certs/settings · <span class="text-secondary">settings.html</span></span></li>
+        </ul>
+        <p class="text-secondary text-sm mt-8">切换上方角色为「只读查看者」后，进入上述拦截页将看到无权限横幅；到期看板可正常访问。</p>
+      </section>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+    (function () {
+      var toggle = document.getElementById('role-toggle');
+      var note = document.getElementById('role-note');
+      function apply() {
+        var role = window.localStorage.getItem('cam-role') || 'ops';
+        toggle.querySelectorAll('button').forEach(function (b) {
+          b.classList.toggle('active', b.getAttribute('data-role') === role);
+        });
+        if (role === 'readonly') {
+          note.className = 'text-sm mt-8';
+          note.style.color = 'var(--color-warning)';
+          note.textContent = '只读查看者：仅「到期看板」可访问，证书台账/变更管理/配置页将提示无权限。';
+        } else {
+          note.className = 'text-sm text-secondary mt-8 hidden';
+          note.textContent = '';
+        }
+      }
+      toggle.addEventListener('click', function (e) {
+        var btn = e.target.closest('button[data-role]');
+        if (!btn) return;
+        window.localStorage.setItem('cam-role', btn.getAttribute('data-role'));
+        apply();
+        window.showToast('角色已切换为 ' + (btn.getAttribute('data-role') === 'readonly' ? '只读查看者' : '运维工程师'));
+      });
+      apply();
+    })();
+  </script>
+</body>
+</html>

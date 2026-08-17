@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>到期看板 — SSL 证书管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a href="#main" class="skip-link">跳转到主内容</a>
+  <header class="topnav">
+    <div class="topnav-inner">
+      <button class="nav-toggle" aria-label="打开菜单" aria-controls="nav-drawer">☰</button>
+      <a href="index.html" class="nav-brand">证书管理</a>
+      <span class="nav-context">证书管理 <span class="sep">›</span> 到期看板</span>
+      <nav class="nav-links" aria-label="主导航">
+        <a href="certs.html" class="nav-link">证书台账</a>
+        <a href="dashboard.html" class="nav-link active">到期看板</a>
+        <a href="changes.html" class="nav-link">变更管理</a>
+      </nav>
+    </div>
+  </header>
+  <div class="nav-drawer" id="nav-drawer" aria-label="移动导航">
+    <a href="certs.html" class="nav-link">证书台账</a>
+    <a href="dashboard.html" class="nav-link active">到期看板</a>
+    <a href="changes.html" class="nav-link">变更管理</a>
+  </div>
+  <div class="nav-backdrop" id="nav-backdrop"></div>
+
+  <main id="main">
+    <div class="container page" data-state-container>
+      <div class="page-header">
+        <h1>到期看板</h1>
+        <div class="state-switcher" role="group" aria-label="切换页面状态">
+          <button data-state-switch="state-populated" class="active">已加载</button>
+          <button data-state-switch="state-loading">加载中</button>
+          <button data-state-switch="state-empty">空态</button>
+          <button data-state-switch="state-error">错误</button>
+        </div>
+      </div>
+
+      <!-- Populated -->
+      <section id="state-populated" class="state-view active">
+        <div class="grid grid-5 mb-16">
+          <button class="stat-card hoverable" onclick="filterBy('level-gt30')">
+            <div class="stat-label">&gt;30 天</div>
+            <div class="stat-value">38</div>
+          </button>
+          <button class="stat-card hoverable" onclick="filterBy('level-30')">
+            <div class="stat-label">≤30 天</div>
+            <div class="stat-value">9</div>
+          </button>
+          <button class="stat-card hoverable" onclick="filterBy('level-14')">
+            <div class="stat-label">≤14 天</div>
+            <div class="stat-value">4</div>
+          </button>
+          <button class="stat-card hoverable" onclick="filterBy('level-7')">
+            <div class="stat-label">≤7 天</div>
+            <div class="stat-value">2</div>
+          </button>
+          <button class="stat-card hoverable" onclick="filterBy('level-expired')">
+            <div class="stat-label">已过期</div>
+            <div class="stat-value">3</div>
+          </button>
+        </div>
+        <div class="grid grid-2 mb-16">
+          <button class="stat-card hoverable" id="card-diff" onclick="filterBy('probe-diff')">
+            <div class="stat-label">差异告警数（线上≠台账）</div>
+            <div class="stat-value text-error">2</div>
+            <div class="stat-sub">点击按差异过滤</div>
+          </button>
+          <button class="stat-card hoverable" id="card-exempt" onclick="filterBy('probe-exempt')">
+            <div class="stat-label">探测豁免数</div>
+            <div class="stat-value">1</div>
+            <div class="stat-sub">人工排除，不参与告警</div>
+          </button>
+        </div>
+
+        <div class="toolbar">
+          <select class="select" aria-label="状态分级" id="filter-level">
+            <option value="">状态分级：全部</option><option>≤7 天</option><option>≤14 天</option><option>≤30 天</option><option>&gt;30 天</option><option>已过期</option>
+          </select>
+          <select class="select" aria-label="云" id="filter-cloud">
+            <option value="">云：全部</option><option>阿里云</option><option>腾讯云</option><option>K8s</option>
+          </select>
+          <select class="select" aria-label="托管类型" id="filter-hosting">
+            <option value="">托管类型：全部</option><option>完整托管</option><option>仅指纹登记</option>
+          </select>
+          <div class="spacer"></div>
+          <span class="meta-item text-sm text-secondary">最近巡检：3h 前</span>
+        </div>
+
+        <div class="card card-flush">
+          <div class="table-wrap" style="border:none;background:transparent;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">子域名</th>
+                  <th scope="col">剩余</th>
+                  <th scope="col" class="hide-sm">托管类型</th>
+                  <th scope="col">线上探测</th>
+                  <th scope="col" class="hide-sm">豁免</th>
+                </tr>
+              </thead>
+              <tbody id="dashboard-tbody">
+                <tr class="clickable" data-open-drawer="drawer-subdomain" onclick="loadSub(this)">
+                  <td data-label="子域名"><strong>api.example.com</strong><div class="row mt-8"><span class="chip chip-cloud">阿里云</span><span class="chip chip-cloud">腾讯云</span></div></td>
+                  <td data-label="剩余"><span class="badge badge-warning"><span class="badge-icon">⚠</span>12 天</span></td>
+                  <td data-label="托管类型" class="hide-sm">完整托管</td>
+                  <td data-label="线上探测"><span class="badge badge-error"><span class="badge-icon">✗</span>差异</span><div class="text-secondary text-sm">3h 前</div></td>
+                  <td data-label="豁免" class="hide-sm"><span class="text-secondary">—</span></td>
+                </tr>
+                <tr class="clickable" data-open-drawer="drawer-subdomain" onclick="loadSub(this)">
+                  <td data-label="子域名"><strong>intranet.example.com</strong><div class="row mt-8"><span class="chip chip-cloud">阿里云</span></div></td>
+                  <td data-label="剩余"><span class="badge badge-success"><span class="badge-icon">✓</span>45 天</span></td>
+                  <td data-label="托管类型" class="hide-sm">完整托管</td>
+                  <td data-label="线上探测"><span class="badge badge-secondary"><span class="badge-icon">✓</span>豁免</span></td>
+                  <td data-label="豁免" class="hide-sm"><span class="text-success">✓</span></td>
+                </tr>
+                <tr class="clickable" data-open-drawer="drawer-subdomain" onclick="loadSub(this)">
+                  <td data-label="子域名"><strong>legacy.example.com</strong><div class="row mt-8"><span class="chip chip-cloud">阿里云</span></div></td>
+                  <td data-label="剩余"><span class="badge badge-success"><span class="badge-icon">✓</span>30 天</span></td>
+                  <td data-label="托管类型" class="hide-sm">仅指纹登记</td>
+                  <td data-label="线上探测"><span class="badge badge-secondary"><span class="badge-icon">⚠</span>不可达</span><div class="text-secondary text-sm">端口不通</div></td>
+                  <td data-label="豁免" class="hide-sm"><span class="text-secondary">—</span></td>
+                </tr>
+                <tr class="clickable" data-open-drawer="drawer-subdomain" onclick="loadSub(this)">
+                  <td data-label="子域名"><strong>www.example.com</strong><div class="row mt-8"><span class="chip chip-cloud">阿里云</span><span class="chip chip-cloud">腾讯云</span></div></td>
+                  <td data-label="剩余"><span class="badge badge-success"><span class="badge-icon">✓</span>74 天</span></td>
+                  <td data-label="托管类型" class="hide-sm">完整托管</td>
+                  <td data-label="线上探测"><span class="badge badge-success"><span class="badge-icon">✓</span>一致</span></td>
+                  <td data-label="豁免" class="hide-sm"><span class="text-secondary">—</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Loading -->
+      <section id="state-loading" class="state-view">
+        <div class="grid grid-5 mb-16">
+          <div class="stat-card"><div class="skeleton skeleton-block"></div></div>
+          <div class="stat-card"><div class="skeleton skeleton-block"></div></div>
+          <div class="stat-card"><div class="skeleton skeleton-block"></div></div>
+          <div class="stat-card"><div class="skeleton skeleton-block"></div></div>
+          <div class="stat-card"><div class="skeleton skeleton-block"></div></div>
+        </div>
+        <div class="card card-flush">
+          <div class="table-wrap" style="border:none;background:transparent;">
+            <table class="data-table"><tbody>
+              <tr class="skeleton-row"><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td></tr>
+              <tr class="skeleton-row"><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td></tr>
+              <tr class="skeleton-row"><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td></tr>
+              <tr class="skeleton-row"><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td></tr>
+              <tr class="skeleton-row"><td><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td><td><div class="skeleton"></div></td><td class="hide-sm"><div class="skeleton"></div></td></tr>
+            </tbody></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Empty -->
+      <section id="state-empty" class="state-view">
+        <div class="card">
+          <div class="empty-state">
+            <div class="icon" aria-hidden="true">📋</div>
+            <div class="title">暂无证书，等待导入</div>
+            <div class="desc">尚未登记任何证书，到期与探测数据为空。</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Error -->
+      <section id="state-error" class="state-view">
+        <div class="card">
+          <div class="error-state">
+            <div class="icon text-error" aria-hidden="true">⚠</div>
+            <div class="title">看板数据加载失败</div>
+            <div class="desc">台账 / 探测数据服务暂时不可用，请稍后重试。</div>
+            <button class="btn btn-secondary mt-8" onclick="retryLoad()">重试</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- 子域名探测详情抽屉 -->
+  <div class="drawer-backdrop" id="drawer-subdomain-backdrop" aria-hidden="true"></div>
+  <aside class="drawer" id="drawer-subdomain" role="dialog" aria-modal="true" aria-label="子域名探测详情">
+    <div class="drawer-header">
+      <h3 id="sub-title" style="font-family:var(--font-body);">api.example.com</h3>
+      <button class="modal-close" data-close-drawer aria-label="关闭">×</button>
+    </div>
+    <div class="drawer-body">
+      <dl class="kv">
+        <dt>剩余天数</dt><dd id="sub-days"><span class="badge badge-warning"><span class="badge-icon">⚠</span>12 天</span></dd>
+        <dt>托管类型</dt><dd id="sub-hosting">完整托管</dd>
+        <dt>探测状态</dt><dd id="sub-probe"><span class="badge badge-error"><span class="badge-icon">✗</span>差异</span></dd>
+        <dt>最近探测</dt><dd>3h 前</dd>
+        <dt>线上指纹</dt><dd class="mono">b9c8d7e6…2a1b0c9d</dd>
+        <dt>台账指纹</dt><dd class="mono">a1b2c3d4…9f0e1d2c</dd>
+        <dt>差异说明</dt><dd id="sub-diff-reason">线上证书与台账不一致，疑似未生效更换或残留旧证书</dd>
+      </dl>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn btn-secondary full-width" onclick="copyDiffSummary()">复制差异摘要</button>
+      <a class="btn btn-primary full-width" href="cert-detail.html">查看证书详情</a>
+    </div>
+  </aside>
+
+  <script src="app.js"></script>
+  <script>
+    var SUBDATA = {
+      'api.example.com': { days:'12 天', daysBadge:'warning', hosting:'完整托管', probe:'差异', probeBadge:'error', fp:'b9c8d7e6…2a1b0c9d', reason:'线上证书与台账不一致，疑似未生效更换或残留旧证书' },
+      'intranet.example.com': { days:'45 天', daysBadge:'success', hosting:'完整托管', probe:'豁免', probeBadge:'secondary', fp:'—', reason:'已加入探测豁免清单' },
+      'legacy.example.com': { days:'30 天', daysBadge:'success', hosting:'仅指纹登记', probe:'不可达', probeBadge:'secondary', fp:'—', reason:'端口不通 / DNS 无法解析 / 超时' },
+      'www.example.com': { days:'74 天', daysBadge:'success', hosting:'完整托管', probe:'一致', probeBadge:'success', fp:'a1b2c3d4…9f0e1d2c', reason:'线上与台账一致' }
+    };
+    function loadSub(tr) {
+      var name = tr.querySelector('strong').textContent;
+      var d = SUBDATA[name] || SUBDATA['www.example.com'];
+      document.getElementById('sub-title').textContent = name;
+      document.getElementById('sub-days').innerHTML = '<span class="badge badge-' + d.daysBadge + '"><span class="badge-icon">'+icon(d.daysBadge)+'</span>'+d.days+'</span>';
+      document.getElementById('sub-hosting').textContent = d.hosting;
+      document.getElementById('sub-probe').innerHTML = '<span class="badge badge-' + d.probeBadge + '"><span class="badge-icon">'+icon(d.probeBadge)+'</span>'+d.probe+'</span>';
+      document.getElementById('sub-diff-reason').textContent = d.reason;
+    }
+    function icon(b){ return b==='success'?'✓':b==='error'?'✗':b==='warning'?'⚠':'⚠'; }
+
+    function filterBy(f) {
+      var rows = document.querySelectorAll('#dashboard-tbody tr');
+      rows.forEach(function (r) { r.style.display = ''; });
+      document.getElementById('card-diff').classList.remove('selected');
+      document.getElementById('card-exempt').classList.remove('selected');
+      if (f === 'probe-diff') {
+        rows.forEach(function (r) { r.style.display = r.querySelector('.badge-error') ? '' : 'none'; });
+        document.getElementById('card-diff').classList.add('selected');
+        window.showToast('已按差异告警过滤', 'info');
+      } else if (f === 'probe-exempt') {
+        rows.forEach(function (r) { var last = r.querySelectorAll('td')[4]; r.style.display = (last && last.textContent.indexOf('✓') !== -1) ? '' : 'none'; });
+        document.getElementById('card-exempt').classList.add('selected');
+        window.showToast('已按探测豁免过滤', 'info');
+      } else {
+        window.showToast('已按状态分级过滤（原型演示）', 'info');
+      }
+    }
+
+    function copyDiffSummary() {
+      var t = document.getElementById('sub-title').textContent;
+      var fp = document.querySelector('#drawer-subdomain .kv dd.mono') ? document.querySelector('#drawer-subdomain .kv dd.mono').textContent : '';
+      var reason = document.getElementById('sub-diff-reason').textContent;
+      window.copyText('域名: ' + t + '\n探测时间: 3h 前\n线上指纹: ' + fp + '\n差异说明: ' + reason);
+      window.showToast('差异摘要已复制', 'success');
+    }
+
+    function retryLoad() {
+      window.switchState('state-loading');
+      setTimeout(function () { window.switchState('state-populated'); syncSwitcher('state-populated'); }, 900);
+    }
+    function syncSwitcher(id) {
+      document.querySelectorAll('.state-switcher button').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-state-switch') === id);
+      });
+    }
+  </script>
+</body>
+</html>
