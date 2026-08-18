@@ -1,7 +1,7 @@
 ---
 feature: "ssl-cert-management"
 created: "2026-08-14"
-status: design
+status: tasks
 ---
 
 # Feature: ssl-cert-management
@@ -20,6 +20,7 @@ status: design
 | API Handbook | design/api-handbook.md | REST 接口面：证书/引用/看板/变更/配置端点与错误码契约 |
 | ER Diagram | design/er-diagram.md | 11 集合 ER 关系图与索引策略 |
 | SQL Schema | design/schema.sql | 集合文档结构 DDL（MongoDB） |
+| Tasks | tasks/index.json | 38 业务任务 × 7 阶段（基础/台账/发现/监控/变更/前端/装配）+ 自动闸门与测试任务 |
 
 ## Traceability
 
