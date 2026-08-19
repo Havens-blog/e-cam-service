@@ -32,6 +32,7 @@ db.createCollection("cert_certificates", {
           algo:       { bsonType: "string", enum: ["AES-256-GCM"] }
         }
       },
+      certPem:             { bsonType: "string" },          // 导入时上传的证书束 PEM 原文（leaf+中间链+根）；任务 2.2 补传私钥匹配校验依据（schema 补齐：原设计未承载补传复验所需证书材料），后续云证书库上传复用；永不���现在 API 响应
       expectedDomain:      { bsonType: "string" },          // 可选，仅提示性比对
       protectUntil:        { bsonType: "date" },            // 回滚保护期截止；>=now 禁删
       expiryAlertLevel:    { bsonType: "string", enum: ["none", "L30", "L14", "L7", "expired"] }, // DEFAULT="none"，到期分级告警去重状态（仅升级触发、同级不重复）
@@ -51,10 +52,12 @@ db.createCollection("cert_references", {
     bsonType: "object",
     required: ["certFingerprint", "snapshotId", "scannedAt"],
     properties: {
-      certFingerprint:       { bsonType: "string", pattern: "^[0-9a-f]{64}$" }, // 关联 certificates.fingerprint（应用层引用，非 FK 约束）
+      certFingerprint:       { bsonType: "string", pattern: "^[0-9a-f]{64}$" }, // 关联 certificates.fingerprint（应用层引用，非 FK 约束）；无法解析时为确定性占位指纹（sha256 命名空间化 cloudCertId，任务 3.5，仍满足 pattern）
       cloud:                 { bsonType: "string", enum: ["aliyun", "tencent", "huawei", "aws", "azure"] },
       product:               { bsonType: "string", enum: ["cdn", "dcdn", "waf", "alb", "clb", "nlb", "crd"] },
       clusterId:             { bsonType: "string" },   // K8s 集群（product=crd 时必填）
+      namespace:             { bsonType: "string" },   // K8s 命名空间（product=crd 时写通，任务 3.5；5.x 变更项重构 DeployTarget 依据）
+      kind:                  { bsonType: "string" },   // CRD kind（product=crd 时写通，任务 3.5）
       resourceId:            { bsonType: "string" },   // 云资源 ID / CRD 实例名
       referencedCloudCertId: { bsonType: "string" },   // 云侧证书 ID
       accountKey:            { bsonType: "string" },
@@ -77,14 +80,24 @@ db.createCollection("cert_scan_snapshots", {
       startedAt:    { bsonType: "date" },   // 扫描新鲜度派生基准：freshness = now - startedAt
       finishedAt:   { bsonType: "date" },   // DEFAULT=null，运行中无值
       status:       { bsonType: "string", enum: ["running", "done", "failed"] }, // DEFAULT="running"；running 超 thresholds.scanTimeoutHours 由 scan-timeout 任务转 failed（释放防重锁，可重新触发扫描）
-      failReason:   { bsonType: "string" }, // status=failed 时的原因码；含 SCAN_TIMED_OUT（running 超时）
-      coverageMeta: {                      // [{cloud,product,covered,total}]
+      failReason:   { bsonType: "string" }, // status=failed 时的原因码；含 SCAN_TIMED_OUT（running 超时）、SCAN_DISCOVERY_FAILED（全部通道失败）、SCAN_NO_CHANNELS（空范围）、SCAN_WRITE_FAILED（落库失败）
+      partialFailures: {                    // 部分失败通道清单（任务 3.5）：某云/产品失败不阻塞其他云，记入快照元数据
+        bsonType: "array",
+        items: { bsonType: "object", required: ["cloud", "product", "reason"], properties: {
+          cloud:   { bsonType: "string" },  // 云名；K8s 通道为空串
+          product: { bsonType: "string" },  // 产品；K8s 通道为 crd
+          account: { bsonType: "string" },  // 云账号名 / K8s 集群名
+          reason:  { bsonType: "string" }   // 失败原因（静态文案+安全参数，不含凭证）
+        }}
+      },
+      coverageMeta: {                      // [{cloud,product,covered,total,lagging}]
         bsonType: "array",
         items: { bsonType: "object", required: ["cloud", "product", "covered", "total"], properties: {
           cloud:   { bsonType: "string" },
           product: { bsonType: "string" },
           covered: { bsonType: "int", minimum: 0 }, // 本轮发现引用的去重资源数
-          total:   { bsonType: "int", minimum: -1 } // 分母=internal/asset 资产盘点在用资源数；-1=分母不可用（盲区声明）
+          total:   { bsonType: "int", minimum: -1 }, // 分母=internal/asset 资产盘点在用资源数；-1=分母不可用（盲区声明）；K8s crd 恒 -1（asset 不盘点 K8s）
+          lagging: { bsonType: "bool" }    // DEFAULT=false；covered>total（asset 盘点滞后）时置位，覆盖率展示以 covered 为准（任务 3.5）
         }}
       }
     }
@@ -154,10 +167,11 @@ db.createCollection("cert_change_items", {
       resourceRef:    { bsonType: "object" },  // 持久化完整 DeployTarget；分支必填由下方 anyOf 按 action 强制
       oldCloudCertId: { bsonType: "string" },  // 回滚依据
       newCloudCertId: { bsonType: "string" },
-      status:         { bsonType: "string", enum: ["pending", "running", "success", "failed", "rate_limited", "rolled_back", "skipped"], description: "DEFAULT=pending" },
+      status:         { bsonType: "string", enum: ["pending", "running", "success", "failed", "rate_limited", "rolled_back", "rollback_failed", "skipped"], description: "DEFAULT=pending；rollback_failed=回滚动作自身失败（任务 5.8，立即告警转人工）" },
       error:          { bsonType: "string" },   // 失败错误码+详情；异步子任务状态载体，非 HTTP 响应
       heartbeatAt:    { bsonType: "date" },     // 执行心跳（子任务运行期 30s 间隔更新）；executing-timeout 判据：running 且超 itemHeartbeatTimeoutMinutes → failed(EXEC_TIMEOUT)+告警
-      executedAt:     { bsonType: "date" }      // DEFAULT=null
+      executedAt:     { bsonType: "date" },     // DEFAULT=null；领取���行权时固化（crd-recheck 延迟基准）
+      recheckedAt:    { bsonType: "date" }      // crd-recheck 单轮复检完成时点（任务 5.9）：success 且缺失的 patch_crd 项才消费；通过/失败均固化（复检次数固定 1）
     },
     // resourceRef 按 action 分支必填——异步子任务仅凭持久化数据即可重构 DeployTarget：
     // upload_and_bind(cloud_api): channel+cloud+product+accountKey+resourceId

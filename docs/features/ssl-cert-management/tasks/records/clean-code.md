@@ -1,0 +1,72 @@
+---
+status: "completed"
+started: "2026-08-19 06:32"
+completed: "2026-08-19 07:10"
+time_spent: "~38m"
+---
+
+# Task Record: T-clean-code Simplify and Clean Code
+
+## Summary
+Scoped code-quality cleanup of the ssl-cert-management feature tree (155 Go files in scope, resolved from working-tree diff + untracked files since the feature is uncommitted on main). Applied forge:clean-code five principles via 3 parallel review agents plus deadcode -test mechanical scan: removed 8 dead-code instances (uncalled WithAliyunRetryPolicy option, 4 dead test-helper symbols incl. whole failDispatcher type, unused const deleteTaskStatusDeleting, unused struct fields HttpsPorts/SSLCertificates.Name/Properties.Data), eliminated 7 duplications (resolveCredential shared by execute/rollback, sortCoverageKeys, resolveVerifyTargets shared by verify-window and change-query ~40 lines each, WriteAPIErrorWithMeta, newEndpoint, azureGET ARM/KeyVault REST helper, toResourceRef replaced by existing DeployTarget.ToResourceRef), simplified 11 complexity spots (no-op error branch, identity %w wrap, zero-value literal fields, redundant loop-var copy, 3 single-call wrappers inlined, 5 no-op int64 double casts, redundant per-cluster client re-resolution, certCASRegion collapse, subsumed relativeAzureURL branch). Additionally repaired 10 pre-existing U+FFFD comment corruptions across 9 files (reconstructed from authoritative sibling text) and 6 pre-existing real gofmt deltas. No behavior changes; error-path texts preserved byte-identical where callers depend on them. Quality gate: go build ./... ok, go vet ok, go test -p 2 across all scoped packages 0 failures, gofmt real-delta 0 on all edited files, scope-wide U+FFFD scan clean.
+
+## Changes
+
+### Files Created
+无
+
+### Files Modified
+- internal/cert/service/execute_service.go
+- internal/cert/service/execute_service_test.go
+- internal/cert/service/rollback_service.go
+- internal/cert/service/dashboard_service.go
+- internal/cert/service/reference_scan_service.go
+- internal/cert/service/change_query_service.go
+- internal/cert/service/coverage_meta.go
+- internal/cert/service/verify_window_service.go
+- internal/cert/service/k8s_credential_service.go
+- internal/cert/service/crd_registration_service.go
+- internal/cert/scheduler/jobs_test.go
+- internal/cert/web/change_handler.go
+- internal/cert/web/response.go
+- internal/cert/web/ledger_handler.go
+- internal/cert/web/reference_handler.go
+- internal/cert/web/dashboard_handler.go
+- internal/cert/deployer/aliyun_deployer.go
+- internal/cert/deployer/k8s_api_channel.go
+- internal/shared/middleware/audit.go
+- internal/shared/middleware/register_endpoints.go
+- internal/shared/cloudx/aliyun/cert.go
+- internal/shared/cloudx/aliyun/cert_waf.go
+- internal/shared/cloudx/aliyun/cert_lb.go
+- internal/shared/cloudx/tencent/cert.go
+- internal/shared/cloudx/tencent/cert_cdn.go
+- internal/shared/cloudx/tencent/cert_clb.go
+- internal/shared/cloudx/tencent/cert_edgeone.go
+- internal/shared/cloudx/tencent/cert_test.go
+- internal/shared/cloudx/azure/cert_discovery.go
+- internal/shared/cloudx/huawei/cert_discovery.go
+- ioc/cert.go
+
+### Key Decisions
+- Skipped generic consolidation of the five NewXxxScanAdapter constructors: Go interface constraints cannot expose struct fields, so the fix would trade five flat per-cloud registration tables for generics plus per-cloud mapping closures (over-abstraction, skill Principle 4)
+- Skipped aliyun cert_cdn/cert_dcdn ~90-line consolidation and generateUploadName cross-deployer extraction: distinct SDK types / 5-param helper saving 8 lines; parallel per-product code is clearer
+- resolveVerifyTargets extraction re-wraps errors at call sites so per-caller prefixes (verify window: / change query:) stay byte-identical to the original messages
+- getCRDObject now returns its resolved CRDClient; k8s.Factory caches per cluster so the second c.clients.Client call in Deploy/Rollback was redundant; all error paths kept byte-identical
+- Deleted WithAliyunRetryPolicy (zero callers incl. tests per deadcode -test) but kept WithTencentRetryPolicy (exercised by its own test) - asymmetry is intentional
+- 10 U+FFFD comment corruptions repaired by reconstructing intended text from authoritative siblings (schema.sql canonical phrasing, domain/errors.go, task records) rather than deleting bytes
+- volcano/kafka.go has a pre-existing BOM that only breaks -coverpkg instrumentation (out of scope, untouched); coverage measured via per-package profiles instead
+
+## Test Results
+- **Tests Executed**: Yes
+- **Passed**: 714
+- **Failed**: 0
+- **Coverage**: 33.7%
+
+## Acceptance Criteria
+- [x] Code simplified without changing external behavior
+- [x] No files cleaned outside this feature's scope (git diff boundaries)
+- [x] All acceptance criteria met
+
+## Notes
+Test counts from go test -v -count=1 over scoped packages (cert/alert/audit/cloudx/middleware/ioc): 714 passing test/subtest entries, 0 failures, 35 skips (all DSN-gated Mongo integration tests skipping by design without CERT_TEST_MONGODB_DSN). Coverage 33.7% is a runner-reported per-package -cover aggregate over the 9 test-bearing modified packages; its denominator includes pre-existing untested in-package files (aliyun/dns.go, tencent/cfs.go, etc.), so it understates the feature's own coverage. -race unavailable on this host (no cgo/gcc); concurrency safety unchanged (edits touch no synchronization logic except removing mutex fields from a dead test helper). Quality gate used just-to-Makefile mapping precedent: go build ./..., go vet, go test (with -p 2 to avoid the known host OOM on full parallel ./...). No files outside the feature working-tree scope were modified; pre-existing deadcode findings in out-of-scope files (cloudx/dns.go, iam converters, ioc/session.go etc.) were left untouched per skill rules.

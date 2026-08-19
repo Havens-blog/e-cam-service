@@ -1,0 +1,64 @@
+{
+  "summary": "Phase 6 gate passed: 7/7 tasks (6.1-6.7) + 6.summary completed. Frontend gates green in e-cam-web: npx vitest run 289/289 passing (12 files), npm run build:check (vue-tsc -b && vite build) exit 0, eslint on all cert-touched files (api/cert.ts + cert.test.ts + request/cert.ts + cert-nav + cert-permission + views/cert/ tree + router 3 files + MainLayout.vue) zero violations. Backend gates green in e-cam-service (6.4 additive VO extension is the only backend delta): go build ./... exit 0, go vet ./... exit 0, go test ./... exit 0 (internal/cert 7/7 packages ok; web+service force re-run -count=1 after fmt fix, both ok). fmt: dashboard_handler.go carried one real (non-CRLF) gofmt delta — comment-column realignment triggered by the 6.4-added certId/fingerprint/lastProbeAt/onlineFingerprint json tags; fixed via gofmt with CRLF endings preserved, formatting-only zero semantic change per Hard Rule, build+vet+tests re-verified green. Remaining ~96 gofmt -l hits are the documented full-tree CRLF-checkout baseline (non-blocking, pre-existing). Spec-code scan vs tech-design Cross-Layer Data Map: HostingStatus=complete|fingerprint_only, ChangeStatus 9-state union incl. cancelled, ProbeStatus 6-value union, ReferenceStatus 3-value, lastScanAt nullable — all MATCH in src/api/cert.ts (lines 90-131); permission constants cert:manage/cert:settings single-point in cert-permission.ts; scanFreshnessHours bounded 1~72 (THRESHOLD_FIELDS, documented 6.6 ruling); 7 /certs routes registered with read-only visibility split. All 8 deviations documented as decisions in 6.summary section 5 with code spot-verification. Hard Rule 'MUST NOT write new feature code' respected: only gofmt whitespace fix to one phase-6-modified backend file. Per dispatcher instruction: no git commit.",
+  "gatePassed": true,
+  "gateChecks": [
+    {
+      "check": "checklist-1 interfaces compile",
+      "result": "PASS",
+      "evidence": "e-cam-web npm run build:check exit 0 (vue-tsc -b type check + vite build); e-cam-service go build ./... exit 0"
+    },
+    {
+      "check": "checklist-2 data models match tech-design",
+      "result": "PASS",
+      "evidence": "Cross-Layer Data Map verified in src/api/cert.ts: HostingStatus complete|fingerprint_only (L90), ChangeStatus 9-state union (L93-102), ProbeStatus 6-value (L116-122), ReferenceStatus 3-value, lastScanAt string|null (L276); frontend field names mirror backend web-layer VO json tags per 6.1"
+    },
+    {
+      "check": "checklist-3 no type mismatches between adjacent layers",
+      "result": "PASS",
+      "evidence": "vue-tsc -b clean across all cert views vs API type layer; backend build+vet clean; 6.3 reverseLookup {query,count,items} wrapper correction and 6.4 DashboardItem/VO additive 4 fields (synced to api-handbook.md) close the two prior layer-shape gaps"
+    },
+    {
+      "check": "checklist-4 project builds",
+      "result": "PASS",
+      "evidence": "vite build exit 0 (chunk>1500kB = documented pre-existing warning); go build ./... exit 0"
+    },
+    {
+      "check": "checklist-5 all existing tests pass",
+      "result": "PASS",
+      "evidence": "vitest 289/289 (12 files, 2.05s); go test ./... exit 0, internal/cert 7/7 packages ok; cert repo integration tests skip without CERT_TEST_MONGODB_DSN by design; -race unavailable on host (no cgo) per precedent"
+    },
+    {
+      "check": "checklist-6 no undocumented deviations",
+      "result": "PASS",
+      "evidence": "8 deviations documented in 6.summary section 5 (views/cert path, server-side filtering, accent-highlight instead of top-pin, client-side change-history filter, dashboard drawer additive fields, change-domain 4 API-gap adaptations, threshold 1-72, config-entry placement); spot-verified in code (src/views/cert/ exists, THRESHOLD_FIELDS 1-72)"
+    },
+    {
+      "check": "checklist-7 integration specs have code changes",
+      "result": "N/A",
+      "evidence": "tech-design Integration Specs declares 'No existing-page integrations - not applicable' (all new pages reusing existing nav/permission mechanisms, which 6.1/6.7 implement via MainLayout + EIAM codes)"
+    },
+    {
+      "check": "checklist-8 eval-journey",
+      "result": "N/A",
+      "evidence": "test pipeline not run in phase 6 (frontend build phase); same precedent as 5.gate"
+    },
+    {
+      "check": "checklist-9 eval-contract",
+      "result": "N/A",
+      "evidence": "test pipeline not run in phase 6; same precedent as 5.gate"
+    },
+    {
+      "check": "checklist-10 confidence rating reviewed",
+      "result": "PASS",
+      "evidence": "phase-6 records carry no structured confidence field; LOW/manual-verification items flagged: (a) live-cloud PoC AC-1/AC-2 remains delegated to doc-fix-1 (pre-existing, pending cloud credentials), (b) EIAM authorization codes cert:manage/cert:settings pending 7.2 resource sync — single alignment point src/utils/cert-permission.ts, (c) frontend coverage recorded 0.0 by convention (no DOM test env / coverage provider), logic-layer export coverage asserted instead"
+    }
+  ],
+  "keyDecisions": [
+    "fmt gate: dashboard_handler.go comment-column realignment applied (gofmt + CRLF preserved) — triggered by 6.4-added VO json tags; formatting-only, Hard Rule respected, gates re-verified green",
+    "Frontend quality-gate equivalence per 6.summary conventions: vitest run + build:check + eslint on touched files replaces Go-repo just targets; Go-repo targets still run for the 6.4 backend delta"
+  ],
+  "notes": "Cross-repo gate: frontend code in D:/Haven/e-cam-web (uncommitted per instruction), backend additive delta in e-cam-service. No git commit performed per dispatcher instruction.",
+  "timeSpent": "~25m",
+  "taskId": "6.gate",
+  "status": "completed"
+}

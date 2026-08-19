@@ -10,7 +10,7 @@
       "title": "信封加密组件（AES-256-GCM、keyVersion 轮换、双读、zeroing）",
       "priority": "P1",
       "estimatedTime": "3h",
-      "status": "pending",
+      "status": "completed",
       "file": "1.1-cert-envelope-crypto.md",
       "record": "records/1.1-cert-envelope-crypto.md",
       "surface-type": "api",
@@ -25,7 +25,7 @@
       "dependencies": [
         "1.1"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "1.2-cert-domain-models.md",
       "record": "records/1.2-cert-domain-models.md",
       "surface-type": "api",
@@ -40,7 +40,7 @@
       "dependencies": [
         "1.2"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "1.3-cert-schema-apply.md",
       "record": "records/1.3-cert-schema-apply.md",
       "type": "doc"
@@ -53,7 +53,7 @@
       "dependencies": [
         "1.summary"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "1.gate.md",
       "record": "records/1.gate.md",
       "breaking": true,
@@ -69,7 +69,7 @@
         "1.2",
         "1.3"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "1.summary.md",
       "record": "records/1.summary.md",
       "type": "doc.summary"
@@ -83,7 +83,7 @@
         "1.2",
         "1.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "2.1-cert-parse-integrity.md",
       "record": "records/2.1-cert-parse-integrity.md",
       "surface-type": "api",
@@ -99,7 +99,7 @@
         "2.1",
         "1.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "2.2-cert-import-service.md",
       "record": "records/2.2-cert-import-service.md",
       "surface-type": "api",
@@ -115,7 +115,7 @@
         "2.2",
         "1.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "2.3-cert-ledger-query.md",
       "record": "records/2.3-cert-ledger-query.md",
       "surface-type": "api",
@@ -130,7 +130,7 @@
       "dependencies": [
         "2.summary"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "2.gate.md",
       "record": "records/2.gate.md",
       "breaking": true,
@@ -146,7 +146,7 @@
         "2.2",
         "2.3"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "2.summary.md",
       "record": "records/2.summary.md",
       "type": "doc.summary"
@@ -159,7 +159,7 @@
       "dependencies": [
         "2.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "3.1-cloudx-aliyun-cert.md",
       "record": "records/3.1-cloudx-aliyun-cert.md",
       "surface-type": "api",
@@ -174,7 +174,7 @@
       "dependencies": [
         "2.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "3.2-cloudx-tencent-cert.md",
       "record": "records/3.2-cloudx-tencent-cert.md",
       "surface-type": "api",
@@ -189,7 +189,7 @@
       "dependencies": [
         "2.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "3.3-cloudx-readonly-discovery.md",
       "record": "records/3.3-cloudx-readonly-discovery.md",
       "surface-type": "api",
@@ -206,7 +206,7 @@
         "1.2",
         "2.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "3.4-k8s-credential-and-crd.md",
       "record": "records/3.4-k8s-credential-and-crd.md",
       "surface-type": "api",
@@ -225,7 +225,7 @@
         "3.4",
         "2.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "3.5-reference-scan-service.md",
       "record": "records/3.5-reference-scan-service.md",
       "surface-type": "api",
@@ -241,7 +241,7 @@
         "3.5",
         "2.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "3.6-reference-query-api.md",
       "record": "records/3.6-reference-query-api.md",
       "surface-type": "api",
@@ -256,7 +256,7 @@
       "dependencies": [
         "3.summary"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "3.gate.md",
       "record": "records/3.gate.md",
       "breaking": true,
@@ -275,7 +275,7 @@
         "3.5",
         "3.6"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "3.summary.md",
       "record": "records/3.summary.md",
       "type": "doc.summary"
@@ -289,7 +289,7 @@
         "1.2",
         "3.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "4.1-tls-probe-service.md",
       "record": "records/4.1-tls-probe-service.md",
       "surface-type": "api",
@@ -305,7 +305,7 @@
         "4.1",
         "3.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "4.2-expiry-alert-engine.md",
       "record": "records/4.2-expiry-alert-engine.md",
       "surface-type": "api",
@@ -321,7 +321,7 @@
         "4.2",
         "3.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "4.3-alert-channel-extend.md",
       "record": "records/4.3-alert-channel-extend.md",
       "surface-type": "api",
@@ -338,7 +338,7 @@
         "4.2",
         "3.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "4.4-inspection-job.md",
       "record": "records/4.4-inspection-job.md",
       "surface-type": "api",
@@ -355,7 +355,7 @@
         "2.3",
         "3.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "4.5-dashboard-and-settings-api.md",
       "record": "records/4.5-dashboard-and-settings-api.md",
       "surface-type": "api",
@@ -370,7 +370,7 @@
       "dependencies": [
         "4.summary"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "4.gate.md",
       "record": "records/4.gate.md",
       "breaking": true,
@@ -388,7 +388,7 @@
         "4.4",
         "4.5"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "4.summary.md",
       "record": "records/4.summary.md",
       "type": "doc.summary"
@@ -402,7 +402,7 @@
         "1.2",
         "4.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5.1-change-order-domain.md",
       "record": "records/5.1-change-order-domain.md",
       "surface-type": "api",
@@ -419,7 +419,7 @@
         "4.1",
         "4.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5.10-verify-window.md",
       "record": "records/5.10-verify-window.md",
       "surface-type": "api",
@@ -437,7 +437,7 @@
         "5.10",
         "4.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5.11-change-api.md",
       "record": "records/5.11-change-api.md",
       "surface-type": "api",
@@ -454,10 +454,11 @@
         "3.2",
         "4.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5.12-cloud-cert-poc.md",
       "record": "records/5.12-cloud-cert-poc.md",
-      "type": "doc"
+      "type": "doc",
+      "blockedReason": "live verification tracked by pending doc-fix-1 (awaiting user-provided cloud credentials)"
     },
     "5.2-changelist-generator": {
       "id": "5.2",
@@ -469,7 +470,7 @@
         "3.5",
         "4.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5.2-changelist-generator.md",
       "record": "records/5.2-changelist-generator.md",
       "surface-type": "api",
@@ -487,7 +488,7 @@
         "1.1",
         "4.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5.3-execution-channel.md",
       "record": "records/5.3-execution-channel.md",
       "surface-type": "api",
@@ -504,7 +505,7 @@
         "3.1",
         "4.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5.4-aliyun-deployer.md",
       "record": "records/5.4-aliyun-deployer.md",
       "surface-type": "api",
@@ -521,7 +522,7 @@
         "3.2",
         "4.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5.5-tencent-deployer.md",
       "record": "records/5.5-tencent-deployer.md",
       "surface-type": "api",
@@ -538,7 +539,7 @@
         "3.4",
         "4.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5.6-k8s-channel.md",
       "record": "records/5.6-k8s-channel.md",
       "surface-type": "api",
@@ -557,7 +558,7 @@
         "5.6",
         "4.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5.7-batch-execute-engine.md",
       "record": "records/5.7-batch-execute-engine.md",
       "surface-type": "api",
@@ -573,7 +574,7 @@
         "5.7",
         "4.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5.8-rollback-service.md",
       "record": "records/5.8-rollback-service.md",
       "surface-type": "api",
@@ -589,7 +590,7 @@
         "5.7",
         "4.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5.9-orphan-cleanup-recheck.md",
       "record": "records/5.9-orphan-cleanup-recheck.md",
       "surface-type": "api",
@@ -604,7 +605,7 @@
       "dependencies": [
         "5.summary"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5.gate.md",
       "record": "records/5.gate.md",
       "breaking": true,
@@ -629,7 +630,7 @@
         "5.8",
         "5.9"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5.summary.md",
       "record": "records/5.summary.md",
       "type": "doc.summary"
@@ -642,7 +643,7 @@
       "dependencies": [
         "5.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "6.1-web-module-scaffold.md",
       "record": "records/6.1-web-module-scaffold.md",
       "surface-type": "api",
@@ -658,7 +659,7 @@
         "6.1",
         "5.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "6.2-build-cert-ledger.md",
       "record": "records/6.2-build-cert-ledger.md",
       "surface-type": "api",
@@ -674,7 +675,7 @@
         "6.1",
         "5.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "6.3-build-cert-detail.md",
       "record": "records/6.3-build-cert-detail.md",
       "surface-type": "api",
@@ -690,7 +691,7 @@
         "6.1",
         "5.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "6.4-build-dashboard.md",
       "record": "records/6.4-build-dashboard.md",
       "surface-type": "api",
@@ -706,7 +707,7 @@
         "6.1",
         "5.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "6.5-build-change-wizard.md",
       "record": "records/6.5-build-change-wizard.md",
       "surface-type": "api",
@@ -722,7 +723,7 @@
         "6.1",
         "5.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "6.6-build-settings.md",
       "record": "records/6.6-build-settings.md",
       "surface-type": "api",
@@ -742,7 +743,7 @@
         "6.6",
         "5.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "6.7-assemble-pages.md",
       "record": "records/6.7-assemble-pages.md",
       "surface-type": "api",
@@ -757,7 +758,7 @@
       "dependencies": [
         "6.summary"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "6.gate.md",
       "record": "records/6.gate.md",
       "breaking": true,
@@ -777,7 +778,7 @@
         "6.6",
         "6.7"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "6.summary.md",
       "record": "records/6.summary.md",
       "type": "doc.summary"
@@ -794,7 +795,7 @@
         "5.10",
         "6.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "7.1-scheduler-registration.md",
       "record": "records/7.1-scheduler-registration.md",
       "breaking": true,
@@ -811,7 +812,7 @@
         "5.11",
         "6.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "7.2-eiam-audit-integration.md",
       "record": "records/7.2-eiam-audit-integration.md",
       "surface-type": "api",
@@ -826,7 +827,7 @@
       "dependencies": [
         "7.summary"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "7.gate.md",
       "record": "records/7.gate.md",
       "breaking": true,
@@ -841,7 +842,7 @@
         "7.1",
         "7.2"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "7.summary.md",
       "record": "records/7.summary.md",
       "type": "doc.summary"
@@ -854,7 +855,7 @@
       "dependencies": [
         "7.gate"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "clean-code.md",
       "record": "records/clean-code.md",
       "type": "code-quality.simplify"
@@ -871,6 +872,18 @@
       "file": "consolidate-specs.md",
       "record": "records/consolidate-specs.md",
       "type": "doc.consolidate"
+    },
+    "doc-fix-1": {
+      "id": "doc-fix-1",
+      "title": "Fix: 5.12 live cloud PoC P1-P9 requires real credentials",
+      "priority": "P0",
+      "estimatedTime": "30min",
+      "status": "suspended",
+      "file": "doc-fix-1.md",
+      "record": "records/doc-fix-1.md",
+      "sourceTaskID": "5.12",
+      "type": "doc.fix",
+      "blockedReason": "Requires real aliyun/tencent cloud credentials (user-provided). Live checkpoints P1-P9 + corrections B1/B2 documented in design/poc-notes.md. Reopen when credentials are available."
     },
     "eval-contract": {
       "id": "T-eval-contract",
@@ -920,45 +933,45 @@
       "estimatedTime": "20-30min",
       "dependencies": [
         "T-review-doc",
-        "T-clean-code",
-        "6.4",
-        "3.1",
-        "5.10",
+        "3.2",
+        "6.2",
+        "4.1",
         "5.7",
+        "7.2",
+        "3.3",
+        "3.5",
+        "5.5",
+        "5.6",
         "6.6",
         "7.1",
-        "1.1",
-        "1.3",
+        "3.4",
+        "6.3",
+        "5.1",
         "5.12",
-        "5.3",
-        "6.2",
+        "6.1",
+        "2.3",
+        "1.2",
+        "5.10",
+        "3.6",
+        "4.4",
+        "1.1",
         "2.2",
         "4.2",
-        "5.6",
-        "5.11",
-        "6.1",
-        "6.7",
-        "5.5",
-        "5.8",
-        "6.3",
-        "6.5",
-        "4.4",
-        "1.2",
-        "3.6",
-        "3.3",
-        "7.2",
-        "2.3",
-        "3.4",
-        "4.1",
-        "3.2",
         "4.5",
         "5.2",
-        "5.9",
+        "5.3",
         "2.1",
-        "5.1",
+        "6.7",
+        "4.3",
+        "5.11",
         "5.4",
-        "3.5",
-        "4.3"
+        "5.8",
+        "3.1",
+        "6.4",
+        "1.3",
+        "6.5",
+        "doc-fix-1",
+        "5.9"
       ],
       "status": "pending",
       "file": "gen-journeys.md",
@@ -986,8 +999,9 @@
       "priority": "P1",
       "estimatedTime": "30min",
       "dependencies": [
+        "5.12",
         "1.3",
-        "5.12"
+        "doc-fix-1"
       ],
       "status": "pending",
       "file": "review-doc.md",

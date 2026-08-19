@@ -62,7 +62,11 @@ func (m *AuditMiddleware) Build() gin.HandlerFunc {
 
 		// 读取并恢复 request body
 		var bodyStr string
-		if c.Request.Body != nil {
+		// multipart 请求体（证书/私钥文件上传）不落审计日志：二进制载荷不可
+		// 读且可能携带明文私钥材料——PRD"渗透式自查"口径（日志无明文私钥）。
+		if strings.HasPrefix(c.ContentType(), "multipart/form-data") {
+			bodyStr = "[multipart/form-data body omitted]"
+		} else if c.Request.Body != nil {
 			bodyBytes, err := io.ReadAll(c.Request.Body)
 			if err == nil {
 				// 恢复 body 供后续 handler 使用
@@ -160,8 +164,23 @@ func sanitizeMap(data map[string]interface{}) {
 
 // inferOperationType 根据 URL path 和 HTTP method 推断操作类型
 func inferOperationType(path, method string) domain.AuditOperationType {
-	// 提取资源名称
-	parts := strings.Split(strings.TrimPrefix(path, "/api/v1/cam/"), "/")
+	// 提取资源名称（cam 域沿用既有口径：去 /api/v1/cam/ 前缀取首段）
+	prefix := "/api/v1/cam/"
+	if strings.HasPrefix(path, "/api/v1/certs") {
+		// cert 域（7.2）：取首个静态子资源段（settings/changes/batch/dashboard/
+		// stats/reverse），路径参数段（:id 等）跳过——落台账为 api_cert_* 族
+		prefix = "/api/v1/certs/"
+		parts := strings.Split(strings.TrimPrefix(path, prefix), "/")
+		resource := "cert"
+		for _, p := range parts {
+			if certStaticSegments[p] {
+				resource = p
+				break
+			}
+		}
+		return domain.AuditOperationType(fmt.Sprintf("api_%s_%s", resource, actionOf(method, parts)))
+	}
+	parts := strings.Split(strings.TrimPrefix(path, prefix), "/")
 	if len(parts) == 0 {
 		return domain.AuditOpAPIGeneric
 	}
@@ -170,24 +189,33 @@ func inferOperationType(path, method string) domain.AuditOperationType {
 	// 处理复数形式
 	resource = strings.TrimSuffix(resource, "s")
 
-	var action string
+	return domain.AuditOperationType(fmt.Sprintf("api_%s_%s", resource, actionOf(method, parts)))
+}
+
+// actionOf 按 method 推断动作（sync 尾段特判沿用既有口径）。
+func actionOf(method string, parts []string) string {
 	switch method {
 	case "POST":
-		action = "create"
-		// 特殊路径处理
-		if len(parts) > 1 {
-			lastPart := parts[len(parts)-1]
-			if lastPart == "sync" {
-				action = "sync"
-			}
+		if len(parts) > 0 && parts[len(parts)-1] == "sync" {
+			return "sync"
 		}
+		return "create"
 	case "PUT", "PATCH":
-		action = "update"
+		return "update"
 	case "DELETE":
-		action = "delete"
+		return "delete"
 	default:
-		action = "generic"
+		return "generic"
 	}
+}
 
-	return domain.AuditOperationType(fmt.Sprintf("api_%s_%s", resource, action))
+// certStaticSegments cert 域静态子资源段（api-handbook 端点表；其余段
+// （:id/:batchId/ObjectID 实值）视为路径参数）。
+var certStaticSegments = map[string]bool{
+	"settings":  true,
+	"changes":   true,
+	"batch":     true,
+	"dashboard": true,
+	"stats":     true,
+	"reverse":   true,
 }

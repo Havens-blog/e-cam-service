@@ -5,12 +5,16 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam"
+	"github.com/Havens-blog/e-cam-service/internal/cert"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/gotomicro/ego/task/ecron"
 	"github.com/spf13/viper"
 )
 
-func InitJobs(camModule *cam.Module) []*ecron.Component {
+// InitJobs 构建全部定时任务（cam 域既有任务 + cert 域 9 类任务，7.1 扩签名）。
+// 既有 cam 任务条目零改动（AC-4：不改动既有 task 注册项）；cert 任务经
+// initCertJobs 独立追加（新增项独立）。
+func InitJobs(camModule *cam.Module, certModule *cert.Module) []*ecron.Component {
 	type Config struct {
 		Enabled bool `mapstructure:"enabled"`
 	}
@@ -103,6 +107,9 @@ func InitJobs(camModule *cam.Module) []*ecron.Component {
 			ecron.WithSpec("0 7 * * *"),
 		))
 	}
+
+	// cert 域 9 类定时任务（7.1 新增项，独立于既有 cam 条目注册）
+	jobs = append(jobs, initCertJobs(certModule, logger)...)
 
 	return jobs
 }

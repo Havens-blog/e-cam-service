@@ -8,6 +8,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/alert"
 	"github.com/Havens-blog/e-cam-service/internal/audit"
 	"github.com/Havens-blog/e-cam-service/internal/cam"
+	"github.com/Havens-blog/e-cam-service/internal/cert"
 	"github.com/Havens-blog/e-cam-service/internal/cmdb"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
@@ -22,7 +23,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *middleware.CheckPolicyMiddleware, auditMdl *middleware.AuditMiddleware, auditModule *audit.Module, endpointClient endpointv1.EndpointServiceClient, endpointHdl *endpoint.Handler, camModule *cam.Module, cmdbModule *cmdb.Module, alertModule *alert.Module, db *mongox.Mongo) *gin.Engine {
+func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *middleware.CheckPolicyMiddleware, auditMdl *middleware.AuditMiddleware, auditModule *audit.Module, endpointClient endpointv1.EndpointServiceClient, endpointHdl *endpoint.Handler, camModule *cam.Module, cmdbModule *cmdb.Module, alertModule *alert.Module, db *mongox.Mongo, certModule *cert.Module) *gin.Engine {
 	logger := elog.DefaultLogger
 	logger.Info("开始初始化Web服务器")
 	session.SetDefaultProvider(sp)
@@ -199,6 +200,15 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 		logger.Info("告警模块路由注册完成")
 	} else {
 		logger.Warn("告警模块未初始化，跳过告警路由注册")
+	}
+
+	// 注册证书管理功能域路由（/api/v1/certs，7.1）
+	if certModule != nil {
+		logger.Info("注册证书管理功能域路由")
+		certModule.RegisterRoutes(server)
+		logger.Info("证书管理功能域路由注册完成")
+	} else {
+		logger.Warn("证书管理功能域模块未初始化，跳过证书路由注册")
 	}
 
 	// 注册拓扑模块路由

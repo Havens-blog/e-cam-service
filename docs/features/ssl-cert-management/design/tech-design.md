@@ -512,7 +512,7 @@ No existing-page integrations — not applicable.（全部为新页面，e-cam-w
 
 ## Open Questions
 
-- [ ] 阿里云/腾讯云各产品证书 API 能力差异需 PoC 验证（列为首批任务）
+- [ ] 阿里云/腾讯云各产品证书 API 能力差异需 PoC 验证（列为首批任务）→ 桌面验证已完成（SDK 面+官方文档+mock 全绿，发现 2 项高优偏差：腾讯云孤儿清理异步删除语义、阿里云 CAS 证书名用户级唯一），**真实账号全链路验证待执行**（无云凭证，见 [poc-notes.md](poc-notes.md) §8 检查点；结论影响 5.4/5.5，修正清单见 poc-notes.md §6）
 - [ ] client-go 版本锚定与 K8s 1.24+ 兼容矩阵需 PoC 验证（首批任务，验证后锁定版本）
 - [ ] K8s 集群网络可达性（平台→APIServer）需逐集群确认
 - [ ] 告警渠道（webhook/邮件 SMTP）凭据来源待配置

@@ -26,6 +26,7 @@ var BaseSet = wire.NewSet(
 	InitAuditMiddleware,
 	InitWebServer,
 	InitJobs,
+	InitCertModule,
 	endpoint.InitModule,
 	cam.InitModuleWithIAM,
 	cmdb.InitModule,

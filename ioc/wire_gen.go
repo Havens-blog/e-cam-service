@@ -2,6 +2,7 @@
 
 //go:generate go run -mod=mod github.com/google/wire/cmd/wire
 //go:build !wireinject
+// +build !wireinject
 
 package ioc
 
@@ -10,7 +11,9 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cmdb"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
 	"github.com/google/wire"
+)
 
+import (
 	_ "github.com/Havens-blog/e-cam-service/docs"
 )
 
@@ -32,23 +35,28 @@ func InitApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	v2 := endpointModule.Hdl
+	handler := endpointModule.Hdl
 	alertModule := InitAlertModule(mongo)
 	camModule, err := cam.InitModuleWithIAM(mongo, cmdable, alertModule)
 	if err != nil {
 		return nil, err
 	}
 	cmdbModule := cmdb.InitModule(mongo)
-	engine := InitWebServer(provider, v, checkPolicyMiddleware, auditMiddleware, module, endpointServiceClient, v2, camModule, cmdbModule, alertModule, mongo)
+	certModule, err := InitCertModule(mongo, camModule)
+	if err != nil {
+		return nil, err
+	}
+	engine := InitWebServer(provider, v, checkPolicyMiddleware, auditMiddleware, module, endpointServiceClient, handler, camModule, cmdbModule, alertModule, mongo, certModule)
 	server := InitGrpcServer(client)
-	v3 := InitJobs(camModule)
+	v2 := InitJobs(camModule, certModule)
 	app := &App{
-		Logger:    logger,
-		Web:       engine,
-		Grpc:      server,
-		Jobs:      v3,
-		EndModule: endpointModule,
-		CamModule: camModule,
+		Logger:     logger,
+		Web:        engine,
+		Grpc:       server,
+		Jobs:       v2,
+		EndModule:  endpointModule,
+		CamModule:  camModule,
+		CertModule: certModule,
 	}
 	return app, nil
 }
@@ -70,10 +78,5 @@ var BaseSet = wire.NewSet(
 	InitAuditMiddleware,
 	InitWebServer,
 	InitJobs,
-	endpoint.InitModule,
-	cam.InitModuleWithIAM,
-	cmdb.InitModule,
-	InitAlertModule,
-	wire.FieldsOf(new(*endpoint.Module), "Hdl"),
-	wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
+	InitCertModule, endpoint.InitModule, cam.InitModuleWithIAM, cmdb.InitModule, InitAlertModule, wire.FieldsOf(new(*endpoint.Module), "Hdl"), wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
 )

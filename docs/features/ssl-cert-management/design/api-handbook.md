@@ -58,7 +58,7 @@ Response (202): `{batchId, status, files[]{fileName,result,errorReason,certId?},
 | Method | Path | Auth | 说明 |
 |--------|------|------|------|
 | GET | `/api/v1/certs` | 运维工程师/主管 | 列表（分页+筛选 hostingStatus/daysLeft+search） |
-| GET | `/api/v1/certs/:id` | 运维工程师/主管 | 详情（不含明文私钥） |
+| GET | `/api/v1/certs/:id` | 运维工程师/主管/只读查看者 | 详情（不含明文私钥；只读查看者经看板抽屉"查看证书详情"只读访问，7.2） |
 | DELETE | `/api/v1/certs/:id` | 运维工程师 | 删除（活跃引用/保护期拦截 409 CERT_HAS_REFS） |
 | POST | `/api/v1/certs/:id/key` | 运维工程师 | 补传私钥→升级完整托管 |
 
@@ -83,7 +83,7 @@ Response: `{total, complete, fingerprintOnly, missingRegistrations, registration
 ### 到期看板
 
 **Method**: `GET`  **Path**: `/api/v1/certs/dashboard`  **Auth**: 全角色（含只读）
-Response: `{summary{countsByLevel[5],diffAlertCount,exemptCount,wildcardSkippedCount,registrationRate,replaceableRate,fingerprintOnlyRate}, items[]{domain,daysLeft,level,hostingType,probeStatus,referencedClouds[]}, lastInspectionAt}`（三个 rate 字段口径同 GET /stats；wildcardSkippedCount=通配符 SAN 跳过拨测计数，探测覆盖显式缺口）
+Response: `{summary{countsByLevel[5],diffAlertCount,exemptCount,wildcardSkippedCount,registrationRate,replaceableRate,fingerprintOnlyRate}, items[]{domain,daysLeft,level,hostingType,probeStatus,referencedClouds[],certId,fingerprint,lastProbeAt,onlineFingerprint}, lastInspectionAt}`（三个 rate 字段口径同 GET /stats；wildcardSkippedCount=通配符 SAN 跳过拨测计数，探测覆盖显式缺口；certId/fingerprint=归属证书（抽屉「查看证书详情」链接与台账指纹），lastProbeAt/onlineFingerprint=最近探测记录（未探测 null/空串，探测详情抽屉，任务 6.4 增量））
 
 ---
 
@@ -91,9 +91,9 @@ Response: `{summary{countsByLevel[5],diffAlertCount,exemptCount,wildcardSkippedC
 
 | Method | Path | Auth | 说明 |
 |--------|------|------|------|
-| GET | `/api/v1/certs/changes` | 运维工程师/主管 | 变更单列表（状态 Tab 筛选） |
+| GET | `/api/v1/certs/changes` | 运维工程师/主管/审计 | 变更单列表（状态 Tab 筛选；7.2 审计角色变更查看） |
 | POST | `/api/v1/certs/changes` | 运维工程师 | 生成变更清单（oldFingerprint+newCertId；前置校验：扫描新鲜度/SAN⊇/在途互斥/新证书 hostingStatus=complete，fingerprint_only → 409 NEW_CERT_FINGERPRINT_ONLY） |
-| GET | `/api/v1/certs/changes/:id` | 运维工程师/主管 | 变更单/报告详情 |
+| GET | `/api/v1/certs/changes/:id` | 运维工程师/主管/审计 | 变更单/报告详情（7.2 审计角色变更查看） |
 | POST | `/api/v1/certs/changes/:id/confirm` | 运维工程师 | 确认执行（含分批配置；分批在此固化批次分配，单批 ≤ floor(total/2)，一律人工续批） |
 | POST | `/api/v1/certs/changes/:id/execute` | 运维工程师 | 触发批量执行（执行当前批 batchNo=currentBatch 的项） |
 | POST | `/api/v1/certs/changes/:id/confirm-batch` | 运维工程师 | 人工续批（门控：上一批全部 success 且批级验证达标——提频探测连续 verifyConfirmProbes 次一致；不满足 409 BATCH_NOT_CONFIRMABLE） |
@@ -137,7 +137,7 @@ Response: `{summary{countsByLevel[5],diffAlertCount,exemptCount,wildcardSkippedC
 ## Data Contracts
 
 - `ChangeStatus` = 草稿|待确认|执行中|验证中|已完成|部分完成|已回滚|回滚失败|已取消（cancelled 终态：draft/pending_confirm 人工取消、批间暂停人工取消或 pauseTimeoutHours 超时自动中止；未执行项计 skipped）
-- `ProbeStatus` = consistent|diff|change_linked_diff|unreachable|exempt|wildcard_skipped（change_linked_diff=验证窗口内变更关联差异，��� changeOrderId，走变更关联告警通道）
+- `ProbeStatus` = consistent|diff|change_linked_diff|unreachable|exempt|wildcard_skipped（change_linked_diff=验证窗口内变更关联差异，附 changeOrderId，走变更关联告警通道）
 - wildcard_skipped = 通配符 SAN（如 *.example.com）无法直接 DNS 解析/SNI 拨测，默认跳过并写探测记录（计数可见、不计差异、不告警）；可经 settings `wildcardProbeOverrides` 指定具体子域名替代探测；验证窗口内无 override 的通配符验证项计 skipped，不阻塞达标
 - `HostingStatus` = complete|fingerprint_only
 - `BatchSessionStatus` = running|completed|partial_failed（批量导入会话终态；轮询端点数据源 cert_batch_sessions）
