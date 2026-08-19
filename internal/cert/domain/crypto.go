@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -105,6 +106,44 @@ func NewEnvelopeCryptoFromEnv() (*EnvelopeCrypto, error) {
 		return nil, err
 	}
 	return NewEnvelopeCrypto(keys)
+}
+
+// 主密钥来源标识（NewEnvelopeCryptoWithFallback 返回值）。
+const (
+	// MasterKeySourceEnv 独立环境变量（EIAM_CERT_MASTER_KEY_V<n>，审计设计首选）。
+	MasterKeySourceEnv = "env"
+	// MasterKeySourceFallback 降级来源：由组合根注入的既有配置派生 V1。
+	MasterKeySourceFallback = "fallback"
+)
+
+// NewEnvelopeCryptoWithFallback 环境变量优先的主密钥装配；
+// 一个版本都未配置时调用 fallback 取原始材料，SHA-256 派生为 32 字节 V1 主密钥。
+// 用途：组合根把既有 yaml 加密配置（security.encryption_key，与云账号 AK/SK
+// 加密同源）降级复用为证书主密钥——用户决策"先复用现有配置"，后续可配置
+// 独立 env 并按 keyVersion 轮换迁移（旧密文经 fallback 同源派生仍可读，
+// 与 env 双读窗口语义一致）。
+// 语义边界：env 已配置但非法时原样报错（不降级吞错）；fallback 返回
+// ok=false 或空材料时维持 ErrMasterKeyNotConfigured fail-fast。
+func NewEnvelopeCryptoWithFallback(fallback func() (raw []byte, ok bool)) (*EnvelopeCrypto, string, error) {
+	keys, envErr := loadMasterKeys(os.Environ())
+	if envErr == nil && len(keys) > 0 {
+		c, err := NewEnvelopeCrypto(keys)
+		return c, MasterKeySourceEnv, err
+	}
+	if envErr != nil && !errors.Is(envErr, ErrMasterKeyNotConfigured) {
+		return nil, "", envErr
+	}
+	if raw, ok := fallback(); ok && len(raw) > 0 {
+		sum := sha256.Sum256(raw)
+		derived := sum[:] // 数组取切片，生命周期随本调用
+		c, err := NewEnvelopeCrypto(map[int][]byte{1: derived})
+		Zeroize(&raw)
+		return c, MasterKeySourceFallback, err
+	}
+	if envErr != nil {
+		return nil, "", envErr
+	}
+	return nil, "", ErrMasterKeyNotConfigured
 }
 
 // loadMasterKeys 从环境变量键值对列表解析各版本主密钥。

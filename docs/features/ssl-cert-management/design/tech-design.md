@@ -478,6 +478,12 @@ No existing-page integrations — not applicable.（全部为新页面，e-cam-w
 - **审计绕过**：变更无记录导致事后无法追溯
 - **K8s 凭证泄露**：kubeconfig 可直连集群 API Server
 
+### 主密钥来源偏差（2026-08-19 用户决策）
+
+`NewEnvelopeCryptoWithFallback`：主密钥 **env 优先**（`EIAM_CERT_MASTER_KEY_V<n>`，本设计首选）；一个版本都未配置时**降级复用应用 config `security.encryption_key`**（与云账号 AK/SK 加密同源）经 SHA-256 派生为 32 字节 V1，装配时打 Warn 日志。env 已配置但非法时仍 fail-fast，不降级吞错。
+
+**迁移陷阱**：降级期入库的密文 keyVersion=1。后续切换独立 env 时，`EIAM_CERT_MASTER_KEY_V1` 必须先设为 `base64(sha256(security.encryption_key))`（与降级派生值一致，存量密文可读），再按轮换流程新增 V2 迁移；直接设一个新值 V1 会导致存量私钥/kubeconfig 密文不可解。
+
 ### Mitigations
 
 - 私钥：AES-256-GCM 信封加密，主密钥从环境变量注入独立于业务数据，`keyVersion` 支持轮换；仅在解析/校验/上传云证书库的内存中解密，用后 `zeroing`，不落盘/不进日志与报告

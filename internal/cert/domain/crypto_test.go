@@ -3,6 +3,7 @@ package domain
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"strings"
@@ -487,5 +488,70 @@ func TestZeroize(t *testing.T) {
 func TestAlgoConstantMatchesSchema(t *testing.T) {
 	if AlgoAES256GCM != "AES-256-GCM" {
 		t.Errorf("AlgoAES256GCM = %q, want %q (schema.sql algo enum)", AlgoAES256GCM, "AES-256-GCM")
+	}
+}
+
+// ---------------------------------------------------------------------
+// NewEnvelopeCryptoWithFallback（module.go 降级装配的域层支撑）
+// ---------------------------------------------------------------------
+
+func TestNewEnvelopeCryptoWithFallback_NoEnvUsesFallback(t *testing.T) {
+	// 测试进程未注入 EIAM_CERT_MASTER_KEY_*，fallback 提供任意长度材料即可。
+	raw := []byte("shared-security-encryption-key")
+	c, source, err := NewEnvelopeCryptoWithFallback(func() ([]byte, bool) { return raw, true })
+	if err != nil || source != MasterKeySourceFallback {
+		t.Fatalf("expect fallback source, got source=%q err=%v", source, err)
+	}
+	ct, ver, err := c.Encrypt([]byte("secret"))
+	if err != nil || ver != 1 {
+		t.Fatalf("encrypt: ver=%d err=%v", ver, err)
+	}
+	if _, err := c.Decrypt(ct, ver); err != nil {
+		t.Fatalf("roundtrip decrypt: %v", err)
+	}
+	// 派生确定性：同材料再派生一次应能解旧密文。
+	c2, _, _ := NewEnvelopeCryptoWithFallback(func() ([]byte, bool) { return []byte("shared-security-encryption-key"), true })
+	if _, err := c2.Decrypt(ct, ver); err != nil {
+		t.Fatalf("re-derived key must decrypt old ciphertext: %v", err)
+	}
+}
+
+func TestNewEnvelopeCryptoWithFallback_FallbackAbsentErrors(t *testing.T) {
+	if _, _, err := NewEnvelopeCryptoWithFallback(func() ([]byte, bool) { return nil, false }); err == nil {
+		t.Fatal("expect ErrMasterKeyNotConfigured")
+	} else if !errors.Is(err, ErrMasterKeyNotConfigured) {
+		t.Fatalf("expect ErrMasterKeyNotConfigured, got %v", err)
+	}
+	if _, _, err := NewEnvelopeCryptoWithFallback(func() ([]byte, bool) { return []byte{}, true }); err == nil {
+		t.Fatal("empty material must also fail-fast")
+	}
+}
+
+func TestNewEnvelopeCryptoWithFallback_EnvWins(t *testing.T) {
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i + 1)
+	}
+	t.Setenv("EIAM_CERT_MASTER_KEY_V1", base64.StdEncoding.EncodeToString(key))
+	c, source, err := NewEnvelopeCryptoWithFallback(func() ([]byte, bool) { return []byte("fallback-ignored"), true })
+	if err != nil || source != MasterKeySourceEnv {
+		t.Fatalf("expect env source, got source=%q err=%v", source, err)
+	}
+	ct, ver, err := c.Encrypt([]byte("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// env 密钥 ≠ fallback 派生密钥：fallback 派生实现解不开 env 密文。
+	sum := sha256.Sum256([]byte("fallback-ignored"))
+	cfb, _ := NewEnvelopeCrypto(map[int][]byte{1: sum[:]})
+	if _, err := cfb.Decrypt(ct, ver); err == nil {
+		t.Fatal("fallback-derived key must NOT decrypt env-key ciphertext")
+	}
+}
+
+func TestNewEnvelopeCryptoWithFallback_BadEnvStillFails(t *testing.T) {
+	t.Setenv("EIAM_CERT_MASTER_KEY_V1", "!!!not-base64!!!")
+	if _, _, err := NewEnvelopeCryptoWithFallback(func() ([]byte, bool) { return []byte("ok"), true }); err == nil {
+		t.Fatal("invalid env must fail-fast, never silently fall back")
 	}
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/spf13/viper"
 )
 
 // Module 证书管理功能域模块。
@@ -79,8 +80,10 @@ type Module struct {
 // 启动失败语义（fail-fast，均返回 error 阻断 app boot）：
 //   - EnsureIndexes 失败：uk_active_mutex 部分唯一索引承载在途互斥正确性
 //     （5.1 体系），索引缺失即降级为纯应用层检查，不可静默启动；
-//   - NewEnvelopeCryptoFromEnv 失败：主密钥未配置/非法（1.1 契约：启动期
-//     必须调用，出错即启动失败——私钥信封加密为域核心安全前提）。
+//   - 信封加密装配失败：主密钥 env 与降级来源均不可用或配置非法（1.1 契约：
+//     私钥信封加密为域核心安全前提，启动期 fail-fast；env 优先，未配置时
+//     降级复用 security.encryption_key 派生 V1——用户决策"先复用现有配置"，
+//     见 cryptoFallbackFromAppConfig）。
 func InitCertModule(
 	db *mongox.Mongo,
 	logger *elog.Component,
@@ -100,9 +103,12 @@ func InitCertModule(
 	if err := repository.EnsureIndexes(context.Background(), db); err != nil {
 		return nil, fmt.Errorf("cert: ensure indexes: %w", err)
 	}
-	crypto, err := domain.NewEnvelopeCryptoFromEnv()
+	crypto, keySource, err := domain.NewEnvelopeCryptoWithFallback(cryptoFallbackFromAppConfig)
 	if err != nil {
-		return nil, fmt.Errorf("cert: envelope crypto from env: %w", err)
+		return nil, fmt.Errorf("cert: envelope crypto: %w", err)
+	}
+	if keySource == domain.MasterKeySourceFallback {
+		logger.Warn("cert: 未配置独立主密钥环境变量 EIAM_CERT_MASTER_KEY_V<n>，已降级复用 security.encryption_key 派生 V1 主密钥（与云账号 AK/SK 加密同源，隔离性弱于独立 env）；建议后续配置独立 env 并按 keyVersion 轮换迁移")
 	}
 
 	repos := repository.NewRepositories(db)
@@ -314,4 +320,18 @@ func (n *publisherItemTimeoutNotifier) NotifyItemTimedOut(ctx context.Context, o
 			itemID, orderID, heartbeatAt.Format(time.RFC3339), recoveredAt.Format(time.RFC3339)),
 		At: recoveredAt,
 	})
+}
+
+// cryptoFallbackFromAppConfig 主密钥 env 缺失时的降级来源：
+// 复用应用 config security.encryption_key（云账号 AK/SK 加密已在用的
+// 密钥材料，test.yaml/prod.yaml 已有），由 NewEnvelopeCryptoWithFallback
+// 经 SHA-256 派生为 32 字节 V1 主密钥。键缺失/为空返回 ok=false。
+func cryptoFallbackFromAppConfig() ([]byte, bool) {
+	var sec struct {
+		EncryptionKey string `mapstructure:"encryption_key"`
+	}
+	if err := viper.UnmarshalKey("security", &sec); err != nil || sec.EncryptionKey == "" {
+		return nil, false
+	}
+	return []byte(sec.EncryptionKey), true
 }
