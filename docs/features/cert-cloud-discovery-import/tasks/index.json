@@ -1,0 +1,235 @@
+{
+  "feature": "cert-cloud-discovery-import",
+  "proposal": "docs/proposals/cert-cloud-discovery-import/proposal.md",
+  "created": "2026-08-25",
+  "tasks": {
+    "1-cloudx-cert-pem-channel": {
+      "id": "1",
+      "title": "四云 GetCert 通道扩展暴露净化 PEM",
+      "priority": "P0",
+      "estimatedTime": "2h",
+      "status": "pending",
+      "file": "1-cloudx-cert-pem-channel.md",
+      "record": "records/1-cloudx-cert-pem-channel.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "high"
+    },
+    "2-discovery-import-session-entity": {
+      "id": "2",
+      "title": "发现导入会话实体与仓储",
+      "priority": "P0",
+      "estimatedTime": "1h",
+      "status": "pending",
+      "file": "2-discovery-import-session-entity.md",
+      "record": "records/2-discovery-import-session-entity.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "medium"
+    },
+    "3-discovery-preview-snapshot-status-endpoints": {
+      "id": "3",
+      "title": "发现预览与快照状态查询端点",
+      "priority": "P0",
+      "estimatedTime": "2h",
+      "status": "pending",
+      "file": "3-discovery-preview-snapshot-status-endpoints.md",
+      "record": "records/3-discovery-preview-snapshot-status-endpoints.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "high"
+    },
+    "4-discovery-import-service": {
+      "id": "4",
+      "title": "发现导入服务编排",
+      "priority": "P0",
+      "estimatedTime": "2h",
+      "dependencies": [
+        "1",
+        "2"
+      ],
+      "status": "pending",
+      "file": "4-discovery-import-service.md",
+      "record": "records/4-discovery-import-service.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "high"
+    },
+    "5-discovery-import-endpoints": {
+      "id": "5",
+      "title": "发现导入会话端点与权限矩阵",
+      "priority": "P1",
+      "estimatedTime": "1h",
+      "dependencies": [
+        "4"
+      ],
+      "status": "pending",
+      "file": "5-discovery-import-endpoints.md",
+      "record": "records/5-discovery-import-endpoints.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "medium"
+    },
+    "6-web-discovery-import-modal": {
+      "id": "6",
+      "title": "前端：从云端导入入口与预览 Modal",
+      "priority": "P1",
+      "estimatedTime": "2h",
+      "dependencies": [
+        "3"
+      ],
+      "status": "pending",
+      "file": "6-web-discovery-import-modal.md",
+      "record": "records/6-web-discovery-import-modal.md",
+      "type": "coding.feature",
+      "complexity": "high"
+    },
+    "7-web-discovery-import-progress": {
+      "id": "7",
+      "title": "前端：导入进度交互与完成刷新",
+      "priority": "P1",
+      "estimatedTime": "1h",
+      "dependencies": [
+        "5",
+        "6"
+      ],
+      "status": "pending",
+      "file": "7-web-discovery-import-progress.md",
+      "record": "records/7-web-discovery-import-progress.md",
+      "type": "coding.feature",
+      "complexity": "medium"
+    },
+    "8-web-no-snapshot-guidance": {
+      "id": "8",
+      "title": "前端：无快照引导流程",
+      "priority": "P1",
+      "estimatedTime": "1h",
+      "dependencies": [
+        "3",
+        "6"
+      ],
+      "status": "pending",
+      "file": "8-web-no-snapshot-guidance.md",
+      "record": "records/8-web-no-snapshot-guidance.md",
+      "type": "coding.feature",
+      "complexity": "medium"
+    },
+    "clean-code": {
+      "id": "T-clean-code",
+      "title": "Simplify and Clean Code",
+      "priority": "P2",
+      "estimatedTime": "20min",
+      "dependencies": [
+        "8"
+      ],
+      "status": "pending",
+      "file": "clean-code.md",
+      "record": "records/clean-code.md",
+      "type": "code-quality.simplify"
+    },
+    "gen-contracts": {
+      "id": "T-test-gen-contracts",
+      "title": "Generate Test Contracts",
+      "priority": "P1",
+      "estimatedTime": "30-45min",
+      "dependencies": [
+        "T-test-gen-journeys"
+      ],
+      "status": "pending",
+      "file": "gen-contracts.md",
+      "record": "records/gen-contracts.md",
+      "type": "test.gen-contracts"
+    },
+    "gen-journeys": {
+      "id": "T-test-gen-journeys",
+      "title": "Generate Test Journeys",
+      "priority": "P1",
+      "estimatedTime": "20-30min",
+      "dependencies": [
+        "T-clean-code",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "1",
+        "2"
+      ],
+      "status": "pending",
+      "file": "gen-journeys.md",
+      "record": "records/gen-journeys.md",
+      "type": "test.gen-journeys"
+    },
+    "gen-test-scripts": {
+      "id": "T-test-gen-scripts",
+      "title": "Generate API Functional Test Scripts",
+      "priority": "P1",
+      "estimatedTime": "1-2h",
+      "dependencies": [
+        "T-test-gen-contracts"
+      ],
+      "status": "pending",
+      "file": "gen-test-scripts.md",
+      "record": "records/gen-test-scripts.md",
+      "surface-key": ".",
+      "surface-type": "api",
+      "type": "test.gen-scripts"
+    },
+    "quick-drift-detection": {
+      "id": "T-quick-doc-drift",
+      "title": "Detect Spec Drift",
+      "priority": "P2",
+      "estimatedTime": "15min",
+      "dependencies": [
+        "T-test-run"
+      ],
+      "status": "pending",
+      "file": "quick-drift-detection.md",
+      "record": "records/quick-drift-detection.md",
+      "type": "doc.drift"
+    },
+    "run-test": {
+      "id": "T-test-run",
+      "title": "Run API Functional Test",
+      "priority": "P1",
+      "estimatedTime": "30min-1h",
+      "dependencies": [
+        "T-test-gen-scripts"
+      ],
+      "status": "pending",
+      "file": "run-test.md",
+      "record": "records/run-test.md",
+      "surface-key": ".",
+      "surface-type": "api",
+      "type": "test.run"
+    },
+    "validate-code": {
+      "id": "T-validate-code",
+      "title": "Validate Code Quality",
+      "priority": "P2",
+      "estimatedTime": "15min",
+      "dependencies": [
+        "T-test-run"
+      ],
+      "status": "pending",
+      "file": "validate-code.md",
+      "record": "records/validate-code.md",
+      "type": "validation.code"
+    }
+  },
+  "statusEnum": [
+    "pending",
+    "in_progress",
+    "completed",
+    "blocked",
+    "suspended",
+    "skipped",
+    "rejected"
+  ],
+  "priorityEnum": [
+    "P0",
+    "P1",
+    "P2"
+  ]
+}
