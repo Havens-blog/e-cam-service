@@ -93,7 +93,7 @@
         "5",
         "6"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "7-web-discovery-import-progress.md",
       "record": "records/7-web-discovery-import-progress.md",
       "type": "coding.feature",
@@ -108,7 +108,7 @@
         "3",
         "6"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "8-web-no-snapshot-guidance.md",
       "record": "records/8-web-no-snapshot-guidance.md",
       "type": "coding.feature",
@@ -122,7 +122,7 @@
       "dependencies": [
         "8"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "clean-code.md",
       "record": "records/clean-code.md",
       "type": "code-quality.simplify"

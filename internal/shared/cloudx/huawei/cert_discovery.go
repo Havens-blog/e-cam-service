@@ -465,8 +465,7 @@ func elbListenerResourceID(listener elbmodel.Listener) string {
 // 历史行为说明：本方法原先调用 SCM 读取 SHA-1 指纹，但该口径永不匹配台账
 // ^[0-9a-f]{64}$ 对齐校验（扫描侧落占位指纹），移除后各消费方行为不变；
 // 等 SCM API 提供 PEM 导出后恢复详情读取（proposal Out of Scope）。
-func (a *CertDiscoveryAdapter) GetCert(ctx context.Context, creds *domain.CloudAccount, cloudCertID string) (CloudCertInfo, error) {
-	_ = ctx
+func (a *CertDiscoveryAdapter) GetCert(_ context.Context, creds *domain.CloudAccount, cloudCertID string) (CloudCertInfo, error) {
 	if creds == nil {
 		return CloudCertInfo{}, fmt.Errorf("huawei cert get: nil creds")
 	}

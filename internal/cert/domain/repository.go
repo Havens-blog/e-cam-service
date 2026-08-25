@@ -214,7 +214,7 @@ type ChangeItemRepository interface {
 	UpdateHeartbeat(ctx context.Context, itemID string, at time.Time) error
 	// ClaimForExecution 子任务领取执行权（任务 5.7）：CAS status=pending→running
 	// 并同原子写 heartbeatAt/heartbeat 基准与 executedAt。返回 false=未命中
-	//（已��领取或已终态——任务框架重投递时幂等跳过），非错误。
+	//（已被领取或已终态——任务框架重投递时幂等跳过），非错误。
 	ClaimForExecution(ctx context.Context, itemID string, at time.Time) (bool, error)
 	// MarkRateLimited 项遇云 API 限流（任务 5.7）：status→rate_limited（进度
 	// 轮询可见"限流重试中"）并刷新 heartbeatAt（退避期间保活，防

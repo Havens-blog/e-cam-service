@@ -59,7 +59,7 @@ const (
 // CertError 携带 CERT_* 错误码的证书域错误，供 web 层映射 HTTP status + code 信封。
 // message 为静态文案/安全参数（时间、算法名等），永不包含私钥、密文或 PEM 片段。
 // 以指针哨兵形式定义（var Err* = &CertError{...}），配套 errors.Is / errors.As 使用；
-// 抛出带上下文的错误一律 fmt.Errorf("%w: ...", ErrXxx) 包装，上下文同样不得含���感材料。
+// 抛出带上下文的错误一律 fmt.Errorf("%w: ...", ErrXxx) 包装，上下文同样不得含敏感材料。
 type CertError struct {
 	code string
 	msg  string

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCertReferenceRepo（集成）批量写入/按指纹查��/按快照清理。
+// TestCertReferenceRepo（集成）批量写入/按指纹查询/按快照清理。
 func TestCertReferenceRepo(t *testing.T) {
 	db := newTestMongo(t)
 	ctx := context.Background()
