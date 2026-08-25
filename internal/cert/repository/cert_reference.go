@@ -80,6 +80,26 @@ func (r *certReferenceRepository) DeleteBySnapshotID(ctx context.Context, snapsh
 	return res.DeletedCount, nil
 }
 
+// BackfillFingerprint 占位指纹引用回填（任务 4 CAS：filter 含 fromFingerprint，
+// 真实指纹引用永不被覆盖；from==to 无操作）。返回回填条数。
+func (r *certReferenceRepository) BackfillFingerprint(ctx context.Context, cloud, accountKey, cloudCertID, fromFingerprint, toFingerprint string) (int64, error) {
+	if fromFingerprint == toFingerprint {
+		return 0, nil
+	}
+	res, err := r.db.Collection(CertReferencesCollection).UpdateMany(ctx,
+		bson.M{
+			"cloud":                 cloud,
+			"accountKey":            accountKey,
+			"referencedCloudCertId": cloudCertID,
+			"certFingerprint":       fromFingerprint,
+		},
+		bson.M{"$set": bson.M{"certFingerprint": toFingerprint}})
+	if err != nil {
+		return 0, err
+	}
+	return res.ModifiedCount, nil
+}
+
 // toAnySlice 将模型切片转为 InsertMany 所需 []interface{}。
 func toAnySlice[T any](in []T) []interface{} {
 	out := make([]interface{}, len(in))

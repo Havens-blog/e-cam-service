@@ -747,6 +747,28 @@ func (f *FakeCertReferenceRepo) DeleteBySnapshotID(_ context.Context, snapshotID
 	return n, nil
 }
 
+// BackfillFingerprint 占位指纹引用回填（任务 4 CAS 语义：仅 certFingerprint
+// 仍等于 fromFingerprint 的引用被更新为 toFingerprint；from==to 无操作）。
+func (f *FakeCertReferenceRepo) BackfillFingerprint(_ context.Context, cloud, accountKey, cloudCertID, fromFingerprint, toFingerprint string) (int64, error) {
+	if fromFingerprint == toFingerprint {
+		return 0, nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for i := range f.refs {
+		r := &f.refs[i]
+		if r.Cloud == domain.Cloud(cloud) &&
+			r.AccountKey == accountKey &&
+			r.ReferencedCloudCertID == cloudCertID &&
+			r.CertFingerprint == fromFingerprint {
+			r.CertFingerprint = toFingerprint
+			n++
+		}
+	}
+	return n, nil
+}
+
 // ---------------------------------------------------------------------
 // K8s 凭证 / CRD 登记内存假实现（任务 3.4）
 // ---------------------------------------------------------------------

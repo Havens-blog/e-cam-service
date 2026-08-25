@@ -44,6 +44,45 @@ func TestCertReferenceRepo(t *testing.T) {
 	assert.Len(t, got, 1)
 }
 
+// TestCertReferenceRepo_BackfillFingerprint（集成，任务 4）占位指纹引用回填：
+// (cloud,accountKey,cloudCertId) 定位 + fromFingerprint CAS——真实指纹引用
+// 永不被覆盖、相邻占位引用不受影响、from==to 无操作。
+func TestCertReferenceRepo_BackfillFingerprint(t *testing.T) {
+	db := newTestMongo(t)
+	ctx := context.Background()
+	require.NoError(t, EnsureIndexes(ctx, db))
+	repo := NewCertReferenceRepository(db)
+
+	from, to := testFingerprint(7), testFingerprint(8)
+	refs := []domain.CertReference{
+		{CertFingerprint: from, Cloud: domain.CloudTencent, Product: domain.ProductCDN,
+			ResourceID: "res-1", ReferencedCloudCertID: "ssl-9", AccountKey: "acct-tx", SnapshotID: "snap-1"},
+		{CertFingerprint: from, Cloud: domain.CloudTencent, Product: domain.ProductWAF,
+			ResourceID: "res-2", ReferencedCloudCertID: "ssl-9", AccountKey: "acct-tx", SnapshotID: "snap-1"},
+		// 真实指纹引用（同三元组）——永不被覆盖
+		{CertFingerprint: to, Cloud: domain.CloudTencent, Product: domain.ProductCDN,
+			ResourceID: "res-3", ReferencedCloudCertID: "ssl-9", AccountKey: "acct-tx", SnapshotID: "snap-1"},
+		// 相邻占位引用：不同三元组
+		{CertFingerprint: from, Cloud: domain.CloudTencent, Product: domain.ProductCDN,
+			ResourceID: "res-4", ReferencedCloudCertID: "ssl-9", AccountKey: "acct-tx2", SnapshotID: "snap-1"},
+	}
+	_, err := repo.CreateMulti(ctx, refs)
+	require.NoError(t, err)
+
+	n, err := repo.BackfillFingerprint(ctx, "tencent", "acct-tx", "ssl-9", from, to)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n, "仅 acct-tx@ssl-9 的占位引用被回填")
+
+	got, err := repo.ListByFingerprint(ctx, to)
+	require.NoError(t, err)
+	assert.Len(t, got, 3, "2 条回填 + 1 条既有真实指纹引用")
+
+	// from==to 无操作（同值幂等）
+	n, err = repo.BackfillFingerprint(ctx, "tencent", "acct-tx", "ssl-9", to, to)
+	require.NoError(t, err)
+	assert.Zero(t, n)
+}
+
 // TestScanSnapshotRepo（集成）快照创建默认 running + 终止收敛。
 func TestScanSnapshotRepo(t *testing.T) {
 	db := newTestMongo(t)

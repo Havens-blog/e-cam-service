@@ -77,6 +77,14 @@ type CertReferenceRepository interface {
 	// ListBySnapshotID 按快照查询全部引用（任务 2.3：refCount 派生与 stats
 	// 分母聚合的数据源；idx_snapshot）。
 	ListBySnapshotID(ctx context.Context, snapshotID string) ([]CertReference, error)
+	// BackfillFingerprint 占位指纹引用回填（cert-cloud-discovery-import 任务 4）：
+	// 将 (cloud,accountKey,referencedCloudCertId) 定位且当前指纹仍为 fromFingerprint
+	//（扫描侧占位公式派生值）的引用批量更新为 toFingerprint（导入时点 GetCert 解析
+	// 的真实指纹）。filter 含 fromFingerprint 构成 CAS 语义——真实指纹引用永不被
+	// 覆盖；fromFingerprint==toFingerprint 时无操作。返回回填条数。
+	// 与重扫描并发写为良性竞争：占位指纹是确定性可重算值，同值幂等（任务 4
+	// Implementation Notes）。
+	BackfillFingerprint(ctx context.Context, cloud, accountKey, cloudCertID, fromFingerprint, toFingerprint string) (int64, error)
 	// DeleteBySnapshotID 按快照清理（idx_snapshot）。
 	DeleteBySnapshotID(ctx context.Context, snapshotID string) (int64, error)
 }
