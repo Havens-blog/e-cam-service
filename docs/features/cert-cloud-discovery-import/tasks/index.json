@@ -78,7 +78,7 @@
       "dependencies": [
         "3"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "6-web-discovery-import-modal.md",
       "record": "records/6-web-discovery-import-modal.md",
       "type": "coding.feature",
