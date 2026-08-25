@@ -20,22 +20,25 @@ type Repositories struct {
 	K8sCredentials domain.K8sCredentialRepository
 	BatchSessions  domain.CertBatchSessionRepository
 	CrdRegs        domain.CrdRegistrationRepository
+	// DiscoveryImportSessions 云端发现导入会话仓储（cert-cloud-discovery-import 任务 2）。
+	DiscoveryImportSessions domain.DiscoveryImportSessionRepository
 }
 
 // NewRepositories 装配全部 cert 仓储。
 func NewRepositories(db *mongox.Mongo) *Repositories {
 	return &Repositories{
-		Certificates:   NewCertificateRepository(db),
-		CertReferences: NewCertReferenceRepository(db),
-		ScanSnapshots:  NewScanSnapshotRepository(db),
-		ChangeOrders:   NewChangeOrderRepository(db),
-		ChangeItems:    NewChangeItemRepository(db),
-		CloudMappings:  NewCloudCertMappingRepository(db),
-		ProbeResults:   NewProbeResultRepository(db),
-		Exemptions:     NewExemptionRepository(db),
-		AlertConfig:    NewAlertConfigRepository(db),
-		K8sCredentials: NewK8sCredentialRepository(db),
-		BatchSessions:  NewCertBatchSessionRepository(db),
-		CrdRegs:        NewCrdRegistrationRepository(db),
+		Certificates:            NewCertificateRepository(db),
+		CertReferences:          NewCertReferenceRepository(db),
+		ScanSnapshots:           NewScanSnapshotRepository(db),
+		ChangeOrders:            NewChangeOrderRepository(db),
+		ChangeItems:             NewChangeItemRepository(db),
+		CloudMappings:           NewCloudCertMappingRepository(db),
+		ProbeResults:            NewProbeResultRepository(db),
+		Exemptions:              NewExemptionRepository(db),
+		AlertConfig:             NewAlertConfigRepository(db),
+		K8sCredentials:          NewK8sCredentialRepository(db),
+		BatchSessions:           NewCertBatchSessionRepository(db),
+		CrdRegs:                 NewCrdRegistrationRepository(db),
+		DiscoveryImportSessions: NewDiscoveryImportSessionRepository(db),
 	}
 }

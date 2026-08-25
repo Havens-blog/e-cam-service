@@ -96,6 +96,12 @@ var collectionIndexes = map[string][]mongo.IndexModel{
 			Options: options.Index().SetName("ttl_batch_session_30d").SetExpireAfterSeconds(ttlBatchSession30dSeconds),
 		},
 	},
+	DiscoveryImportSessionsCollection: {
+		{ // TTL：30 天自动清理（与批量会话同口径）
+			Keys:    bson.D{key("createdAt", 1)},
+			Options: options.Index().SetName("ttl_discovery_import_session_30d").SetExpireAfterSeconds(ttlBatchSession30dSeconds),
+		},
+	},
 	CrdRegistrationsCollection: {
 		index("uk_cluster_group_kind", true,
 			key("clusterId", 1), key("apiGroup", 1), key("kind", 1)), // 登记去重
@@ -115,6 +121,7 @@ var collectionOrder = []string{
 	AlertConfigCollection,
 	K8sCredentialsCollection,
 	BatchSessionsCollection,
+	DiscoveryImportSessionsCollection,
 	CrdRegistrationsCollection,
 }
 

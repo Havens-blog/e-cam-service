@@ -353,6 +353,42 @@ var collectionValidators = map[string]bson.M{
 		},
 	),
 
+	// cert_discovery_import_sessions 云端发现导入会话（cert-cloud-discovery-import）
+	DiscoveryImportSessionsCollection: jsonSchema(
+		bson.A{"status", "items", "progress", "operator", "createdAt"},
+		bson.M{
+			"status": enumStr("running", "completed", "partial_failed"),
+			"items": bson.M{
+				"bsonType": "array",
+				"items": bson.M{
+					"bsonType": "object",
+					// 条目以 cloud+accountKey+cloudCertId 三元组定位（区别于批量导入 fileName）
+					"required": bson.A{"cloud", "accountKey", "cloudCertId", "result"},
+					"properties": bson.M{
+						"cloud":        str(),
+						"accountKey":   str(),
+						"cloudCertId":  str(),
+						"result":       enumStr("pending", "success", "failed"),
+						"mappedCertId": str(),
+						"errorReason":  str(),
+					},
+				},
+			},
+			"progress": bson.M{
+				"bsonType": "object",
+				"required": bson.A{"total", "succeeded", "failed"},
+				"properties": bson.M{
+					"total":     bson.M{"bsonType": "int", "minimum": 1},
+					"succeeded": bson.M{"bsonType": "int", "minimum": 0},
+					"failed":    bson.M{"bsonType": "int", "minimum": 0},
+				},
+			},
+			"operator":   str(),
+			"createdAt":  date(),
+			"finishedAt": date(),
+		},
+	),
+
 	// cert_crd_registrations 自定义 CRD 扫描登记
 	CrdRegistrationsCollection: jsonSchema(
 		bson.A{"clusterId", "apiGroup", "kind", "certFieldPath", "enabled", "operator", "createdAt"},

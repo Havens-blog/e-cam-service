@@ -367,6 +367,43 @@ db.createCollection("cert_batch_sessions", {
 db.cert_batch_sessions.createIndex({ createdAt: 1 }, { expireAfterSeconds: 2592000, name: "ttl_batch_session_30d" }); // TTL：30 天自动清理
 
 // ---------------------------------------------------------------------
+// cert_discovery_import_sessions 云端发现导入会话（cert-cloud-discovery-import；
+// 发现→登记两步操作的后端会话载体，进度轮询数据源；条目以三元组定位，
+// 区别于批量导入的 fileName 主键语义）
+// ---------------------------------------------------------------------
+db.createCollection("cert_discovery_import_sessions", {
+  validator: { $jsonSchema: {
+    bsonType: "object",
+    required: ["status", "items", "progress", "operator", "createdAt"],
+    properties: {
+      status:    { bsonType: "string", enum: ["running", "completed", "partial_failed"] }, // DEFAULT="running"
+      items: {                                        // 逐条目结果；部分失败不中断会话，失败条目可重跑（幂等）
+        bsonType: "array",
+        items: { bsonType: "object", required: ["cloud", "accountKey", "cloudCertId", "result"], properties: {
+          cloud:        { bsonType: "string" },        // 云（aliyun/tencent/aws/azure…）
+          accountKey:   { bsonType: "string" },        // 云账号键
+          cloudCertId:  { bsonType: "string" },        // 云侧证书 ID（AWS 为 ARN 形态）
+          result:       { bsonType: "string", enum: ["pending", "success", "failed"] },
+          mappedCertId: { bsonType: "string" },        // result=success 时有值（台账证书 ID）
+          errorReason:  { bsonType: "string" }         // result=failed 时错误码+静态文案
+        }}
+      },
+      progress:  {                                    // {total,succeeded,failed}；repository 写路径随条目完成原子递增
+        bsonType: "object", required: ["total", "succeeded", "failed"], properties: {
+          total:     { bsonType: "int", minimum: 1 },
+          succeeded: { bsonType: "int", minimum: 0 },
+          failed:    { bsonType: "int", minimum: 0 }
+        }
+      },
+      operator:   { bsonType: "string" },
+      createdAt:  { bsonType: "date" },               // DEFAULT=now()；TTL 基准
+      finishedAt: { bsonType: "date" }                // DEFAULT=null；终态由 progress.failed 判定（failed>0 → partial_failed）
+    }
+  }}
+});
+db.cert_discovery_import_sessions.createIndex({ createdAt: 1 }, { expireAfterSeconds: 2592000, name: "ttl_discovery_import_session_30d" }); // TTL：30 天自动清理
+
+// ---------------------------------------------------------------------
 // cert_crd_registrations 自定义 CRD 扫描登记（K8sAPIChannel 扫描范围联动）
 // ---------------------------------------------------------------------
 db.createCollection("cert_crd_registrations", {

@@ -13,22 +13,23 @@ import (
 
 // expectedIndexes schema.sql 全部索引名（1:1 对照 er-diagram.md 索引策略表）。
 var expectedIndexes = map[string][]string{
-	CertificatesCollection:      {"uk_fingerprint", "idx_hosting_status", "idx_not_after"},
-	CertReferencesCollection:    {"idx_fp_cloud_product", "idx_snapshot"},
-	ScanSnapshotsCollection:     {"idx_started_at_desc"},
-	ChangeOrdersCollection:      {"uk_active_mutex", "idx_old_fp_status"},
-	ChangeItemsCollection:       {"idx_order", "idx_order_status", "idx_order_batch", "idx_status_heartbeat"},
-	CloudCertMappingsCollection: {"uk_fp_cloud_account"},
-	ProbeResultsCollection:      {"idx_domain_probe_desc", "ttl_probe_90d"},
-	ExemptionsCollection:        {"uk_domain"},
-	AlertConfigCollection:       {},
-	K8sCredentialsCollection:    {"uk_cluster_name"},
-	BatchSessionsCollection:     {"ttl_batch_session_30d"},
-	CrdRegistrationsCollection:  {"uk_cluster_group_kind"},
+	CertificatesCollection:            {"uk_fingerprint", "idx_hosting_status", "idx_not_after"},
+	CertReferencesCollection:          {"idx_fp_cloud_product", "idx_snapshot"},
+	ScanSnapshotsCollection:           {"idx_started_at_desc"},
+	ChangeOrdersCollection:            {"uk_active_mutex", "idx_old_fp_status"},
+	ChangeItemsCollection:             {"idx_order", "idx_order_status", "idx_order_batch", "idx_status_heartbeat"},
+	CloudCertMappingsCollection:       {"uk_fp_cloud_account"},
+	ProbeResultsCollection:            {"idx_domain_probe_desc", "ttl_probe_90d"},
+	ExemptionsCollection:              {"uk_domain"},
+	AlertConfigCollection:             {},
+	K8sCredentialsCollection:          {"uk_cluster_name"},
+	BatchSessionsCollection:           {"ttl_batch_session_30d"},
+	DiscoveryImportSessionsCollection: {"ttl_discovery_import_session_30d"},
+	CrdRegistrationsCollection:        {"uk_cluster_group_kind"},
 }
 
 // TestEnsureIndexes_CreatesAllCollectionsAndIndexes（集成，需 mongox test 实例）
-// EnsureIndexes 后 12 集合存在且索引名与 schema.sql 完全一致；重复执行幂等。
+// EnsureIndexes 后 13 集合存在且索引名与 schema.sql 完全一致；重复执行幂等。
 func TestEnsureIndexes_CreatesAllCollectionsAndIndexes(t *testing.T) {
 	db := newTestMongo(t)
 	ctx := context.Background()
@@ -80,6 +81,10 @@ func TestEnsureIndexes_IndexOptions(t *testing.T) {
 	ttlBatch := findIndexByName(t, ctx, db, BatchSessionsCollection, "ttl_batch_session_30d")
 	assert.Equal(t, int32(ttlBatchSession30dSeconds), ttlBatch["expireAfterSeconds"],
 		"ttl_batch_session_30d 应为 30 天 TTL")
+
+	ttlDiscovery := findIndexByName(t, ctx, db, DiscoveryImportSessionsCollection, "ttl_discovery_import_session_30d")
+	assert.Equal(t, int32(ttlBatchSession30dSeconds), ttlDiscovery["expireAfterSeconds"],
+		"ttl_discovery_import_session_30d 应为 30 天 TTL（与批量会话同口径）")
 
 	for _, u := range []struct{ coll, name string }{
 		{CloudCertMappingsCollection, "uk_fp_cloud_account"},

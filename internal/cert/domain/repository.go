@@ -317,6 +317,23 @@ type CertBatchSessionRepository interface {
 	MarkFinished(ctx context.Context, id string, status BatchSessionStatus) error
 }
 
+// DiscoveryImportSessionRepository 云端发现导入会话仓储
+// （cert_discovery_import_sessions，TTL 30 天；cert-cloud-discovery-import 任务 2）。
+type DiscoveryImportSessionRepository interface {
+	// Create 写入会话并返回会话 ID（hex）；DEFAULT 填充：createdAt=now、
+	// status=running、items 空数组。先持久化再异步执行：Create 返回即可轮询
+	//（浏览器中断不丢结果）。
+	Create(ctx context.Context, s *DiscoveryImportSession) (string, error)
+	GetByID(ctx context.Context, id string) (DiscoveryImportSession, error)
+	// RecordItemResult 记录单条目结果并原子递增 progress：
+	// items[itemIndex] 结果更新与 progress.succeeded/failed 的 $inc 在同一原子 update。
+	RecordItemResult(ctx context.Context, id string, itemIndex int, result DiscoveryItemResult, mappedCertID, errorReason string) error
+	// MarkFinished 终态收敛（按失败计数）：以库内 progress.failed 判定终态——
+	// failed>0 → partial_failed，否则 completed；status 与 finishedAt 同一原子
+	// update（聚合管道更新，无读-写竞态窗口）。
+	MarkFinished(ctx context.Context, id string) error
+}
+
 // CrdRegistrationRepository 自定义 CRD 扫描登记仓储（cert_crd_registrations）。
 type CrdRegistrationRepository interface {
 	// Create 写入登记；clusterId+apiGroup+kind 冲突返回 ErrDuplicateCrdRegistration；createdAt=now、enabled=true。

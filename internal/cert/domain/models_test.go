@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// TestBsonTagsMatchSchema 校验 12 个模型（含嵌套结构）的 bson 字段名与
+// TestBsonTagsMatchSchema 校验 13 个模型（含嵌套结构）的 bson 字段名与
 // design/schema.sql 的 $jsonSchema properties 1:1 对齐（不得自行增删字段）。
 // 预期清单转录自 schema.sql 各集合 properties（_id 为 MongoDB 隐含主键）。
 func TestBsonTagsMatchSchema(t *testing.T) {
@@ -81,6 +81,13 @@ func TestBsonTagsMatchSchema(t *testing.T) {
 		}},
 		{"BatchSessionFile", BatchSessionFile{}, false, []string{"fileName", "result", "certId", "errorReason"}},
 		{"BatchProgress", BatchProgress{}, false, []string{"total", "done", "failed"}},
+		{"DiscoveryImportSession", DiscoveryImportSession{}, true, []string{
+			"status", "items", "progress", "operator", "createdAt", "finishedAt",
+		}},
+		{"DiscoveryImportItem", DiscoveryImportItem{}, false, []string{
+			"cloud", "accountKey", "cloudCertId", "result", "mappedCertId", "errorReason",
+		}},
+		{"DiscoveryImportProgress", DiscoveryImportProgress{}, false, []string{"total", "succeeded", "failed"}},
 		{"CrdRegistration", CrdRegistration{}, true, []string{
 			"clusterId", "apiGroup", "kind", "certFieldPath", "enabled",
 			"operator", "createdAt",
@@ -169,6 +176,12 @@ func TestEnumValuesMatchSchema(t *testing.T) {
 		[]string{"running", "completed", "partial_failed"})
 	assertEnum("batchSession.files[].result",
 		[]string{string(BatchFilePending), string(BatchFileSuccess), string(BatchFileFailed)},
+		[]string{"pending", "success", "failed"})
+	assertEnum("discoveryImportSession.status",
+		[]string{string(DiscoveryImportRunning), string(DiscoveryImportCompleted), string(DiscoveryImportPartialFailed)},
+		[]string{"running", "completed", "partial_failed"})
+	assertEnum("discoveryImportSession.items[].result",
+		[]string{string(DiscoveryItemPending), string(DiscoveryItemSuccess), string(DiscoveryItemFailed)},
 		[]string{"pending", "success", "failed"})
 	assertEnum("channel",
 		[]string{string(ChannelCloudAPI), string(ChannelK8sAPI)},

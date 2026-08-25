@@ -20,7 +20,7 @@
       "title": "发现导入会话实体与仓储",
       "priority": "P0",
       "estimatedTime": "1h",
-      "status": "pending",
+      "status": "completed",
       "file": "2-discovery-import-session-entity.md",
       "record": "records/2-discovery-import-session-entity.md",
       "surface-type": "api",

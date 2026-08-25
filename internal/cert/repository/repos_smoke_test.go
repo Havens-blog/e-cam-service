@@ -234,6 +234,76 @@ func TestBatchSessionRepo(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrInvalidID, "非法 hex 应返回 ErrInvalidID 而非查询")
 }
 
+// TestDiscoveryImportSessionRepo（集成）云端发现导入会话：
+// 创建/逐条目进度原子递增/按失败计数收敛终态（completed 与 partial_failed 两分支）。
+func TestDiscoveryImportSessionRepo(t *testing.T) {
+	db := newTestMongo(t)
+	ctx := context.Background()
+	require.NoError(t, EnsureIndexes(ctx, db))
+	repo := NewDiscoveryImportSessionRepository(db)
+
+	s := &domain.DiscoveryImportSession{
+		Items: []domain.DiscoveryImportItem{
+			{Cloud: "aliyun", AccountKey: "acc-1", CloudCertID: "cert-1", Result: domain.DiscoveryItemPending},
+			{Cloud: "tencent", AccountKey: "acc-2", CloudCertID: "cert-2", Result: domain.DiscoveryItemPending},
+		},
+		Progress: domain.DiscoveryImportProgress{Total: 2},
+		Operator: "op-1",
+	}
+	id, err := repo.Create(ctx, s)
+	require.NoError(t, err)
+	assert.NotEmpty(t, id)
+
+	got, err := repo.GetByID(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, domain.DiscoveryImportRunning, got.Status, "DEFAULT status=running")
+	assert.False(t, got.CreatedAt.IsZero(), "DEFAULT createdAt=now")
+	assert.Equal(t, "aliyun", got.Items[0].Cloud)
+	assert.Equal(t, "acc-1", got.Items[0].AccountKey)
+	assert.Equal(t, "cert-1", got.Items[0].CloudCertID)
+
+	// 单条目成功：结果与 progress.succeeded 原子递增
+	require.NoError(t, repo.RecordItemResult(ctx, id, 0, domain.DiscoveryItemSuccess, testFingerprint(11), ""))
+	// 单条目失败：结果与 progress.failed 原子递增
+	require.NoError(t, repo.RecordItemResult(ctx, id, 1, domain.DiscoveryItemFailed, "", "CERT_GET_FAILED: 云侧已不存在"))
+
+	got, err = repo.GetByID(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, domain.DiscoveryItemSuccess, got.Items[0].Result)
+	assert.Equal(t, testFingerprint(11), got.Items[0].MappedCertID)
+	assert.Equal(t, domain.DiscoveryItemFailed, got.Items[1].Result)
+	assert.Equal(t, "CERT_GET_FAILED: 云侧已不存在", got.Items[1].ErrorReason)
+	assert.Equal(t, 1, got.Progress.Succeeded)
+	assert.Equal(t, 1, got.Progress.Failed)
+
+	// 终态收敛（按失败计数）：failed>0 → partial_failed
+	require.NoError(t, repo.MarkFinished(ctx, id))
+	got, err = repo.GetByID(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, domain.DiscoveryImportPartialFailed, got.Status)
+	assert.NotNil(t, got.FinishedAt)
+
+	// 全成功会话 → completed
+	s2 := &domain.DiscoveryImportSession{
+		Items: []domain.DiscoveryImportItem{
+			{Cloud: "aws", AccountKey: "acc-3", CloudCertID: "arn:aws:acm:cn-north-1:1:certificate/guid", Result: domain.DiscoveryItemPending},
+		},
+		Progress: domain.DiscoveryImportProgress{Total: 1},
+		Operator: "op-1",
+	}
+	id2, err := repo.Create(ctx, s2)
+	require.NoError(t, err)
+	require.NoError(t, repo.RecordItemResult(ctx, id2, 0, domain.DiscoveryItemSuccess, testFingerprint(12), ""))
+	require.NoError(t, repo.MarkFinished(ctx, id2))
+	got2, err := repo.GetByID(ctx, id2)
+	require.NoError(t, err)
+	assert.Equal(t, domain.DiscoveryImportCompleted, got2.Status)
+	assert.NotNil(t, got2.FinishedAt)
+
+	_, err = repo.GetByID(ctx, "zzz")
+	assert.ErrorIs(t, err, domain.ErrInvalidID, "非法 hex 应返回 ErrInvalidID 而非查询")
+}
+
 // TestCrdRegistrationRepo（集成）登记唯一去重 + enabled 过滤。
 func TestCrdRegistrationRepo(t *testing.T) {
 	db := newTestMongo(t)
