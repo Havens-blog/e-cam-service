@@ -77,7 +77,7 @@ func (f *fakeARMLister) list(ctx context.Context, resourceType, apiVersion strin
 
 // fakeKVGetter Key Vault fake（secretID → 原始 secret 字节或错误）。
 // getSecret 返回存储切片原样（共享底层数组），供净化后 Zeroize 契约断言
-//（GetCert 返回后存储切片应已全零）。
+// （GetCert 返回后存储切片应已全零）。
 type fakeKVGetter struct {
 	secrets map[string][]byte
 	errs    map[string]error

@@ -372,7 +372,7 @@ func (a *CertDiscoveryAdapter) listELBListenerReferences(ctx context.Context, cl
 // 有效期；证书不存在 → Exists=false。
 // IAM 托管证书（无 ARN 形态 ID，CloudFront 引用的历史形态）不在 ACM
 // GetCertificate 覆盖范围：返回 ErrCertPEMUnsupported 结构化降级标记
-//（可被上层识别为"暂不支持自动解析"，非通用失败），不发起云 API 调用。
+// （可被上层识别为"暂不支持自动解析"，非通用失败），不发起云 API 调用。
 func (a *CertDiscoveryAdapter) GetCert(ctx context.Context, creds *domain.CloudAccount, cloudCertID string) (CloudCertInfo, error) {
 	if creds == nil {
 		return CloudCertInfo{}, fmt.Errorf("aws cert get: nil creds")
