@@ -1,0 +1,274 @@
+{
+  "facts": [
+    {
+      "fact_id": "DISCOVERY_ENDPOINT_PREVIEW",
+      "source": "static",
+      "subject": "发现预览端点 (internal/cert/web/discovery_handler.go:43)",
+      "kind": "signature",
+      "value": "GET /api/v1/certs/discovery/preview",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "DISCOVERY_ENDPOINT_SNAPSHOT_STATUS",
+      "source": "static",
+      "subject": "快照状态查询端点 (internal/cert/web/discovery_handler.go:44)",
+      "kind": "signature",
+      "value": "GET /api/v1/certs/discovery/snapshot-status",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "DISCOVERY_ENDPOINT_IMPORT",
+      "source": "static",
+      "subject": "发现导入会话创建端点 (internal/cert/web/discovery_handler.go:45)",
+      "kind": "signature",
+      "value": "POST /api/v1/certs/discovery/import",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "DISCOVERY_ENDPOINT_PROGRESS",
+      "source": "static",
+      "subject": "导入会话进度轮询端点 (internal/cert/web/discovery_handler.go:46)",
+      "kind": "signature",
+      "value": "GET /api/v1/certs/discovery/import/:sessionId",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "DISCOVERY_ENDPOINT_AUTH",
+      "source": "static",
+      "subject": "四个发现端点统一挂载 RequireRoles(RoleOpsEngineer) (internal/cert/web/discovery_handler.go:43-46)",
+      "kind": "precondition",
+      "value": "非 OpsEngineer 角色 → 403；未认证 → 401 语义（认证先于角色判定）",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "DISCOVERY_PREVIEW_RESPONSE",
+      "source": "static",
+      "subject": "预览响应 VO 结构 (internal/cert/web/discovery_handler.go:51-68)",
+      "kind": "output_format",
+      "value": "{snapshotId, snapshotStartedAt, count, items[]}；条目 {cloud, accountKey, cloudCertId, refCount, inLedger, notAfter, parseable, parseReason?}",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "DISCOVERY_NOTAFTER_PENDING",
+      "source": "static",
+      "subject": "未登记条目 notAfter 占位文案 (internal/cert/web/discovery_handler.go:17)",
+      "kind": "output_format",
+      "value": "—（导入后补全）",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "DISCOVERY_PREVIEW_NO_SNAPSHOT",
+      "source": "static",
+      "subject": "无 done 快照时预览错误 (domain/errors.go:108 → internal/cert/web/response.go:119-125)",
+      "kind": "error_code",
+      "value": "409 Conflict, code=NO_SNAPSHOT, message=no completed scan snapshot available; run a scan first",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "DISCOVERY_PREVIEW_DEDUP",
+      "source": "static",
+      "subject": "预览去重聚合规则 (internal/cert/service/discovery_preview_service.go:137-168)",
+      "kind": "output_format",
+      "value": "按 cloud+accountKey+cloudCertId 三元组去重；排除 product=crd 引用与空 cloud 条目；条目按 cloud→accountKey→cloudCertId 字典序稳定排序；全程纯 DB 聚合不调云 API",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "DISCOVERY_INLEDGER_DUAL_CHANNEL",
+      "source": "static",
+      "subject": "inLedger 双通道判定 (internal/cert/service/discovery_preview_service.go:190-227)",
+      "kind": "precondition",
+      "value": "通道一：引用指纹命中台账 Certificate.Fingerprint；通道二：CloudCertMapping FindByCloudCertID(cloud,accountKey,cloudCertId) 命中；任一命中即 inLedger=true 且 notAfter 取台账值",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "DISCOVERY_PARSE_MARKERS",
+      "source": "static",
+      "subject": "可解析标记派生规则 (internal/cert/service/discovery_preview_service.go:229-240)",
+      "kind": "output_format",
+      "value": "cloud=huawei → parseable=false, parseReason=unsupported_cloud；cloud=aws 且 cloudCertId 非 arn: 前缀 → parseable=false, parseReason=iam_hosted；占位指纹条目 → parseable=true, parseReason=deferred_parse；其余 parseable=true 且 reason 空",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "PLACEHOLDER_FINGERPRINT_FORMULA",
+      "source": "static",
+      "subject": "占位指纹确定性公式 (internal/cert/service/discovery_preview_service.go:39-41)",
+      "kind": "signature",
+      "value": "sha256hex(\"certscan-unresolved:\" + cloud + \"|\" + accountKey + \"|\" + cloudCertId)",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "SNAPSHOT_STATUS_RESPONSE",
+      "source": "static",
+      "subject": "快照状态响应结构 (internal/cert/web/discovery_handler.go:70-80, discovery_preview_service.go:244-267)",
+      "kind": "output_format",
+      "value": "200 {hasSnapshot, snapshotId?, status?(running/done/failed), startedAt?, failReason?, partialFailures[]}；零快照空态=200 hasSnapshot=false（区别于 preview 的 409 NO_SNAPSHOT）",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "IMPORT_REQUEST_SCHEMA",
+      "source": "static",
+      "subject": "导入请求体结构 (internal/cert/web/discovery_handler.go:108-119)",
+      "kind": "signature",
+      "value": "{items: [{cloud: string, accountKey: string, cloudCertId: string}]}（条目按三元组定位）",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "IMPORT_202_RESPONSE",
+      "source": "static",
+      "subject": "导入创建成功响应 (internal/cert/web/discovery_handler.go:186-202)",
+      "kind": "output_format",
+      "value": "202 Accepted {sessionId, status=running, items[](全部 pending), progress{total=N, succeeded=0, failed=0}, createdAt}；finishedAt 缺省",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "IMPORT_VALIDATION_ERRORS",
+      "source": "static",
+      "subject": "导入请求校验错误 (internal/cert/web/discovery_handler.go:156-175)",
+      "kind": "error_code",
+      "value": "非法 JSON 体 → 400 INVALID_REQUEST \"invalid request body\"；items 空 → 400 INVALID_REQUEST \"items is required\"；条目缺三元组字段 �� 400 INVALID_REQUEST \"items entry requires cloud, accountKey and cloudCertId\"",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "IMPORT_PERSIST_BEFORE_ASYNC",
+      "source": "static",
+      "subject": "会话先持久化再异步执行 (internal/cert/service/discovery_import_service.go:113-139)",
+      "kind": "side_effect",
+      "value": "sessions.Create 落库（status=running, items=pending）成功后才 go runImport 异步逐条处理；浏览器中断不丢结果",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "IMPORT_SESSION_STATUSES",
+      "source": "static",
+      "subject": "会话与条目状态枚举 (internal/cert/domain/discovery_session.go:9-27)",
+      "kind": "output_format",
+      "value": "会话 status: running/completed/partial_failed；条目 result: pending/success/failed；success 时 mappedCertId 有值，failed 时 errorReason 为错误码+静态文案",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "IMPORT_ITEM_ERROR_REASONS",
+      "source": "static",
+      "subject": "逐条目静态失败/说明文案 (internal/cert/service/discovery_import_service.go:38-50)",
+      "kind": "error_code",
+      "value": "CERT_IMPORT_UNSUPPORTED: 该云证书暂不支持自动解析 / CERT_IMPORT_UNSUPPORTED: IAM-hosted 证书暂不支持自动解析 / CERT_GET_FAILED: 云侧已不存在 / CERT_GET_FAILED: 云侧未返回可导入的证书材料 / CERT_GET_FAILED: 云证书读取失败 / ACCOUNT_NOT_FOUND: 云账号不存在或未启用 / ACCOUNT_LOAD_FAILED: 云账号读取失败 / INTERNAL_ERROR: 台账写入失败 / INTERNAL_ERROR: unexpected failure during import / SESSION_TIMEOUT: 会话整体超时，条目可重跑 / ALREADY_IN_LEDGER: 已在台账，已补建映射（success 说明）",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "IMPORT_TIMEOUT_SEMANTICS",
+      "source": "static",
+      "subject": "会话整体限时与记录预算 (internal/cert/service/discovery_import_service.go:24-31,156-168)",
+      "kind": "precondition",
+      "value": "整体限时 discoveryImportTimeout=batchProcessTimeout（10 分钟口径）；到期后剩余条目不再调云 API、逐条记 SESSION_TIMEOUT 失败因（可重跑）；结果记录另有 1 分钟预算，会话不因超时永久卡 running",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "IMPORT_DUPLICATE_FINGERPRINT_PATH",
+      "source": "static",
+      "subject": "撞指纹幂等重放路径 (internal/cert/service/discovery_import_service.go:273-293)",
+      "kind": "side_effect",
+      "value": "certs.Create 捕获 ErrDuplicateFingerprint → GetByFingerprint 取既有证书 → 继续 Upsert 本云本账号 CloudCertMapping → 条目记 success 并附 ALREADY_IN_LEDGER: 已在台账，已补建映射；不产生第二条台账记录",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "BACKFILL_FINGERPRINT_CAS",
+      "source": "static",
+      "subject": "占位指纹引用批量回填 CAS 语义 (internal/cert/service/discovery_import_service.go:308-321, internal/cert/domain/repository.go:80-87)",
+      "kind": "side_effect",
+      "value": "按 (cloud, accountKey, cloudCertId) 将 certFingerprint 仍等于占位公式值的引用批量改为导入时点真实指纹；filter 含占位值构成 CAS（真实指纹引用永不被覆盖）；回填失败仅记日志不失败条目；回填一律以导入时点 GetCert 结果为准",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "UK_FINGERPRINT",
+      "source": "static",
+      "subject": "台账指纹全局唯一约束 (internal/cert/domain/repository.go:12-14, certificate.go:54)",
+      "kind": "precondition",
+      "value": "Certificate.Fingerprint 唯一索引 uk_fingerprint；冲突写入返回哨兵 ErrDuplicateFingerprint",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "UK_FP_CLOUD_ACCOUNT",
+      "source": "static",
+      "subject": "云证书映射两段去重约束 (internal/cert/domain/repository.go:257-265, cloud_cert_mapping.go:21)",
+      "kind": "precondition",
+      "value": "CloudCertMapping 按 (certFingerprint, cloud, accountKey) 唯一索引 uk_fp_cloud_account；Upsert 同键幂等；FindByCloudCertID(cloud, accountKey, cloudCertId) 反查映射",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "PROGRESS_NOT_FOUND",
+      "source": "static",
+      "subject": "进度端点未知会话/非法 ID 错误 (internal/cert/web/response.go:126-135, discovery_handler.go:207-214)",
+      "kind": "error_code",
+      "value": "sessionId 无对应会话 → mongo.ErrNoDocuments → 404 CERT_NOT_FOUND；非法 ObjectID → 400 CERT_INVALID_ID",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "SCAN_TRIGGER_ENDPOINT",
+      "source": "static",
+      "subject": "引用扫描触发端点 (internal/cert/web/reference_handler.go:31-35,163-165)",
+      "kind": "signature",
+      "value": "POST /api/v1/certs/:id/scan（RequireRoles(RoleOpsEngineer)）；扫描在途重触发 → 409 SCAN_IN_PROGRESS 附快照信息",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "PANIC_RECOVERY_ITEM",
+      "source": "static",
+      "subject": "单条 panic 不中断会话 (internal/cert/service/discovery_import_service.go:172-186)",
+      "kind": "side_effect",
+      "value": "processItem defer recover 捕获 panic → 条目记 INTERNAL_ERROR: unexpected failure during import（静态文案不携带 panic 值），会话继续处理后续条目",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "SESSION_TTL_30D",
+      "source": "static",
+      "subject": "发现导入会话 TTL (internal/cert/domain/discovery_session.go:49-51)",
+      "kind": "precondition",
+      "value": "cert_discovery_import_sessions 文档 TTL 30 天自动清理，createdAt 为 TTL 基准",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "PRIVATE_KEY_NEVER_PERSISTED",
+      "source": "static",
+      "subject": "导入路径无私钥落库 (internal/cert/service/discovery_import_service.go:242-270)",
+      "kind": "precondition",
+      "value": "入库 CertPEM 经 SanitizeCertChainPEM 仅含 CERTIFICATE 块（叶在前 fullchain）；hostingStatus=fingerprint_only；EncryptedPrivateKey 缺省为空；云凭证仅内存使用",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "SNAPSHOT_LATEST_DONE_SEMANTICS",
+      "source": "static",
+      "subject": "最近 done 快照选取语义 (internal/cert/domain/repository.go:95-106, internal/cert/repository/scan_snapshot.go:52-54)",
+      "kind": "precondition",
+      "value": "Preview 取 status=done 中 startedAt 最新快照（LatestDone）；SnapshotStatus 取不限状态最近快照（Latest）；两者均无命中时分别返回 ErrNoSnapshot(409 NO_SNAPSHOT) 与 200 hasSnapshot=false",
+      "confidence": "inferred",
+      "updated_at": "2026-08-25T00:00:00Z"
+    }
+  ]
+}
