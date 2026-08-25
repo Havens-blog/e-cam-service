@@ -75,23 +75,25 @@ func (f *fakeARMLister) list(ctx context.Context, resourceType, apiVersion strin
 	return f.items[resourceType], nil
 }
 
-// fakeKVGetter Key Vault fake（secretID → PEM 值或错误）
+// fakeKVGetter Key Vault fake（secretID → 原始 secret 字节或错误）。
+// getSecret 返回存储切片原样（共享底层数组），供净化后 Zeroize 契约断言
+//（GetCert 返回后存储切片应已全零）。
 type fakeKVGetter struct {
-	secrets map[string]string
+	secrets map[string][]byte
 	errs    map[string]error
 	err     error
 	calls   int
 	lastID  string
 }
 
-func (f *fakeKVGetter) getSecret(ctx context.Context, secretID string) (string, error) {
+func (f *fakeKVGetter) getSecret(ctx context.Context, secretID string) ([]byte, error) {
 	f.calls++
 	f.lastID = secretID
 	if f.err != nil {
-		return "", f.err
+		return nil, f.err
 	}
 	if err, ok := f.errs[secretID]; ok {
-		return "", err
+		return nil, err
 	}
 	return f.secrets[secretID], nil
 }
@@ -299,15 +301,41 @@ func TestCertDiscoveryGetCert(t *testing.T) {
 	t.Run("返回PEM解析的SHA256指纹与有效期", func(t *testing.T) {
 		adapter := newTestCertDiscoveryAdapter(t)
 		pemStr, fingerprint := genTestCertPEM(t)
-		fake := &fakeKVGetter{secrets: map[string]string{secretID: pemStr}}
+		fake := &fakeKVGetter{secrets: map[string][]byte{secretID: []byte(pemStr)}}
 		adapter.newKV = func(creds *domain.CloudAccount) (azureKVSecretGetter, error) { return fake, nil }
 
 		info, err := adapter.GetCert(context.Background(), certTestCreds(), secretID)
 		require.NoError(t, err)
 		assert.True(t, info.Exists)
 		assert.Equal(t, fingerprint, info.Fingerprint)
+		assert.Equal(t, pemStr, info.CertChainPEM)
 		assert.True(t, info.NotAfter.After(time.Now().Add(364*24*time.Hour)))
 		assert.Equal(t, secretID, fake.lastID)
+	})
+
+	t.Run("含私钥bundle的secret净化为仅CERTIFICATE序列且原始buffer归零", func(t *testing.T) {
+		adapter := newTestCertDiscoveryAdapter(t)
+		leaf, leafFingerprint := genTestCertPEM(t)
+		intermediate, _ := genTestCertPEM(t)
+		root, _ := genTestCertPEM(t)
+		keyBlock := "-----BEGIN EC PRIVATE KEY-----\nZmFrZS1rZXk=\n-----END EC PRIVATE KEY-----\n"
+		// exportable 密钥策略下的典型 bundle：证书链 + 私钥混排
+		bundle := []byte(keyBlock + leaf + intermediate + root + keyBlock)
+		fake := &fakeKVGetter{secrets: map[string][]byte{secretID: bundle}}
+		adapter.newKV = func(creds *domain.CloudAccount) (azureKVSecretGetter, error) { return fake, nil }
+
+		info, err := adapter.GetCert(context.Background(), certTestCreds(), secretID)
+		require.NoError(t, err)
+		assert.True(t, info.Exists)
+		// 内容级断言：私钥被丢弃、含且仅含 CERTIFICATE 块（叶在前）
+		assert.Equal(t, leaf+intermediate+root, info.CertChainPEM)
+		assert.NotContains(t, info.CertChainPEM, "PRIVATE KEY")
+		assert.True(t, strings.HasPrefix(info.CertChainPEM, "-----BEGIN CERTIFICATE-----"))
+		assert.Equal(t, leafFingerprint, info.Fingerprint)
+		// 原始 secret buffer（fake 存储切片与适配层共享底层数组）净化后已全零
+		for i, b := range bundle {
+			require.Zero(t, b, "原始 secret 第 %d 字节未归零", i)
+		}
 	})
 
 	t.Run("secret不存在返回Exists=false", func(t *testing.T) {
@@ -320,16 +348,18 @@ func TestCertDiscoveryGetCert(t *testing.T) {
 		assert.False(t, info.Exists)
 		assert.Empty(t, info.Fingerprint)
 		assert.True(t, info.NotAfter.IsZero())
+		assert.Empty(t, info.CertChainPEM)
 	})
 
-	t.Run("非证书secret返回Exists=true且指纹为空", func(t *testing.T) {
+	t.Run("非证书secret返回Exists=true且指纹与净化序列为空", func(t *testing.T) {
 		adapter := newTestCertDiscoveryAdapter(t)
-		fake := &fakeKVGetter{secrets: map[string]string{secretID: "plain-secret-value"}}
+		fake := &fakeKVGetter{secrets: map[string][]byte{secretID: []byte("plain-secret-value")}}
 		adapter.newKV = func(creds *domain.CloudAccount) (azureKVSecretGetter, error) { return fake, nil }
 		info, err := adapter.GetCert(context.Background(), certTestCreds(), secretID)
 		require.NoError(t, err)
 		assert.True(t, info.Exists)
 		assert.Empty(t, info.Fingerprint)
+		assert.Empty(t, info.CertChainPEM)
 		assert.True(t, info.NotAfter.IsZero())
 	})
 
@@ -583,7 +613,7 @@ func TestKVRESTClient(t *testing.T) {
 
 		value, err := client.getSecret(context.Background(), server.URL+"/secrets/cert1/version1")
 		require.NoError(t, err)
-		assert.Equal(t, "pem-content", value)
+		assert.Equal(t, []byte("pem-content"), value)
 		assert.Equal(t, "api-version="+kvAPIVersion, query)
 	})
 

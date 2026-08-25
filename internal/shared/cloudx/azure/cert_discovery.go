@@ -84,6 +84,11 @@ type CloudCertInfo struct {
 	Exists      bool      // Key Vault 中该 secret 是否存在
 	NotAfter    time.Time // 云侧证书有效期截止；Exists=false 时零值
 	Fingerprint string    // PEM 解析的 SHA256 hex（对齐台账指纹 ^[0-9a-f]{64}$）；非证书 secret 为空
+	// CertChainPEM 仅 CERTIFICATE 块的净化序列（叶在前 fullchain 口径）：
+	// Key Vault secret 全量值（exportable 密钥策略下含私钥 bundle）必须走本净化，
+	// 块级过滤构造性保证（cloudx.SanitizeCertChainPEM），不含 PRIVATE KEY 等
+	// 任何非证书内容；非证书 secret 为空。发现导入材料通道（cert-cloud-discovery-import）。
+	CertChainPEM string
 }
 
 // REST 端点与 API 版本常量（Azure 全球云；中国区经 Option 覆盖）
@@ -112,9 +117,12 @@ type azureARMLister interface {
 	list(ctx context.Context, resourceType, apiVersion string) ([]json.RawMessage, error)
 }
 
-// azureKVSecretGetter Key Vault secret 读取抽象（真实实现走 KV 数据面 REST，测试注入 fake）
+// azureKVSecretGetter Key Vault secret 读取抽象（真实实现走 KV 数据面 REST，
+// 测试注入 fake）。返回原始字节而非 string：secret 全量值（exportable 密钥策略
+// 下含私钥 bundle）由调用方净化后对原始 buffer 执行 Zeroize——string 不可变，
+// 字节切片才能满足"净化前原始 buffer 用后归零"的构造性安全口径。
 type azureKVSecretGetter interface {
-	getSecret(ctx context.Context, secretID string) (string, error)
+	getSecret(ctx context.Context, secretID string) ([]byte, error)
 }
 
 // CertDiscoveryAdapter Azure 只读证书发现适配器：按产品分发。
@@ -419,9 +427,11 @@ type appGatewayResource struct {
 	} `json:"properties"`
 }
 
-// GetCert 查询 Key Vault secret 在库状态（只读）：证书类 secret 返回 PEM 内容，
-// 解析出 SHA256 指纹与有效期；secret 不存在 → Exists=false；
-// 非证书类 secret（普通机密）Exists=true 且指纹为空（上层按"无法复核"处理）。
+// GetCert 查询 Key Vault secret 在库状态（只读）：证书类 secret 的全量值经
+// 仅 CERTIFICATE 块净化（exportable 密钥策略下 secret 值含私钥 bundle，必须
+// 丢弃私钥并按叶在前口径拼装），解析出 SHA256 指纹与有效期；secret 不存在 →
+// Exists=false；非证书类 secret（普通机密）Exists=true 且指纹为空（上层按
+// "无法复核"处理）。原始 secret buffer 净化后即刻 Zeroize。
 func (a *CertDiscoveryAdapter) GetCert(ctx context.Context, creds *domain.CloudAccount, cloudCertID string) (CloudCertInfo, error) {
 	if creds == nil {
 		return CloudCertInfo{}, fmt.Errorf("azure cert get: nil creds")
@@ -436,7 +446,7 @@ func (a *CertDiscoveryAdapter) GetCert(ctx context.Context, creds *domain.CloudA
 	if err != nil {
 		return CloudCertInfo{}, err
 	}
-	value, err := kv.getSecret(ctx, strings.TrimSpace(cloudCertID))
+	raw, err := kv.getSecret(ctx, strings.TrimSpace(cloudCertID))
 	if err != nil {
 		if errors.Is(err, errAzureNotFound) {
 			// 云侧已删除 → Exists=false（非错误）
@@ -445,7 +455,11 @@ func (a *CertDiscoveryAdapter) GetCert(ctx context.Context, creds *domain.CloudA
 		return CloudCertInfo{}, wrapCertCloudErr("keyvault", err)
 	}
 	info := CloudCertInfo{Exists: true}
-	if leaf, ok := parseCertLeafPEM(value); ok {
+	// PEM 通道净化（构造性保证）：仅保留 CERTIFICATE 块的净化序列；
+	// 原始 secret buffer（可能含私钥 bundle）净化后即刻归零。
+	info.CertChainPEM = cloudx.SanitizeCertChainPEM(raw)
+	cloudx.Zeroize(raw)
+	if leaf, ok := parseCertLeafPEM(info.CertChainPEM); ok {
 		sum := sha256.Sum256(leaf.Raw)
 		info.Fingerprint = hex.EncodeToString(sum[:])
 		info.NotAfter = leaf.NotAfter
@@ -627,20 +641,23 @@ type kvRESTClient struct {
 	httpClient *http.Client
 }
 
-// getSecret 读取指定 secretID 的最新（或固定版本）值（404 → 不存在哨兵）
-func (c *kvRESTClient) getSecret(ctx context.Context, secretID string) (string, error) {
+// getSecret 读取指定 secretID 的最新（或固定版本）值（404 → 不存在哨兵）。
+// 返回 secret 值的字节副本；含 secret 明文的原始 HTTP 响应 buffer 解析后
+// 即刻 Zeroize（副本由调用方净化后同样归零）。
+func (c *kvRESTClient) getSecret(ctx context.Context, secretID string) ([]byte, error) {
 	endpoint := strings.TrimSuffix(secretID, "/") + "?api-version=" + kvAPIVersion
 	body, err := azureGET(ctx, c.httpClient, c.token, kvScopeValue, endpoint, "KeyVault")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+	defer cloudx.Zeroize(body)
 	var payload struct {
 		Value string `json:"value"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return "", fmt.Errorf("解析Azure KeyVault响应失败: %w", err)
+		return nil, fmt.Errorf("解析Azure KeyVault响应失败: %w", err)
 	}
-	return payload.Value, nil
+	return []byte(payload.Value), nil
 }
 
 // readAzureResponse 读取响应体并按状态码归类错误（404/429 → 包内哨兵）

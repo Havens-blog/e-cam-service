@@ -8,7 +8,7 @@
       "title": "四云 GetCert 通道扩展暴露净化 PEM",
       "priority": "P0",
       "estimatedTime": "2h",
-      "status": "pending",
+      "status": "completed",
       "file": "1-cloudx-cert-pem-channel.md",
       "record": "records/1-cloudx-cert-pem-channel.md",
       "surface-type": "api",

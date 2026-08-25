@@ -70,6 +70,11 @@ var (
 	// ErrDiscoveryOnly 只读发现哨兵（ERR_DISCOVERY_ONLY 语义）：本适配无部署器，
 	// 三个写方法一律返回，不产生任何云侧写操作。
 	ErrDiscoveryOnly = cloudx.ErrDiscoveryOnly
+	// ErrCertPEMUnsupported PEM 通道不支持哨兵（发现导入降级标记，非通用失败）：
+	// SCM ShowCertificate 无 PEM 导出字段（指纹为 SHA-1 口径，无法支撑仅
+	// CERTIFICATE 块净化序列），GetCert 一律返回本哨兵，上层识别为"该云证书
+	// 暂不支持自动解析"降级标记（预览整组不可选、导入记因跳过）。
+	ErrCertPEMUnsupported = cloudx.ErrCertPEMUnsupported
 	// ErrCertProductNotSupported 未实现的证书产品/接口（显式报错而非静默）
 	ErrCertProductNotSupported = errors.New("huawei cert product not supported")
 )
@@ -84,11 +89,14 @@ type CloudCertRef struct {
 	AccountKey            string // 云账号标识（取 CloudAccount.Name）
 }
 
-// CloudCertInfo GetCert 返回的云侧证书在库状态（只读）
+// CloudCertInfo GetCert 返回的云侧证书在库状态（只读）。
+// 华为云 PEM 通道不支持（GetCert 一律返回 ErrCertPEMUnsupported 降级标记，
+// 不填充任何字段）；SCM 指纹为 SHA-1 口径与台账 SHA256 不一致，原本就无法
+// 通过上层 ^[0-9a-f]{64}$ 对齐校验。
 type CloudCertInfo struct {
-	Exists      bool      // 云证书库中该 cloudCertId 是否存在
-	NotAfter    time.Time // 云侧证书有效期截止；Exists=false 时零值
-	Fingerprint string    // SCM 返回指纹（SHA-1 形态，与台账 SHA256 口径不一致，上层按"无法复核"处理）
+	Exists      bool      // 保留字段：PEM 通道不支持口径下恒为 false
+	NotAfter    time.Time // 保留字段：PEM 通道不支持口径下恒为零值
+	Fingerprint string    // 保留字段：PEM 通道不支持口径下恒为空
 }
 
 // cdnCertAPI CDN SDK 窄接口（只读：域名 HTTPS 证书信息）
@@ -450,39 +458,22 @@ func elbListenerResourceID(listener elbmodel.Listener) string {
 	return ""
 }
 
-// GetCert 查询 SCM（云证书管理服务）证书在库状态（只读）。
-// 注意：SCM 指纹为 SHA-1 形态，与台账 SHA256 口径不一致，上层按"无法复核"处理
-// （同 3.2 腾讯云 CertFingerprint 口径，PoC 5.12 登记验证）。
+// GetCert 华为云证书 PEM 通道不支持标记（只读）：SCM ShowCertificate 无 PEM
+// 导出字段（指纹为 SHA-1 口径，无法支撑"仅 CERTIFICATE 块净化序列"材料通道），
+// 一律返回 ErrCertPEMUnsupported 哨兵供上层识别为降级标记（预览整组不可选、
+// 导入记因跳过），不发起任何云 API 调用、不消耗限流令牌。
+// 历史行为说明：本方法原先调用 SCM 读取 SHA-1 指纹，但该口径永不匹配台账
+// ^[0-9a-f]{64}$ 对齐校验（扫描侧落占位指纹），移除后各消费方行为不变；
+// 等 SCM API 提供 PEM 导出后恢复详情读取（proposal Out of Scope）。
 func (a *CertDiscoveryAdapter) GetCert(ctx context.Context, creds *domain.CloudAccount, cloudCertID string) (CloudCertInfo, error) {
+	_ = ctx
 	if creds == nil {
 		return CloudCertInfo{}, fmt.Errorf("huawei cert get: nil creds")
 	}
 	if strings.TrimSpace(cloudCertID) == "" {
 		return CloudCertInfo{}, fmt.Errorf("huawei cert get: empty cloud cert id")
 	}
-	if err := a.waitRateLimit(ctx); err != nil {
-		return CloudCertInfo{}, err
-	}
-	client, err := a.newScmClient(creds)
-	if err != nil {
-		return CloudCertInfo{}, err
-	}
-	response, err := client.ShowCertificate(&scmmodel.ShowCertificateRequest{
-		CertificateId: cloudCertID,
-	})
-	if err != nil {
-		if isCertDiscoveryNotFound(err) {
-			// 云侧已删除 → Exists=false（非错误）
-			return CloudCertInfo{Exists: false}, nil
-		}
-		return CloudCertInfo{}, wrapCertCloudErr("scm", err)
-	}
-	info := CloudCertInfo{Exists: true}
-	info.Fingerprint = normalizeCloudCertFingerprint(derefString(response.Fingerprint))
-	if notAfter, ok := parseCloudCertTime(derefString(response.NotAfter)); ok {
-		info.NotAfter = notAfter
-	}
-	return info, nil
+	return CloudCertInfo{}, fmt.Errorf("%w: huawei scm certificate has no pem export", ErrCertPEMUnsupported)
 }
 
 // ==================== 客户端工厂（真实 SDK，构建不发起网络请求） ====================

@@ -12,7 +12,6 @@ import (
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/sdkerr"
 	cdnmodel "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cdn/v2/model"
 	elbmodel "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/elb/v3/model"
-	scmmodel "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/scm/v3/model"
 	wafmodel "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/waf/v1/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -154,23 +153,6 @@ func (f *fakeELBClient) ListListeners(request *elbmodel.ListListenersRequest) (*
 		}, nil
 	}
 	return &elbmodel.ListListenersResponse{}, nil
-}
-
-// fakeSCMClient SCM fake（单证书详情）
-type fakeSCMClient struct {
-	detail *scmmodel.ShowCertificateResponse
-	err    error
-	calls  int
-	lastID string
-}
-
-func (f *fakeSCMClient) ShowCertificate(request *scmmodel.ShowCertificateRequest) (*scmmodel.ShowCertificateResponse, error) {
-	f.calls++
-	f.lastID = request.CertificateId
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.detail, nil
 }
 
 // ==================== 只读硬约束：三写方法返回哨兵且不触达云侧 ====================
@@ -423,58 +405,27 @@ func TestCertDiscoveryListELBReferences(t *testing.T) {
 	})
 }
 
-// ==================== GetCert ====================
+// ==================== GetCert（PEM 通道不支持降级标记） ====================
 
 func TestCertDiscoveryGetCert(t *testing.T) {
-	t.Run("返回SCM详情的指纹与有效期", func(t *testing.T) {
+	t.Run("返回不支持PEM降级标记哨兵且不触达云侧", func(t *testing.T) {
 		adapter := newTestCertDiscoveryAdapter(t)
-		fake := &fakeSCMClient{detail: &scmmodel.ShowCertificateResponse{
-			Id:          stringPtr("scs-1631"),
-			NotAfter:    stringPtr("2027-01-02 15:04:05"),
-			Fingerprint: stringPtr("AB:CD:EF:01:02:03"),
-		}}
-		adapter.newScmClient = func(creds *domain.CloudAccount) (scmCertAPI, error) { return fake, nil }
-
+		// PEM 通道不支持判定先于客户端构造：注入失败工厂证明不发起 SCM 调用
+		adapter.newScmClient = func(creds *domain.CloudAccount) (scmCertAPI, error) {
+			t.Fatalf("PEM 不支持分支不得构造 SCM 云客户端")
+			return nil, nil
+		}
 		info, err := adapter.GetCert(context.Background(), certTestCreds(), "scs-1631")
-		require.NoError(t, err)
-		assert.True(t, info.Exists)
-		assert.Equal(t, "abcdef010203", info.Fingerprint)
-		assert.Equal(t, 2027, info.NotAfter.Year())
-		assert.Equal(t, 1, fake.calls)
-		assert.Equal(t, "scs-1631", fake.lastID)
-	})
-
-	t.Run("证书不存在返回Exists=false", func(t *testing.T) {
-		adapter := newTestCertDiscoveryAdapter(t)
-		adapter.newScmClient = func(creds *domain.CloudAccount) (scmCertAPI, error) {
-			return &fakeSCMClient{err: errCertNotFound}, nil
-		}
-		info, err := adapter.GetCert(context.Background(), certTestCreds(), "scs-none")
-		require.NoError(t, err)
-		assert.False(t, info.Exists)
-		assert.Empty(t, info.Fingerprint)
-		assert.True(t, info.NotAfter.IsZero())
-	})
-
-	t.Run("HTTP404的SDK错误视为不存在", func(t *testing.T) {
-		adapter := newTestCertDiscoveryAdapter(t)
-		sdkErr := &sdkerr.ServiceResponseError{StatusCode: 404, ErrorCode: "SCM.0001", ErrorMessage: "not found"}
-		adapter.newScmClient = func(creds *domain.CloudAccount) (scmCertAPI, error) {
-			return &fakeSCMClient{err: sdkErr}, nil
-		}
-		info, err := adapter.GetCert(context.Background(), certTestCreds(), "scs-none")
-		require.NoError(t, err)
-		assert.False(t, info.Exists)
-	})
-
-	t.Run("限流错误映射哨兵", func(t *testing.T) {
-		adapter := newTestCertDiscoveryAdapter(t)
-		adapter.newScmClient = func(creds *domain.CloudAccount) (scmCertAPI, error) {
-			return &fakeSCMClient{err: errCertThrottled}, nil
-		}
-		_, err := adapter.GetCert(context.Background(), certTestCreds(), "scs-1631")
 		require.Error(t, err)
-		assert.ErrorIs(t, err, ErrCloudRateLimited)
+		require.Empty(t, info.Fingerprint)
+		assert.False(t, info.Exists)
+		// 可被上层识别为降级标记（非通用失败）
+		assert.ErrorIs(t, err, ErrCertPEMUnsupported)
+		assert.ErrorIs(t, err, cloudx.ErrCertPEMUnsupported)
+		assert.NotErrorIs(t, err, ErrCloudRateLimited)
+		assert.NotErrorIs(t, err, ErrDiscoveryOnly)
+		// 错误文案为静态文案，不携带云响应片段
+		assert.Contains(t, err.Error(), "no pem export")
 	})
 
 	t.Run("空证书ID与空凭证显式报错", func(t *testing.T) {

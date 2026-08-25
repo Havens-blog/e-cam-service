@@ -17,4 +17,11 @@ var (
 	// 不产生任何云侧写操作；三云引用进入变更清单时为不可执行项
 	// （AutoChangeable=false + Reason=ERR_DISCOVERY_ONLY，5.2 处理）。
 	ErrDiscoveryOnly = errors.New("cloud deployer is discovery-only")
+
+	// ErrCertPEMUnsupported PEM 通道不支持哨兵（发现导入降级标记，非通用失败）。
+	// 华为云 SCM 无 PEM 导出字段（SHA-1 指纹口径）、AWS IAM-hosted 证书（非 ARN
+	// 形态 ID，不在 ACM GetCertificate 覆盖范围）GetCert 一律返回本哨兵；预览/
+	// 导入会话以 errors.Is 识别为"该云证书暂不支持自动解析"降级标记
+	// （预览 parseable=false 归入不可选组、导入记因跳过），不按通用失败处理。
+	ErrCertPEMUnsupported = errors.New("cloud cert pem export unsupported")
 )

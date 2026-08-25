@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -112,6 +113,19 @@ func genTestCertPEM(t *testing.T) (string, string) {
 	require.NoError(t, err)
 	sum := sha256.Sum256(der)
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), hex.EncodeToString(sum[:])
+}
+
+// certChainTestKeyPEM 手写私钥 PEM 块（净化内容级断言用，base64 内容不影响块类型过滤）
+const certChainTestKeyPEM = "-----BEGIN EC PRIVATE KEY-----\nZmFrZS1rZXk=\n-----END EC PRIVATE KEY-----\n"
+
+// genTestCertChainPEM 生成叶/中间 CA/自签根三张独立测试证书的 fullchain 材料：
+// 返回（含私钥块前缀的原始 bundle，叶在前净化期望序列，叶证书指纹）。
+func genTestCertChainPEM(t *testing.T) (rawBundle, wantChain, leafFingerprint string) {
+	t.Helper()
+	leaf, leafFingerprint := genTestCertPEM(t)
+	intermediate, _ := genTestCertPEM(t)
+	root, _ := genTestCertPEM(t)
+	return certChainTestKeyPEM + leaf + intermediate + root, leaf + intermediate + root, leafFingerprint
 }
 
 // ==================== UploadCert ====================
@@ -303,6 +317,37 @@ func TestCertAdapterGetCert(t *testing.T) {
 		adapter := newTestCertAdapter(t)
 		_, err := adapter.GetCert(context.Background(), testCertCreds(), "not-a-number")
 		require.Error(t, err)
+	})
+
+	t.Run("返回净化fullchain序列_私钥块被丢弃_叶在前", func(t *testing.T) {
+		adapter := newTestCertAdapter(t)
+		rawBundle, wantChain, leafFingerprint := genTestCertChainPEM(t)
+		detail := cas.CreateGetUserCertificateDetailResponse()
+		detail.Cert = rawBundle
+		adapter.newCasClient = func(creds *domain.CloudAccount) (casCertAPI, error) {
+			return &fakeCasClient{detailResp: detail}, nil
+		}
+
+		info, err := adapter.GetCert(context.Background(), testCertCreds(), "8089870")
+		require.NoError(t, err)
+		assert.True(t, info.Exists)
+		// 内容级断言：不含 PRIVATE KEY、含且仅含 CERTIFICATE 块（叶在前）
+		assert.Equal(t, wantChain, info.CertChainPEM)
+		assert.NotContains(t, info.CertChainPEM, "PRIVATE KEY")
+		assert.True(t, strings.HasPrefix(info.CertChainPEM, "-----BEGIN CERTIFICATE-----"))
+		// 指纹取净化序列首块（叶证书）
+		assert.Equal(t, leafFingerprint, info.Fingerprint)
+	})
+
+	t.Run("无PEM时CertChainPEM为空", func(t *testing.T) {
+		adapter := newTestCertAdapter(t)
+		adapter.newCasClient = func(creds *domain.CloudAccount) (casCertAPI, error) {
+			return &fakeCasClient{}, nil // 缺省 fake 仅含指纹/日期字段
+		}
+		info, err := adapter.GetCert(context.Background(), testCertCreds(), "8089870")
+		require.NoError(t, err)
+		assert.True(t, info.Exists)
+		assert.Empty(t, info.CertChainPEM)
 	})
 }
 

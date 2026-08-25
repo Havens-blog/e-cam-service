@@ -64,6 +64,10 @@ var (
 	// ErrDiscoveryOnly 只读发现哨兵（ERR_DISCOVERY_ONLY 语义）：本适配无部署器，
 	// 三个写方法一律返回，不产生任何云侧写操作。
 	ErrDiscoveryOnly = cloudx.ErrDiscoveryOnly
+	// ErrCertPEMUnsupported PEM 通道不支持哨兵（发现导入降级标记，非通用失败）：
+	// IAM-hosted（非 ARN 形态）证书 ID 不在 ACM GetCertificate 覆盖范围，GetCert
+	// 返回本哨兵供上层识别为降级标记（预览 parseable=false / 导入记因跳过）。
+	ErrCertPEMUnsupported = cloudx.ErrCertPEMUnsupported
 	// ErrCertProductNotSupported 未实现的证书产品/接口（显式报错而非静默）
 	ErrCertProductNotSupported = errors.New("aws cert product not supported")
 )
@@ -83,6 +87,11 @@ type CloudCertInfo struct {
 	Exists      bool      // ACM 证书库中该 cloudCertId 是否存在
 	NotAfter    time.Time // 云侧证书有效期截止；Exists=false 时零值
 	Fingerprint string    // PEM 解析的 SHA256 hex（对齐台账指纹 ^[0-9a-f]{64}$）
+	// CertChainPEM 仅 CERTIFICATE 块的净化序列（叶在前 fullchain 口径）：
+	// GetCertificate 的 Certificate（叶）+CertificateChain（中间 CA/根）拼接后
+	// 块级过滤构造性保证（cloudx.SanitizeCertChainPEM），不含 PRIVATE KEY 等
+	// 任何非证书内容；云侧未返回 PEM 时为空。发现导入材料通道（cert-cloud-discovery-import）。
+	CertChainPEM string
 }
 
 // cloudFrontCertAPI CloudFront SDK 窄接口（只读：分配列表，*cloudfront.Client 天然满足）
@@ -357,9 +366,13 @@ func (a *CertDiscoveryAdapter) listELBListenerReferences(ctx context.Context, cl
 	return refs, nil
 }
 
-// GetCert 查询 ACM 证书在库状态（只读）：GetCertificate 返回 PEM，解析出
-// SHA256 指纹与有效期；证书不存在 → Exists=false。
-// IAM 托管证书（无 ARN 形态 ID，CloudFront 引用的历史形态）不在首期覆盖范围，显式报错。
+// GetCert 查询 ACM 证书在库状态（只读）：GetCertificate 返回叶证书与证书链 PEM，
+// 按"叶在前"口径拼接 Certificate+CertificateChain 后净化为仅 CERTIFICATE 块的
+// 序列（fullchain 口径与手工导入 certtest 约定对齐），解析出 SHA256 指纹与
+// 有效期；证书不存在 → Exists=false。
+// IAM 托管证书（无 ARN 形态 ID，CloudFront 引用的历史形态）不在 ACM
+// GetCertificate 覆盖范围：返回 ErrCertPEMUnsupported 结构化降级标记
+//（可被上层识别为"暂不支持自动解析"，非通用失败），不发起云 API 调用。
 func (a *CertDiscoveryAdapter) GetCert(ctx context.Context, creds *domain.CloudAccount, cloudCertID string) (CloudCertInfo, error) {
 	if creds == nil {
 		return CloudCertInfo{}, fmt.Errorf("aws cert get: nil creds")
@@ -368,7 +381,7 @@ func (a *CertDiscoveryAdapter) GetCert(ctx context.Context, creds *domain.CloudA
 		return CloudCertInfo{}, fmt.Errorf("aws cert get: empty cloud cert id")
 	}
 	if !strings.HasPrefix(cloudCertID, arnPrefix) {
-		return CloudCertInfo{}, fmt.Errorf("aws cert get: unsupported cloud cert id %q (IAM-hosted certificate not covered)", cloudCertID)
+		return CloudCertInfo{}, fmt.Errorf("%w: aws IAM-hosted certificate id has no acm pem export", ErrCertPEMUnsupported)
 	}
 	if err := a.waitRateLimit(ctx); err != nil {
 		return CloudCertInfo{}, err
@@ -395,7 +408,28 @@ func (a *CertDiscoveryAdapter) GetCert(ctx context.Context, creds *domain.CloudA
 			info.NotAfter = leaf.NotAfter
 		}
 	}
+	// PEM 通道净化（构造性保证）：叶在前拼接 Certificate+CertificateChain，
+	// 仅保留 CERTIFICATE 块；原始字节副本净化后即刻归零。
+	rawChain := concatACMCertPEM(output.Certificate, output.CertificateChain)
+	info.CertChainPEM = cloudx.SanitizeCertChainPEM(rawChain)
+	cloudx.Zeroize(rawChain)
 	return info, nil
+}
+
+// concatACMCertPEM 拼接 ACM GetCertificate 返回的证书材料（叶在前 fullchain
+// 口径）：Certificate 为叶证书 PEM、CertificateChain 为中间 CA/自签根链 PEM
+// 序列；两段间补换行，避免块尾与下一块头粘连导致 pem.Decode 漏块。
+func concatACMCertPEM(certificate, chain *string) []byte {
+	var out []byte
+	if certificate != nil && *certificate != "" {
+		out = append(out, strings.TrimSpace(*certificate)...)
+		out = append(out, '\n')
+	}
+	if chain != nil && *chain != "" {
+		out = append(out, strings.TrimSpace(*chain)...)
+		out = append(out, '\n')
+	}
+	return out
 }
 
 // ==================== 客户端工厂（真实 SDK，构建不发起网络请求） ====================

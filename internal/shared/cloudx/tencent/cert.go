@@ -79,6 +79,10 @@ type CloudCertInfo struct {
 	Exists      bool      // 云证书库中该 cloudCertId 是否存在
 	NotAfter    time.Time // 云侧证书有效期截止；Exists=false 时零值
 	Fingerprint string    // 优先 PEM 解析的 SHA256 hex（对齐台账指纹 ^[0-9a-f]{64}$）；无 PEM 时回退云侧指纹字段
+	// CertChainPEM 仅 CERTIFICATE 块的净化序列（叶在前 fullchain 口径）：
+	// 块级过滤构造性保证（cloudx.SanitizeCertChainPEM），不含 PRIVATE KEY 等
+	// 任何非证书内容；云侧未返回 PEM 时为空。发现导入材料通道（cert-cloud-discovery-import）。
+	CertChainPEM string
 }
 
 // SSL 证书服务直调常量（ssl 为全局服务，region 不参与寻址）
@@ -322,7 +326,12 @@ func (a *CertAdapter) GetCert(ctx context.Context, creds *domain.CloudAccount, c
 	}
 
 	info := CloudCertInfo{Exists: true}
-	if leaf, ok := parseCertLeafPEM(resp.Response.CertificatePublicKey); ok {
+	// PEM 通道净化（构造性保证）：仅保留 CERTIFICATE 块的净化序列，
+	// 原始字节副本净化后即刻归零（私钥等非证书内容不驻留）。
+	rawCert := []byte(resp.Response.CertificatePublicKey)
+	info.CertChainPEM = cloudx.SanitizeCertChainPEM(rawCert)
+	cloudx.Zeroize(rawCert)
+	if leaf, ok := parseCertLeafPEM(info.CertChainPEM); ok {
 		sum := sha256.Sum256(leaf.Raw)
 		info.Fingerprint = hex.EncodeToString(sum[:])
 		info.NotAfter = leaf.NotAfter

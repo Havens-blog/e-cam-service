@@ -13,6 +13,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -306,6 +307,36 @@ func TestCertAdapterGetCert(t *testing.T) {
 		require.Error(t, err)
 		_, err = adapter.GetCert(context.Background(), nil, "987654321")
 		require.Error(t, err)
+	})
+
+	t.Run("返回净化fullchain序列_私钥块被丢弃_叶在前", func(t *testing.T) {
+		adapter := newTestCertAdapter(t)
+		rawBundle, wantChain, leafFingerprint := genTestCertChainPEM(t)
+		detail := fmt.Sprintf(`{"Response":{"CertificatePublicKey":%s}}`, mustJSONString(t, rawBundle))
+		adapter.newSSLCaller = func(creds *domain.CloudAccount) (sslCertCaller, error) {
+			return &fakeSSLCaller{detailBody: detail}, nil
+		}
+
+		info, err := adapter.GetCert(context.Background(), testCertCreds(), "987654321")
+		require.NoError(t, err)
+		assert.True(t, info.Exists)
+		// 内容级断言：不含 PRIVATE KEY、含且仅含 CERTIFICATE 块（叶在前）
+		assert.Equal(t, wantChain, info.CertChainPEM)
+		assert.NotContains(t, info.CertChainPEM, "PRIVATE KEY")
+		assert.True(t, strings.HasPrefix(info.CertChainPEM, "-----BEGIN CERTIFICATE-----"))
+		// 指纹取净化序列首块（叶证书）
+		assert.Equal(t, leafFingerprint, info.Fingerprint)
+	})
+
+	t.Run("无PEM时CertChainPEM为空", func(t *testing.T) {
+		adapter := newTestCertAdapter(t)
+		adapter.newSSLCaller = func(creds *domain.CloudAccount) (sslCertCaller, error) {
+			return &fakeSSLCaller{detailBody: `{"Response":{"CertFingerprint":"AB:CD:EF:01","CertEndTime":"2027-01-02 08:00:00"}}`}, nil
+		}
+		info, err := adapter.GetCert(context.Background(), testCertCreds(), "987654321")
+		require.NoError(t, err)
+		assert.True(t, info.Exists)
+		assert.Empty(t, info.CertChainPEM)
 	})
 }
 
@@ -641,4 +672,17 @@ func mustJSONString(t *testing.T, s string) string {
 	b, err := json.Marshal(s)
 	require.NoError(t, err)
 	return string(b)
+}
+
+// certChainTestKeyPEM 手写私钥 PEM 块（净化内容级断言用，base64 内容不影响块类型过滤）
+const certChainTestKeyPEM = "-----BEGIN EC PRIVATE KEY-----\nZmFrZS1rZXk=\n-----END EC PRIVATE KEY-----\n"
+
+// genTestCertChainPEM 生成叶/中间 CA/自签根三张独立测试证书的 fullchain 材料：
+// 返回（含私钥块前缀的原始 bundle，叶在前净化期望序列，叶证书指纹）。
+func genTestCertChainPEM(t *testing.T) (rawBundle, wantChain, leafFingerprint string) {
+	t.Helper()
+	leaf, leafFingerprint := genTestCertPEM(t)
+	intermediate, _ := genTestCertPEM(t)
+	root, _ := genTestCertPEM(t)
+	return certChainTestKeyPEM + leaf + intermediate + root, leaf + intermediate + root, leafFingerprint
 }

@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -129,9 +130,10 @@ func (f *fakeELBClient) DescribeListeners(ctx context.Context, input *elbv2.Desc
 	return &elbv2.DescribeListenersOutput{Listeners: f.listeners[*input.LoadBalancerArn]}, nil
 }
 
-// fakeACMClient ACM fake（返回预置 PEM 或错误）
+// fakeACMClient ACM fake（返回预置 PEM 或错误；cert=叶证书，chain=证书链）
 type fakeACMClient struct {
 	cert    *string
+	chain   *string
 	err     error
 	calls   int
 	lastArn string
@@ -143,7 +145,7 @@ func (f *fakeACMClient) GetCertificate(ctx context.Context, input *acm.GetCertif
 	if f.err != nil {
 		return nil, f.err
 	}
-	return &acm.GetCertificateOutput{Certificate: f.cert}, nil
+	return &acm.GetCertificateOutput{Certificate: f.cert, CertificateChain: f.chain}, nil
 }
 
 // genTestCertPEM 生成自签测试证书，返回 PEM 与 SHA256 指纹（hex 小写）
@@ -387,6 +389,73 @@ func TestCertDiscoveryGetCert(t *testing.T) {
 		_, err := adapter.GetCert(context.Background(), certTestCreds(), "AS1ABC")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "IAM-hosted")
+	})
+
+	t.Run("IAM-hosted非ARN返回结构化降级标记哨兵", func(t *testing.T) {
+		adapter := newTestCertDiscoveryAdapter(t)
+		// IAM-hosted 判定先于客户端构造：注入失败工厂证明不触达云侧
+		adapter.newAcmClient = func(ctx context.Context, creds *domain.CloudAccount, region string) (acmCertAPI, error) {
+			t.Fatalf("IAM-hosted 分支不得构造 ACM 云客户端")
+			return nil, nil
+		}
+		_, err := adapter.GetCert(context.Background(), certTestCreds(), "AS1ABC")
+		require.Error(t, err)
+		// 可被上层识别为降级标记（非通用失败）
+		assert.ErrorIs(t, err, ErrCertPEMUnsupported)
+		assert.ErrorIs(t, err, cloudx.ErrCertPEMUnsupported)
+		assert.NotErrorIs(t, err, ErrCloudRateLimited)
+		// 错误文案为静态文案，不携带云响应片段
+		assert.Contains(t, err.Error(), "IAM-hosted")
+	})
+
+	t.Run("CertificateChain叶在前拼接为净化fullchain", func(t *testing.T) {
+		adapter := newTestCertDiscoveryAdapter(t)
+		leaf, leafFingerprint := genTestCertPEM(t)
+		intermediate, _ := genTestCertPEM(t)
+		root, _ := genTestCertPEM(t)
+		// 证书链混入私钥块与噪声：拼接净化后必须仅余 CERTIFICATE 块
+		keyBlock := "-----BEGIN EC PRIVATE KEY-----\nZmFrZS1rZXk=\n-----END EC PRIVATE KEY-----\n"
+		chain := keyBlock + intermediate + root
+		fake := &fakeACMClient{cert: aws.String(leaf), chain: aws.String(chain)}
+		adapter.newAcmClient = func(ctx context.Context, creds *domain.CloudAccount, region string) (acmCertAPI, error) {
+			return fake, nil
+		}
+
+		info, err := adapter.GetCert(context.Background(), certTestCreds(), arn)
+		require.NoError(t, err)
+		assert.True(t, info.Exists)
+		// 内容级断言：叶在前拼接、链中私钥被丢弃、不含 PRIVATE KEY
+		assert.Equal(t, leaf+intermediate+root, info.CertChainPEM)
+		assert.True(t, strings.HasPrefix(info.CertChainPEM, "-----BEGIN CERTIFICATE-----"))
+		assert.NotContains(t, info.CertChainPEM, "PRIVATE KEY")
+		assert.Equal(t, leafFingerprint, info.Fingerprint)
+	})
+
+	t.Run("无CertificateChain时CertChainPEM为净化后的叶证书", func(t *testing.T) {
+		adapter := newTestCertDiscoveryAdapter(t)
+		leaf, _ := genTestCertPEM(t)
+		fake := &fakeACMClient{cert: aws.String(leaf)}
+		adapter.newAcmClient = func(ctx context.Context, creds *domain.CloudAccount, region string) (acmCertAPI, error) {
+			return fake, nil
+		}
+		info, err := adapter.GetCert(context.Background(), certTestCreds(), arn)
+		require.NoError(t, err)
+		assert.Equal(t, leaf, info.CertChainPEM)
+	})
+
+	t.Run("块尾与下一块头无换行粘连时仍逐块净化", func(t *testing.T) {
+		adapter := newTestCertDiscoveryAdapter(t)
+		leaf, _ := genTestCertPEM(t)
+		intermediate, _ := genTestCertPEM(t)
+		// ACM 响应缺失块尾换行的防御形态：TrimSpace+补换行保证逐块解析
+		gluedLeaf := strings.TrimRight(leaf, "\n")
+		fake := &fakeACMClient{cert: aws.String(gluedLeaf), chain: aws.String(intermediate)}
+		adapter.newAcmClient = func(ctx context.Context, creds *domain.CloudAccount, region string) (acmCertAPI, error) {
+			return fake, nil
+		}
+		info, err := adapter.GetCert(context.Background(), certTestCreds(), arn)
+		require.NoError(t, err)
+		assert.Equal(t, leaf+intermediate, info.CertChainPEM)
 	})
 
 	t.Run("空证书ID与空凭证显式报错", func(t *testing.T) {
