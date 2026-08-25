@@ -92,6 +92,11 @@ type ScanSnapshotRepository interface {
 	// LatestRunning 当前运行中快照（status=running，startedAt 降序取首条）；
 	// 无运行中快照返回 mongo.ErrNoDocuments。任务 3.5 扫描防重（409 SCAN_IN_PROGRESS）。
 	LatestRunning(ctx context.Context) (ScanSnapshot, error)
+	// Latest 最新快照（不限状态，startedAt 降序取首条；idx_started_at_desc）；
+	// 无任何快照返回 mongo.ErrNoDocuments。cert-cloud-discovery-import 任务 3
+	// snapshot-status 端点数据源（running/done/failed 均需可见——failed 快照
+	// 携带 partialFailures 供引导失败呈现，LatestDone 无法覆盖该面）。
+	Latest(ctx context.Context) (ScanSnapshot, error)
 	// ListRunningBefore 运行中且 startedAt 早于 before 的快照
 	// （任务 3.5 scan-timeout 恢复函数扫描集）。
 	ListRunningBefore(ctx context.Context, before time.Time) ([]ScanSnapshot, error)

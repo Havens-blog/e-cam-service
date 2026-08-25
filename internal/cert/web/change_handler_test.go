@@ -149,6 +149,7 @@ func newChangeRouter(t *testing.T, role Role) (*gin.Engine, *changeWebDeps) {
 	queryRefSvc := service.NewReferenceQueryService(d.certs, d.refs, d.snaps, &fakeScanTrigger{})
 	dashH, settingsH := newDashboardSettingsHandlers(d.certs, d.refs, d.snaps)
 	RegisterRoutes(engine, NewCertHandler(importSvc), NewReferenceHandler(queryRefSvc),
+		NewDiscoveryHandler(service.NewDiscoveryPreviewService(d.snaps, d.refs, d.certs, certtest.NewFakeCloudCertMappingRepo())),
 		NewLedgerHandler(ledgerSvc), dashH, settingsH, changeH)
 	return engine, d
 }

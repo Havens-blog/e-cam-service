@@ -59,6 +59,7 @@ type Module struct {
 	// Web 面（InitWebServer 经 RegisterRoutes 挂载）
 	Hdl          *web.CertHandler
 	ReferenceHdl *web.ReferenceHandler
+	DiscoveryHdl *web.DiscoveryHandler
 	LedgerHdl    *web.LedgerHandler
 	DashboardHdl *web.DashboardHandler
 	SettingsHdl  *web.SettingsHandler
@@ -251,6 +252,7 @@ func InitCertModule(
 		VerifyProbeIntervalMinutes: scheduler.ResolveVerifyProbeIntervalMinutes(context.Background(), repos.AlertConfig),
 		Hdl:                        web.NewCertHandler(importSvc),
 		ReferenceHdl:               web.NewReferenceHandler(service.NewReferenceQueryService(repos.Certificates, repos.CertReferences, repos.ScanSnapshots, scanSvc)),
+		DiscoveryHdl:               web.NewDiscoveryHandler(service.NewDiscoveryPreviewService(repos.ScanSnapshots, repos.CertReferences, repos.Certificates, repos.CloudMappings)),
 		LedgerHdl:                  web.NewLedgerHandler(ledgerSvc),
 		DashboardHdl:               web.NewDashboardHandler(dashboardSvc),
 		SettingsHdl:                web.NewSettingsHandler(settingsSvc, crdRegSvc),
@@ -264,7 +266,7 @@ func (m *Module) RegisterRoutes(server *gin.Engine) {
 	if server == nil || m == nil {
 		return
 	}
-	web.RegisterRoutes(server, m.Hdl, m.ReferenceHdl, m.LedgerHdl, m.DashboardHdl, m.SettingsHdl, m.ChangeHdl)
+	web.RegisterRoutes(server, m.Hdl, m.ReferenceHdl, m.DiscoveryHdl, m.LedgerHdl, m.DashboardHdl, m.SettingsHdl, m.ChangeHdl)
 }
 
 // ---------------------------------------------------------------------

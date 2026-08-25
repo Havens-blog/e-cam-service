@@ -136,6 +136,43 @@ func TestScanSnapshotRepo_LatestDone(t *testing.T) {
 	assert.Equal(t, "aliyun", got.CoverageMeta[0].Cloud)
 }
 
+// TestScanSnapshotRepo_Latest（集成）最新快照不限状态（cert-cloud-discovery-import
+// 任务 3 snapshot-status 数据源）：failed 快照可见、零快照返回 ErrNoDocuments。
+func TestScanSnapshotRepo_Latest(t *testing.T) {
+	db := newTestMongo(t)
+	ctx := context.Background()
+	require.NoError(t, EnsureIndexes(ctx, db))
+	repo := NewScanSnapshotRepository(db)
+
+	// 无快照
+	_, err := repo.Latest(ctx)
+	assert.ErrorIs(t, err, mongo.ErrNoDocuments)
+
+	doneID, err := repo.Create(ctx, &domain.ScanSnapshot{StartedAt: time.Now().Add(-2 * time.Hour)})
+	require.NoError(t, err)
+	require.NoError(t, repo.MarkFinished(ctx, doneID, domain.ScanStatusDone, ""))
+
+	// running（无 finishedAt）也可作为最新可见
+	runningID, err := repo.Create(ctx, &domain.ScanSnapshot{StartedAt: time.Now().Add(-1 * time.Hour)})
+	require.NoError(t, err)
+	got, err := repo.Latest(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, runningID, got.ID.Hex(), "更新的 running 胜出旧 done")
+
+	// 更新的 failed 胜出（LatestDone 无法覆盖该面）
+	failedID, err := repo.Create(ctx, &domain.ScanSnapshot{StartedAt: time.Now().Add(-30 * time.Minute)})
+	require.NoError(t, err)
+	require.NoError(t, repo.FinishScan(ctx, failedID, domain.ScanStatusFailed,
+		domain.FailReasonScanDiscoveryFailed, nil,
+		[]domain.ScanChannelFailure{{Cloud: "huawei", Product: "cdn", Account: "acct-hw", Reason: "list refs failed"}}))
+
+	got, err = repo.Latest(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, failedID, got.ID.Hex())
+	assert.Equal(t, domain.ScanStatusFailed, got.Status)
+	require.Len(t, got.PartialFailures, 1)
+}
+
 // TestCertReferenceRepo_ListBySnapshotID（集成）按快照聚合（refCount/stats 分母数据源）。
 func TestCertReferenceRepo_ListBySnapshotID(t *testing.T) {
 	db := newTestMongo(t)

@@ -32,7 +32,7 @@
       "title": "发现预览与快照状态查询端点",
       "priority": "P0",
       "estimatedTime": "2h",
-      "status": "pending",
+      "status": "completed",
       "file": "3-discovery-preview-snapshot-status-endpoints.md",
       "record": "records/3-discovery-preview-snapshot-status-endpoints.md",
       "surface-type": "api",

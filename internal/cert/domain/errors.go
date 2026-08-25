@@ -21,6 +21,10 @@ const (
 	CodeCertHasRefs = "CERT_HAS_REFS"
 	// CodeScanInProgress 扫描进行中（防重触发，409，任务 3.5）。
 	CodeScanInProgress = "SCAN_IN_PROGRESS"
+	// CodeNoSnapshot 无完成态扫描快照（409，cert-cloud-discovery-import 任务 3）：
+	// 发现预览数据源缺失——前端引导"触发扫描→轮询快照状态（snapshot-status）
+	// →done 进入预览"；区别于 SCAN_STALE（有快照但超新鲜度阈值）。
+	CodeNoSnapshot = "NO_SNAPSHOT"
 	// CodeChangeNotCancellable 当前状态不可取消（409，任务 5.1 Cancel 语义）。
 	CodeChangeNotCancellable = "CHANGE_NOT_CANCELLABLE"
 	// CodeScanStale 扫描超新鲜度阈值，清单生成阻断（409，任务 5.2）。
@@ -96,6 +100,12 @@ var ErrK8sUnreachable = newCertError(CodeK8sUnreachable, "kubernetes cluster unr
 // 已存在 status=running 的扫描快照时拒绝再次触发（释放需等待完成或
 // scan-timeout 恢复）。
 var ErrScanInProgress = newCertError(CodeScanInProgress, "scan already in progress")
+
+// ErrNoSnapshot 无完成态扫描快照（409 NO_SNAPSHOT，cert-cloud-discovery-import
+// 任务 3）：发现预览依赖 status=done 快照的引用集合作数据源，无 done 快照时
+// 返回本哨兵（含仅 running/failed 快照的场景）——前端按结构化错误码走
+// "先执行扫描"引导轮询，非服务端错误。
+var ErrNoSnapshot = newCertError(CodeNoSnapshot, "no completed scan snapshot available; run a scan first")
 
 // ErrChangeNotCancellable 当前状态不可取消（409 CHANGE_NOT_CANCELLABLE，任务 5.1）：
 // verifying 与全部终态不可取消——draft/pending_confirm/批间暂停走整单取消、

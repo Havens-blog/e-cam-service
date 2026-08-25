@@ -71,6 +71,18 @@ func (r *scanSnapshotRepository) LatestRunning(ctx context.Context) (domain.Scan
 	return snap, err
 }
 
+// Latest 最新快照（不限状态，startedAt 降序取首条，idx_started_at_desc）；
+// 无任何快照返回 mongo.ErrNoDocuments（cert-cloud-discovery-import 任务 3
+// snapshot-status 数据源：running/done/failed 均可见）。
+func (r *scanSnapshotRepository) Latest(ctx context.Context) (domain.ScanSnapshot, error) {
+	var snap domain.ScanSnapshot
+	err := r.db.Collection(ScanSnapshotsCollection).
+		FindOne(ctx, bson.M{},
+			options.FindOne().SetSort(bson.D{{Key: "startedAt", Value: -1}})).
+		Decode(&snap)
+	return snap, err
+}
+
 // ListRunningBefore 运行中且 startedAt 早于 before 的快照（scan-timeout 恢复扫描集）。
 func (r *scanSnapshotRepository) ListRunningBefore(ctx context.Context, before time.Time) ([]domain.ScanSnapshot, error) {
 	cursor, err := r.db.Collection(ScanSnapshotsCollection).

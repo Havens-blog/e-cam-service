@@ -33,7 +33,9 @@ func newRouter(t *testing.T) (*gin.Engine, *certtest.FakeCertificateRepo, *certt
 	engine := gin.New()
 	// 7.2 角色门卫全量接线后，导入面测试以运维工程师身份发起。
 	engine.Use(withRole(RoleOpsEngineer))
-	RegisterRoutes(engine, NewCertHandler(svc), NewReferenceHandler(querySvc), NewLedgerHandler(ledgerSvc), dashH, settingsH, newChangeHandlerFixture(t))
+	RegisterRoutes(engine, NewCertHandler(svc), NewReferenceHandler(querySvc),
+		NewDiscoveryHandler(service.NewDiscoveryPreviewService(snaps, refs, certs, certtest.NewFakeCloudCertMappingRepo())),
+		NewLedgerHandler(ledgerSvc), dashH, settingsH, newChangeHandlerFixture(t))
 	return engine, certs, batches
 }
 

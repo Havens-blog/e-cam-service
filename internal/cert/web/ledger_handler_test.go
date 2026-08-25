@@ -40,7 +40,9 @@ func newLedgerRouter(t *testing.T) (*gin.Engine, *ledgerDeps) {
 	// 7.2 角色门卫全量接线后，台账面测试以运维工程师身份发起
 	//（工程师对列表/统计/详情/删除全量放行）。
 	engine.Use(withRole(RoleOpsEngineer))
-	RegisterRoutes(engine, NewCertHandler(importSvc), NewReferenceHandler(querySvc), NewLedgerHandler(ledgerSvc), dashH, settingsH, newChangeHandlerFixture(t))
+	RegisterRoutes(engine, NewCertHandler(importSvc), NewReferenceHandler(querySvc),
+		NewDiscoveryHandler(service.NewDiscoveryPreviewService(snaps, refs, certs, certtest.NewFakeCloudCertMappingRepo())),
+		NewLedgerHandler(ledgerSvc), dashH, settingsH, newChangeHandlerFixture(t))
 	return engine, &ledgerDeps{certs: certs, refs: refs, snaps: snaps}
 }
 

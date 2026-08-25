@@ -589,6 +589,23 @@ func (f *FakeScanSnapshotRepo) LatestRunning(_ context.Context) (domain.ScanSnap
 	return cloneSnapshot(best), nil
 }
 
+// Latest 最新快照（不限状态中 startedAt 最新）；无任何快照返回 mongo.ErrNoDocuments
+// （cert-cloud-discovery-import 任务 3 snapshot-status 数据源）。
+func (f *FakeScanSnapshotRepo) Latest(_ context.Context) (domain.ScanSnapshot, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var best *domain.ScanSnapshot
+	for _, s := range f.snaps {
+		if best == nil || s.StartedAt.After(best.StartedAt) {
+			best = s
+		}
+	}
+	if best == nil {
+		return domain.ScanSnapshot{}, mongo.ErrNoDocuments
+	}
+	return cloneSnapshot(best), nil
+}
+
 // ListRunningBefore 运行中且 startedAt 早于 before 的快照（scan-timeout 恢复扫描集）。
 func (f *FakeScanSnapshotRepo) ListRunningBefore(_ context.Context, before time.Time) ([]domain.ScanSnapshot, error) {
 	f.mu.Lock()

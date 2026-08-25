@@ -446,7 +446,7 @@ func (s *referenceScanService) resolveUncached(
 			return info.Fingerprint // SHA256 对齐口径（如阿里云 CAS PEM 解析）
 		}
 	}
-	return sha256Hex("certscan-unresolved:" + cacheKey)
+	return sha256Hex(unresolvedFingerprintPrefix + ":" + cacheKey)
 }
 
 // ---------------------------------------------------------------------

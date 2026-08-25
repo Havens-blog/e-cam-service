@@ -46,6 +46,7 @@ var certCodeMessages = map[string]string{
 	domain.CodeCertDuplicateFingerprint: "duplicate certificate fingerprint",
 	domain.CodeCertHasRefs:              "certificate has active references or is within protection period",
 	domain.CodeScanInProgress:           "scan already in progress",
+	domain.CodeNoSnapshot:               "no completed scan snapshot available; run a scan first",
 }
 
 // 变更管理错误码固定文案（任务 5.11，api-handbook 变更管理错误表；409 族
@@ -114,6 +115,13 @@ func mapError(err error) (int, *APIError) {
 		return http.StatusConflict, &APIError{
 			Code:    domain.CodeScanInProgress,
 			Message: certCodeMessages[domain.CodeScanInProgress],
+		}
+	case errors.Is(err, domain.ErrNoSnapshot):
+		// cert-cloud-discovery-import 任务 3：发现预览无 done 快照（409
+		// NO_SNAPSHOT，前端按结构化错误码走"先执行扫描"引导）
+		return http.StatusConflict, &APIError{
+			Code:    domain.CodeNoSnapshot,
+			Message: certCodeMessages[domain.CodeNoSnapshot],
 		}
 	case errors.Is(err, domain.ErrInvalidID):
 		return http.StatusBadRequest, &APIError{

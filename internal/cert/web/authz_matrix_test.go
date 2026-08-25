@@ -59,6 +59,12 @@ func TestCertDomain_RoleMatrix(t *testing.T) {
 			map[Role]bool{RoleOpsEngineer: true}},
 		{http.MethodPost, "/api/v1/certs/" + anyID + "/scan", nil,
 			map[Role]bool{RoleOpsEngineer: true}},
+		// 发现导入查询面（工程师；cert-cloud-discovery-import 任务 3 SC-8：
+		// preview 与 snapshot-status 均限 OpsEngineer——导入类端点权限沿用）
+		{http.MethodGet, "/api/v1/certs/discovery/preview", nil,
+			map[Role]bool{RoleOpsEngineer: true}},
+		{http.MethodGet, "/api/v1/certs/discovery/snapshot-status", nil,
+			map[Role]bool{RoleOpsEngineer: true}},
 		// 配置面（主管/审计）
 		{http.MethodPut, "/api/v1/certs/settings", map[string]string{},
 			map[Role]bool{RoleOpsSupervisor: true, RoleAuditor: true}},
