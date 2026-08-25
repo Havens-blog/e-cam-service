@@ -14,6 +14,13 @@ func rollbackBody() map[string]any {
 	return map[string]any{"itemIds": []string{"6590aabbccdd000000000001"}}
 }
 
+// discoveryImportBody 发现导入请求体（items 三元组非空才进 handler；门卫在其前）。
+func discoveryImportBody() map[string]any {
+	return map[string]any{"items": []map[string]string{
+		{"cloud": "aliyun", "accountKey": "acct-a", "cloudCertId": "cert-A"},
+	}}
+}
+
 // ---------------------------------------------------------------------
 // 三角色×关键端点权限矩阵（任务 7.2 AC：角色不足 → 403 FORBIDDEN）。
 //
@@ -59,11 +66,16 @@ func TestCertDomain_RoleMatrix(t *testing.T) {
 			map[Role]bool{RoleOpsEngineer: true}},
 		{http.MethodPost, "/api/v1/certs/" + anyID + "/scan", nil,
 			map[Role]bool{RoleOpsEngineer: true}},
-		// 发现导入查询面（工程师；cert-cloud-discovery-import 任务 3 SC-8：
-		// preview 与 snapshot-status 均限 OpsEngineer——导入类端点权限沿用）
+		// 发现导入面（工程师；cert-cloud-discovery-import SC-8：preview/
+		// snapshot-status/import/progress 四端点均限 OpsEngineer——导入类
+		// 端点权限沿用，任务 3 查询面 + 任务 5 会话面）
 		{http.MethodGet, "/api/v1/certs/discovery/preview", nil,
 			map[Role]bool{RoleOpsEngineer: true}},
 		{http.MethodGet, "/api/v1/certs/discovery/snapshot-status", nil,
+			map[Role]bool{RoleOpsEngineer: true}},
+		{http.MethodPost, "/api/v1/certs/discovery/import", discoveryImportBody(),
+			map[Role]bool{RoleOpsEngineer: true}},
+		{http.MethodGet, "/api/v1/certs/discovery/import/" + anyID, nil,
 			map[Role]bool{RoleOpsEngineer: true}},
 		// 配置面（主管/审计）
 		{http.MethodPut, "/api/v1/certs/settings", map[string]string{},

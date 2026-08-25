@@ -41,7 +41,7 @@ func newLedgerRouter(t *testing.T) (*gin.Engine, *ledgerDeps) {
 	//（工程师对列表/统计/详情/删除全量放行）。
 	engine.Use(withRole(RoleOpsEngineer))
 	RegisterRoutes(engine, NewCertHandler(importSvc), NewReferenceHandler(querySvc),
-		NewDiscoveryHandler(service.NewDiscoveryPreviewService(snaps, refs, certs, certtest.NewFakeCloudCertMappingRepo())),
+		NewDiscoveryHandler(service.NewDiscoveryPreviewService(snaps, refs, certs, certtest.NewFakeCloudCertMappingRepo()), newDiscoveryImportSvcForRouter()),
 		NewLedgerHandler(ledgerSvc), dashH, settingsH, newChangeHandlerFixture(t))
 	return engine, &ledgerDeps{certs: certs, refs: refs, snaps: snaps}
 }

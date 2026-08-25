@@ -63,7 +63,7 @@
       "dependencies": [
         "4"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5-discovery-import-endpoints.md",
       "record": "records/5-discovery-import-endpoints.md",
       "surface-type": "api",

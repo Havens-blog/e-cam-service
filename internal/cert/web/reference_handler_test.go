@@ -57,7 +57,7 @@ func newReferenceRouter(t *testing.T) (*gin.Engine, *ledgerDeps, *fakeScanTrigge
 	// 7.2 角色门卫全量接线后，引用面测试以运维工程师身份发起。
 	engine.Use(withRole(RoleOpsEngineer))
 	RegisterRoutes(engine, NewCertHandler(importSvc), NewReferenceHandler(querySvc),
-		NewDiscoveryHandler(service.NewDiscoveryPreviewService(snaps, refs, certs, certtest.NewFakeCloudCertMappingRepo())),
+		NewDiscoveryHandler(service.NewDiscoveryPreviewService(snaps, refs, certs, certtest.NewFakeCloudCertMappingRepo()), newDiscoveryImportSvcForRouter()),
 		NewLedgerHandler(ledgerSvc), dashH, settingsH, newChangeHandlerFixture(t))
 	return engine, &ledgerDeps{certs: certs, refs: refs, snaps: snaps}, scan
 }

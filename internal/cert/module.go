@@ -170,6 +170,22 @@ func InitCertModule(
 		service.NewK8sScanGateway(k8sFactory),
 		&publisherScanNotifier{publisher: publisher},
 	)
+	// 云端发现导入会话编排（cert-cloud-discovery-import 任务 4 服务 → 任务 5
+	// 装配）：五云材料端口对称注册（华为云 shim 恒降级哨兵——服务层预检即记因
+	// 跳过，不发起云 API 调用）；账号源复用扫描链路 ActiveByCloud 模式（会话
+	// 生命周期长于 HTTP 请求，凭证按账号在会话内解析）。
+	discoveryImportSvc := service.NewDiscoveryImportService(
+		repos.DiscoveryImportSessions, repos.Certificates, repos.CloudMappings,
+		repos.CertReferences,
+		[]service.DiscoveryCertAdapter{
+			service.NewAliyunDiscoveryCertAdapter(aliyuncert.NewCertAdapter(logger)),
+			service.NewTencentDiscoveryCertAdapter(tencentcert.NewCertAdapter(logger)),
+			service.NewHuaweiDiscoveryCertAdapter(huaweidiscover.NewCertDiscoveryAdapter(logger)),
+			service.NewAwsDiscoveryCertAdapter(awsdiscover.NewCertDiscoveryAdapter(logger)),
+			service.NewAzureDiscoveryCertAdapter(azurediscover.NewCertDiscoveryAdapter(logger)),
+		},
+		service.NewAccountScanSource(accounts),
+	)
 	probeSvc := service.NewProbeService(repos.Certificates, repos.ProbeResults, repos.Exemptions, repos.AlertConfig, repos.ChangeOrders, nil)
 	inspectionSvc := service.NewInspectionService(repos.Certificates, repos.AlertConfig, publisher)
 	changeSvc := service.NewChangeService(repos.ChangeOrders, repos.ChangeItems, repos.Certificates,
@@ -252,7 +268,7 @@ func InitCertModule(
 		VerifyProbeIntervalMinutes: scheduler.ResolveVerifyProbeIntervalMinutes(context.Background(), repos.AlertConfig),
 		Hdl:                        web.NewCertHandler(importSvc),
 		ReferenceHdl:               web.NewReferenceHandler(service.NewReferenceQueryService(repos.Certificates, repos.CertReferences, repos.ScanSnapshots, scanSvc)),
-		DiscoveryHdl:               web.NewDiscoveryHandler(service.NewDiscoveryPreviewService(repos.ScanSnapshots, repos.CertReferences, repos.Certificates, repos.CloudMappings)),
+		DiscoveryHdl:               web.NewDiscoveryHandler(service.NewDiscoveryPreviewService(repos.ScanSnapshots, repos.CertReferences, repos.Certificates, repos.CloudMappings), discoveryImportSvc),
 		LedgerHdl:                  web.NewLedgerHandler(ledgerSvc),
 		DashboardHdl:               web.NewDashboardHandler(dashboardSvc),
 		SettingsHdl:                web.NewSettingsHandler(settingsSvc, crdRegSvc),

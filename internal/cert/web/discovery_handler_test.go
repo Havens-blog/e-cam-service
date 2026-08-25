@@ -10,17 +10,21 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
+	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// discoveryDeps 发现导入查询端点测试依赖（内存假实现句柄）。
+// discoveryDeps 发现导入端点测试依赖（内存假实现句柄；查询面与会话面共享
+// 同一 fake 世界——预览/导入/落库断言经同一假实现读回）。
 type discoveryDeps struct {
 	certs    *certtest.FakeCertificateRepo
 	refs     *certtest.FakeCertReferenceRepo
 	snaps    *certtest.FakeScanSnapshotRepo
 	mappings *certtest.FakeCloudCertMappingRepo
+	imports  *discoveryImportTestDeps
 }
 
 // newDiscoveryRouter 构造挂载全部 /api/v1/certs 路由的测试引擎
@@ -33,16 +37,18 @@ func newDiscoveryRouter(t *testing.T) (*gin.Engine, *discoveryDeps) {
 		refs:     certtest.NewFakeCertReferenceRepo(),
 		snaps:    certtest.NewFakeScanSnapshotRepo(),
 		mappings: certtest.NewFakeCloudCertMappingRepo(),
+		imports:  newDiscoveryImportTestDeps(),
 	}
 	importSvc := service.NewImportService(d.certs, certtest.NewFakeBatchSessionRepo(), certtest.NewTestCrypto(t))
 	ledgerSvc := service.NewLedgerService(d.certs, d.refs, d.snaps)
 	querySvc := service.NewReferenceQueryService(d.certs, d.refs, d.snaps, &fakeScanTrigger{})
 	discSvc := service.NewDiscoveryPreviewService(d.snaps, d.refs, d.certs, d.mappings)
+	discImportSvc := d.imports.svc(d.certs, d.mappings, d.refs)
 	dashH, settingsH := newDashboardSettingsHandlers(d.certs, d.refs, d.snaps)
 	engine := gin.New()
 	engine.Use(withRole(RoleOpsEngineer))
 	RegisterRoutes(engine, NewCertHandler(importSvc), NewReferenceHandler(querySvc),
-		NewDiscoveryHandler(discSvc), NewLedgerHandler(ledgerSvc),
+		NewDiscoveryHandler(discSvc, discImportSvc), NewLedgerHandler(ledgerSvc),
 		dashH, settingsH, newChangeHandlerFixture(t))
 	return engine, d
 }
@@ -210,7 +216,7 @@ func TestDiscoverySnapshotStatusAPI(t *testing.T) {
 		engine.Use(withRole(RoleOpsEngineer))
 		RegisterRoutes(engine, NewCertHandler(service.NewImportService(certs, certtest.NewFakeBatchSessionRepo(), certtest.NewTestCrypto(t))),
 			NewReferenceHandler(service.NewReferenceQueryService(certs, refs, snaps, &fakeScanTrigger{})),
-			NewDiscoveryHandler(discSvc), NewLedgerHandler(service.NewLedgerService(certs, refs, snaps)),
+			NewDiscoveryHandler(discSvc, newDiscoveryImportSvcForRouter()), NewLedgerHandler(service.NewLedgerService(certs, refs, snaps)),
 			nil, nil, newChangeHandlerFixture(t))
 
 		w := doGet(t, engine, "/api/v1/certs/discovery/snapshot-status")
@@ -228,4 +234,241 @@ type failingLatestSnapRepo struct {
 
 func (f *failingLatestSnapRepo) Latest(context.Context) (domain.ScanSnapshot, error) {
 	return domain.ScanSnapshot{}, errors.New("snapshot storage unavailable")
+}
+
+// ---------------------------------------------------------------------
+// 会话面端点（cert-cloud-discovery-import 任务 5）
+// ---------------------------------------------------------------------
+
+// webImportAccountSource 发现导入 web 层测试账号源（命名区别于 service 层
+// discoveryAccountSourceStub，防撞名）。
+type webImportAccountSource struct {
+	accounts map[domain.Cloud][]*sharedomain.CloudAccount
+}
+
+func (s *webImportAccountSource) ActiveByCloud(_ context.Context, cloud domain.Cloud) ([]*sharedomain.CloudAccount, error) {
+	return s.accounts[cloud], nil
+}
+
+// webImportCertAdapter 发现导入 web 层测试材料端口桩：certID→材料映射；
+// 未配置的 certID 返回 Exists=false（条目按"云侧已不存在"口径记因）。
+type webImportCertAdapter struct {
+	cloud    domain.Cloud
+	material map[string]service.DiscoveryCertMaterial
+}
+
+func (a *webImportCertAdapter) Cloud() domain.Cloud { return a.cloud }
+
+func (a *webImportCertAdapter) GetCertChain(_ context.Context, _ *sharedomain.CloudAccount, cloudCertID string) (service.DiscoveryCertMaterial, error) {
+	if m, ok := a.material[cloudCertID]; ok {
+		return m, nil
+	}
+	return service.DiscoveryCertMaterial{Exists: false}, nil
+}
+
+// discoveryImportTestDeps 会话面测试依赖（certs/mappings/refs 与查询面共享
+// 同一 fake 世界，落库断言经同一假实现读回）。
+type discoveryImportTestDeps struct {
+	sessions *certtest.FakeDiscoveryImportSessionRepo
+	accounts *webImportAccountSource
+	aliyun   *webImportCertAdapter
+}
+
+// newDiscoveryImportTestDeps 会话面测试依赖：双阿里账号（多账号同证书场景）
+// + 阿里材料桩（material 由用例按 certID 装载）。
+func newDiscoveryImportTestDeps() *discoveryImportTestDeps {
+	return &discoveryImportTestDeps{
+		sessions: certtest.NewFakeDiscoveryImportSessionRepo(),
+		accounts: &webImportAccountSource{accounts: map[domain.Cloud][]*sharedomain.CloudAccount{
+			domain.CloudAliyun: {
+				{Name: "acct-a", Provider: sharedomain.CloudProvider(domain.CloudAliyun), Status: sharedomain.CloudAccountStatusActive},
+				{Name: "acct-b", Provider: sharedomain.CloudProvider(domain.CloudAliyun), Status: sharedomain.CloudAccountStatusActive},
+			},
+		}},
+		aliyun: &webImportCertAdapter{cloud: domain.CloudAliyun, material: map[string]service.DiscoveryCertMaterial{}},
+	}
+}
+
+// svc 基于指定 fake 世界构造发现导入服务（certs/mappings/refs 由调用方注入，
+// 查询面/会话面共享同一假实现）。
+func (d *discoveryImportTestDeps) svc(
+	certs *certtest.FakeCertificateRepo,
+	mappings *certtest.FakeCloudCertMappingRepo,
+	refs *certtest.FakeCertReferenceRepo,
+) service.DiscoveryImportService {
+	return service.NewDiscoveryImportService(d.sessions, certs, mappings, refs,
+		[]service.DiscoveryCertAdapter{d.aliyun}, d.accounts)
+}
+
+// newDiscoveryImportSvcForRouter 非发现用例测试路由（cert/change/dashboard/
+// ledger/reference 及权限矩阵）的发现导入服务装配：自含 fake 世界，仅保证
+// POST /discovery/import 在允许角色下可达业务层（不进入业务断言）。
+func newDiscoveryImportSvcForRouter() service.DiscoveryImportService {
+	d := newDiscoveryImportTestDeps()
+	return d.svc(certtest.NewFakeCertificateRepo(), certtest.NewFakeCloudCertMappingRepo(), certtest.NewFakeCertReferenceRepo())
+}
+
+// pollDiscoveryImportTerminal 经进度端点轮询直至终态（completed/partial_failed）。
+func pollDiscoveryImportTerminal(t *testing.T, engine *gin.Engine, sessionID string) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		w := doGet(t, engine, "/api/v1/certs/discovery/import/"+sessionID)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		data := decodeData(t, w)
+		if data["status"] != string(domain.DiscoveryImportRunning) {
+			return data
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("discovery import session %s did not reach terminal state within deadline: %v", sessionID, data)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// discoveryImportItems 勾选条目请求体。
+func discoveryImportItems(items []map[string]string) map[string]any {
+	return map[string]any{"items": items}
+}
+
+func TestDiscoveryImportAPI_MultiAccountSameCertEndToEnd(t *testing.T) {
+	engine, d := newDiscoveryRouter(t)
+	// 同一证书材料挂两个云证书 ID（多账号各引用一份）
+	b := certtest.NewBundle(t, "www.shared-example.com", []string{"www.shared-example.com"}, nil)
+	d.imports.aliyun.material["cert-acc-a"] = service.DiscoveryCertMaterial{Exists: true, CertChainPEM: string(b.CertPEM)}
+	d.imports.aliyun.material["cert-acc-b"] = service.DiscoveryCertMaterial{Exists: true, CertChainPEM: string(b.CertPEM)}
+
+	// 202 初始快照：sessionId + running + 全 pending + progress.total
+	w := doPostJSON(t, engine, "/api/v1/certs/discovery/import", discoveryImportItems([]map[string]string{
+		{"cloud": "aliyun", "accountKey": "acct-a", "cloudCertId": "cert-acc-a"},
+		{"cloud": "aliyun", "accountKey": "acct-b", "cloudCertId": "cert-acc-b"},
+	}))
+	require.Equal(t, http.StatusAccepted, w.Code, w.Body.String())
+	snap := decodeData(t, w)
+	sessionID, _ := snap["sessionId"].(string)
+	require.NotEmpty(t, sessionID, "202 语义返回 sessionId（会话句柄）")
+	assert.Equal(t, "running", snap["status"])
+	assert.NotEmpty(t, snap["createdAt"])
+	sItems, ok := snap["items"].([]any)
+	require.True(t, ok, "items 为数组而非 null")
+	require.Len(t, sItems, 2)
+	for _, raw := range sItems {
+		it := raw.(map[string]any)
+		assert.Equal(t, "pending", it["result"], "202 初始快照条目为 pending")
+		assert.NotContains(t, it, "mappedCertId", "pending 条目不带 mappedCertId")
+	}
+	sProg := snap["progress"].(map[string]any)
+	assert.Equal(t, float64(2), sProg["total"])
+	assert.Equal(t, float64(0), sProg["succeeded"])
+	assert.Equal(t, float64(0), sProg["failed"])
+	assertNoKeyMaterial(t, w)
+
+	// 进度轮询至终态：逐条 result/mappedCertId/errorReason + progress 计数
+	final := pollDiscoveryImportTerminal(t, engine, sessionID)
+	assert.Equal(t, "completed", final["status"])
+	assert.NotNil(t, final["finishedAt"], "终态时点可见")
+	fProg := final["progress"].(map[string]any)
+	assert.Equal(t, float64(2), fProg["total"])
+	assert.Equal(t, float64(2), fProg["succeeded"])
+	assert.Equal(t, float64(0), fProg["failed"])
+	fItems, ok := final["items"].([]any)
+	require.True(t, ok)
+	require.Len(t, fItems, 2)
+	mappedIDs := make([]string, 0, 2)
+	for _, raw := range fItems {
+		it := raw.(map[string]any)
+		assert.Equal(t, "success", it["result"])
+		id, _ := it["mappedCertId"].(string)
+		require.NotEmpty(t, id, "success 条目带 mappedCertId（台账证书 ID）")
+		mappedIDs = append(mappedIDs, id)
+	}
+	assert.Equal(t, mappedIDs[0], mappedIDs[1], "同证书多账号映射到同一台账记录")
+
+	// SC-6 端到端落库断言：1 台账记录 + 按账号各 1 映射
+	ledger, err := d.certs.List(context.Background())
+	require.NoError(t, err)
+	require.Len(t, ledger, 1, "多账号同证书仅 1 条台账记录（uk_fingerprint）")
+	assert.Equal(t, b.Fingerprint, ledger[0].Fingerprint)
+	assert.Equal(t, domain.HostingStatusFingerprintOnly, ledger[0].HostingStatus)
+	mappings, err := d.mappings.ListByFingerprint(context.Background(), b.Fingerprint)
+	require.NoError(t, err)
+	require.Len(t, mappings, 2, "CloudCertMapping 按账号各 1 条")
+	assert.ElementsMatch(t, []string{"acct-a", "acct-b"}, []string{mappings[0].AccountKey, mappings[1].AccountKey})
+	assert.ElementsMatch(t, []string{"cert-acc-a", "cert-acc-b"}, []string{mappings[0].CloudCertID, mappings[1].CloudCertID})
+}
+
+func TestDiscoveryImportAPI_PartialFailedTerminal(t *testing.T) {
+	engine, d := newDiscoveryRouter(t)
+	b := certtest.NewBundle(t, "www.partial-example.com", []string{"www.partial-example.com"}, nil)
+	d.imports.aliyun.material["cert-ok"] = service.DiscoveryCertMaterial{Exists: true, CertChainPEM: string(b.CertPEM)}
+	// cert-gone 未配置材料 → Exists=false（预览后云侧删除漂移口径）
+
+	w := doPostJSON(t, engine, "/api/v1/certs/discovery/import", discoveryImportItems([]map[string]string{
+		{"cloud": "aliyun", "accountKey": "acct-a", "cloudCertId": "cert-ok"},
+		{"cloud": "aliyun", "accountKey": "acct-a", "cloudCertId": "cert-gone"},
+	}))
+	require.Equal(t, http.StatusAccepted, w.Code, w.Body.String())
+	sessionID, _ := decodeData(t, w)["sessionId"].(string)
+
+	final := pollDiscoveryImportTerminal(t, engine, sessionID)
+	assert.Equal(t, "partial_failed", final["status"], "终态 partial_failed 可判")
+	fItems := final["items"].([]any)
+	require.Len(t, fItems, 2)
+	succeeded := fItems[0].(map[string]any)
+	assert.Equal(t, "success", succeeded["result"])
+	failed := fItems[1].(map[string]any)
+	assert.Equal(t, "failed", failed["result"])
+	assert.Equal(t, "CERT_GET_FAILED: 云侧已不存在", failed["errorReason"], "失败条目记因（静态文案）")
+	assert.NotContains(t, fItems[0], "errorReason", "首次导入成功条目无说明文案")
+	fProg := final["progress"].(map[string]any)
+	assert.Equal(t, float64(1), fProg["succeeded"])
+	assert.Equal(t, float64(1), fProg["failed"])
+}
+
+func TestDiscoveryImportAPI_RequestValidation(t *testing.T) {
+	engine, _ := newDiscoveryRouter(t)
+
+	cases := []struct {
+		name string
+		body any
+	}{
+		{"empty items array", discoveryImportItems(nil)},
+		{"missing items field", map[string]any{}},
+		{"items not an array", map[string]any{"items": "not-an-array"}},
+		{"item missing cloudCertId", discoveryImportItems([]map[string]string{
+			{"cloud": "aliyun", "accountKey": "acct-a"}})},
+		{"item blank accountKey", discoveryImportItems([]map[string]string{
+			{"cloud": "aliyun", "accountKey": " ", "cloudCertId": "cert-A"}})},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name+" returns structured 400", func(t *testing.T) {
+			w := doPostJSON(t, engine, "/api/v1/certs/discovery/import", tc.body)
+			require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+			env := decode(t, w)
+			require.NotNil(t, env.Error)
+			assert.Equal(t, CodeInvalidRequest, env.Error.Code)
+			assert.False(t, env.Success)
+		})
+	}
+}
+
+func TestDiscoveryImportAPI_ProgressLookup(t *testing.T) {
+	engine, _ := newDiscoveryRouter(t)
+
+	t.Run("unknown session returns 404 envelope", func(t *testing.T) {
+		w := doGet(t, engine, "/api/v1/certs/discovery/import/"+primitive.NewObjectID().Hex())
+		assert.Equal(t, http.StatusNotFound, w.Code, w.Body.String())
+		env := decode(t, w)
+		require.NotNil(t, env.Error)
+		assert.Equal(t, CodeNotFound, env.Error.Code)
+	})
+
+	t.Run("invalid session id returns 400 envelope", func(t *testing.T) {
+		// 同时覆盖静态段共存：/discovery/import/... 不被 ledger /:id 吃掉
+		w := doGet(t, engine, "/api/v1/certs/discovery/import/not-a-hex-id")
+		assert.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+		env := decode(t, w)
+		require.NotNil(t, env.Error)
+		assert.Equal(t, CodeInvalidID, env.Error.Code)
+	})
 }

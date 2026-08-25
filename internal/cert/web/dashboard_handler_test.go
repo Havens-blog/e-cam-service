@@ -67,7 +67,7 @@ func newDashSettingsRouter(t *testing.T, role Role) (*gin.Engine, *dashSettingsD
 	}
 	RegisterRoutes(engine,
 		NewCertHandler(importSvc), NewReferenceHandler(querySvc),
-		NewDiscoveryHandler(service.NewDiscoveryPreviewService(d.snaps, d.refs, d.certs, certtest.NewFakeCloudCertMappingRepo())),
+		NewDiscoveryHandler(service.NewDiscoveryPreviewService(d.snaps, d.refs, d.certs, certtest.NewFakeCloudCertMappingRepo()), newDiscoveryImportSvcForRouter()),
 		NewLedgerHandler(ledgerSvc),
 		NewDashboardHandler(dashSvc), NewSettingsHandler(settingsSvc, crdSvc), newChangeHandlerFixture(t))
 	return engine, d
