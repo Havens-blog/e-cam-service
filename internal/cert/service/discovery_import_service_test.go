@@ -575,3 +575,23 @@ func TestDiscoveryImport_AdapterShims(t *testing.T) {
 	_, err = adapters[3].GetCertChain(context.Background(), creds, "iam-cert-123")
 	assert.ErrorIs(t, err, cloudx.ErrCertPEMUnsupported)
 }
+
+func TestDiscoveryParseReasonPreservesWrappedDetail(t *testing.T) {
+	t.Run("过期细节保留", func(t *testing.T) {
+		err := fmt.Errorf("%w: certificate expired at 2025-01-01T00:00:00Z", domain.ErrParseFail)
+		got := discoveryParseReason(err)
+		assert.Contains(t, got, "CERT_PARSE_FAIL")
+		assert.Contains(t, got, "certificate expired at 2025-01-01T00:00:00Z",
+			"wrapped 静态细节（日期/算法名）应保留，运营需据此区分过期/结构异常")
+	})
+	t.Run("缺自签根细节保留", func(t *testing.T) {
+		err := fmt.Errorf("%w: 2 certificate(s) provided without self-signed root anchor", domain.ErrChainIncomplete)
+		got := discoveryParseReason(err)
+		assert.Contains(t, got, "CERT_CHAIN_INCOMPLETE")
+		assert.Contains(t, got, "without self-signed root anchor")
+	})
+	t.Run("非域错误保持INTERNAL_ERROR静态码", func(t *testing.T) {
+		got := discoveryParseReason(errors.New("boom"))
+		assert.Equal(t, "INTERNAL_ERROR: 证书解析失败", got)
+	})
+}

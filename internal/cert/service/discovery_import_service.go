@@ -328,10 +328,12 @@ func (s *discoveryImportService) processItem(
 }
 
 // discoveryParseReason 解析/校验失败原因：域内 CertError 为自有静态文案
-// （时间/算法名等安全参数），携带码+文案；其余归 INTERNAL_ERROR 静态码。
+// （时间/算法名等安全参数），携带码+完整链文案（err.Error 保留 wrapped 细节，
+// 如 expired at <日期>/缺自签根——运营区分过期与结构异常的判据）；
+// 其余归 INTERNAL_ERROR 静态码。
 func discoveryParseReason(err error) string {
 	if ce, ok := domain.AsCertError(err); ok {
-		return ce.Code() + ": " + ce.Error()
+		return ce.Code() + ": " + err.Error()
 	}
 	return "INTERNAL_ERROR: 证书解析失败"
 }

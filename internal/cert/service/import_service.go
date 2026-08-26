@@ -212,10 +212,11 @@ func (s *importService) processBatchFile(ctx context.Context, batchID string, id
 	_ = s.batches.RecordFileResult(ctx, batchID, idx, domain.BatchFileSuccess, res.CertID, "")
 }
 
-// batchErrorReason 批量失败行 errorReason：错误码 + 静态消息，不含私钥/密文片段。
+// batchErrorReason 批量失败行 errorReason：错误码 + 完整链文案（保留 wrapped
+// 静态细节如 expired at <日期>，与 discoveryParseReason 同口径），不含私钥/密文片段。
 func batchErrorReason(err error) string {
 	if ce, ok := domain.AsCertError(err); ok {
-		return ce.Code() + ": " + ce.Error()
+		return ce.Code() + ": " + err.Error()
 	}
 	if errors.Is(err, domain.ErrDuplicateFingerprint) {
 		return domain.CodeCertDuplicateFingerprint + ": " + err.Error()
