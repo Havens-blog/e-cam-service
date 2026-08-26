@@ -21,7 +21,7 @@ func TestBsonTagsMatchSchema(t *testing.T) {
 	}{
 		{"Certificate", Certificate{}, true, []string{
 			"fingerprint", "commonName", "sans", "issuer", "serialNumber",
-			"notBefore", "notAfter", "keyAlgorithm", "hostingStatus",
+			"notBefore", "notAfter", "keyAlgorithm", "hostingStatus", "materialIssue",
 			"encryptedPrivateKey", "certPem", "expectedDomain", "protectUntil",
 			"expiryAlertLevel", "createdAt",
 		}},

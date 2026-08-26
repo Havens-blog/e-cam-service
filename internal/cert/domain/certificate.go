@@ -50,6 +50,18 @@ type EncryptedSecret struct {
 	Algo       string `bson:"algo"`       // 恒为 AlgoAES256GCM
 }
 
+// MaterialIssue 盘点登记的材料异常标记（发现导入容忍模式写入；空=正常）。
+// 口径：expired 优先于 chain_incomplete（同时命中记运营主导事实）；
+// materialIssue=expired 的证书不参与到期告警（已知存量，处置动作是换证）。
+type MaterialIssue string
+
+const (
+	// MaterialIssueExpired 已过期/未生效（发现导入容忍登记）。
+	MaterialIssueExpired MaterialIssue = "expired"
+	// MaterialIssueChainIncomplete 证书链缺自签根/链不可验证（发现导入容忍登记）。
+	MaterialIssueChainIncomplete MaterialIssue = "chain_incomplete"
+)
+
 // Certificate 证书台账文档（cert_certificates）。
 // 字段名/bson tag 与 schema.sql 1:1 对齐；fingerprint 唯一（uk_fingerprint）。
 type Certificate struct {
@@ -63,6 +75,7 @@ type Certificate struct {
 	NotAfter            time.Time          `bson:"notAfter,omitempty"`
 	KeyAlgorithm        KeyAlgorithm       `bson:"keyAlgorithm,omitempty"`
 	HostingStatus       HostingStatus      `bson:"hostingStatus"`
+	MaterialIssue       MaterialIssue      `bson:"materialIssue,omitempty"` // 盘点登记材料异常标记（发现导入容忍模式；空=正常）
 	EncryptedPrivateKey *EncryptedSecret   `bson:"encryptedPrivateKey,omitempty"` // 仅指纹登记时缺省；永不出现在 API 响应
 	CertPEM             string             `bson:"certPem,omitempty"`             // 导入时上传的证书束 PEM 原文（leaf+中间链+根）；补传私钥匹配校验与云证书库上传依据；永不出现在 API 响应
 	ExpectedDomain      string             `bson:"expectedDomain,omitempty"`      // 可选，仅提示性比对

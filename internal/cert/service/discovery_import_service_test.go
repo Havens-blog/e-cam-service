@@ -526,10 +526,10 @@ func TestDiscoveryImport_EmptyItemsAndSessionLookup(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------
-// 解析失败记因（域内 CertError 静态文案：已过期样本）
+// 盘点容忍登记（产品决策：过期/缺链标记登记，不拦截）
 // ---------------------------------------------------------------------
 
-func TestDiscoveryImport_ParseFailReason(t *testing.T) {
+func TestDiscoveryImport_ExpiredMarksInsteadOfFails(t *testing.T) {
 	d := newDiscoveryImportDeps()
 	expired := certtest.NewBundle(t, "www.expired-example.com",
 		[]string{"www.expired-example.com"},
@@ -544,8 +544,31 @@ func TestDiscoveryImport_ParseFailReason(t *testing.T) {
 	}, "op-1")
 	require.NoError(t, err)
 	sess := waitForDiscoveryTerminal(t, d.sessions, sessionID)
+	assert.Equal(t, domain.DiscoveryItemSuccess, sess.Items[0].Result, "过期证书标记登记而非失败")
+	assert.Contains(t, sess.Items[0].ErrorReason, "MATERIAL_ISSUE", "条目附注携带材料异常标记")
+	assert.Contains(t, sess.Items[0].ErrorReason, "已过期")
+	assert.Equal(t, domain.DiscoveryImportCompleted, sess.Status)
+
+	// 台账留痕：materialIssue=expired（不参与到期告警的判定依据）
+	stored, err := d.certs.GetByFingerprint(context.Background(), expired.Fingerprint)
+	require.NoError(t, err)
+	assert.Equal(t, domain.MaterialIssueExpired, stored.MaterialIssue)
+	assert.Equal(t, domain.HostingStatusFingerprintOnly, stored.HostingStatus)
+}
+
+// TestDiscoveryImport_ParseFailReason 结构异常仍拒绝（无 SAN/CN 的解析产物不可信）。
+func TestDiscoveryImport_ParseFailReason(t *testing.T) {
+	d := newDiscoveryImportDeps()
+	// 结构异常样本：合法 PEM 但非证书内容（解析层拦截路径）
+	d.aliyun.material["cert-garbage"] = DiscoveryCertMaterial{Exists: true, CertChainPEM: "-----BEGIN CERTIFICATE-----\nbm90IGEgY2VydA==\n-----END CERTIFICATE-----\n"}
+
+	sessionID, err := d.svc().ImportFromDiscovery(context.Background(), []DiscoveryImportItemInput{
+		{Cloud: "aliyun", AccountKey: "acct-a", CloudCertID: "cert-garbage"},
+	}, "op-1")
+	require.NoError(t, err)
+	sess := waitForDiscoveryTerminal(t, d.sessions, sessionID)
 	assert.Equal(t, domain.DiscoveryItemFailed, sess.Items[0].Result)
-	assert.Contains(t, sess.Items[0].ErrorReason, domain.CodeCertParseFail, "解析失败承载域内静态码")
+	assert.Contains(t, sess.Items[0].ErrorReason, domain.CodeCertParseFail, "结构异常仍拦截并承载域内静态码")
 	assert.Equal(t, domain.DiscoveryImportPartialFailed, sess.Status)
 }
 

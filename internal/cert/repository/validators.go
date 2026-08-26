@@ -71,6 +71,7 @@ var collectionValidators = map[string]bson.M{
 			"notAfter":            date(),
 			"keyAlgorithm":        enumStr("RSA", "ECDSA"),
 			"hostingStatus":       enumStr("complete", "fingerprint_only"),
+			"materialIssue":       enumStr("expired", "chain_incomplete"), // 缺省=正常（盘点容忍标记）
 			"encryptedPrivateKey": encryptedSecretSchema(),
 			"expectedDomain":      str(),
 			"protectUntil":        date(),

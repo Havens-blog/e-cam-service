@@ -103,6 +103,11 @@ func (s *inspectionService) InspectLedger(ctx context.Context) (InspectionSummar
 		if cert.NotAfter.IsZero() {
 			continue
 		}
+		// 盘点容忍登记的已过期证书不参与到期告警（已知存量的处置动作是换证，
+		// 反复告警无运营价值；台账列表 daysLeft 负值仍可见）——cert-cloud-discovery-import
+		if cert.MaterialIssue == domain.MaterialIssueExpired {
+			continue
+		}
 		computed := ComputeExpiryLevel(cert.NotAfter, now, levels)
 		persisted := normalizeExpiryAlertLevel(cert.ExpiryAlertLevel)
 		summary.Evaluated++

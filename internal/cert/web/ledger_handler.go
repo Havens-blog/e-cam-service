@@ -47,6 +47,7 @@ type CertListItemVO struct {
 	NotAfter      string   `json:"notAfter"`
 	DaysLeft      int      `json:"daysLeft"`
 	HostingStatus string   `json:"hostingStatus"`
+	MaterialIssue string   `json:"materialIssue,omitempty"` // 盘点容忍标记：expired/chain_incomplete（缺省=正常）
 	ProtectUntil  *string  `json:"protectUntil"`
 	RefCount      int      `json:"refCount"`
 }
@@ -73,6 +74,7 @@ type CertDetailVO struct {
 	DaysLeft         int      `json:"daysLeft"`
 	KeyAlgorithm     string   `json:"keyAlgorithm"`
 	HostingStatus    string   `json:"hostingStatus"`
+	MaterialIssue    string   `json:"materialIssue,omitempty"` // 盘点容忍标记：expired/chain_incomplete（缺省=正常）
 	HasKey           bool     `json:"hasKey"`
 	ExpectedDomain   string   `json:"expectedDomain,omitempty"`
 	ProtectUntil     *string  `json:"protectUntil"`
@@ -229,6 +231,7 @@ func toListItemVOs(items []service.CertListItem) []CertListItemVO {
 			NotAfter:      formatTime(it.NotAfter),
 			DaysLeft:      it.DaysLeft,
 			HostingStatus: string(it.HostingStatus),
+			MaterialIssue: string(it.MaterialIssue),
 			ProtectUntil:  formatTimePtr(it.ProtectUntil),
 			RefCount:      it.RefCount,
 		})
@@ -250,6 +253,7 @@ func toDetailVO(d service.CertDetail) CertDetailVO {
 		DaysLeft:         d.DaysLeft,
 		KeyAlgorithm:     string(d.KeyAlgorithm),
 		HostingStatus:    string(d.HostingStatus),
+		MaterialIssue:    string(d.MaterialIssue),
 		HasKey:           d.HasKey,
 		ExpectedDomain:   d.ExpectedDomain,
 		ProtectUntil:     formatTimePtr(d.ProtectUntil),

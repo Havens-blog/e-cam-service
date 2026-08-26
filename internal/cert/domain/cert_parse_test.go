@@ -581,3 +581,46 @@ func TestCertErrorCodeAndWrap(t *testing.T) {
 		t.Errorf("AsCertError(plain error) = %v, want false", ce)
 	}
 }
+
+func TestParseCertForInventory(t *testing.T) {
+	fx := newCertFixtures(t)
+	tests := []struct {
+		name    string
+		certPEM []byte
+		wantErr string // 空=期望成功
+		wantIssue MaterialIssue
+	}{
+		{name: "完整有效证书无标记", certPEM: fx.chain(fx.leafEC), wantIssue: ""},
+		{name: "已过期证书标记 expired", certPEM: fx.chain(fx.expired), wantIssue: MaterialIssueExpired},
+		{name: "未生效证书标记 expired", certPEM: fx.chain(fx.future), wantIssue: MaterialIssueExpired},
+		{name: "缺链证书标记 chain_incomplete", certPEM: fx.leafEC.pem, wantIssue: MaterialIssueChainIncomplete},
+		{name: "缺中间链标记 chain_incomplete", certPEM: concatPEM(fx.leafEC.pem, fx.root.pem), wantIssue: MaterialIssueChainIncomplete},
+		{name: "过期且缺链优先 expired", certPEM: fx.expired.pem, wantIssue: MaterialIssueExpired},
+		{name: "无 SAN 无 CN 仍拒绝", certPEM: fx.chain(fx.noSAN), wantErr: CodeCertParseFail},
+		{name: "非法 PEM 仍拒绝", certPEM: []byte("not a pem"), wantErr: CodeCertParseFail},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed, issue, err := ParseCertForInventory(tt.certPEM)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("期望错误 %s，实际成功", tt.wantErr)
+				}
+				var ce *CertError
+				if !errors.As(err, &ce) || ce.Code() != tt.wantErr {
+					t.Fatalf("错误码 = %v, want %s", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("意外错误: %v", err)
+			}
+			if parsed.Fingerprint == "" {
+				t.Fatal("fingerprint 为空")
+			}
+			if issue != tt.wantIssue {
+				t.Fatalf("issue = %q, want %q", issue, tt.wantIssue)
+			}
+		})
+	}
+}
