@@ -247,9 +247,8 @@ func (s *discoveryImportService) processItem(
 		return
 	}
 
-	// 4. 解析校验（盘点容忍模式：过期/缺链不拦截，返回 MaterialIssue 标记
-	//    留痕台账——"云侧有什么就登记什么"；结构异常仍拒绝）
-	parsed, materialIssue, err := domain.ParseCertForInventory([]byte(certPEM))
+	// 4. 解析校验（keyPEM 空 = fingerprint_only 形态，无私钥校验）
+	parsed, err := domain.ParseCertAndKey([]byte(certPEM), nil)
 	if err != nil {
 		fail(discoveryParseReason(err)) // 域内解析错误为自有静态文案（安全参数）
 		return
@@ -266,7 +265,6 @@ func (s *discoveryImportService) processItem(
 		NotBefore:     parsed.NotBefore,
 		NotAfter:      parsed.NotAfter,
 		KeyAlgorithm:  parsed.KeyAlgorithm,
-		MaterialIssue: materialIssue,
 		CertPEM:       certPEM,
 		HostingStatus: domain.HostingStatusFingerprintOnly,
 	}
@@ -326,27 +324,7 @@ func (s *discoveryImportService) processItem(
 	if alreadyInLedger {
 		note = reasonDiscoveryAlreadyInLedger
 	}
-	if issueNote := materialIssueNote(materialIssue); issueNote != "" {
-		// 盘点容忍标记附注（新登记时提示材料异常；重放补映射时与已有注记拼接）
-		if note == "" {
-			note = issueNote
-		} else {
-			note = note + "；" + issueNote
-		}
-	}
 	_ = s.sessions.RecordItemResult(recCtx, sessionID, idx, domain.DiscoveryItemSuccess, certID, note)
-}
-
-// materialIssueNote 盘点容忍标记的条目附注（静态文案）。
-func materialIssueNote(issue domain.MaterialIssue) string {
-	switch issue {
-	case domain.MaterialIssueExpired:
-		return "MATERIAL_ISSUE: 已登记（材料异常：已过期）"
-	case domain.MaterialIssueChainIncomplete:
-		return "MATERIAL_ISSUE: 已登记（材料异常：证书链不完整）"
-	default:
-		return ""
-	}
 }
 
 // discoveryParseReason 解析/校验失败原因：域内 CertError 为自有静态文案

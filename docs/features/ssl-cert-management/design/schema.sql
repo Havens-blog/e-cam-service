@@ -23,7 +23,6 @@ db.createCollection("cert_certificates", {
       notAfter:            { bsonType: "date" },
       keyAlgorithm:        { bsonType: "string", enum: ["RSA", "ECDSA"] },
       hostingStatus:       { bsonType: "string", enum: ["complete", "fingerprint_only"] },
-      materialIssue:       { bsonType: "string", enum: ["expired", "chain_incomplete"] },  // 缺省=正常（cert-cloud-discovery-import 盘点容忍标记）
       encryptedPrivateKey: {                  // 信封加密私钥；仅指纹登记时可缺省整个对象；永不出现在 API 响应
         bsonType: "object",
         required: ["ciphertext", "keyVersion", "algo"],

@@ -62,7 +62,6 @@ type CertListItem struct {
 	NotAfter      time.Time
 	DaysLeft      int
 	HostingStatus domain.HostingStatus
-	MaterialIssue domain.MaterialIssue // 盘点容忍标记（空=正常）
 	ProtectUntil  *time.Time
 	RefCount      int
 }
@@ -89,7 +88,6 @@ type CertDetail struct {
 	DaysLeft         int
 	KeyAlgorithm     domain.KeyAlgorithm
 	HostingStatus    domain.HostingStatus
-	MaterialIssue    domain.MaterialIssue // 盘点容忍标记（空=正常）
 	HasKey           bool
 	ExpectedDomain   string
 	ProtectUntil     *time.Time
@@ -230,7 +228,6 @@ func toListItem(c domain.Certificate, refCount int, now time.Time) CertListItem 
 		NotAfter:      c.NotAfter,
 		DaysLeft:      daysLeft(c.NotAfter, now),
 		HostingStatus: c.HostingStatus,
-		MaterialIssue: c.MaterialIssue,
 		ProtectUntil:  c.ProtectUntil,
 		RefCount:      refCount,
 	}
@@ -333,7 +330,6 @@ func toDetail(c domain.Certificate, view refStatusView, now time.Time) CertDetai
 		DaysLeft:         daysLeft(c.NotAfter, now),
 		KeyAlgorithm:     c.KeyAlgorithm,
 		HostingStatus:    c.HostingStatus,
-		MaterialIssue:    c.MaterialIssue,
 		HasKey:           c.EncryptedPrivateKey != nil,
 		ExpectedDomain:   c.ExpectedDomain,
 		ProtectUntil:     c.ProtectUntil,

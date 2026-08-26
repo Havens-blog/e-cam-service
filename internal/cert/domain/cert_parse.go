@@ -77,40 +77,6 @@ func ParseCertAndKey(certPEM, keyPEM []byte) (*ParsedCert, error) {
 	return parsed, nil
 }
 
-// ParseCertForInventory 盘点容忍解析（发现导入专用，cert-cloud-discovery-import
-// 联调后产品决策）：存量回溯登记的口径是"云侧有什么就登记什么"——
-// 已过期/未生效与证书链不完整不再拦截，改为返回 MaterialIssue 标记由台账留痕。
-//
-// 仍严格拦截（无法登记）：PEM/x509 非法、非 RSA/ECDSA 算法、无 SAN 且无 CN
-// （结构异常的解析产物不可信）。
-//
-// 标记优先级：expired > chain_incomplete（同时命中记运营主导事实——过期证书
-// 的处置动作是换证，链缺陷随换证材料一并解决）。
-func ParseCertForInventory(certPEM []byte) (*ParsedCert, MaterialIssue, error) {
-	certs, err := decodeCertificates(certPEM)
-	if err != nil {
-		return nil, "", err
-	}
-	leaf := certs[0]
-
-	parsed, err := buildParsedCert(leaf)
-	if err != nil {
-		return nil, "", err
-	}
-	if err := checkSANStructure(leaf); err != nil {
-		return nil, "", err
-	}
-
-	issue := MaterialIssue("")
-	if err := checkValidity(leaf); err != nil {
-		issue = MaterialIssueExpired
-	}
-	if err := checkChain(certs); err != nil && issue == "" {
-		issue = MaterialIssueChainIncomplete
-	}
-	return parsed, issue, nil
-}
-
 // CheckSANCover 比对 SAN 列表对期望域名的覆盖情况，返回缺失清单。
 // 仅提示性比对、不拦截——强制拦截点在 5.2 变更清单生成预检（SAN ⊇ 目标域名）。
 //
