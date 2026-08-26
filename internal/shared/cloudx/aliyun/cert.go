@@ -314,7 +314,10 @@ func (a *CertAdapter) GetCert(ctx context.Context, creds *domain.CloudAccount, c
 	request := cas.CreateGetUserCertificateDetailRequest()
 	request.Scheme = "https"
 	request.CertId = requests.NewInteger64(certID)
-	request.CertFilter = requests.NewBoolean(true)
+	// CertFilter=false：官方语义为 true 时 Cert/Key 等内容字段不返回（默认 false）。
+	// PEM 材料通道依赖 Cert 字段；false 时响应可能携带 Key 等私钥字符串，仅经
+	// SanitizeCertChainPEM 提取 CERTIFICATE 块后使用，结构体其余字段不落库不入日志。
+	request.CertFilter = requests.NewBoolean(false)
 
 	response, err := client.GetUserCertificateDetail(request)
 	if err != nil {

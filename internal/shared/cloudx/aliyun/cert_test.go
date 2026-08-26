@@ -227,6 +227,10 @@ func TestCertAdapterGetCert(t *testing.T) {
 
 		require.NotNil(t, fake.detailReq)
 		assert.Equal(t, requests.Integer("8089870"), fake.detailReq.CertId)
+		// CertFilter=false：值为 true 时云侧不返回 Cert/Key 等内容字段（官方文档语义），
+		// 发现导入的 PEM 材料通道依赖 Cert 字段返回。
+		assert.Equal(t, requests.NewBoolean(false), fake.detailReq.CertFilter,
+			"CertFilter 必须为 false，否则真实云侧响应恒无 PEM（活体验证回归：21613118-cn-hangzhou）")
 	})
 
 	t.Run("无PEM时回退CAS字段", func(t *testing.T) {
