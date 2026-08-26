@@ -248,27 +248,28 @@ func TestChangeList_StatusTabFilter(t *testing.T) {
 	w := doGet(t, engine, "/api/v1/certs/changes")
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	env := decode(t, w)
-	var all []map[string]any
-	require.NoError(t, json.Unmarshal(env.Data, &all))
-	assert.Len(t, all, 3)
-	var meta struct {
-		Total    int64 `json:"total"`
-		Page     int   `json:"page"`
-		PageSize int   `json:"pageSize"`
+	var all struct {
+		Items    []map[string]any `json:"items"`
+		Total    int64            `json:"total"`
+		Page     int              `json:"page"`
+		PageSize int              `json:"pageSize"`
 	}
-	require.NoError(t, json.Unmarshal(env.Meta, &meta))
-	assert.EqualValues(t, 3, meta.Total)
-	assert.Equal(t, 1, meta.Page)
-	assert.Equal(t, 20, meta.PageSize)
+	require.NoError(t, json.Unmarshal(env.Data, &all))
+	assert.Len(t, all.Items, 3)
+	assert.EqualValues(t, 3, all.Total)
+	assert.Equal(t, 1, all.Page)
+	assert.Equal(t, 20, all.PageSize)
 
 	// 状态 Tab 筛选
 	w = doGet(t, engine, "/api/v1/certs/changes?status=completed")
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	env = decode(t, w)
-	var filtered []map[string]any
+	var filtered struct {
+		Items []map[string]any `json:"items"`
+	}
 	require.NoError(t, json.Unmarshal(env.Data, &filtered))
-	require.Len(t, filtered, 2)
-	for _, o := range filtered {
+	require.Len(t, filtered.Items, 2)
+	for _, o := range filtered.Items {
 		assert.Equal(t, "completed", o["status"])
 		assert.NotEmpty(t, o["id"])
 		assert.NotEmpty(t, o["oldFingerprint"])

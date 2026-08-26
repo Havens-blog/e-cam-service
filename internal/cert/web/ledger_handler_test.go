@@ -128,23 +128,26 @@ func TestListCertsAPI(t *testing.T) {
 		d.seedCert(t, lfp(i), func(c *domain.Certificate) { c.NotAfter = now.Add(offset) })
 	}
 
-	// 默认分页：每页 20
+	// 默认分页：每页 20。data 载荷为 {items,total,page,pageSize}（前端 ListCertsResponse
+	// 契约——unwrapCertEnvelope 成功路径只取 data，分页信息必须随载荷返回）。
 	w := doGet(t, engine, "/api/v1/certs")
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	env := decode(t, w)
 	assert.True(t, env.Success)
-	var items []map[string]any
-	require.NoError(t, json.Unmarshal(env.Data, &items))
-	assert.Len(t, items, 20)
-
-	var meta map[string]any
-	require.NoError(t, json.Unmarshal(env.Meta, &meta))
-	assert.Equal(t, float64(22), meta["total"])
-	assert.Equal(t, float64(1), meta["page"])
-	assert.Equal(t, float64(20), meta["pageSize"])
+	var page1 struct {
+		Items    []map[string]any `json:"items"`
+		Total    float64          `json:"total"`
+		Page     float64          `json:"page"`
+		PageSize float64          `json:"pageSize"`
+	}
+	require.NoError(t, json.Unmarshal(env.Data, &page1))
+	assert.Len(t, page1.Items, 20)
+	assert.Equal(t, float64(22), page1.Total)
+	assert.Equal(t, float64(1), page1.Page)
+	assert.Equal(t, float64(20), page1.PageSize)
 
 	// AC1 字段齐全（白名单）
-	first := items[0]
+	first := page1.Items[0]
 	for _, field := range []string{"id", "fingerprint", "commonName", "sans", "issuer",
 		"notAfter", "daysLeft", "hostingStatus", "protectUntil", "refCount"} {
 		assert.Contains(t, first, field, "列表项缺字段 %s", field)
@@ -157,8 +160,11 @@ func TestListCertsAPI(t *testing.T) {
 	w2 := doGet(t, engine, "/api/v1/certs?page=2")
 	require.Equal(t, http.StatusOK, w2.Code)
 	env2 := decode(t, w2)
-	require.NoError(t, json.Unmarshal(env2.Data, &items))
-	assert.Len(t, items, 2)
+	var page2 struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(env2.Data, &page2))
+	assert.Len(t, page2.Items, 2)
 }
 
 func TestListCertsAPIFilters(t *testing.T) {
@@ -176,9 +182,11 @@ func TestListCertsAPIFilters(t *testing.T) {
 		w := doGet(t, engine, path)
 		require.Equal(t, http.StatusOK, w.Code, path+": "+w.Body.String())
 		env := decode(t, w)
-		var items []map[string]any
-		require.NoError(t, json.Unmarshal(env.Data, &items))
-		return len(items)
+		var page struct {
+			Items []map[string]any `json:"items"`
+		}
+		require.NoError(t, json.Unmarshal(env.Data, &page))
+		return len(page.Items)
 	}
 
 	assert.Equal(t, 1, count("/api/v1/certs?hostingStatus=fingerprint_only"))

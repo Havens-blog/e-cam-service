@@ -356,7 +356,19 @@ func (h *ChangeHandler) ListChanges(c *gin.Context) {
 		}
 		items = append(items, vo)
 	}
-	WriteOK(c, http.StatusOK, items, pageMeta{Total: res.Total, Page: res.Page, PageSize: res.PageSize})
+	// data 载荷携带 {items,total,page,pageSize}（前端 ListChangesResponse 契约：
+	// unwrapCertEnvelope 只取 data，分页信息随载荷返回；meta 同步保留）。
+	WriteOK(c, http.StatusOK, listChangesVO{
+		Items: items, Total: res.Total, Page: res.Page, PageSize: res.PageSize,
+	}, pageMeta{Total: res.Total, Page: res.Page, PageSize: res.PageSize})
+}
+
+// listChangesVO 变更单列表 data 载荷（前端 ListChangesResponse 契约）。
+type listChangesVO struct {
+	Items    []changeOrderListItemVO `json:"items"`
+	Total    int64                   `json:"total"`
+	Page     int                     `json:"page"`
+	PageSize int                     `json:"pageSize"`
 }
 
 // GenerateList POST /api/v1/certs/changes —— 生成变更清单（oldFingerprint+

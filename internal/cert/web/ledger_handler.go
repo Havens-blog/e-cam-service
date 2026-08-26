@@ -51,6 +51,15 @@ type CertListItemVO struct {
 	RefCount      int      `json:"refCount"`
 }
 
+// listCertsVO 列表 data 载荷（前端 ListCertsResponse 契约：分页信息随载荷返回，
+// unwrapCertEnvelope 成功路径只取 data）。
+type listCertsVO struct {
+	Items    []CertListItemVO `json:"items"`
+	Total    int64            `json:"total"`
+	Page     int              `json:"page"`
+	PageSize int              `json:"pageSize"`
+}
+
 // CertDetailVO 详情（全要素；encryptedPrivateKey 以 hasKey 布尔呈现"已加密托管"语义）。
 type CertDetailVO struct {
 	ID               string   `json:"id"`
@@ -150,7 +159,11 @@ func (h *LedgerHandler) ListCerts(c *gin.Context) {
 		WriteError(c, err)
 		return
 	}
-	WriteOK(c, http.StatusOK, toListItemVOs(res.Items), pageMeta{
+	// data 载荷携带 {items,total,page,pageSize}（前端 unwrapCertEnvelope 只取 data，
+	// 分页信息随载荷返回；meta 同步保留供通用客户端）。
+	WriteOK(c, http.StatusOK, listCertsVO{
+		Items: toListItemVOs(res.Items), Total: res.Total, Page: res.Page, PageSize: res.PageSize,
+	}, pageMeta{
 		Total: res.Total, Page: res.Page, PageSize: res.PageSize,
 	})
 }
