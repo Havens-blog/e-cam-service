@@ -195,12 +195,7 @@ func (s *assetSyncService) SyncAssets(ctx context.Context, tenantID int64, provi
 	}
 
 	if len(assetTypes) == 0 {
-		assetTypes = []string{
-			"ecs", "disk", "snapshot", "security_group", "image",
-			"rds", "redis", "mongodb",
-			"vpc", "eip", "lb", "cdn", "waf", "eni", "dns",
-			"nas", "oss",
-		}
+		assetTypes = shareddomain.DefaultCMDBSyncAssetTypes
 	}
 
 	result := &SyncResult{
@@ -260,12 +255,7 @@ func (s *assetSyncService) SyncAccountAssets(ctx context.Context, tenantID int64
 	}
 
 	if len(assetTypes) == 0 {
-		assetTypes = []string{
-			"ecs", "disk", "snapshot", "security_group", "image",
-			"rds", "redis", "mongodb",
-			"vpc", "eip", "lb", "cdn", "waf", "eni", "dns",
-			"nas", "oss",
-		}
+		assetTypes = shareddomain.DefaultCMDBSyncAssetTypes
 	}
 
 	// 获取账号信息
@@ -528,7 +518,7 @@ func (s *assetSyncService) syncRegion(
 
 		case "database":
 			// 聚合类型：同步所有数据库资源
-			for _, dbType := range []string{"rds", "redis", "mongodb"} {
+			for _, dbType := range shareddomain.DatabaseAssetTypes {
 				dbResult, _ := s.syncRegion(ctx, tenantID, adapter, account, region, []string{dbType})
 				if dbResult != nil {
 					s.mergeResult(result, dbResult)
@@ -556,7 +546,10 @@ func (s *assetSyncService) syncRegion(
 			}
 
 		case "network":
-			// 聚合类型：同步所有网络资源
+			// 聚合类型：同步所有网络资源。
+			// 注意：本清单与 shareddomain.NetworkAssetTypes（executor 展开）
+			// 历史上已漂移——此处不含 vswitch。为保持行为等价不强行收敛，
+			// 收敛与否由后续任务单独决策。
 			for _, netType := range []string{"vpc", "eip", "lb", "cdn", "waf", "eni", "dns"} {
 				netResult, _ := s.syncRegion(ctx, tenantID, adapter, account, region, []string{netType})
 				if netResult != nil {
@@ -567,7 +560,7 @@ func (s *assetSyncService) syncRegion(
 
 		case "storage":
 			// 聚合类型：同步所有存储资源
-			for _, storageType := range []string{"nas", "oss"} {
+			for _, storageType := range shareddomain.StorageAssetTypes {
 				storageResult, _ := s.syncRegion(ctx, tenantID, adapter, account, region, []string{storageType})
 				if storageResult != nil {
 					s.mergeResult(result, storageResult)

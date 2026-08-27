@@ -24,9 +24,9 @@
       "dependencies": [
         "1"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "2-consolidate-executor-lists.md",
-      "record": "records/2-consolidate-executor-lists.md",
+      "record": "2-consolidate-executor-lists.record.md",
       "surface-type": "api",
       "type": "coding.fix",
       "complexity": "medium"

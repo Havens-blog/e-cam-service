@@ -125,6 +125,20 @@ func TestExpandAssetTypes_UnknownType(t *testing.T) {
 	assert.Equal(t, []string{"unknown_type"}, result)
 }
 
+func TestExpandAssetTypes_DNSPassthrough(t *testing.T) {
+	// dns 作为独立类型必须原样透传：自动同步默认清单（DefaultSyncAssetTypes）
+	// 现已包含 dns，透传是账号级 syncDNS 被触发的前提
+	result := expandAssetTypes([]string{"dns"})
+	assert.Equal(t, []string{"dns"}, result)
+}
+
+func TestExpandAssetTypes_NetworkIncludesDNS(t *testing.T) {
+	// network 聚合展开必须包含 dns，防止默认清单补充 dns 后
+	// 聚合入口反而丢失 DNS
+	result := expandAssetTypes([]string{"network"})
+	assert.Contains(t, result, "dns")
+}
+
 func TestExpandAssetTypes_AllAggregates(t *testing.T) {
 	// 所有聚合类型一起展开
 	result := expandAssetTypes([]string{"compute", "database", "network", "storage", "middleware"})

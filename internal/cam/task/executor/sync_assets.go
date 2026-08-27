@@ -99,13 +99,7 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 
 	// 如果未指定资源类型，默认同步所有支持的类型
 	if len(params.AssetTypes) == 0 {
-		params.AssetTypes = []string{
-			"ecs", "disk", "snapshot", "security_group", "image",
-			"rds", "redis", "mongodb",
-			"vpc", "eip", "lb", "vswitch", "cdn", "waf", "dns",
-			"nas", "oss",
-			"kafka", "elasticsearch",
-		}
+		params.AssetTypes = domain.DefaultSyncAssetTypes
 	}
 
 	// 更新进度: 开始同步
@@ -270,7 +264,7 @@ func expandAssetTypes(assetTypes []string) []string {
 		switch t {
 		case "database", "db":
 			// database 展开为 rds, redis, mongodb
-			for _, dbType := range []string{"rds", "redis", "mongodb"} {
+			for _, dbType := range domain.DatabaseAssetTypes {
 				if !seen[dbType] {
 					expanded = append(expanded, dbType)
 					seen[dbType] = true
@@ -278,7 +272,7 @@ func expandAssetTypes(assetTypes []string) []string {
 			}
 		case "network", "net":
 			// network 展开为 vpc, vswitch, eip, eni, lb, cdn, waf, dns
-			for _, netType := range []string{"vpc", "vswitch", "eip", "eni", "lb", "cdn", "waf", "dns"} {
+			for _, netType := range domain.NetworkAssetTypes {
 				if !seen[netType] {
 					expanded = append(expanded, netType)
 					seen[netType] = true
@@ -286,7 +280,7 @@ func expandAssetTypes(assetTypes []string) []string {
 			}
 		case "storage":
 			// storage 展开为 nas, oss
-			for _, storageType := range []string{"nas", "oss"} {
+			for _, storageType := range domain.StorageAssetTypes {
 				if !seen[storageType] {
 					expanded = append(expanded, storageType)
 					seen[storageType] = true
@@ -294,7 +288,7 @@ func expandAssetTypes(assetTypes []string) []string {
 			}
 		case "middleware", "mw":
 			// middleware 展开为 kafka, elasticsearch
-			for _, mwType := range []string{"kafka", "elasticsearch"} {
+			for _, mwType := range domain.MiddlewareAssetTypes {
 				if !seen[mwType] {
 					expanded = append(expanded, mwType)
 					seen[mwType] = true
@@ -302,7 +296,7 @@ func expandAssetTypes(assetTypes []string) []string {
 			}
 		case "compute":
 			// compute 展开为 ecs, disk, snapshot, security_group, image
-			for _, computeType := range []string{"ecs", "disk", "snapshot", "security_group", "image"} {
+			for _, computeType := range domain.ComputeAssetTypes {
 				if !seen[computeType] {
 					expanded = append(expanded, computeType)
 					seen[computeType] = true
