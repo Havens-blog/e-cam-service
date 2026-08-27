@@ -33,9 +33,13 @@ func (f *fakeAlbClient) ListListeners(request *alb.ListListenersRequest) (*alb.L
 	}
 	resp := alb.CreateListListenersResponse()
 	for _, lsn := range f.listeners {
-		if request.ListenerIds == nil || len(*request.ListenerIds) == 0 || certContainsString(*request.ListenerIds, lsn.ListenerId) {
-			resp.Listeners = append(resp.Listeners, lsn)
+		if request.ListenerIds != nil && len(*request.ListenerIds) > 0 && !certContainsString(*request.ListenerIds, lsn.ListenerId) {
+			continue
 		}
+		if request.LoadBalancerIds != nil && len(*request.LoadBalancerIds) > 0 && !certContainsString(*request.LoadBalancerIds, lsn.LoadBalancerId) {
+			continue
+		}
+		resp.Listeners = append(resp.Listeners, lsn)
 	}
 	resp.TotalCount = len(resp.Listeners)
 	return resp, nil
@@ -108,14 +112,14 @@ func TestCertAdapterALBListReferences(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, refs, 3)
 
-		assert.Equal(t, "lsn-1", refs[0].ResourceID)
+		assert.Equal(t, "alb-1/lsn-1", refs[0].ResourceID)
 		assert.Equal(t, "111-cn-hangzhou", refs[0].ReferencedCloudCertID)
 		assert.Equal(t, "222-cn-hangzhou", refs[1].ReferencedCloudCertID)
 		assert.Equal(t, "aliyun", refs[1].Cloud)
 		assert.Equal(t, CertProductALB, refs[1].Product)
 		assert.Equal(t, "aliyun-main", refs[1].AccountKey)
 
-		assert.Equal(t, "lsn-3", refs[2].ResourceID)
+		assert.Equal(t, "alb-2/lsn-3", refs[2].ResourceID)
 		assert.Equal(t, "333-cn-hangzhou", refs[2].ReferencedCloudCertID)
 	})
 
@@ -177,7 +181,7 @@ func TestCertAdapterALBListReferences(t *testing.T) {
 		refs, err := adapter.ListReferences(context.Background(), testCertCreds(), CertProductALB)
 		require.NoError(t, err)
 		require.Len(t, refs, 1)
-		assert.Equal(t, "lsn-2", refs[0].ResourceID)
+		assert.Equal(t, "lsn-2", refs[0].ResourceID) // 云侧缺 LoadBalancerId 时回退纯监听形态
 	})
 }
 
@@ -214,6 +218,26 @@ func TestCertAdapterALBBindResource(t *testing.T) {
 		require.Len(t, *req.Certificates, 2)
 		assert.Equal(t, "new-cn-hangzhou", (*req.Certificates)[0].CertificateId) // 新证书为默认
 		assert.Equal(t, "ext-cn-hangzhou", (*req.Certificates)[1].CertificateId) // 扩展证书保留
+	})
+
+	t.Run("复合资源ID解析出监听ID并附实例过滤", func(t *testing.T) {
+		adapter := newTestCertAdapter(t)
+		fake := &fakeAlbClient{
+			listeners: []alb.Listener{
+				{ListenerId: "lsn-target", ListenerProtocol: "HTTPS", LoadBalancerId: "alb-9"},
+				{ListenerId: "lsn-other", ListenerProtocol: "HTTPS", LoadBalancerId: "alb-8"},
+			},
+			certPages: map[string][][]alb.CertificateModel{
+				"lsn-target": {{{CertificateId: "old-cn-hangzhou", IsDefault: true, CertificateType: "Server"}}},
+			},
+		}
+		adapter.newAlbClient = func(creds *domain.CloudAccount, region string) (albCertAPI, error) { return fake, nil }
+
+		err := adapter.BindResource(context.Background(), testCertCreds(), CertProductALB, "alb-9/lsn-target", "new-cn-hangzhou")
+		require.NoError(t, err)
+
+		require.Len(t, fake.updateReqs, 1)
+		assert.Equal(t, "lsn-target", fake.updateReqs[0].ListenerId) // 复合形态拆出监听 ID
 	})
 
 	t.Run("HTTP监听显式报错", func(t *testing.T) {
@@ -277,9 +301,13 @@ func (f *fakeNlbClient) ListListeners(request *nlb.ListListenersRequest) (*nlb.L
 	resp := nlb.CreateListListenersResponse()
 	resp.Success = true
 	for _, lsn := range f.listeners {
-		if request.ListenerIds == nil || len(*request.ListenerIds) == 0 || certContainsString(*request.ListenerIds, lsn.ListenerId) {
-			resp.Listeners = append(resp.Listeners, lsn)
+		if request.ListenerIds != nil && len(*request.ListenerIds) > 0 && !certContainsString(*request.ListenerIds, lsn.ListenerId) {
+			continue
 		}
+		if request.LoadBalancerIds != nil && len(*request.LoadBalancerIds) > 0 && !certContainsString(*request.LoadBalancerIds, lsn.LoadBalancerId) {
+			continue
+		}
+		resp.Listeners = append(resp.Listeners, lsn)
 	}
 	resp.TotalCount = len(resp.Listeners)
 	return resp, nil
@@ -300,7 +328,7 @@ func TestCertAdapterNLBListReferences(t *testing.T) {
 		adapter := newTestCertAdapter(t)
 		fake := &fakeNlbClient{
 			listeners: []nlb.ListenerInfo{
-				{ListenerId: "lsn-tls-1", ListenerProtocol: "TLS", CertificateIds: []string{"111-cn-hangzhou", "222-cn-hangzhou"}},
+				{ListenerId: "lsn-tls-1", ListenerProtocol: "TLS", LoadBalancerId: "nlb-1", CertificateIds: []string{"111-cn-hangzhou", "222-cn-hangzhou"}},
 				{ListenerId: "lsn-tcp-1", ListenerProtocol: "TCP"},
 			},
 		}
@@ -315,7 +343,7 @@ func TestCertAdapterNLBListReferences(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, refs, 2)
 
-		assert.Equal(t, "lsn-tls-1", refs[0].ResourceID)
+		assert.Equal(t, "nlb-1/lsn-tls-1", refs[0].ResourceID)
 		assert.Equal(t, "111-cn-hangzhou", refs[0].ReferencedCloudCertID)
 		assert.Equal(t, "aliyun", refs[0].Cloud)
 		assert.Equal(t, CertProductNLB, refs[0].Product)
@@ -334,7 +362,34 @@ func TestCertAdapterNLBListReferences(t *testing.T) {
 	})
 }
 
+func TestParseLBScopedResourceID(t *testing.T) {
+	lb, lsn := parseLBScopedResourceID("alb-9/lsn-target")
+	assert.Equal(t, "alb-9", lb)
+	assert.Equal(t, "lsn-target", lsn)
+
+	// 存量纯监听形态：整串视为监听 ID（升级前创建的变更单兼容）
+	lb, lsn = parseLBScopedResourceID("lsn-target")
+	assert.Empty(t, lb)
+	assert.Equal(t, "lsn-target", lsn)
+}
+
 func TestCertAdapterNLBBindResource(t *testing.T) {
+	t.Run("复合资源ID解析出监听ID", func(t *testing.T) {
+		adapter := newTestCertAdapter(t)
+		fake := &fakeNlbClient{
+			listeners: []nlb.ListenerInfo{
+				{ListenerId: "lsn-tls-1", ListenerProtocol: "TLS", LoadBalancerId: "nlb-1", CertificateIds: []string{"old-cn-hangzhou", "ext-cn-hangzhou"}},
+			},
+		}
+		adapter.newNlbClient = func(creds *domain.CloudAccount, region string) (nlbCertAPI, error) { return fake, nil }
+
+		err := adapter.BindResource(context.Background(), testCertCreds(), CertProductNLB, "nlb-1/lsn-tls-1", "new-cn-hangzhou")
+		require.NoError(t, err)
+
+		require.Len(t, fake.updateReqs, 1)
+		assert.Equal(t, "lsn-tls-1", fake.updateReqs[0].ListenerId)
+	})
+
 	t.Run("替换默认证书保留扩展证书", func(t *testing.T) {
 		adapter := newTestCertAdapter(t)
 		fake := &fakeNlbClient{

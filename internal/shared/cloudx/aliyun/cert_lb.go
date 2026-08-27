@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"strings"
+
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/alb"
@@ -17,6 +19,25 @@ import (
 //   NLB 监听内联 CertificateIds，无需二次查询。
 // 绑定：监听 ID（lsn-*）全局唯一但需定位地域（逐地域 ListListeners 按 ListenerIds 过滤），
 //   读当前证书清单后 UpdateListenerAttribute 回写——新证书置默认位，扩展证书保留（替换默认证书语义）。
+
+// lbScopedResourceID 构造复合资源 ID "{loadBalancerId}/{listenerId}"
+//（对齐腾讯 CLB/华为 ELB 口径：实例 ID 供控制台对账，监听 ID 供绑定定位）。
+// loadBalancerID 为空（云侧响应异常缺字段）时回退纯监听形态，不产生 "/lsn-*" 脏值。
+func lbScopedResourceID(loadBalancerID, listenerID string) string {
+	if loadBalancerID == "" {
+		return listenerID
+	}
+	return loadBalancerID + "/" + listenerID
+}
+
+// parseLBScopedResourceID 解析复合资源 ID："{loadBalancerId}/{listenerId}"；
+// 无 "/" 时整串视为监听 ID（存量变更单/旧快照引用的纯监听形态，绑定兼容）。
+func parseLBScopedResourceID(resourceID string) (loadBalancerID, listenerID string) {
+	if idx := strings.IndexByte(resourceID, '/'); idx >= 0 {
+		return resourceID[:idx], resourceID[idx+1:]
+	}
+	return "", resourceID
+}
 
 // listALBReferences 按地域遍历 ALB 监听及其服务器证书
 func (a *CertAdapter) listALBReferences(ctx context.Context, creds *domain.CloudAccount) ([]CloudCertRef, error) {
@@ -60,7 +81,7 @@ func (a *CertAdapter) listALBReferences(ctx context.Context, creds *domain.Cloud
 					refs = append(refs, CloudCertRef{
 						Cloud:                 "aliyun",
 						Product:               CertProductALB,
-						ResourceID:            listener.ListenerId,
+						ResourceID:            lbScopedResourceID(listener.LoadBalancerId, listener.ListenerId),
 						ReferencedCloudCertID: cert.CertificateId,
 						AccountKey:            accountKey,
 					})
@@ -106,12 +127,14 @@ func (a *CertAdapter) listALBListenerCerts(ctx context.Context, client albCertAP
 	return certs, nil
 }
 
-// bindALB 将云证书绑定为 ALB 监听默认服务器证书（扩展证书保留）
-func (a *CertAdapter) bindALB(ctx context.Context, creds *domain.CloudAccount, listenerID, cloudCertID string) error {
+// bindALB 将云证书绑定为 ALB 监听默认服务器证书（扩展证书保留）。
+// resourceID 接受复合形态 "{loadBalancerId}/{listenerId}" 与存量纯监听 ID。
+func (a *CertAdapter) bindALB(ctx context.Context, creds *domain.CloudAccount, resourceID, cloudCertID string) error {
 	if creds == nil {
 		return fmt.Errorf("aliyun alb cert bind: nil creds")
 	}
-	region, listener, client, err := a.findALBListener(creds, listenerID)
+	loadBalancerID, listenerID := parseLBScopedResourceID(resourceID)
+	region, listener, client, err := a.findALBListener(creds, loadBalancerID, listenerID)
 	if err != nil {
 		return err
 	}
@@ -148,8 +171,9 @@ func (a *CertAdapter) bindALB(ctx context.Context, creds *domain.CloudAccount, l
 	return nil
 }
 
-// findALBListener 逐地域定位监听所在地域与实例（listenerId 全局唯一）
-func (a *CertAdapter) findALBListener(creds *domain.CloudAccount, listenerID string) (string, alb.Listener, albCertAPI, error) {
+// findALBListener 逐地域定位监听所在地域与实例（listenerId 全局唯一；
+// 复合形态时附 LoadBalancerIds 过滤缩小范围，纯监听形态仅按 ListenerIds）
+func (a *CertAdapter) findALBListener(creds *domain.CloudAccount, loadBalancerID, listenerID string) (string, alb.Listener, albCertAPI, error) {
 	for _, region := range credsRegions(creds) {
 		client, err := a.newAlbClient(creds, region)
 		if err != nil {
@@ -158,6 +182,9 @@ func (a *CertAdapter) findALBListener(creds *domain.CloudAccount, listenerID str
 		request := alb.CreateListListenersRequest()
 		request.Scheme = "https"
 		request.ListenerIds = &[]string{listenerID}
+		if loadBalancerID != "" {
+			request.LoadBalancerIds = &[]string{loadBalancerID}
+		}
 		request.MaxResults = requests.NewInteger(1)
 		response, err := client.ListListeners(request)
 		if err != nil {
@@ -206,7 +233,7 @@ func (a *CertAdapter) listNLBReferences(ctx context.Context, creds *domain.Cloud
 					refs = append(refs, CloudCertRef{
 						Cloud:                 "aliyun",
 						Product:               CertProductNLB,
-						ResourceID:            listener.ListenerId,
+						ResourceID:            lbScopedResourceID(listener.LoadBalancerId, listener.ListenerId),
 						ReferencedCloudCertID: certID,
 						AccountKey:            accountKey,
 					})
@@ -225,12 +252,14 @@ func (a *CertAdapter) listNLBReferences(ctx context.Context, creds *domain.Cloud
 	return refs, nil
 }
 
-// bindNLB 将云证书绑定为 NLB TLS 监听默认证书（扩展证书保留）
-func (a *CertAdapter) bindNLB(ctx context.Context, creds *domain.CloudAccount, listenerID, cloudCertID string) error {
+// bindNLB 将云证书绑定为 NLB TLS 监听默认证书（扩展证书保留）。
+// resourceID 接受复合形态 "{loadBalancerId}/{listenerId}" 与存量纯监听 ID。
+func (a *CertAdapter) bindNLB(ctx context.Context, creds *domain.CloudAccount, resourceID, cloudCertID string) error {
 	if creds == nil {
 		return fmt.Errorf("aliyun nlb cert bind: nil creds")
 	}
-	region, listener, client, err := a.findNlbListener(creds, listenerID)
+	loadBalancerID, listenerID := parseLBScopedResourceID(resourceID)
+	region, listener, client, err := a.findNlbListener(creds, loadBalancerID, listenerID)
 	if err != nil {
 		return err
 	}
@@ -269,8 +298,8 @@ func (a *CertAdapter) bindNLB(ctx context.Context, creds *domain.CloudAccount, l
 	return nil
 }
 
-// findNlbListener 逐地域定位 NLB 监听所在地域与实例
-func (a *CertAdapter) findNlbListener(creds *domain.CloudAccount, listenerID string) (string, nlb.ListenerInfo, nlbCertAPI, error) {
+// findNlbListener 逐地域定位 NLB 监听所在地域与实例（复合形态附 LoadBalancerIds 过滤）
+func (a *CertAdapter) findNlbListener(creds *domain.CloudAccount, loadBalancerID, listenerID string) (string, nlb.ListenerInfo, nlbCertAPI, error) {
 	for _, region := range credsRegions(creds) {
 		client, err := a.newNlbClient(creds, region)
 		if err != nil {
@@ -279,6 +308,9 @@ func (a *CertAdapter) findNlbListener(creds *domain.CloudAccount, listenerID str
 		request := nlb.CreateListListenersRequest()
 		request.Scheme = "https"
 		request.ListenerIds = &[]string{listenerID}
+		if loadBalancerID != "" {
+			request.LoadBalancerIds = &[]string{loadBalancerID}
+		}
 		request.MaxResults = requests.NewInteger(1)
 		response, err := client.ListListeners(request)
 		if err != nil {

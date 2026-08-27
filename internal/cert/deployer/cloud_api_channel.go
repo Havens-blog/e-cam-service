@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
@@ -377,6 +378,12 @@ func NewSnapshotOldRefSource(snapshots domain.ScanSnapshotRepository, refs domai
 }
 
 // CurrentRef 读取目标资源当前引用（cloud+product+resourceId 匹配）。
+//
+// resourceId 匹配含升级窗口期兼容：LB 类产品的复合形态（"{实例ID}/{监听ID}"，
+// 腾讯 CLB/华为 ELB/阿里 ALB/NLB）与纯监听形态（阿里云存量变更单/旧快照）互认--
+// 精确匹配优先，未命中时按尾段（最后一个 "/" 之后）回退匹配，避免旧变更单执行时
+// 丢失旧云证书 ID（回滚依据与孤儿候选判定）。CDN 域名/K8s 实例名不含 "/"，
+// 尾段即原文，回退不改变行为。
 func (s *SnapshotOldRefSource) CurrentRef(ctx context.Context, cloud, product, resourceID string) (domain.CertReference, bool, error) {
 	snap, err := s.snapshots.LatestDone(ctx)
 	if err != nil {
@@ -389,18 +396,36 @@ func (s *SnapshotOldRefSource) CurrentRef(ctx context.Context, cloud, product, r
 	if err != nil {
 		return domain.CertReference{}, false, fmt.Errorf("deployer: list snapshot references: %w", err)
 	}
+	tail := scopedResourceTail(resourceID)
 	var best *domain.CertReference
-	for i := range all {
-		r := &all[i]
-		if r.Cloud != domain.Cloud(cloud) || r.Product != domain.Product(product) || r.ResourceID != resourceID {
-			continue
-		}
-		if best == nil || r.ScannedAt.After(best.ScannedAt) {
-			best = r
+	// 第一趟：精确匹配；未命中时第二趟按复合 ID 尾段回退（取 scannedAt 最新一条）
+	for pass := 0; pass < 2 && best == nil; pass++ {
+		for i := range all {
+			r := &all[i]
+			if r.Cloud != domain.Cloud(cloud) || r.Product != domain.Product(product) {
+				continue
+			}
+			if pass == 0 && r.ResourceID != resourceID {
+				continue
+			}
+			if pass == 1 && scopedResourceTail(r.ResourceID) != tail {
+				continue
+			}
+			if best == nil || r.ScannedAt.After(best.ScannedAt) {
+				best = r
+			}
 		}
 	}
 	if best == nil {
 		return domain.CertReference{}, false, nil
 	}
 	return *best, true, nil
+}
+
+// scopedResourceTail 复合资源 ID（"{owner}/{sub}"）的尾段；无 "/" 时原样返回。
+func scopedResourceTail(resourceID string) string {
+	if idx := strings.LastIndexByte(resourceID, '/'); idx >= 0 {
+		return resourceID[idx+1:]
+	}
+	return resourceID
 }

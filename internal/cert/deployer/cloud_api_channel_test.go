@@ -572,3 +572,51 @@ func TestSnapshotOldRefSource(t *testing.T) {
 	assert.NoError(t, err)
 	assert.False(t, found)
 }
+
+func TestSnapshotOldRefSourceScopedIDCompat(t *testing.T) {
+	snaps := certtest.NewFakeScanSnapshotRepo()
+	refsRepo := certtest.NewFakeCertReferenceRepo()
+	ctx := context.Background()
+
+	snapID, err := snaps.Create(ctx, &domain.ScanSnapshot{Status: domain.ScanStatusRunning})
+	assert.NoError(t, err)
+	assert.NoError(t, snaps.FinishScan(ctx, snapID, domain.ScanStatusDone, "", nil, nil))
+	// 新快照为复合形态（升级后扫描产物）
+	_, err = refsRepo.CreateMulti(ctx, []domain.CertReference{{
+		Cloud: domain.CloudAliyun, Product: domain.ProductALB,
+		ResourceID: "alb-9/lsn-target", ReferencedCloudCertID: "old-comp", SnapshotID: snapID,
+	}})
+	assert.NoError(t, err)
+
+	src := NewSnapshotOldRefSource(snaps, refsRepo)
+
+	// 精确匹配仍优先
+	got, found, err := src.CurrentRef(ctx, "aliyun", "alb", "alb-9/lsn-target")
+	assert.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, "old-comp", got.ReferencedCloudCertID)
+
+	// 升级窗口期：存量变更单持纯监听 ID -> 尾段回退命中复合形态引用
+	got, found, err = src.CurrentRef(ctx, "aliyun", "alb", "lsn-target")
+	assert.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, "old-comp", got.ReferencedCloudCertID)
+
+	// 反向：目标复合、快照纯监听（旧快照未重扫）
+	refsRepo2 := certtest.NewFakeCertReferenceRepo()
+	_, err = refsRepo2.CreateMulti(ctx, []domain.CertReference{{
+		Cloud: domain.CloudAliyun, Product: domain.ProductNLB,
+		ResourceID: "lsn-n-1", ReferencedCloudCertID: "old-plain", SnapshotID: snapID,
+	}})
+	assert.NoError(t, err)
+	src2 := NewSnapshotOldRefSource(snaps, refsRepo2)
+	got, found, err = src2.CurrentRef(ctx, "aliyun", "nlb", "nlb-1/lsn-n-1")
+	assert.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, "old-plain", got.ReferencedCloudCertID)
+
+	// 尾段不同 -> 不命中
+	_, found, err = src.CurrentRef(ctx, "aliyun", "alb", "lsn-other")
+	assert.NoError(t, err)
+	assert.False(t, found)
+}

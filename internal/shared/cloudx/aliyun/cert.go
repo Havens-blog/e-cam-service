@@ -68,7 +68,7 @@ var (
 type CloudCertRef struct {
 	Cloud                 string // 固定 "aliyun"
 	Product               string // cdn|dcdn|waf|alb|nlb
-	ResourceID            string // 云资源标识：CDN/DCDN/WAF=域名，ALB/NLB=监听 ID
+	ResourceID            string // 云资源标识：CDN/DCDN/WAF=域名，ALB/NLB="{LoadBalancerId}/{ListenerId}" 复合形态
 	ReferencedCloudCertID string // 云侧证书 ID（ALB/NLB 为 "{certId}-{region}" 形态）
 	AccountKey            string // 云账号标识（取 CloudAccount.Name）
 }
