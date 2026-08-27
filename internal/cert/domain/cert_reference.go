@@ -45,6 +45,7 @@ type CertReference struct {
 	ResourceID            string             `bson:"resourceId,omitempty"`            // 云资源 ID / CRD 实例名
 	ReferencedCloudCertID string             `bson:"referencedCloudCertId,omitempty"` // 云侧证书 ID
 	AccountKey            string             `bson:"accountKey,omitempty"`
+	ServedDomains         []string           `bson:"servedDomains,omitempty"` // ALB 监听规则提取的 served hostname（external DNS 记录→ALB 资源级 expected 对齐）
 	SnapshotID            string             `bson:"snapshotId"` // 来源扫描快照
 	ScannedAt             time.Time          `bson:"scannedAt"`  // DEFAULT=now()
 }

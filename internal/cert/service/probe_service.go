@@ -533,17 +533,28 @@ func refIndexMatches(refIndex map[string]map[string]bool, lr *dns.LinkedResource
 	switch lr.Type {
 	case "cdn", "dcdn", "waf":
 		product = lr.Type
+	case "external":
+		// external A 记录可能指向 ALB/NLB：查 alb/nlb 两个 product 的 served domain 索引
+		for _, p := range []string{"alb", "nlb"} {
+			if fps := refIndex[p+"|"+hostname]; len(fps) > 0 && fps[onlineFP] {
+				return true
+			}
+		}
+		return false
 	default:
-		return false // external/ALB：引用 resourceId 非域名，无法对齐，回退 coverage
+		return false // nil/未知：回退 coverage
 	}
 	fps := refIndex[product+"|"+hostname]
 	return len(fps) > 0 && fps[onlineFP]
 }
 
-// buildReferenceIndex 从最新成功快照的引用扫描结果建 "product|resourceId → 指纹集合" 索引。
-// 仅纳入 CDN/DCDN/WAF（resourceId 为域名，可与 DNS hostname 对齐）；跳过占位指纹
-// （certscan-unresolved: 前缀，未解析为台账指纹，不作权威 expected）。refs/snapshots
-// 未装配或无成功快照时返回 nil（调用方回退 coverage）。
+// buildReferenceIndex 从最新成功快照的引用扫描结果建 "product|hostname → 指纹集合" 索引：
+//   - CDN/DCDN/WAF：resourceId 即域名，直接入键
+//   - ALB/NLB：resourceId 为监听复合 ID（非域名），改按 ServedDomains（监听规则提取的
+//     served hostname）展开入键——external DNS 记录（A→ALB IP）的 hostname 经此对齐
+//
+// 跳过占位指纹（certscan-unresolved: 前缀，未解析为台账指纹，不作权威 expected）。
+// refs/snapshots 未装配或无成功快照时返回 nil（调用方回退 coverage）。
 func (s *probeService) buildReferenceIndex(ctx context.Context) map[string]map[string]bool {
 	if s.refs == nil || s.snapshots == nil {
 		return nil
@@ -557,24 +568,30 @@ func (s *probeService) buildReferenceIndex(ctx context.Context) map[string]map[s
 		return nil
 	}
 	idx := make(map[string]map[string]bool)
-	for _, r := range refs {
-		product := string(r.Product)
-		switch product {
-		case "cdn", "dcdn", "waf":
-		default:
-			continue // ALB/NLB resourceId 非域名，K8s 同理，不入索引
+	register := func(product, hostname, fp string) {
+		if hostname == "" {
+			return
 		}
-		if r.ResourceID == "" || r.CertFingerprint == "" {
-			continue
-		}
-		if isPlaceholderFingerprint(r.CertFingerprint) {
-			continue // 占位指纹非台账真实指纹，不作权威 expected
-		}
-		key := product + "|" + r.ResourceID
+		key := product + "|" + hostname
 		if idx[key] == nil {
 			idx[key] = make(map[string]bool)
 		}
-		idx[key][r.CertFingerprint] = true
+		idx[key][fp] = true
+	}
+	for _, r := range refs {
+		if r.CertFingerprint == "" || isPlaceholderFingerprint(r.CertFingerprint) {
+			continue
+		}
+		product := string(r.Product)
+		switch product {
+		case "cdn", "dcdn", "waf":
+			register(product, r.ResourceID, r.CertFingerprint)
+		case "alb", "nlb":
+			// resourceId 为监听复合 ID（非域名），按 ServedDomains 展开
+			for _, h := range r.ServedDomains {
+				register(product, h, r.CertFingerprint)
+			}
+		}
 	}
 	return idx
 }

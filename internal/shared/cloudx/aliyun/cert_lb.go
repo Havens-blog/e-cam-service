@@ -77,6 +77,9 @@ func (a *CertAdapter) listALBReferences(ctx context.Context, creds *domain.Cloud
 						elog.FieldErr(err))
 					continue
 				}
+				// ALB 监听规则提取 served hostname（Host 条件）——external DNS 记录→ALB
+				// 资源级 expected 对齐依据。失败不阻塞（served 置空，回退 coverage）。
+				served := a.listALBServedDomains(ctx, client, listener.ListenerId)
 				for _, cert := range certs {
 					refs = append(refs, CloudCertRef{
 						Cloud:                 "aliyun",
@@ -84,6 +87,7 @@ func (a *CertAdapter) listALBReferences(ctx context.Context, creds *domain.Cloud
 						ResourceID:            lbScopedResourceID(listener.LoadBalancerId, listener.ListenerId),
 						ReferencedCloudCertID: cert.CertificateId,
 						AccountKey:            accountKey,
+						ServedDomains:         served,
 					})
 				}
 			}
@@ -125,6 +129,54 @@ func (a *CertAdapter) listALBListenerCerts(ctx context.Context, client albCertAP
 		nextToken = response.NextToken
 	}
 	return certs, nil
+}
+
+// listALBServedDomains 遍历监听的转发规则，提取 Host 条件值（served hostname）。
+// 用于 external DNS 记录（A→ALB IP）与 ALB 资源级 expected 的对齐：Phase 3
+// buildReferenceIndex 按 served domain 展开 refIndex[alb|hostname]。失败返回空。
+func (a *CertAdapter) listALBServedDomains(ctx context.Context, client albCertAPI, listenerID string) []string {
+	seen := make(map[string]struct{})
+	var out []string
+	nextToken := ""
+	for {
+		if err := a.waitRateLimit(ctx); err != nil {
+			return out
+		}
+		request := alb.CreateListRulesRequest()
+		request.Scheme = "https"
+		request.ListenerIds = &[]string{listenerID}
+		request.MaxResults = requests.NewInteger(a.certPageSize())
+		request.NextToken = nextToken
+		response, err := client.ListRules(request)
+		if err != nil {
+			a.logger.Warn("获取ALB监听规则失败，跳过 served domain 提取",
+				elog.String("listener", listenerID),
+				elog.FieldErr(err))
+			return out
+		}
+		for _, rule := range response.Rules {
+			for _, cond := range rule.RuleConditions {
+				if cond.Type != "Host" {
+					continue
+				}
+				for _, h := range cond.HostConfig.Values {
+					name := strings.TrimSpace(h)
+					if name == "" {
+						continue
+					}
+					if _, ok := seen[name]; !ok {
+						seen[name] = struct{}{}
+						out = append(out, name)
+					}
+				}
+			}
+		}
+		if response.NextToken == "" {
+			break
+		}
+		nextToken = response.NextToken
+	}
+	return out
 }
 
 // bindALB 将云证书绑定为 ALB 监听默认服务器证书（扩展证书保留）。

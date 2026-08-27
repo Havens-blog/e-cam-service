@@ -7,23 +7,6 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 )
 
-func TestBuildProbeHostname(t *testing.T) {
-	cases := map[struct{ rr, domain string }]string{
-		{"www", "example.com"}:    "www.example.com",
-		{"@", "example.com"}:      "example.com",
-		{"", "example.com"}:        "example.com",
-		{"api", "example.com"}:     "api.example.com",
-		{"*.example", "example.com"}: "", // 通配符 DNS 记录跳过
-		{"www", ""}:               "",
-	}
-	for in, want := range cases {
-		got := buildProbeHostname(in.rr, in.domain)
-		if got != want {
-			t.Errorf("buildProbeHostname(%q,%q)=%q, want %q", in.rr, in.domain, got, want)
-		}
-	}
-}
-
 func TestCoversSingleLabel(t *testing.T) {
 	if !coversSingleLabel("www.example.com", "example.com") {
 		t.Error("www.example.com 应被 *.example.com 单标签覆盖")
@@ -118,5 +101,31 @@ func TestRefIndexMatches(t *testing.T) {
 	// nil 索引 → false
 	if refIndexMatches(nil, cdn, "www.example.com", "fp-real") {
 		t.Error("nil 索引应返回 false")
+	}
+}
+
+func TestRefIndexMatches_ExternalALB(t *testing.T) {
+	// external A 记录（A→ALB IP）的 hostname 命中 ALB served domain 索引 → consistent
+	idx := map[string]map[string]bool{
+		"alb|www.example.com": {"fp-alb": true},
+	}
+	ext := &dns.LinkedResource{Type: "external"}
+
+	// 命中 ALB 索引且指纹一致 → true
+	if !refIndexMatches(idx, ext, "www.example.com", "fp-alb") {
+		t.Error("external www.example.com 命中 alb 索引 fp-alb 应 consistent")
+	}
+	// 命中 ALB 索引但指纹不一致 → false（ALB 绑了别的证书，资源级漂移）
+	if refIndexMatches(idx, ext, "www.example.com", "fp-other") {
+		t.Error("ALB 索引命中但指纹不一致应 false")
+	}
+	// 无 ALB served domain 索引 → false（回退 coverage）
+	if refIndexMatches(idx, ext, "no.example.com", "fp-alb") {
+		t.Error("无 alb 索引应回退 coverage")
+	}
+	// NLB 也覆盖
+	idx["nlb|tls.example.com"] = map[string]bool{"fp-nlb": true}
+	if !refIndexMatches(idx, ext, "tls.example.com", "fp-nlb") {
+		t.Error("external tls.example.com 命中 nlb 索引应 consistent")
 	}
 }

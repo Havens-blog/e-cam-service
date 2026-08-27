@@ -40,6 +40,7 @@ type DiscoveredRef struct {
 	ResourceID            string
 	ReferencedCloudCertID string
 	AccountKey            string
+	ServedDomains         []string // ALB 监听规则提取的 served hostname（仅 aliyun ALB；余为空）
 }
 
 // CloudCertStatus GetCert 返回的云侧证书在库状态（指纹解析 fallback 数据）。
@@ -342,6 +343,7 @@ func (s *referenceScanService) runScan(ctx context.Context, sc scanContext) (Sca
 						ReferencedCloudCertID: r.ReferencedCloudCertID,
 						AccountKey:            r.AccountKey,
 						SnapshotID:            snapID,
+						ServedDomains:         r.ServedDomains,
 					})
 				}
 			}
@@ -715,10 +717,22 @@ func NewAliyunScanAdapter(a *aliyun.CertAdapter) CloudScanAdapter {
 		products: []domain.Product{domain.ProductCDN, domain.ProductDCDN, domain.ProductWAF, domain.ProductALB, domain.ProductNLB},
 		listRefs: func(ctx context.Context, creds *sharedomain.CloudAccount, product domain.Product) ([]DiscoveredRef, error) {
 			refs, err := a.ListReferences(ctx, creds, string(product))
-			return toDiscoveredRefs(len(refs), func(i int) (string, string, string, string, string) {
-				r := refs[i]
-				return r.Cloud, r.Product, r.ResourceID, r.ReferencedCloudCertID, r.AccountKey
-			}), err
+			if err != nil {
+				return nil, err
+			}
+			// 直接建 DiscoveredRef 携带 ServedDomains（ALB 监听规则提取的 served hostname）
+			out := make([]DiscoveredRef, len(refs))
+			for i, r := range refs {
+				out[i] = DiscoveredRef{
+					Cloud:                 r.Cloud,
+					Product:               r.Product,
+					ResourceID:            r.ResourceID,
+					ReferencedCloudCertID: r.ReferencedCloudCertID,
+					AccountKey:            r.AccountKey,
+					ServedDomains:         r.ServedDomains,
+				}
+			}
+			return out, nil
 		},
 		getCert: func(ctx context.Context, creds *sharedomain.CloudAccount, cloudCertID string) (CloudCertStatus, error) {
 			info, err := a.GetCert(ctx, creds, cloudCertID)

@@ -71,6 +71,7 @@ type CloudCertRef struct {
 	ResourceID            string // 云资源标识：CDN/DCDN/WAF=域名，ALB/NLB="{LoadBalancerId}/{ListenerId}" 复合形态
 	ReferencedCloudCertID string // 云侧证书 ID（ALB/NLB 为 "{certId}-{region}" 形态）
 	AccountKey            string // 云账号标识（取 CloudAccount.Name）
+	ServedDomains         []string // ALB 监听规则提取的 served hostname（Host 条件值；非 ALB 产品为空）
 }
 
 // CloudCertInfo GetCert 返回的云侧证书在库状态（回滚目标有效性校验依据）
@@ -108,6 +109,7 @@ type albCertAPI interface {
 	ListListeners(request *alb.ListListenersRequest) (*alb.ListListenersResponse, error)
 	ListListenerCertificates(request *alb.ListListenerCertificatesRequest) (*alb.ListListenerCertificatesResponse, error)
 	UpdateListenerAttribute(request *alb.UpdateListenerAttributeRequest) (*alb.UpdateListenerAttributeResponse, error)
+	ListRules(request *alb.ListRulesRequest) (*alb.ListRulesResponse, error)
 }
 
 // nlbCertAPI NLB SDK 窄接口（cert_lb.go 使用）

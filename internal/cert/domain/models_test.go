@@ -27,7 +27,8 @@ func TestBsonTagsMatchSchema(t *testing.T) {
 		}},
 		{"CertReference", CertReference{}, true, []string{
 			"certFingerprint", "cloud", "product", "clusterId", "namespace", "kind",
-			"resourceId", "referencedCloudCertId", "accountKey", "snapshotId", "scannedAt",
+			"resourceId", "referencedCloudCertId", "accountKey", "servedDomains",
+			"snapshotId", "scannedAt",
 		}},
 		{"ScanSnapshot", ScanSnapshot{}, true, []string{
 			"startedAt", "finishedAt", "status", "failReason", "partialFailures", "coverageMeta",
@@ -60,7 +61,7 @@ func TestBsonTagsMatchSchema(t *testing.T) {
 		}},
 		{"ProbeResult", ProbeResult{}, true, []string{
 			"domain", "probeAt", "onlineFingerprint", "onlineNotAfter",
-			"status", "changeOrderId",
+			"status", "changeOrderId", "tenantId", "linkedResource",
 		}},
 		{"Exemption", Exemption{}, true, []string{"domain", "reason", "operator", "createdAt"}},
 		{"AlertConfig", AlertConfig{}, true, []string{

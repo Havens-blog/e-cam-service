@@ -753,6 +753,14 @@ func (f *failingProber) ProbeLedgerDomains(context.Context) ([]domain.ProbeResul
 	return nil, f.err
 }
 
+func (f *failingProber) ProbeAllTenantDNS(context.Context) ([]domain.ProbeResult, error) {
+	return nil, f.err
+}
+
+func (f *failingProber) ProbeTenantDNS(context.Context, int64) ([]domain.ProbeResult, error) {
+	return nil, f.err
+}
+
 // failingTransitions 终态迁移故障注入（VerifyWindowTransitions 端口）。
 type failingTransitions struct{ err error }
 

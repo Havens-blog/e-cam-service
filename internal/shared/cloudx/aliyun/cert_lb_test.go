@@ -24,6 +24,8 @@ type fakeAlbClient struct {
 	updateErr        error
 	updateReqs       []*alb.UpdateListenerAttributeRequest
 	listCalls        int
+	rulesByListener  map[string][]alb.Rule // listenerId -> 转发规则（提取 served domain）
+	rulesErr         error
 }
 
 func (f *fakeAlbClient) ListListeners(request *alb.ListListenersRequest) (*alb.ListListenersResponse, error) {
@@ -72,6 +74,20 @@ func (f *fakeAlbClient) UpdateListenerAttribute(request *alb.UpdateListenerAttri
 	}
 	resp := alb.CreateUpdateListenerAttributeResponse()
 	resp.JobId = "job-1"
+	return resp, nil
+}
+
+// ListRules 模拟 ALB 转发规则查询：返回该监听预置的规则（Host 条件提取 served domain）。
+func (f *fakeAlbClient) ListRules(request *alb.ListRulesRequest) (*alb.ListRulesResponse, error) {
+	if f.rulesErr != nil {
+		return nil, f.rulesErr
+	}
+	resp := alb.CreateListRulesResponse()
+	if request.ListenerIds != nil {
+		for _, lsnID := range *request.ListenerIds {
+			resp.Rules = append(resp.Rules, f.rulesByListener[lsnID]...)
+		}
+	}
 	return resp, nil
 }
 
@@ -444,4 +460,36 @@ func TestCertAdapterNLBBindResource(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorIs(t, err, ErrCloudRateLimited)
 	})
+}
+
+func TestCertAdapterALBListReferencesServedDomains(t *testing.T) {
+	adapter := newTestCertAdapter(t)
+	fake := &fakeAlbClient{
+		listeners: []alb.Listener{
+			{ListenerId: "lsn-1", ListenerProtocol: "HTTPS", LoadBalancerId: "alb-1"},
+		},
+		certPages: map[string][][]alb.CertificateModel{
+			"lsn-1": {{{CertificateId: "111-cn-hangzhou", IsDefault: true, CertificateType: "Server"}}},
+		},
+		rulesByListener: map[string][]alb.Rule{
+			"lsn-1": {
+				{ListenerId: "lsn-1", RuleConditions: []alb.Condition{
+					{Type: "Host", HostConfig: alb.HostConfig{Values: []string{"www.example.com", "api.example.com"}}},
+					{Type: "Path", PathConfig: alb.PathConfig{Values: []string{"/*"}}}, // 非 Host 条件应忽略
+				}},
+			},
+		},
+	}
+	adapter.newAlbClient = func(creds *domain.CloudAccount, region string) (albCertAPI, error) {
+		if region == "cn-shanghai" {
+			return &fakeAlbClient{}, nil
+		}
+		return fake, nil
+	}
+
+	refs, err := adapter.ListReferences(context.Background(), testCertCreds(), CertProductALB)
+	require.NoError(t, err)
+	require.Len(t, refs, 1)
+	assert.Equal(t, "alb-1/lsn-1", refs[0].ResourceID)
+	assert.ElementsMatch(t, []string{"www.example.com", "api.example.com"}, refs[0].ServedDomains)
 }
