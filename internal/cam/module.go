@@ -55,6 +55,9 @@ type Module struct {
 
 	// DNS 管理模块处理器
 	DNSHdl *dns.DNSHandler
+	// DNSRecordReadPort DNS 记录只读端口（供 cert probe 模块枚举拨测目标；
+	// nil=未初始化，cert 探测回退台账 SAN 路径）。
+	DNSRecordReadPort dns.RecordReadPort
 
 	// 成本管理模块服务（供定时任务使用）
 	CostCollectorSvc CostCollectorService

@@ -340,7 +340,7 @@ func newProbeHarness(t *testing.T, srv *sniServer) *probeHarness {
 	alert := &fakeAlertCfgRepo{cfg: domain.DefaultAlertConfig()}
 	orders := &fakeChangeOrderRepo{}
 	dialer := &countingDialer{inner: &stdTLSDialer{timeout: 2 * time.Second, addrOverride: srv.addr}}
-	svc := NewProbeService(certs, probes, exempts, alert, orders, dialer)
+	svc := NewProbeService(certs, probes, exempts, alert, orders, dialer, ProbeOptions{})
 	return &probeHarness{svc: svc, probes: probes, certs: certs, orders: orders, exempts: exempts, alert: alert, dialer: dialer}
 }
 
@@ -750,7 +750,7 @@ func TestNewProbeService_DefaultDialer(t *testing.T) {
 		exempts: &fakeExemptionRepo{},
 		alert:   &fakeAlertCfgRepo{cfg: domain.DefaultAlertConfig()},
 	}
-	h.svc = NewProbeService(h.certs, h.probes, h.exempts, h.alert, h.orders, nil)
+	h.svc = NewProbeService(h.certs, h.probes, h.exempts, h.alert, h.orders, nil, ProbeOptions{})
 	// 默认 dialer 拨真实 443，测试用不存在域名 → unreachable（单域失败不中断整轮）
 	results, err := h.svc.ProbeDomains(context.Background(), []string{"nonexistent-6f2a1b.example.com"})
 	require.NoError(t, err)

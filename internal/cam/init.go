@@ -121,6 +121,9 @@ func InitModuleWithIAM(db *mongox.Mongo, redisClient redis.Cmdable, alertModule 
 	recordDAO := dns.NewDnsRecordDAO(dnsRecordColl)
 	dnsSvc := dns.NewDNSService(module.AccountSvc, adapterFactory, domainDAO, recordDAO)
 	module.DNSHdl = dns.NewDNSHandler(dnsSvc)
+	// 暴露 DNS 记录只读端口供 cert probe 模块枚举拨测目标（DNS 记录自带 tenant_id，
+	// 支持按租户轮；本服务无本地租户注册表，distinct tenant_id 即覆盖面）。
+	module.DNSRecordReadPort = dns.NewRecordReadPort(recordDAO)
 	// 注入 DNS 集合到任务执行器
 	if module.TaskModule != nil {
 		module.TaskModule.SetDNSCollections(dnsDomainColl, dnsRecordColl)

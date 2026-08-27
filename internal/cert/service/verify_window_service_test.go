@@ -104,7 +104,7 @@ func newVerifyHarness(t *testing.T, srv *sniServer) *verifyHarness {
 	if srv != nil {
 		dialer = &countingDialer{inner: &stdTLSDialer{timeout: 2 * time.Second, addrOverride: srv.addr}}
 	}
-	h.prober = NewProbeService(h.certs, h.probes, h.exempts, h.alertCfg, h.orders, dialer)
+	h.prober = NewProbeService(h.certs, h.probes, h.exempts, h.alertCfg, h.orders, dialer, ProbeOptions{})
 	changes := NewChangeService(h.orders, certtest.NewFakeChangeItemRepo(), h.certs, h.alertCfg,
 		certtest.NewFakeScanSnapshotRepo(), certtest.NewFakeCertReferenceRepo(), nil)
 	h.vw = NewVerifyWindowService(
@@ -730,7 +730,7 @@ func TestVerifyWindow_ExecuteEngineIntegration(t *testing.T) {
 func (h *executeHarness) proberForTest(t *testing.T) ProbeService {
 	t.Helper()
 	return NewProbeService(h.certs, certtest.NewFakeProbeResultRepo(), certtest.NewFakeExemptionRepo(),
-		h.alertCfg, h.orders, &stdTLSDialer{timeout: time.Second})
+		h.alertCfg, h.orders, &stdTLSDialer{timeout: time.Second}, ProbeOptions{})
 }
 
 // deployerBatchConf 测试便捷构造（BatchConf 字面量较长）。

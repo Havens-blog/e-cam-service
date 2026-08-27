@@ -29,9 +29,11 @@ const (
 type ProbeResult struct {
 	ID                primitive.ObjectID `bson:"_id,omitempty"`
 	Domain            string             `bson:"domain"`
-	ProbeAt           time.Time          `bson:"probeAt"`                     // DEFAULT=now()；TTL 基准
-	OnlineFingerprint string             `bson:"onlineFingerprint,omitempty"` // unreachable 时缺省
+	ProbeAt           time.Time          `bson:"probeAt"`                      // DEFAULT=now()；TTL 基准
+	OnlineFingerprint string             `bson:"onlineFingerprint,omitempty"`  // unreachable 时缺省
 	OnlineNotAfter    *time.Time         `bson:"onlineNotAfter,omitempty"`
 	Status            ProbeStatus        `bson:"status"`
-	ChangeOrderID     string             `bson:"changeOrderId,omitempty"` // change_linked_diff 时关联变更单
+	ChangeOrderID     string             `bson:"changeOrderId,omitempty"`     // change_linked_diff 时关联变更单
+	TenantID          int64              `bson:"tenantId,omitempty"`           // DNS 源探测：记录所属租户（SAN 探测缺省 0）
+	LinkedResource    string             `bson:"linkedResource,omitempty"`     // DNS 源探测：链路关联资源类型（cdn/waf/external；SAN 探测缺省）
 }

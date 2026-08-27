@@ -65,6 +65,17 @@ func (f *fakeProbeService) ProbeDomains(_ context.Context, _ []string) ([]domain
 	return append([]domain.ProbeResult(nil), f.results...), f.err
 }
 
+// ProbeAllTenantDNS 模拟 DNS 源未装配：返回 ErrNoDNSSource，触发 stepProbe 回退
+// ProbeLedgerDomains（与生产 dnsSource=nil 行为一致；测试 fake 不接入 DNS 源）。
+func (f *fakeProbeService) ProbeAllTenantDNS(_ context.Context) ([]domain.ProbeResult, error) {
+	return nil, service.ErrNoDNSSource
+}
+
+// ProbeTenantDNS 单租户 DNS 探测（fake 不接入 DNS 源，返回 ErrNoDNSSource）。
+func (f *fakeProbeService) ProbeTenantDNS(_ context.Context, _ int64) ([]domain.ProbeResult, error) {
+	return nil, service.ErrNoDNSSource
+}
+
 // ProbeLedgerDomains 模拟真实 4.1：目标 = 台账全部 sans 展开去重。
 func (f *fakeProbeService) ProbeLedgerDomains(ctx context.Context) ([]domain.ProbeResult, error) {
 	if f.order != nil {

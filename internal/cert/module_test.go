@@ -87,7 +87,7 @@ func TestInitCertModule_BootSmoke(t *testing.T) {
 		accountrepo.NewCloudAccountRepository(accountdao.NewCloudAccountDAO(db)),
 		assetrepo.NewInstanceRepository(assetdao.NewInstanceDAO(db)),
 		queue,
-		service.NewLoggingAlertPublisher(),
+		service.NewLoggingAlertPublisher(), nil,
 	)
 	if err != nil {
 		t.Fatalf("cert 模块装配失败: %v", err)
@@ -170,6 +170,7 @@ func TestUnavailableDispatcher_QueuelessBootDegradation(t *testing.T) {
 		assetrepo.NewInstanceRepository(assetdao.NewInstanceDAO(db)),
 		nil, // 无任务队列：降级装配
 		nil, // 无告警发布器：回退日志发布
+		nil, // 无 DNS 源：回退台账 SAN 探测
 	)
 	if err != nil {
 		t.Fatalf("无队列装配应成功: %v", err)

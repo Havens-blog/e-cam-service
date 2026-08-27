@@ -10,6 +10,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam"
 	"github.com/Havens-blog/e-cam-service/internal/cert"
 	"github.com/Havens-blog/e-cam-service/internal/cert/repository"
+	certservice "github.com/Havens-blog/e-cam-service/internal/cert/service"
 	"github.com/Havens-blog/e-cam-service/internal/cert/scheduler"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
@@ -47,7 +48,13 @@ func InitCertModule(db *mongox.Mongo, camModule *cam.Module) (*cert.Module, erro
 		alertservice.LoadCertSMTPConfig(),
 		logger,
 	)
-	return cert.InitCertModule(db, logger, accounts, instances, queue, publisher)
+	// DNS 记录只读端口（cam/dns 模块暴露）：未装配时 dnsSource=nil，cert probe
+	// 回退台账 SAN 路径；装配后 ProbeAllTenantDNS 以 DNS 记录为源覆盖通配符子域名。
+	var dnsSource certservice.DNSRecordSource
+	if camModule != nil && camModule.DNSRecordReadPort != nil {
+		dnsSource = camModule.DNSRecordReadPort
+	}
+	return cert.InitCertModule(db, logger, accounts, instances, queue, publisher, dnsSource)
 }
 
 // initCertJobs 构建 cert 域 9 类定时任务的 ecron 组件（任务 7.1）。

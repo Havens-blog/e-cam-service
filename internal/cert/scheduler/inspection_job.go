@@ -345,12 +345,17 @@ func (j *InspectionJob) stepExpiryTiering(ctx context.Context) (StepMetrics, err
 // 步骤三：TLS 探测调度（4.1 编排，台账全部 sans）
 // ---------------------------------------------------------------------
 
-// stepProbe 调 4.1 ProbeLedgerDomains：目标=台账全部 sans 展开去重（含豁免域与
-// 通配符处置，内部已就绪）。unreachable 计入 Failed（拨测失败域，平台监控关注），
-// 其余状态为业务语义不计失败。单域失败在探测服务内部吸收。
+// stepProbe 调 4.1 探测：DNS 源可用时优先 ProbeAllTenantDNS（按租户轮，覆盖通配符证书
+// 实际子域名部署）；未装配回退 ProbeLedgerDomains（台账全部 sans 展开去重）。
+// unreachable 计入 Failed（拨测失败域，平台监控关注），其余状态为业务语义不计失败。
+// 单域失败在探测服务内部吸收。
 func (j *InspectionJob) stepProbe(ctx context.Context) (StepMetrics, []domain.ProbeResult, error) {
 	m := StepMetrics{Name: StepProbe, Ok: true, Extra: map[string]int{}}
-	results, err := j.probe.ProbeLedgerDomains(ctx)
+	results, err := j.probe.ProbeAllTenantDNS(ctx)
+	if errors.Is(err, service.ErrNoDNSSource) {
+		// DNS 源未装配：回退台账 SAN 路径
+		results, err = j.probe.ProbeLedgerDomains(ctx)
+	}
 	if err != nil {
 		m.Ok = false
 	}

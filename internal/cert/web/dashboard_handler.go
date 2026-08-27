@@ -25,6 +25,7 @@ func NewDashboardHandler(svc service.DashboardService) *DashboardHandler {
 // /reverse 同理）。
 func (h *DashboardHandler) RegisterRoutes(g *gin.RouterGroup) {
 	g.GET("/dashboard", h.Dashboard)
+	g.GET("/probes", h.ListProbes)
 }
 
 // DashboardSummaryVO 看板汇总（api-handbook 到期看板契约字段）。
@@ -100,4 +101,38 @@ func (h *DashboardHandler) Dashboard(c *gin.Context) {
 		Items:            items,
 		LastInspectionAt: formatTimePtr(view.LastInspectionAt),
 	}, nil)
+}
+
+// ProbeResultVO 探测结果行（含 DNS 源探测的子域名行：tenantId/linkedResource）。
+type ProbeResultVO struct {
+	Domain            string  `json:"domain"`
+	Status            string  `json:"status"`
+	OnlineFingerprint string  `json:"onlineFingerprint,omitempty"`
+	OnlineNotAfter    *string `json:"onlineNotAfter,omitempty"`
+	ProbeAt           string  `json:"probeAt"`
+	TenantID          int64   `json:"tenantId,omitempty"`
+	LinkedResource    string  `json:"linkedResource,omitempty"` // cdn/waf/external（DNS 源探测链路分层）
+}
+
+// ListProbes GET /api/v1/certs/probes —— 每域最近一次探测结果（全角色含只读）。
+// 含 DNS 源探测的子域名行，供子域名探测结果列表视图消费。
+func (h *DashboardHandler) ListProbes(c *gin.Context) {
+	results, err := h.svc.ListProbeResults(c.Request.Context())
+	if err != nil {
+		WriteError(c, err)
+		return
+	}
+	items := make([]ProbeResultVO, 0, len(results))
+	for _, r := range results {
+		items = append(items, ProbeResultVO{
+			Domain:            r.Domain,
+			Status:            string(r.Status),
+			OnlineFingerprint: r.OnlineFingerprint,
+			OnlineNotAfter:    formatTimePtr(r.OnlineNotAfter),
+			ProbeAt:           formatTime(r.ProbeAt),
+			TenantID:          r.TenantID,
+			LinkedResource:    r.LinkedResource,
+		})
+	}
+	WriteOK(c, http.StatusOK, items, nil)
 }

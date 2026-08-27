@@ -86,6 +86,9 @@ type LastInspectionSource interface {
 type DashboardService interface {
 	// Dashboard 聚合看板视图（Hard Rule：响应不含任何私钥/凭证字段）。
 	Dashboard(ctx context.Context) (DashboardView, error)
+	// ListProbeResults 列出每域最近一次探测结果（LatestPerDomain），含 DNS 源探测
+	// 的子域名行（tenantId/linkedResource）——供「子域名探测结果」列表视图消费。
+	ListProbeResults(ctx context.Context) ([]domain.ProbeResult, error)
 }
 
 type dashboardService struct {
@@ -231,6 +234,11 @@ func (s *dashboardService) Dashboard(ctx context.Context) (DashboardView, error)
 		}
 	}
 	return view, nil
+}
+
+// ListProbeResults 每域最近一次探测结果（LatestPerDomain，含 DNS 源子域名行）。
+func (s *dashboardService) ListProbeResults(ctx context.Context) ([]domain.ProbeResult, error) {
+	return s.probes.LatestPerDomain(ctx)
 }
 
 // cloudsByFingerprint 最新成功快照引用 → 指纹→所属云去重集合

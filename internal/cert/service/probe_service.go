@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Havens-blog/e-cam-service/internal/cam/dns"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 )
 
@@ -98,15 +99,43 @@ type ProbeService interface {
 	// ProbeLedgerDomains 以台账全部 Certificate.sans 展开去重为目标域执行一轮探测
 	// （expectedDomain 仅提示性比对，不参与目标域；豁免清单命中域名仍探测但标 exempt）。
 	ProbeLedgerDomains(ctx context.Context) ([]domain.ProbeResult, error)
+	// ProbeAllTenantDNS 以多云 DNS 记录为探测目标源，按租户轮：逐租户拉其全部
+	// A/AAAA/CNAME 记录导出的子域名，SNI 拨测抓线上证书。覆盖通配符证书的实际子域名
+	// 部署（DNS 记录枚举具体 hostname，不再 wildcard_skipped）；ProbeResult 带
+	// tenantId/linkedResource（cdn/waf/external 链路分层）。dnsSource 未装配时返回 ErrNoDNSSource。
+	ProbeAllTenantDNS(ctx context.Context) ([]domain.ProbeResult, error)
+	// ProbeTenantDNS 单租户 DNS 探测（按租户轮的调度单元；ProbeAllTenantDNS 内部逐租户调用）。
+	ProbeTenantDNS(ctx context.Context, tenantID int64) ([]domain.ProbeResult, error)
 }
 
+// DNSRecordSource DNS 记录只读端口（cam/dns 模块 RecordReadPort 的 cert 侧投影）：
+// cert 只依赖此接口，不碰 dns DAO/linker。dns.RecordReadPort 结构性满足本接口，
+// 装配层直接注入；nil = 未装配，probe 回退 ProbeLedgerDomains 台账 SAN 路径。
+type DNSRecordSource interface {
+	ListTenantsWithRecords(ctx context.Context) ([]int64, error)
+	ListProbeTargets(ctx context.Context, tenantID int64) ([]dns.ProbeTarget, error)
+}
+
+// ErrNoDNSSource DNS 记录源未装配（probe DNS 路径不可用，调用方应回退台账 SAN 路径）。
+var ErrNoDNSSource = errors.New("probe: dns record source not configured")
+
 type probeService struct {
-	certs    domain.CertificateRepository
-	probes   domain.ProbeResultRepository
-	exempts  domain.ExemptionRepository
-	alertCfg domain.AlertConfigRepository
-	orders   domain.ChangeOrderRepository
-	dialer   tlsDialer
+	certs     domain.CertificateRepository
+	probes    domain.ProbeResultRepository
+	exempts   domain.ExemptionRepository
+	alertCfg  domain.AlertConfigRepository
+	orders    domain.ChangeOrderRepository
+	dialer    tlsDialer
+	dnsSource DNSRecordSource // 可空：未装配则 ProbeAllTenantDNS 返回 ErrNoDNSSource
+	refs      domain.CertReferenceRepository // 可空：Phase 3 expected 侧（引用扫描指纹）
+	snapshots domain.ScanSnapshotRepository    // 可空：配合 refs 取 latest done 快照建引用索引
+}
+
+// ProbeOptions 探测可选依赖（均可空；零值=回退纯台账 SAN 路径）。
+type ProbeOptions struct {
+	DNS       DNSRecordSource                // DNS 记录源：DNS 源探测
+	Refs      domain.CertReferenceRepository // 引用扫描仓储：Phase 3 expected 侧（资源绑定证书指纹）
+	Snapshots domain.ScanSnapshotRepository  // 快照仓储：配合 Refs 取 latest done 建引用索引
 }
 
 // NewProbeService 创建探测服务。deps 说明：
@@ -116,6 +145,7 @@ type probeService struct {
 //   - alertCfg：wildcardProbeOverrides（通配符→具体探测子域名）
 //   - orders：验证中变更单查询（change_linked_diff 关联判定）
 //   - dialer：TLS 拨测端口；nil 时使用标准库实现（probeDialTimeout 常量超时）
+//   - opts：可选依赖（DNS 源 + 引用扫描 expected 侧）；零值=回退台账 SAN 路径
 func NewProbeService(
 	certs domain.CertificateRepository,
 	probes domain.ProbeResultRepository,
@@ -123,17 +153,21 @@ func NewProbeService(
 	alertCfg domain.AlertConfigRepository,
 	orders domain.ChangeOrderRepository,
 	dialer tlsDialer,
+	opts ProbeOptions,
 ) ProbeService {
 	if dialer == nil {
 		dialer = &stdTLSDialer{timeout: probeDialTimeout}
 	}
 	return &probeService{
-		certs:    certs,
-		probes:   probes,
-		exempts:  exempts,
-		alertCfg: alertCfg,
-		orders:   orders,
-		dialer:   dialer,
+		certs:     certs,
+		probes:    probes,
+		exempts:   exempts,
+		alertCfg:  alertCfg,
+		orders:    orders,
+		dialer:    dialer,
+		dnsSource: opts.DNS,
+		refs:      opts.Refs,
+		snapshots: opts.Snapshots,
 	}
 }
 
@@ -340,4 +374,281 @@ func isWildcardSAN(name string) bool {
 func leafFingerprintHex(cert *x509.Certificate) string {
 	sum := sha256.Sum256(cert.Raw)
 	return hex.EncodeToString(sum[:])
+}
+
+// ==================== DNS 源探测（按租户轮，覆盖通配符证书实际子域名） ====================
+
+// ProbeAllTenantDNS 按租户轮：枚举有 DNS 记录的全部租户，逐租户 ProbeTenantDNS，
+// 聚合结果。单租户失败不中断其他租户（记入返回的 err）。
+func (s *probeService) ProbeAllTenantDNS(ctx context.Context) ([]domain.ProbeResult, error) {
+	if s.dnsSource == nil {
+		return nil, ErrNoDNSSource
+	}
+	tenants, err := s.dnsSource.ListTenantsWithRecords(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("probe: list dns tenants: %w", err)
+	}
+	var (
+		all     []domain.ProbeResult
+		errs    []error
+	)
+	for _, tid := range tenants {
+		if err := ctx.Err(); err != nil {
+			break
+		}
+		results, e := s.ProbeTenantDNS(ctx, tid)
+		if e != nil {
+			errs = append(errs, fmt.Errorf("probe: tenant %d: %w", tid, e))
+			continue
+		}
+		all = append(all, results...)
+	}
+	return all, errors.Join(errs...)
+}
+
+// ProbeTenantDNS 单租户 DNS 探测：拉该租户全部 TLS-relevant DNS 记录导出的子域名，
+// 受控并发 SNI 拨测，通配符感知的台账覆盖判定六态，逐域写 ProbeResult（带
+// tenantId/linkedResource）。单域名拨测/写库失败不中断整轮。
+func (s *probeService) ProbeTenantDNS(ctx context.Context, tenantID int64) ([]domain.ProbeResult, error) {
+	if s.dnsSource == nil {
+		return nil, ErrNoDNSSource
+	}
+	targets, err := s.dnsSource.ListProbeTargets(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("probe: list dns targets for tenant %d: %w", tenantID, err)
+	}
+	if len(targets) == 0 {
+		return nil, nil
+	}
+	// 逐轮一次性读取判定上下文（同 ProbeDomains）
+	exemptions, err := s.exempts.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("probe: list exemptions: %w", err)
+	}
+	exemptSet := make(map[string]bool, len(exemptions))
+	for _, e := range exemptions {
+		exemptSet[e.Domain] = true
+	}
+	verifying, err := s.orders.ListVerifyingActive(ctx, time.Now())
+	if err != nil {
+		return nil, fmt.Errorf("probe: list verifying orders: %w", err)
+	}
+	certs, err := s.certs.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("probe: list ledger certificates: %w", err)
+	}
+	coverage := buildCoverageIndex(certs) // hostname→归属证书指纹索引（精确 + 通配符单标签覆盖）
+	// Phase 3 expected 侧：最新成功快照引用扫描解析的"资源→绑定证书指纹"索引。
+	// CDN/DCDN/WAF 记录的 hostname == cert_reference.resourceId，按 (product,hostname)
+	// 查到引用即用其解析指纹做权威 expected；未装配/无快照/无引用则回退 coverage。
+	refIndex := s.buildReferenceIndex(ctx)
+
+	results := make([]domain.ProbeResult, len(targets))
+	sem := make(chan struct{}, probeConcurrency)
+	var wg sync.WaitGroup
+	for i, t := range targets {
+		if err := ctx.Err(); err != nil {
+			break
+		}
+		wg.Add(1)
+		go func(idx int, tgt dns.ProbeTarget) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-sem }()
+			results[idx] = s.probeOneDNS(tgt, exemptSet, coverage, refIndex, verifying)
+		}(i, t)
+	}
+	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("probe: dns round cancelled: %w", err)
+	}
+
+	var writeErrs []error
+	for i := range results {
+		r := results[i]
+		if err := s.probes.Create(ctx, &r); err != nil {
+			writeErrs = append(writeErrs, fmt.Errorf("probe: persist dns result for %s: %w", r.Domain, err))
+		}
+	}
+	return results, errors.Join(writeErrs...)
+}
+
+// probeOneDNS 单域 DNS 源探测与六态判定（结果不落库，由调用方统一写入）。
+// expected 侧分层（Phase 3）：CDN/DCDN/WAF 记录的 hostname 在引用索引命中时，用引用
+// 扫描解析的"该资源绑定证书指纹"做权威 expected（资源级精度）；无引用/external/ALB
+// 回退 coverageIndex（台账 SAN 通配符感知覆盖）。
+func (s *probeService) probeOneDNS(
+	tgt dns.ProbeTarget,
+	exemptSet map[string]bool,
+	coverage *coverageIndex,
+	refIndex map[string]map[string]bool,
+	verifying []domain.ChangeOrder,
+) domain.ProbeResult {
+	result := domain.ProbeResult{
+		Domain:         tgt.Hostname,
+		TenantID:       tgt.TenantID,
+		LinkedResource: linkedResourceType(tgt.LinkedResource),
+	}
+	leaf, err := s.dialer.Dial(context.Background(), tgt.Hostname)
+	if err != nil {
+		result.Status = domain.ProbeStatusUnreachable
+		return result
+	}
+	onlineFP := leafFingerprintHex(leaf)
+	notAfter := leaf.NotAfter
+	result.OnlineFingerprint = onlineFP
+	result.OnlineNotAfter = &notAfter
+	// expected 判定：豁免 > 引用索引（资源级权威）> 台账覆盖（SAN 通配符感知）
+	switch {
+	case exemptSet[tgt.Hostname]:
+		result.Status = domain.ProbeStatusExempt
+	case refIndexMatches(refIndex, tgt.LinkedResource, tgt.Hostname, onlineFP):
+		result.Status = domain.ProbeStatusConsistent
+	case coverage.covers(tgt.Hostname, onlineFP):
+		result.Status = domain.ProbeStatusConsistent
+	default:
+		if orderID, ok := matchVerifyingOrder(verifying, tgt.Hostname, onlineFP); ok {
+			result.Status = domain.ProbeStatusChangeLinkedDiff
+			result.ChangeOrderID = orderID
+		} else {
+			result.Status = domain.ProbeStatusDiff
+		}
+	}
+	return result
+}
+
+// refIndexMatches 引用索引是否命中并指纹一致。仅 CDN/DCDN/WAF 类 linked_resource
+// 的 hostname 能与 cert_reference.resourceId 对齐（== hostname）；key=product|hostname。
+// 若索引含该 key 但 onlineFP 不在其指纹集合 → 返回 false（由调用方落 diff，
+// 即"该资源绑了别的证书"——资源级漂移）；索引无该 key → 返回 false 走 coverage 回退。
+func refIndexMatches(refIndex map[string]map[string]bool, lr *dns.LinkedResource, hostname, onlineFP string) bool {
+	if refIndex == nil || lr == nil {
+		return false
+	}
+	product := ""
+	switch lr.Type {
+	case "cdn", "dcdn", "waf":
+		product = lr.Type
+	default:
+		return false // external/ALB：引用 resourceId 非域名，无法对齐，回退 coverage
+	}
+	fps := refIndex[product+"|"+hostname]
+	return len(fps) > 0 && fps[onlineFP]
+}
+
+// buildReferenceIndex 从最新成功快照的引用扫描结果建 "product|resourceId → 指纹集合" 索引。
+// 仅纳入 CDN/DCDN/WAF（resourceId 为域名，可与 DNS hostname 对齐）；跳过占位指纹
+// （certscan-unresolved: 前缀，未解析为台账指纹，不作权威 expected）。refs/snapshots
+// 未装配或无成功快照时返回 nil（调用方回退 coverage）。
+func (s *probeService) buildReferenceIndex(ctx context.Context) map[string]map[string]bool {
+	if s.refs == nil || s.snapshots == nil {
+		return nil
+	}
+	snap, err := s.snapshots.LatestDone(ctx)
+	if err != nil {
+		return nil // 无成功快照（含 mongo.ErrNoDocuments）→ 无引用可参考
+	}
+	refs, err := s.refs.ListBySnapshotID(ctx, snap.ID.Hex())
+	if err != nil || len(refs) == 0 {
+		return nil
+	}
+	idx := make(map[string]map[string]bool)
+	for _, r := range refs {
+		product := string(r.Product)
+		switch product {
+		case "cdn", "dcdn", "waf":
+		default:
+			continue // ALB/NLB resourceId 非域名，K8s 同理，不入索引
+		}
+		if r.ResourceID == "" || r.CertFingerprint == "" {
+			continue
+		}
+		if isPlaceholderFingerprint(r.CertFingerprint) {
+			continue // 占位指纹非台账真实指纹，不作权威 expected
+		}
+		key := product + "|" + r.ResourceID
+		if idx[key] == nil {
+			idx[key] = make(map[string]bool)
+		}
+		idx[key][r.CertFingerprint] = true
+	}
+	return idx
+}
+
+// isPlaceholderFingerprint 占位指纹判定（扫描侧确定性占位公式，未解析为台账指纹）。
+func isPlaceholderFingerprint(fp string) bool {
+	return strings.HasPrefix(fp, "certscan-unresolved:")
+}
+
+// coverageIndex 台账域名→归属证书指纹的通配符感知索引：
+//   - exact：精确 SAN hostname → 指纹集合（O(1) 查）
+//   - wildcards：通配符 SAN (base, fp) 列表，按单标签覆盖匹配（O(W) 查）
+//
+// DNS 源 hostname（如 www.example.com）即使不是任何精确 SAN，仍能经 wildcards
+// 匹配通配符证书 *.example.com 的归属，避免通配符子域名被误判 diff。
+type coverageIndex struct {
+	exact     map[string]map[string]bool
+	wildcards []sanWildcard
+}
+
+type sanWildcard struct {
+	base string // *.example.com → example.com
+	fp   string
+}
+
+func buildCoverageIndex(certs []domain.Certificate) *coverageIndex {
+	ci := &coverageIndex{exact: make(map[string]map[string]bool)}
+	for _, c := range certs {
+		for _, san := range c.Sans {
+			name := strings.TrimSpace(san)
+			if name == "" {
+				continue
+			}
+			if rest, ok := strings.CutPrefix(name, "*."); ok && rest != "" {
+				ci.wildcards = append(ci.wildcards, sanWildcard{base: rest, fp: c.Fingerprint})
+				continue
+			}
+			if ci.exact[name] == nil {
+				ci.exact[name] = make(map[string]bool)
+			}
+			ci.exact[name][c.Fingerprint] = true
+		}
+	}
+	return ci
+}
+
+// covers hostname 是否被台账某归属证书覆盖且指纹为 fp（精确命中优先，通配符单标签覆盖次之）。
+func (ci *coverageIndex) covers(hostname, fp string) bool {
+	if fps := ci.exact[hostname]; fps[fp] {
+		return true
+	}
+	for _, w := range ci.wildcards {
+		if w.fp == fp && coversSingleLabel(hostname, w.base) {
+			return true
+		}
+	}
+	return false
+}
+
+// coversSingleLabel hostname 是否为 `<label>.<base>` 且 label 不含 "."（通配符单标签覆盖）。
+func coversSingleLabel(hostname, base string) bool {
+	tail := "." + strings.ToLower(base)
+	lower := strings.ToLower(hostname)
+	if !strings.HasSuffix(lower, tail) {
+		return false
+	}
+	label := strings.TrimSuffix(lower, tail)
+	return label != "" && !strings.Contains(label, ".")
+}
+
+// linkedResourceType 提取 dns.LinkedResource.Type（cdn/waf/external）；nil 时空串。
+func linkedResourceType(lr *dns.LinkedResource) string {
+	if lr == nil {
+		return ""
+	}
+	return lr.Type
 }

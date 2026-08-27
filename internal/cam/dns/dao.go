@@ -310,6 +310,47 @@ func (d *DnsRecordDAO) SearchRecords(ctx context.Context, tenantID int64, keywor
 	return docs, total, nil
 }
 
+// ListProbeRecordsByTenant 批量查询某租户所有 TLS-relevant 解析记录
+// （A/AAAA/CNAME，不分页、跨全部域名）——供 cert probe 模块枚举拨测目标。
+// status 启用态过滤交由调用方决定；此处只按 type 取，probe 侧自行过滤。
+func (d *DnsRecordDAO) ListProbeRecordsByTenant(ctx context.Context, tenantID int64) ([]DnsRecordDoc, error) {
+	query := bson.M{
+		"tenant_id": tenantID,
+		"type":      bson.M{"$in": bson.A{"A", "AAAA", "CNAME"}},
+	}
+	cursor, err := d.coll.Find(ctx, query, options.Find().SetSort(bson.D{{Key: "domain", Value: 1}, {Key: "rr", Value: 1}}))
+	if err != nil {
+		return nil, fmt.Errorf("find probe dns records: %w", err)
+	}
+	defer cursor.Close(ctx)
+	var docs []DnsRecordDoc
+	if err = cursor.All(ctx, &docs); err != nil {
+		return nil, fmt.Errorf("decode probe dns records: %w", err)
+	}
+	return docs, nil
+}
+
+// DistinctTenantIDs 返回有解析记录的全部 tenantID（去重）——供 probe 按租户轮的
+// 枚举源（本服务无本地租户注册表；DNS 记录自带 tenant_id，distinct 即覆盖面）。
+func (d *DnsRecordDAO) DistinctTenantIDs(ctx context.Context) ([]int64, error) {
+	vals, err := d.coll.Distinct(ctx, "tenant_id", bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("distinct dns tenant ids: %w", err)
+	}
+	out := make([]int64, 0, len(vals))
+	for _, v := range vals {
+		switch n := v.(type) {
+		case int64:
+			out = append(out, n)
+		case int32:
+			out = append(out, int64(n))
+		case float64:
+			out = append(out, int64(n))
+		}
+	}
+	return out, nil
+}
+
 // CountRecordsByType 按记录类型统计
 func (d *DnsRecordDAO) CountRecordsByType(ctx context.Context, tenantID int64) (map[string]int64, error) {
 	pipeline := mongo.Pipeline{

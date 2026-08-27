@@ -92,6 +92,7 @@ func InitCertModule(
 	instances assetrepo.InstanceRepository,
 	queue *taskx.Queue,
 	publisher service.CertAlertPublisher,
+	dnsSource service.DNSRecordSource,
 ) (*Module, error) {
 	if logger == nil {
 		logger = elog.DefaultLogger
@@ -186,7 +187,11 @@ func InitCertModule(
 		},
 		service.NewAccountScanSource(accounts),
 	)
-	probeSvc := service.NewProbeService(repos.Certificates, repos.ProbeResults, repos.Exemptions, repos.AlertConfig, repos.ChangeOrders, nil)
+	probeSvc := service.NewProbeService(repos.Certificates, repos.ProbeResults, repos.Exemptions, repos.AlertConfig, repos.ChangeOrders, nil, service.ProbeOptions{
+		DNS:       dnsSource,
+		Refs:      repos.CertReferences,   // Phase 3 expected 侧：引用扫描解析的资源绑定指纹
+		Snapshots: repos.ScanSnapshots,    // 配合 Refs 取 latest done 快照建引用索引
+	})
 	inspectionSvc := service.NewInspectionService(repos.Certificates, repos.AlertConfig, publisher)
 	changeSvc := service.NewChangeService(repos.ChangeOrders, repos.ChangeItems, repos.Certificates,
 		repos.AlertConfig, repos.ScanSnapshots, repos.CertReferences, k8sChannel)
