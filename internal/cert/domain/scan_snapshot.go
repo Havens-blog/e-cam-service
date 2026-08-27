@@ -20,6 +20,11 @@ const (
 // FailReasonScanTimedOut running 超时转 failed 的原因码（scan-timeout 任务）。
 const FailReasonScanTimedOut = "SCAN_TIMED_OUT"
 
+// FailReasonScanInterrupted 孤儿回收原因码：进程重启遗留 running 快照的启动
+// 回收（单实例下 running 快照不可能跨进程存活，必为孤儿）与后台扫描 panic
+// 兜底共用（语义均为"扫描被中断而非超时"）。
+const FailReasonScanInterrupted = "SCAN_INTERRUPTED"
+
 // 扫描终态失败原因码（任务 3.5）。
 const (
 	// FailReasonScanDiscoveryFailed 全部发现通道失败（整体失败）。

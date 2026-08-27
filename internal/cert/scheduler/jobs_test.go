@@ -40,6 +40,10 @@ func (f *fakeScanRunner) RecoverTimedOutScans(context.Context) (int, error) {
 	return 0, nil
 }
 
+func (f *fakeScanRunner) RecoverOrphanedScans(context.Context) (int, error) {
+	return 0, nil
+}
+
 // fakeInspectionRunner 单方法巡检入口。
 type fakeInspectionRunner struct {
 	mu    sync.Mutex
@@ -362,6 +366,7 @@ func (p *panicScanRunner) StartScan(context.Context) (service.ScanResult, error)
 	panic("scan exploded")
 }
 func (p *panicScanRunner) RecoverTimedOutScans(context.Context) (int, error) { return 0, nil }
+func (p *panicScanRunner) RecoverOrphanedScans(context.Context) (int, error) { return 0, nil }
 
 // TestCertJobs_SingleFlightSkipsOverlap 同一任务不重复并发执行：上一轮
 // 未结束时下一轮触发直接跳过（框架级互斥，AC-3）。
@@ -424,6 +429,10 @@ func (b *blockingScanRunner) StartScan(context.Context) (service.ScanResult, err
 }
 
 func (b *blockingScanRunner) RecoverTimedOutScans(context.Context) (int, error) {
+	return 0, nil
+}
+
+func (b *blockingScanRunner) RecoverOrphanedScans(context.Context) (int, error) {
 	return 0, nil
 }
 

@@ -1004,3 +1004,74 @@ func TestListCRDObjects(t *testing.T) {
 	assert.ErrorIs(t, err, connErr)
 	assert.True(t, isNoMatchOrNotFound(apierrors.NewNotFound(schema.GroupResource{Resource: "x"}, "")))
 }
+
+// =====================================================================
+// 启动孤儿回收 / 异步 panic 兜底
+// =====================================================================
+
+// TestRecoverOrphanedScans 启动孤儿回收：全部 running 快照（无论新旧）立即转
+// failed（SCAN_INTERRUPTED）释放防重锁；不发告警事件（重启属预期运维动作）。
+func TestRecoverOrphanedScans(t *testing.T) {
+	adapter := aliyunAdapter()
+	h := newScanHarness(t, []CloudScanAdapter{adapter}, &fakeAssetSource{counts: map[CloudProductKey]int{}})
+
+	oldID := seedRunningSnapshot(t, h.snapshots, time.Now().Add(-30*time.Minute))
+	freshID := seedRunningSnapshot(t, h.snapshots, time.Now().Add(-1*time.Second))
+
+	recovered, err := h.svc.RecoverOrphanedScans(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 2, recovered)
+
+	for _, id := range []string{oldID, freshID} {
+		snap, err := h.snapshots.GetByID(context.Background(), id)
+		require.NoError(t, err)
+		assert.Equal(t, domain.ScanStatusFailed, snap.Status)
+		assert.Equal(t, domain.FailReasonScanInterrupted, snap.FailReason)
+		require.NotNil(t, snap.FinishedAt)
+	}
+	// 孤儿回收不发告警（区别于超时恢复）
+	assert.Empty(t, h.notifier.calls)
+
+	// 防重锁已释放：可重新触发扫描
+	res, err := h.svc.StartScan(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, domain.ScanStatusDone, res.Status)
+}
+
+// panicScanAdapter ListReferences panic 的适配（模拟云 SDK 崩溃）。
+type panicScanAdapter struct {
+	fakeScanAdapter
+}
+
+func (p *panicScanAdapter) ListReferences(context.Context, *sharedomain.CloudAccount, domain.Product) ([]DiscoveredRef, error) {
+	panic("sdk exploded")
+}
+
+// TestStartScanAsyncPanicGuard 异步扫描 panic 兜底：后台 goroutine panic 时
+// 快照转 failed（SCAN_INTERRUPTED）释放防重锁，进程不崩。
+func TestStartScanAsyncPanicGuard(t *testing.T) {
+	h := newScanHarness(t, []CloudScanAdapter{&panicScanAdapter{fakeScanAdapter{
+		cloud: domain.CloudAliyun, products: []domain.Product{domain.ProductCDN},
+	}}}, &fakeAssetSource{counts: map[CloudProductKey]int{}})
+
+	res, err := h.svc.StartScanAsync(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, domain.ScanStatusRunning, res.Status)
+
+	// 轮询等待后台 goroutine 兜底落终态（上限 5s）
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		snap, err := h.snapshots.GetByID(context.Background(), res.SnapshotID)
+		require.NoError(t, err)
+		if snap.Status != domain.ScanStatusRunning {
+			assert.Equal(t, domain.ScanStatusFailed, snap.Status)
+			assert.Equal(t, domain.FailReasonScanInterrupted, snap.FailReason)
+			require.NotNil(t, snap.FinishedAt)
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("panic 兜底未在 5s 内落终态，快照仍 running")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}

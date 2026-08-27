@@ -128,6 +128,10 @@ type ReferenceScanService interface {
 	// thresholds.scanTimeoutHours → failed（SCAN_TIMED_OUT）+ 告警事件 +
 	// 释放防重锁（可重新触发）。返回恢复条数。
 	RecoverTimedOutScans(ctx context.Context) (int, error)
+	// RecoverOrphanedScans 启动孤儿回收：进程重启后遗留的全部 running 快照
+	// 立即转 failed（SCAN_INTERRUPTED）释放防重锁。单实例部署下 running 快照
+	// 不可能跨进程存活，启动期全量回收而非等待 scanTimeoutHours 超时。
+	RecoverOrphanedScans(ctx context.Context) (int, error)
 }
 
 type referenceScanService struct {
@@ -209,8 +213,22 @@ func (s *referenceScanService) StartScanAsync(ctx context.Context) (ScanResult, 
 	if early != nil {
 		return *early, nil // 空范围：同步 finish failed，无后台任务
 	}
-	go s.runScan(context.Background(), sc)
+	go s.runScanGuarded(sc)
 	return ScanResult{SnapshotID: sc.snapID, Status: domain.ScanStatusRunning, StartedAt: sc.startedAt}, nil
+}
+
+// runScanGuarded 后台扫描 panic 兜底：panic 时快照转 failed（SCAN_INTERRUPTED）
+// 释放防重锁后吞掉 panic（裸 goroutine re-panic 会击穿整个进程，扫描失败
+// 不应连带服务不可用）。无兜底则快照永久卡 running，只能等 scanTimeoutHours
+// 超时恢复，期间所有扫描触发 409。
+func (s *referenceScanService) runScanGuarded(sc scanContext) {
+	defer func() {
+		if r := recover(); r != nil {
+			_ = s.snapshots.MarkFinished(context.Background(), sc.snapID,
+				domain.ScanStatusFailed, domain.FailReasonScanInterrupted)
+		}
+	}()
+	_, _ = s.runScan(context.Background(), sc)
 }
 
 // scanContext 扫描运行期上下文：beginScan 收集、runScan 消费。
@@ -669,6 +687,19 @@ func (s *referenceScanService) RecoverTimedOutScans(ctx context.Context) (int, e
 		// 阈值读取失败回退默认（恢复流程不中断）
 	}
 	cutoff := time.Now().Add(-time.Duration(timeoutHours) * time.Hour)
+	return s.recoverRunningBefore(ctx, cutoff, domain.FailReasonScanTimedOut, true)
+}
+
+// RecoverOrphanedScans 启动孤儿回收：全部 running 快照（cutoff=now）转 failed
+// （SCAN_INTERRUPTED）。不发告警事件--单实例重启属预期运维动作，告警是噪声；
+// 调度点在 module 装配期（进程启动即释放防重锁）。
+func (s *referenceScanService) RecoverOrphanedScans(ctx context.Context) (int, error) {
+	return s.recoverRunningBefore(ctx, time.Now(), domain.FailReasonScanInterrupted, false)
+}
+
+// recoverRunningBefore 恢复主干：running 且 startedAt 早于 cutoff 的快照转
+// failed；notify=true 时逐条发 scan-timeout 告警（失败不阻塞恢复）。
+func (s *referenceScanService) recoverRunningBefore(ctx context.Context, cutoff time.Time, failReason string, notify bool) (int, error) {
 	snaps, err := s.snapshots.ListRunningBefore(ctx, cutoff)
 	if err != nil {
 		return 0, err
@@ -676,11 +707,11 @@ func (s *referenceScanService) RecoverTimedOutScans(ctx context.Context) (int, e
 	recovered := 0
 	for _, snap := range snaps {
 		if err := s.snapshots.MarkFinished(ctx, snap.ID.Hex(),
-			domain.ScanStatusFailed, domain.FailReasonScanTimedOut); err != nil {
+			domain.ScanStatusFailed, failReason); err != nil {
 			return recovered, err
 		}
 		recovered++
-		if s.notifier != nil {
+		if notify && s.notifier != nil {
 			// 告警失败不阻塞恢复（快照已转 failed，下轮不再命中；告警可经
 			// 告警系统侧重试）
 			_ = s.notifier.NotifyScanTimedOut(ctx, snap.ID.Hex(), snap.StartedAt, time.Now())

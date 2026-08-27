@@ -61,6 +61,7 @@ db.createCollection("cert_references", {
       resourceId:            { bsonType: "string" },   // 云资源 ID / CRD 实例名
       referencedCloudCertId: { bsonType: "string" },   // 云侧证书 ID
       accountKey:            { bsonType: "string" },
+      servedDomains:         { bsonType: "array", items: { bsonType: "string" } }, // ALB 监听规则提取的 served hostname（external DNS 记录→ALB 资源级 expected 对齐）
       snapshotId:            { bsonType: "string" },   // 来源扫描快照
       scannedAt:             { bsonType: "date" }      // DEFAULT=now()
     }
@@ -245,7 +246,9 @@ db.createCollection("cert_probe_results", {
       onlineFingerprint: { bsonType: "string" },                            // unreachable 时缺省
       onlineNotAfter:    { bsonType: "date" },
       status:            { bsonType: "string", enum: ["consistent", "diff", "change_linked_diff", "unreachable", "exempt", "wildcard_skipped"] }, // wildcard_skipped=通配符 SAN 默认跳过拨测（可经 wildcardProbeOverrides 指定具体子域名替代探测）
-      changeOrderId:     { bsonType: "string" }                             // status=change_linked_diff 时关联变更单（验证窗口内预期切换）
+      changeOrderId:     { bsonType: "string" },                            // status=change_linked_diff 时关联变更单（验证窗口内预期切换）
+      tenantId:          { bsonType: "long" },                              // DNS 源探测：记录所属租户（SAN 探测缺省）
+      linkedResource:    { bsonType: "string" }                             // DNS 源探测：链路关联资源类型（cdn/waf/external；SAN 探测缺省）
     }
   }}
 });

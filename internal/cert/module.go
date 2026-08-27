@@ -172,6 +172,16 @@ func InitCertModule(
 		service.NewK8sScanGateway(k8sFactory),
 		&publisherScanNotifier{publisher: publisher},
 	)
+	// 启动孤儿回收（7.1）：单实例进程重启后遗留的 running 快照必为孤儿，启动
+	// 即转 failed 释放防重锁（不等 scanTimeoutHours 超时，否则重启后最长 2h
+	// 所有扫描触发 409 SCAN_IN_PROGRESS）。失败不阻断装配--退化为超时恢复兜底。
+	orphanCtx, orphanCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if n, err := scanSvc.RecoverOrphanedScans(orphanCtx); err != nil {
+		logger.Warn("cert: 启动回收孤儿扫描快照失败", elog.FieldErr(err))
+	} else if n > 0 {
+		logger.Info("cert: 启动回收孤儿扫描快照", elog.Int("count", n))
+	}
+	orphanCancel()
 	// 云端发现导入会话编排（cert-cloud-discovery-import 任务 4 服务 → 任务 5
 	// 装配）：五云材料端口对称注册（华为云 shim 恒降级哨兵——服务层预检即记因
 	// 跳过，不发起云 API 调用）；账号源复用扫描链路 ActiveByCloud 模式（会话
