@@ -217,27 +217,7 @@ func (s *AutoSyncScheduler) shouldSync(account *domain.CloudAccount, now time.Ti
 func (s *AutoSyncScheduler) triggerSync(ctx context.Context, account *domain.CloudAccount) error {
 	taskID := uuid.New().String()
 
-	// 获取要同步的资产类型
-	assetTypes := account.Config.SupportedAssetTypes
-	if len(assetTypes) == 0 {
-		assetTypes = []string{
-			"ecs", "disk", "snapshot", "security_group", "image",
-			"rds", "redis", "mongodb",
-			"vpc", "vswitch", "eip", "lb", "cdn", "waf",
-			"nas", "oss",
-			"kafka", "elasticsearch",
-		}
-	}
-
-	// 构建任务参数
-	params := map[string]any{
-		"provider":    string(account.Provider),
-		"asset_types": assetTypes,
-		"regions":     account.Config.SupportedRegions,
-		"account_id":  account.ID,
-		"tenant_id":   account.TenantID,
-		"auto_sync":   true, // 标记为自动同步
-	}
+	params := buildSyncParams(account)
 
 	task := &taskx.Task{
 		ID:        taskID,
@@ -259,4 +239,23 @@ func (s *AutoSyncScheduler) triggerSync(ctx context.Context, account *domain.Clo
 		elog.String("task_id", taskID))
 
 	return nil
+}
+
+// buildSyncParams 构建自动同步任务参数（纯函数，便于单元测试）。
+// 资产类型：显式配置 SupportedAssetTypes 优先；为空时使用
+// domain.DefaultSyncAssetTypes（含 dns，见其注释中的历史缺陷说明）。
+func buildSyncParams(account *domain.CloudAccount) map[string]any {
+	assetTypes := account.Config.SupportedAssetTypes
+	if len(assetTypes) == 0 {
+		assetTypes = domain.DefaultSyncAssetTypes
+	}
+
+	return map[string]any{
+		"provider":    string(account.Provider),
+		"asset_types": assetTypes,
+		"regions":     account.Config.SupportedRegions,
+		"account_id":  account.ID,
+		"tenant_id":   account.TenantID,
+		"auto_sync":   true, // 标记为自动同步
+	}
 }

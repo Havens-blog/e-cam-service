@@ -9,9 +9,9 @@
       "priority": "P0",
       "estimatedTime": "1h",
       "dependencies": [],
-      "status": "pending",
+      "status": "completed",
       "file": "1-shared-default-asset-types.md",
-      "record": "records/1-shared-default-asset-types.md",
+      "record": "1-shared-default-asset-types.record.md",
       "surface-type": "api",
       "type": "coding.fix",
       "complexity": "medium"
