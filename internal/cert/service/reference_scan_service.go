@@ -99,6 +99,7 @@ type ScanAlertNotifier interface {
 // ---------------------------------------------------------------------
 
 // ScanResult 单次扫描结果（web 层 POST /:id/scan 响应数据源）。
+// 异步触发时 Status=running 且仅 SnapshotID/StartedAt 有意义（后台 runScan 收敛终态）。
 type ScanResult struct {
 	SnapshotID        string
 	Status            domain.ScanStatus
@@ -108,6 +109,7 @@ type ScanResult struct {
 	ChannelsFailed    int
 	PartialFailures   []domain.ScanChannelFailure
 	CoverageMeta      []domain.CoverageMeta
+	StartedAt         time.Time // running 快照启动时点（异步触发回传，供前端轮询基线）
 }
 
 // ReferenceScanService 引用发现编排（任务 3.5）：单次扫描创建 ScanSnapshot
@@ -116,8 +118,11 @@ type ScanResult struct {
 // 恢复（running 超时转 failed 释放防重锁）。调度注册在 7.1。
 type ReferenceScanService interface {
 	// StartScan 触发一次全量引用扫描（同步执行至终态；已有 running 快照返回
-	// domain.ErrScanInProgress）。
+	// domain.ErrScanInProgress）。调度器调用。
 	StartScan(ctx context.Context) (ScanResult, error)
+	// StartScanAsync 异步触发：同步建 running 快照后立即返回 running 态结果，
+	// 发现+写库+终态在后台 goroutine 跑。HTTP 立即扫描调用，避免长扫描超时。
+	StartScanAsync(ctx context.Context) (ScanResult, error)
 	// RecoverTimedOutScans scan-timeout 恢复：running 且 now > startedAt +
 	// thresholds.scanTimeoutHours → failed（SCAN_TIMED_OUT）+ 告警事件 +
 	// 释放防重锁（可重新触发）。返回恢复条数。
@@ -177,12 +182,55 @@ func NewReferenceScanService(
 //  4. 逐云顺序发现（部分失败不阻塞其他云，记入 partialFailures）；
 //  5. 写引用（certFingerprint 解析 + snapshotId/scannedAt 写通）；
 //  6. 收敛：coverageMeta（covered=去重资源数）+ 终态（done / failed）。
+// StartScan 全量引用扫描编排（同步至终态；调度器调用）：beginScan + runScan 串行。
+// HTTP 立即扫描走 StartScanAsync（beginScan 同步建 running 快照 + 后台 runScan），
+// 避免真实账号发现+GetCert 指纹解析耗时超过 HTTP/axios 30s 超时。
 func (s *referenceScanService) StartScan(ctx context.Context) (ScanResult, error) {
+	sc, early, err := s.beginScan(ctx)
+	if err != nil {
+		return ScanResult{}, err
+	}
+	if early != nil {
+		return *early, nil // 空范围：快照已 finish failed
+	}
+	return s.runScan(ctx, sc)
+}
+
+// StartScanAsync 异步触发：beginScan 同步建 running 快照后立即返回 running 态
+// ScanResult，发现+写库+终态在后台 goroutine 跑（context.Background，不受请求
+// ctx 释放影响）。防重语义同 StartScan（已有 running 快照 → ErrScanInProgress）。
+// 卡死/panic 由 RecoverTimedOutScans（scanTimeoutHours）兜底释放防重锁。
+func (s *referenceScanService) StartScanAsync(ctx context.Context) (ScanResult, error) {
+	sc, early, err := s.beginScan(ctx)
+	if err != nil {
+		return ScanResult{}, err
+	}
+	if early != nil {
+		return *early, nil // 空范围：同步 finish failed，无后台任务
+	}
+	go s.runScan(context.Background(), sc)
+	return ScanResult{SnapshotID: sc.snapID, Status: domain.ScanStatusRunning, StartedAt: sc.startedAt}, nil
+}
+
+// scanContext 扫描运行期上下文：beginScan 收集、runScan 消费。
+type scanContext struct {
+	snapID          string
+	startedAt       time.Time
+	scope           []CloudProductKey
+	accountsByCloud map[domain.Cloud][]*sharedomain.CloudAccount
+	k8sRegs         []domain.CrdRegistration
+	totals          map[CloudProductKey]int
+	history         []domain.CoverageMeta
+}
+
+// beginScan 扫描前置：防重 → 账号/范围收集 → 分母固化 → 建 running 快照。
+// 空范围时同步 finish failed 并经 early 返回终态 ScanResult（无后台任务）。
+func (s *referenceScanService) beginScan(ctx context.Context) (sc scanContext, early *ScanResult, err error) {
 	// 1. 防重
 	if _, err := s.snapshots.LatestRunning(ctx); err == nil {
-		return ScanResult{}, domain.ErrScanInProgress
+		return scanContext{}, nil, domain.ErrScanInProgress
 	} else if !errors.Is(err, mongo.ErrNoDocuments) {
-		return ScanResult{}, err
+		return scanContext{}, nil, err
 	}
 
 	// 2. 账号/范围收集
@@ -191,7 +239,7 @@ func (s *referenceScanService) StartScan(ctx context.Context) (ScanResult, error
 	for _, adapter := range s.adapters {
 		accounts, err := s.accounts.ActiveByCloud(ctx, adapter.Cloud())
 		if err != nil {
-			return ScanResult{}, fmt.Errorf("cert: scan load accounts for %s: %w", adapter.Cloud(), err)
+			return scanContext{}, nil, fmt.Errorf("cert: scan load accounts for %s: %w", adapter.Cloud(), err)
 		}
 		if len(accounts) == 0 {
 			continue // 该云无 active 账号：不入扫描范围（该云保持盲区声明）
@@ -203,7 +251,7 @@ func (s *referenceScanService) StartScan(ctx context.Context) (ScanResult, error
 	}
 	k8sRegs, err := s.crdRegs.ListEnabled(ctx)
 	if err != nil {
-		return ScanResult{}, err
+		return scanContext{}, nil, err
 	}
 	if len(k8sRegs) > 0 {
 		scope = append(scope, k8sCoverageKey)
@@ -212,7 +260,7 @@ func (s *referenceScanService) StartScan(ctx context.Context) (ScanResult, error
 	// 3. 分母固化（启动时点）+ 创建 running 快照
 	prevDone, err := s.snapshots.LatestDone(ctx)
 	if err != nil && !errors.Is(err, mongo.ErrNoDocuments) {
-		return ScanResult{}, err
+		return scanContext{}, nil, err
 	}
 	var history []domain.CoverageMeta
 	if err == nil {
@@ -222,20 +270,37 @@ func (s *referenceScanService) StartScan(ctx context.Context) (ScanResult, error
 	snap := &domain.ScanSnapshot{Status: domain.ScanStatusRunning, CoverageMeta: metaFromTotals(totals)}
 	snapID, err := s.snapshots.Create(ctx, snap)
 	if err != nil {
-		return ScanResult{}, err
+		return scanContext{}, nil, err
 	}
 
 	// 空范围（无账号且无登记）：显式失败——空范围快照会使引用三态的"已扫描"
 	// 声明失真（全部证书被判 no_refs_scanned）
 	if len(scope) == 0 {
 		failReason := domain.FailReasonScanNoChannels
-		if err := s.snapshots.FinishScan(ctx, snapID, domain.ScanStatusFailed, failReason, nil, nil); err != nil {
-			return ScanResult{}, err
+		if ferr := s.snapshots.FinishScan(ctx, snapID, domain.ScanStatusFailed, failReason, nil, nil); ferr != nil {
+			return scanContext{}, nil, ferr
 		}
-		return ScanResult{SnapshotID: snapID, Status: domain.ScanStatusFailed, FailReason: failReason}, nil
+		return scanContext{}, &ScanResult{SnapshotID: snapID, Status: domain.ScanStatusFailed, FailReason: failReason}, nil
 	}
 
-	// 4. 发现（逐云顺序）
+	return scanContext{
+		snapID:          snapID,
+		startedAt:       snap.StartedAt,
+		scope:           scope,
+		accountsByCloud: accountsByCloud,
+		k8sRegs:         k8sRegs,
+		totals:          totals,
+		history:         history,
+	}, nil, nil
+}
+
+// runScan 扫描主干：逐云顺序发现 + K8s 发现 + 写引用 + coverageMeta 收敛 + 终态。
+// 同步/异步共用；ctx 在异步路径为 context.Background（不受请求生命周期影响）。
+func (s *referenceScanService) runScan(ctx context.Context, sc scanContext) (ScanResult, error) {
+	snapID := sc.snapID
+	totals := sc.totals
+	k8sRegs := sc.k8sRegs
+	accountsByCloud := sc.accountsByCloud
 	var (
 		discovered []domain.CertReference
 		partials   []domain.ScanChannelFailure
@@ -243,6 +308,8 @@ func (s *referenceScanService) StartScan(ctx context.Context) (ScanResult, error
 		failed     int
 		fpCache    = make(map[string]string)
 	)
+
+	// 4. 发现（逐云顺序）
 	for _, adapter := range s.adapters {
 		accounts := accountsByCloud[adapter.Cloud()]
 		if len(accounts) == 0 {

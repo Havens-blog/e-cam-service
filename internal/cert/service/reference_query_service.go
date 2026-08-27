@@ -126,6 +126,7 @@ func (e *ScanInProgressError) Unwrap() error { return domain.ErrScanInProgress }
 // 依赖，测试注入 fake）。
 type ScanTriggerPort interface {
 	StartScan(ctx context.Context) (ScanResult, error)
+	StartScanAsync(ctx context.Context) (ScanResult, error)
 }
 
 // ReferenceItem 正向视图单条引用（AC 白名单字段）。
@@ -446,14 +447,15 @@ func certCoversDomain(c domain.Certificate, lowerQuery string) bool {
 // 立即扫描触发（防重）
 // ---------------------------------------------------------------------
 
-// TriggerScan 触发 3.5 扫描任务：证书存在性校验 → StartScan；
+// TriggerScan 触发 3.5 扫描任务：证书存在性校验 → StartScanAsync（异步，
+// 同步建 running 快照后立即返回 running 态；发现+终态在后台 goroutine）；
 // 进行中（domain.ErrScanInProgress）→ 附最新 running 快照信息包装为
 // *ScanInProgressError（409 SCAN_IN_PROGRESS）。
 func (s *referenceQueryService) TriggerScan(ctx context.Context, certID string) (ScanResult, error) {
 	if _, err := s.certs.GetByID(ctx, certID); err != nil {
 		return ScanResult{}, err // ErrInvalidID → 400 / ErrNoDocuments → 404
 	}
-	res, err := s.scan.StartScan(ctx)
+	res, err := s.scan.StartScanAsync(ctx)
 	if err != nil {
 		if errors.Is(err, domain.ErrScanInProgress) {
 			return ScanResult{}, s.wrapInProgress(ctx)

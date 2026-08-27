@@ -115,7 +115,8 @@ type ScanChannelFailureVO struct {
 	Reason  string `json:"reason"`
 }
 
-// ScanResultVO 立即扫描结果（3.5 StartScan 同步至终态的返回）。
+// ScanResultVO 立即扫描结果（异步触发返回 running 态 + snapshotId/startedAt；
+// 空范围同步失败返回 failed 态；终态字段仅在同步路径或后台收敛后有意义）。
 type ScanResultVO struct {
 	SnapshotID        string                 `json:"snapshotId"`
 	Status            string                 `json:"status"`
@@ -125,6 +126,7 @@ type ScanResultVO struct {
 	ChannelsFailed    int                    `json:"channelsFailed"`
 	PartialFailures   []ScanChannelFailureVO `json:"partialFailures"`
 	Coverage          []CoverageVO           `json:"coverage"`
+	StartedAt         string                 `json:"startedAt,omitempty"` // running 态：快照启动时点（前端轮询基线）
 }
 
 // scanInProgressMeta 409 SCAN_IN_PROGRESS 附进行中快照信息。
@@ -160,7 +162,8 @@ func (h *ReferenceHandler) ReverseQuery(c *gin.Context) {
 	WriteOK(c, http.StatusOK, toReverseResultVO(q, items), nil)
 }
 
-// TriggerScan POST /api/v1/certs/:id/scan —— 立即扫描触发（防重 409 附快照信息）。
+// TriggerScan POST /api/v1/certs/:id/scan —— 立即扫描触发（异步：running 态 202
+// + snapshotId/startedAt；防重 409 附进行中快照信息；空范围同步失败 200 failed）。
 func (h *ReferenceHandler) TriggerScan(c *gin.Context) {
 	res, err := h.svc.TriggerScan(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -173,6 +176,11 @@ func (h *ReferenceHandler) TriggerScan(c *gin.Context) {
 			return
 		}
 		WriteError(c, err)
+		return
+	}
+	// 异步触发：running 快照已建、后台 goroutine 收敛，前端据 startedAt 轮询 /references。
+	if res.Status == domain.ScanStatusRunning {
+		WriteOK(c, http.StatusAccepted, toScanResultVO(res), nil)
 		return
 	}
 	WriteOK(c, http.StatusOK, toScanResultVO(res), nil)
@@ -288,5 +296,6 @@ func toScanResultVO(res service.ScanResult) ScanResultVO {
 		ChannelsFailed:    res.ChannelsFailed,
 		PartialFailures:   partials,
 		Coverage:          toCoverageVOs(res.CoverageMeta),
+		StartedAt:         formatTime(res.StartedAt),
 	}
 }

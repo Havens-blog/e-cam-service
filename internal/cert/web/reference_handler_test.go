@@ -34,6 +34,15 @@ func (f *fakeScanTrigger) StartScan(_ context.Context) (service.ScanResult, erro
 	return f.res, f.err
 }
 
+// StartScanAsync 异步触发 fake：与 StartScan 同口径（计数 + 返回可编程 res/err）。
+// 测试通过 res.Status=running 验证 202 路径，res.Status=done/failed 验证同步终态回退。
+func (f *fakeScanTrigger) StartScanAsync(_ context.Context) (service.ScanResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	return f.res, f.err
+}
+
 func (f *fakeScanTrigger) callCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -390,6 +399,23 @@ func TestTriggerScanAPI(t *testing.T) {
 		assert.Equal(t, true, cov["denominatorAvailable"])
 		assert.Equal(t, 1, scan.callCount(), "触发一次扫描")
 		assertNoKeyMaterial(t, w)
+	})
+
+	t.Run("trigger async 202 running", func(t *testing.T) {
+		engine, d, scan := newReferenceRouter(t)
+		id := d.seedCert(t, lfp(1), nil)
+		scan.res = service.ScanResult{
+			SnapshotID: "snap-run", Status: domain.ScanStatusRunning,
+			StartedAt:  time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC),
+		}
+
+		w := doPost(t, engine, "/api/v1/certs/"+id+"/scan")
+		require.Equal(t, http.StatusAccepted, w.Code, w.Body.String())
+		data := decodeData(t, w)
+		assert.Equal(t, "snap-run", data["snapshotId"])
+		assert.Equal(t, "running", data["status"])
+		assert.NotEmpty(t, data["startedAt"], "附 startedAt 供前端轮询基线")
+		assert.Equal(t, 1, scan.callCount())
 	})
 
 	t.Run("in progress 409 with snapshot info", func(t *testing.T) {

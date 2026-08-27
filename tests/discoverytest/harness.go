@@ -627,6 +627,12 @@ func (s *StubScanTrigger) bind(snaps domain.ScanSnapshotRepository, refs domain.
 	s.refs = refs
 }
 
+// StartScanAsync implements service.ScanTriggerPort（异步触发：测试桩同步执行
+// StartScan 后返回 running 态，对齐 HTTP 202 路径；refs 已同步写入）。
+func (s *StubScanTrigger) StartScanAsync(ctx context.Context) (service.ScanResult, error) {
+	return s.StartScan(ctx)
+}
+
 // StartScan implements service.ScanTriggerPort.
 func (s *StubScanTrigger) StartScan(ctx context.Context) (service.ScanResult, error) {
 	s.calls.Add(1)
