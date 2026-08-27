@@ -277,14 +277,40 @@ func TestLinkerUnit(t *testing.T) {
 		assert.Equal(t, "cdn", r.Type)
 	})
 
-	t.Run("unknown CNAME", func(t *testing.T) {
+	t.Run("unknown CNAME -> external", func(t *testing.T) {
 		r := linker.Identify("CNAME", "other.example.com")
-		assert.Nil(t, r)
+		require.NotNil(t, r)
+		assert.Equal(t, "external", r.Type)
 	})
 
-	t.Run("A record returns nil", func(t *testing.T) {
+	t.Run("A record -> external", func(t *testing.T) {
 		r := linker.Identify("A", "1.2.3.4")
-		assert.Nil(t, r)
+		require.NotNil(t, r)
+		assert.Equal(t, "external", r.Type)
+	})
+
+	t.Run("AAAA record -> external", func(t *testing.T) {
+		r := linker.Identify("AAAA", "2001:db8::1")
+		require.NotNil(t, r)
+		assert.Equal(t, "external", r.Type)
+	})
+
+	t.Run("aliyun CDN kunluncan", func(t *testing.T) {
+		r := linker.Identify("CNAME", "foo.w.kunluncan.com")
+		require.NotNil(t, r)
+		assert.Equal(t, "cdn", r.Type)
+	})
+
+	t.Run("aliyun WAF yundunwaf3", func(t *testing.T) {
+		r := linker.Identify("CNAME", "abc123.yundunwaf3.com")
+		require.NotNil(t, r)
+		assert.Equal(t, "waf", r.Type)
+	})
+
+	t.Run("CNAME trailing dot", func(t *testing.T) {
+		r := linker.Identify("CNAME", "abc.cdn.aliyuncs.com.")
+		require.NotNil(t, r)
+		assert.Equal(t, "cdn", r.Type)
 	})
 
 	t.Run("TXT record returns nil", func(t *testing.T) {

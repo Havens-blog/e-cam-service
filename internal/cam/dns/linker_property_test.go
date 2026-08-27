@@ -12,7 +12,7 @@ import (
 //
 // 对于任意 CNAME 类型的解析记录值，若该值匹配已知 CDN 域名后缀列表中的任一后缀，
 // 则关联资源类型应为 "cdn"；若匹配已知 WAF 域名后缀，则应为 "waf"；
-// 若不匹配任何已知后缀，则关联资源应为 nil。
+// 其余 CNAME 目标统一 "external"（源站/外部，cert probe 链路分层契约）。
 
 func TestProperty8_CNAMELinkedResourceIdentification(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
@@ -32,9 +32,9 @@ func TestProperty8_CNAMELinkedResourceIdentification(t *testing.T) {
 			if result == nil || result.Type != "waf" {
 				t.Fatalf("iteration %d: CNAME value %q should be waf, got %v", i, value, result)
 			}
-		case "":
-			if result != nil {
-				t.Fatalf("iteration %d: CNAME value %q should be nil, got %v", i, value, result)
+		case "external":
+			if result == nil || result.Type != "external" {
+				t.Fatalf("iteration %d: CNAME value %q should be external, got %v", i, value, result)
 			}
 		}
 	}
@@ -44,12 +44,12 @@ func TestProperty8_ARecordLinkedResource(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
 	linker := NewResourceLinker()
 
-	// A records currently return nil (simplified implementation)
+	// A records: direct IP binding -> external
 	for i := 0; i < propertyIterations; i++ {
 		ip := fmt.Sprintf("%d.%d.%d.%d", rng.Intn(256), rng.Intn(256), rng.Intn(256), rng.Intn(256))
 		result := linker.Identify("A", ip)
-		if result != nil {
-			t.Fatalf("iteration %d: A record %q should return nil, got %v", i, ip, result)
+		if result == nil || result.Type != "external" {
+			t.Fatalf("iteration %d: A record %q should be external, got %v", i, ip, result)
 		}
 	}
 }
@@ -58,7 +58,7 @@ func TestProperty8_NonCNAMERecordTypes(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
 	linker := NewResourceLinker()
 
-	otherTypes := []string{"AAAA", "MX", "TXT", "NS", "SRV", "CAA"}
+	otherTypes := []string{"MX", "TXT", "NS", "SRV", "CAA"}
 	for i := 0; i < propertyIterations; i++ {
 		rt := otherTypes[rng.Intn(len(otherTypes))]
 		value := "some.cdn.aliyuncs.com" // Even with CDN suffix, non-CNAME types should return nil
@@ -84,7 +84,7 @@ func generateCNAMETestCase(rng *rand.Rand) (string, string) {
 		return prefix + suffix, "waf"
 	default:
 		// No known suffix
-		return randomCNAMEPrefix(rng) + ".example.com", ""
+		return randomCNAMEPrefix(rng) + ".example.com", "external"
 	}
 }
 

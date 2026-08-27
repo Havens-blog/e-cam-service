@@ -83,5 +83,8 @@ func buildProbeHostname(rr, domain string) string {
 	if strings.Contains(rr, "*") {
 		return "" // 通配符 DNS 记录跳过（与 cert probe 的 wildcard_skipped 语义一致）
 	}
+	if strings.HasPrefix(rr, "_") {
+		return "" // 下划线前缀协议记录（CA 域名校验/SPF/DKIM 等）非 TLS 端点，跳过
+	}
 	return rr + "." + domain
 }

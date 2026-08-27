@@ -25,7 +25,7 @@ const (
 	// probeDialTimeout 单域名拨测+握手超时（常量化，Hard Rule）。
 	probeDialTimeout = 5 * time.Second
 	// probeConcurrency 整轮批量探测并发上限（Hard Rule：整体批量并发受控）。
-	probeConcurrency = 8
+	probeConcurrency = 16 // DNS 源全量轮可达数千目标（fleet 实测 2.6k+），8 并发最坏 ~27min；16 折中
 )
 
 // ---------------------------------------------------------------------
