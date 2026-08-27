@@ -761,6 +761,10 @@ func (f *failingProber) ProbeTenantDNS(context.Context, int64) ([]domain.ProbeRe
 	return nil, f.err
 }
 
+func (f *failingProber) TriggerProbeAsync(context.Context) error {
+	return f.err
+}
+
 // failingTransitions 终态迁移故障注入（VerifyWindowTransitions 端口）。
 type failingTransitions struct{ err error }
 

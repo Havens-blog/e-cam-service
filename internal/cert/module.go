@@ -40,6 +40,7 @@ type Module struct {
 
 	// 调度面（ioc InitCertJobs 消费；9 类定时任务入口，7.1）
 	ScanSvc          service.ReferenceScanService
+	ProbeSvc         service.ProbeService // 4.1 TLS 探测（HTTP /probes/scan 立即触发）
 	InspectionJob    *scheduler.InspectionJob
 	VerifyWindowSvc  service.VerifyWindowService
 	ChangeSvc        service.ChangeService
@@ -262,6 +263,7 @@ func InitCertModule(
 	return &Module{
 		Repos:                      repos,
 		ScanSvc:                    scanSvc,
+		ProbeSvc:                   probeSvc,
 		InspectionJob:              inspectionJob,
 		VerifyWindowSvc:            verifyWindowSvc,
 		ChangeSvc:                  changeSvc,
@@ -275,7 +277,7 @@ func InitCertModule(
 		ReferenceHdl:               web.NewReferenceHandler(service.NewReferenceQueryService(repos.Certificates, repos.CertReferences, repos.ScanSnapshots, scanSvc)),
 		DiscoveryHdl:               web.NewDiscoveryHandler(service.NewDiscoveryPreviewService(repos.ScanSnapshots, repos.CertReferences, repos.Certificates, repos.CloudMappings), discoveryImportSvc),
 		LedgerHdl:                  web.NewLedgerHandler(ledgerSvc),
-		DashboardHdl:               web.NewDashboardHandler(dashboardSvc),
+		DashboardHdl:               web.NewDashboardHandler(dashboardSvc, probeSvc),
 		SettingsHdl:                web.NewSettingsHandler(settingsSvc, crdRegSvc),
 		ChangeHdl:                  web.NewChangeHandler(querySvc, changeSvc, executeSvc, rollbackSvc, auditBridge),
 	}, nil

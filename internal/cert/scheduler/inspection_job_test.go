@@ -76,6 +76,11 @@ func (f *fakeProbeService) ProbeTenantDNS(_ context.Context, _ int64) ([]domain.
 	return nil, service.ErrNoDNSSource
 }
 
+// TriggerProbeAsync fake：不接入 DNS 源，返回 ErrNoDNSSource（与生产 dnsSource=nil 一致）。
+func (f *fakeProbeService) TriggerProbeAsync(_ context.Context) error {
+	return service.ErrNoDNSSource
+}
+
 // ProbeLedgerDomains 模拟真实 4.1：目标 = 台账全部 sans 展开去重。
 func (f *fakeProbeService) ProbeLedgerDomains(ctx context.Context) ([]domain.ProbeResult, error) {
 	if f.order != nil {

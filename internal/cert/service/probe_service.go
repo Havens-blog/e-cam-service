@@ -11,6 +11,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/dns"
@@ -106,6 +107,9 @@ type ProbeService interface {
 	ProbeAllTenantDNS(ctx context.Context) ([]domain.ProbeResult, error)
 	// ProbeTenantDNS 单租户 DNS 探测（按租户轮的调度单元；ProbeAllTenantDNS 内部逐租户调用）。
 	ProbeTenantDNS(ctx context.Context, tenantID int64) ([]domain.ProbeResult, error)
+	// TriggerProbeAsync 立即触发一轮 DNS 源探测（后台 goroutine，立即返回）；
+	// 防重：已有探测在跑返回 ErrProbeRunning。前端轮询 GET /certs/probes 看新结果。
+	TriggerProbeAsync(ctx context.Context) error
 }
 
 // DNSRecordSource DNS 记录只读端口（cam/dns 模块 RecordReadPort 的 cert 侧投影）：
@@ -119,6 +123,9 @@ type DNSRecordSource interface {
 // ErrNoDNSSource DNS 记录源未装配（probe DNS 路径不可用，调用方应回退台账 SAN 路径）。
 var ErrNoDNSSource = errors.New("probe: dns record source not configured")
 
+// ErrProbeRunning 探测已在运行（防重：手动触发与巡检并发时拒绝重复）。
+var ErrProbeRunning = errors.New("probe: already running")
+
 type probeService struct {
 	certs     domain.CertificateRepository
 	probes    domain.ProbeResultRepository
@@ -129,6 +136,7 @@ type probeService struct {
 	dnsSource DNSRecordSource // 可空：未装配则 ProbeAllTenantDNS 返回 ErrNoDNSSource
 	refs      domain.CertReferenceRepository // 可空：Phase 3 expected 侧（引用扫描指纹）
 	snapshots domain.ScanSnapshotRepository    // 可空：配合 refs 取 latest done 快照建引用索引
+	probeRunning atomic.Bool                  // 手动触发防重（CompareAndSwap）
 }
 
 // ProbeOptions 探测可选依赖（均可空；零值=回退纯台账 SAN 路径）。
@@ -404,6 +412,24 @@ func (s *probeService) ProbeAllTenantDNS(ctx context.Context) ([]domain.ProbeRes
 		all = append(all, results...)
 	}
 	return all, errors.Join(errs...)
+}
+
+// TriggerProbeAsync 立即触发一轮 DNS 源探测：后台 goroutine 跑 ProbeAllTenantDNS
+// （context.Background，不受请求生命周期影响），立即返回。防重：已在跑返回
+// ErrProbeRunning。前端据返回 202 轮询 GET /certs/probes 看新结果（probeAt 推进）。
+// dnsSource 未装配返回 ErrNoDNSSource（调用方引导先同步 DNS）。
+func (s *probeService) TriggerProbeAsync(ctx context.Context) error {
+	if s.dnsSource == nil {
+		return ErrNoDNSSource
+	}
+	if !s.probeRunning.CompareAndSwap(false, true) {
+		return ErrProbeRunning
+	}
+	go func() {
+		defer s.probeRunning.Store(false)
+		_, _ = s.ProbeAllTenantDNS(context.Background())
+	}()
+	return nil
 }
 
 // ProbeTenantDNS 单租户 DNS 探测：拉该租户全部 TLS-relevant DNS 记录导出的子域名，

@@ -1,20 +1,23 @@
 package web
 
 import (
+	"errors"
 	"net/http"
 
+	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
 	"github.com/gin-gonic/gin"
 )
 
-// DashboardHandler 到期看板端点（任务 4.5，全角色含只读）。
+// DashboardHandler 到期看板端点（任务 4.5，全角色含只读）+ 探测结果列表/触发。
 type DashboardHandler struct {
-	svc service.DashboardService
+	svc   service.DashboardService
+	probe service.ProbeService // 立即探测触发（DNS 源 ProbeAllTenantDNS）
 }
 
-// NewDashboardHandler 创建看板 handler。
-func NewDashboardHandler(svc service.DashboardService) *DashboardHandler {
-	return &DashboardHandler{svc: svc}
+// NewDashboardHandler 创建看板 handler。probe 可空（未装配时 /probes/scan 返回 503）。
+func NewDashboardHandler(svc service.DashboardService, probe service.ProbeService) *DashboardHandler {
+	return &DashboardHandler{svc: svc, probe: probe}
 }
 
 // RegisterRoutes 注册看板端点（api-handbook Auth：全角色含只读——4.5 既定
@@ -26,6 +29,7 @@ func NewDashboardHandler(svc service.DashboardService) *DashboardHandler {
 func (h *DashboardHandler) RegisterRoutes(g *gin.RouterGroup) {
 	g.GET("/dashboard", h.Dashboard)
 	g.GET("/probes", h.ListProbes)
+	g.POST("/probes/scan", h.TriggerProbe)
 }
 
 // DashboardSummaryVO 看板汇总（api-handbook 到期看板契约字段）。
@@ -135,4 +139,26 @@ func (h *DashboardHandler) ListProbes(c *gin.Context) {
 		})
 	}
 	WriteOK(c, http.StatusOK, items, nil)
+}
+
+// TriggerProbe POST /api/v1/certs/probes/scan —— 立即触发一轮 DNS 源探测（异步，
+// 后台 goroutine）。202 + 已触发；409 ErrProbeRunning（已在跑）；503 dnsSource 未装配。
+func (h *DashboardHandler) TriggerProbe(c *gin.Context) {
+	if h.probe == nil {
+		WriteAPIError(c, http.StatusServiceUnavailable, CodeInternalError, "探测服务未装配（DNS 源未注入）")
+		return
+	}
+	if err := h.probe.TriggerProbeAsync(c.Request.Context()); err != nil {
+		if errors.Is(err, service.ErrProbeRunning) {
+			WriteAPIError(c, http.StatusConflict, domain.CodeScanInProgress, "探测正在进行中")
+			return
+		}
+		if errors.Is(err, service.ErrNoDNSSource) {
+			WriteAPIError(c, http.StatusServiceUnavailable, CodeInternalError, "DNS 记录源未装配，请先完成 DNS 同步")
+			return
+		}
+		WriteError(c, err)
+		return
+	}
+	WriteOK(c, http.StatusAccepted, map[string]any{"triggered": true}, nil)
 }
