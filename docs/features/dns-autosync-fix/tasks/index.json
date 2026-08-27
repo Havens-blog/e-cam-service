@@ -1,0 +1,35 @@
+{
+  "feature": "dns-autosync-fix",
+  "proposal": "docs/proposals/dns-autosync-fix/proposal.md",
+  "created": "2026-08-27",
+  "tasks": {
+    "1-shared-default-asset-types": {
+      "id": "1",
+      "title": "新增共享默认资产类型常量（含 dns）并接入 AutoSyncScheduler",
+      "priority": "P0",
+      "estimatedTime": "1h",
+      "dependencies": [],
+      "status": "pending",
+      "file": "1-shared-default-asset-types.md",
+      "record": "records/1-shared-default-asset-types.md",
+      "surface-type": "api",
+      "type": "coding.fix",
+      "complexity": "medium"
+    },
+    "2-consolidate-executor-lists": {
+      "id": "2",
+      "title": "收敛执行器与服务层硬编码资产清单到共享定义",
+      "priority": "P1",
+      "estimatedTime": "1h",
+      "dependencies": [
+        "1"
+      ],
+      "status": "pending",
+      "file": "2-consolidate-executor-lists.md",
+      "record": "records/2-consolidate-executor-lists.md",
+      "surface-type": "api",
+      "type": "coding.fix",
+      "complexity": "medium"
+    }
+  }
+}
