@@ -11,6 +11,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert"
 	"github.com/Havens-blog/e-cam-service/internal/cmdb"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
+	"github.com/Havens-blog/e-cam-service/internal/logquery"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/topology"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
@@ -23,7 +24,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *middleware.CheckPolicyMiddleware, auditMdl *middleware.AuditMiddleware, auditModule *audit.Module, endpointClient endpointv1.EndpointServiceClient, endpointHdl *endpoint.Handler, camModule *cam.Module, cmdbModule *cmdb.Module, alertModule *alert.Module, db *mongox.Mongo, certModule *cert.Module) *gin.Engine {
+func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *middleware.CheckPolicyMiddleware, auditMdl *middleware.AuditMiddleware, auditModule *audit.Module, endpointClient endpointv1.EndpointServiceClient, endpointHdl *endpoint.Handler, camModule *cam.Module, cmdbModule *cmdb.Module, alertModule *alert.Module, db *mongox.Mongo, certModule *cert.Module, logQueryModule *logquery.Module) *gin.Engine {
 	logger := elog.DefaultLogger
 	logger.Info("开始初始化Web服务器")
 	session.SetDefaultProvider(sp)
@@ -209,6 +210,19 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 		logger.Info("证书管理功能域路由注册完成")
 	} else {
 		logger.Warn("证书管理功能域模块未初始化，跳过证书路由注册")
+	}
+
+	// 注册多云统一日志查询路由（/api/v1/cam/logs，Phase 1）
+	// 租户边界：日志按云账号隔离，云账号属租户，RequireTenant 在组级拒绝
+	// tenant_id=0 会话（与 asset/dashboard 同口径，见上方 tenantScoped 注释）。
+	if logQueryModule != nil {
+		logger.Info("注册日志查询功能域路由")
+		logsGroup := server.Group("/api/v1/cam/logs")
+		logsGroup.Use(middleware.RequireTenant(logger))
+		logQueryModule.RegisterRoutes(logsGroup)
+		logger.Info("日志查询功能域路由注册完成")
+	} else {
+		logger.Warn("日志查询功能域模块未初始化，跳过日志查询路由注册")
 	}
 
 	// 注册拓扑模块路由

@@ -35,7 +35,7 @@ func InitApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	handler := endpointModule.Hdl
+	v2 := endpointModule.Hdl
 	alertModule := InitAlertModule(mongo)
 	camModule, err := cam.InitModuleWithIAM(mongo, cmdable, alertModule)
 	if err != nil {
@@ -46,17 +46,22 @@ func InitApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	engine := InitWebServer(provider, v, checkPolicyMiddleware, auditMiddleware, module, endpointServiceClient, handler, camModule, cmdbModule, alertModule, mongo, certModule)
+	logqueryModule, err := InitLogQueryModule(mongo)
+	if err != nil {
+		return nil, err
+	}
+	engine := InitWebServer(provider, v, checkPolicyMiddleware, auditMiddleware, module, endpointServiceClient, v2, camModule, cmdbModule, alertModule, mongo, certModule, logqueryModule)
 	server := InitGrpcServer(client)
-	v2 := InitJobs(camModule, certModule)
+	v3 := InitJobs(camModule, certModule)
 	app := &App{
-		Logger:     logger,
-		Web:        engine,
-		Grpc:       server,
-		Jobs:       v2,
-		EndModule:  endpointModule,
-		CamModule:  camModule,
-		CertModule: certModule,
+		Logger:         logger,
+		Web:            engine,
+		Grpc:           server,
+		Jobs:           v3,
+		EndModule:      endpointModule,
+		CamModule:      camModule,
+		CertModule:     certModule,
+		LogQueryModule: logqueryModule,
 	}
 	return app, nil
 }
@@ -78,5 +83,6 @@ var BaseSet = wire.NewSet(
 	InitAuditMiddleware,
 	InitWebServer,
 	InitJobs,
-	InitCertModule, endpoint.InitModule, cam.InitModuleWithIAM, cmdb.InitModule, InitAlertModule, wire.FieldsOf(new(*endpoint.Module), "Hdl"), wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
+	InitCertModule,
+	InitLogQueryModule, endpoint.InitModule, cam.InitModuleWithIAM, cmdb.InitModule, InitAlertModule, wire.FieldsOf(new(*endpoint.Module), "Hdl"), wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
 )
