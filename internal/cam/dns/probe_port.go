@@ -24,6 +24,7 @@ type RecordReadPort interface {
 type ProbeTarget struct {
 	Hostname       string // 全限定子域名（rr+domain；@→根域；通配符记录跳过不导出）
 	RecordType     string // A/AAAA/CNAME
+	RecordValue    string // 解析地址（记录值：IP / CNAME 目标）
 	TenantID       int64
 	LinkedResource *LinkedResource // cdn/waf/external（linker 现算）；nil=未识别
 }
@@ -60,6 +61,7 @@ func (r *recordReadPort) ListProbeTargets(ctx context.Context, tenantID int64) (
 		out = append(out, ProbeTarget{
 			Hostname:       hostname,
 			RecordType:     d.Type,
+			RecordValue:    d.Value,
 			TenantID:       d.TenantID,
 			LinkedResource: r.linker.Identify(d.Type, d.Value),
 		})

@@ -36,4 +36,7 @@ type ProbeResult struct {
 	ChangeOrderID     string             `bson:"changeOrderId,omitempty"`     // change_linked_diff 时关联变更单
 	TenantID          int64              `bson:"tenantId,omitempty"`           // DNS 源探测：记录所属租户（SAN 探测缺省 0）
 	LinkedResource    string             `bson:"linkedResource,omitempty"`     // DNS 源探测：链路关联资源类型（cdn/waf/external；SAN 探测缺省）
+	RecordType        string             `bson:"recordType,omitempty"`         // DNS 源探测：记录类型（A/AAAA/CNAME；SAN 探测缺省）
+	RecordValue       string             `bson:"recordValue,omitempty"`        // DNS 源探测：解析地址（记录值/IP/CNAME 目标；SAN 探测缺省）
+	TLSVersion        string             `bson:"tlsVersion,omitempty"`         // 协商 TLS 版本（如 TLS 1.3；unreachable 缺省）
 }

@@ -116,6 +116,9 @@ type ProbeResultVO struct {
 	ProbeAt           string  `json:"probeAt"`
 	TenantID          int64   `json:"tenantId,omitempty"`
 	LinkedResource    string  `json:"linkedResource,omitempty"` // cdn/waf/external（DNS 源探测链路分层）
+	RecordType        string  `json:"recordType,omitempty"`     // A/AAAA/CNAME（DNS 源探测；SAN 探测缺省）
+	RecordValue       string  `json:"recordValue,omitempty"`    // 解析地址（记录值：IP / CNAME 目标）
+	TLSVersion        string  `json:"tlsVersion,omitempty"`     // 协商 TLS 版本（unreachable 缺省）
 }
 
 // ListProbes GET /api/v1/certs/probes —— 每域最近一次探测结果（全角色含只读）。
@@ -136,6 +139,9 @@ func (h *DashboardHandler) ListProbes(c *gin.Context) {
 			ProbeAt:           formatTime(r.ProbeAt),
 			TenantID:          r.TenantID,
 			LinkedResource:    r.LinkedResource,
+			RecordType:        r.RecordType,
+			RecordValue:       r.RecordValue,
+			TLSVersion:        r.TLSVersion,
 		})
 	}
 	WriteOK(c, http.StatusOK, items, nil)

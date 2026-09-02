@@ -32,12 +32,18 @@ const (
 // 拨测端口（crypto/tls 注入缝：生产 stdTLSDialer / 测试本地多证书 SNI server）
 // ---------------------------------------------------------------------
 
-// tlsDialer TLS 握手拨测端口：按 SNI 对目标域发起 TLS 握手并返回对端 leaf 证书。
-// Hard Rule：仅做 TLS 握手读证书，不发送任何应用层请求。
+// dialResult TLS 握手产物：leaf 证书 + 协商版本（探测结果展示/审计用）。
+type dialResult struct {
+	Leaf       *x509.Certificate
+	TLSVersion string // tls.VersionName 形态（如 "TLS 1.3"）
+}
+
+// tlsDialer TLS 握手拨测端口：按 SNI 对目标域发起 TLS 握手并返回对端 leaf 证书
+// 与协商版本。Hard Rule：仅做 TLS 握手读证书，不发送任何应用层请求。
 type tlsDialer interface {
 	// Dial 以 domainName 为 SNI（ServerName）完成 TLS 握手，返回对端 leaf 证书；
 	// 拨号失败/DNS 失败/超时返回 error（调用方归类 unreachable）。
-	Dial(ctx context.Context, domainName string) (*x509.Certificate, error)
+	Dial(ctx context.Context, domainName string) (dialResult, error)
 }
 
 // stdTLSDialer 标准库 crypto/tls 拨测实现。
@@ -52,7 +58,7 @@ type stdTLSDialer struct {
 
 // Dial 实现 tlsDialer：net.Dialer 受控超时 + tls.Client 握手（SNI=domainName），
 // 读 PeerCertificates[0] 后立即关闭连接，不发应用层请求。
-func (d *stdTLSDialer) Dial(ctx context.Context, domainName string) (*x509.Certificate, error) {
+func (d *stdTLSDialer) Dial(ctx context.Context, domainName string) (dialResult, error) {
 	timeout := d.timeout
 	if timeout <= 0 {
 		timeout = probeDialTimeout
@@ -63,11 +69,11 @@ func (d *stdTLSDialer) Dial(ctx context.Context, domainName string) (*x509.Certi
 	}
 	raw, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("probe: dial %s: %w", addr, err)
+		return dialResult{}, fmt.Errorf("probe: dial %s: %w", addr, err)
 	}
 	defer raw.Close()
 	if err := raw.SetDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, fmt.Errorf("probe: set deadline %s: %w", addr, err)
+		return dialResult{}, fmt.Errorf("probe: set deadline %s: %w", addr, err)
 	}
 	//nolint:gosec // InsecureSkipVerify：仅读取对端证书判归属，不校验链信任（见类型注释）
 	conn := tls.Client(raw, &tls.Config{
@@ -77,13 +83,13 @@ func (d *stdTLSDialer) Dial(ctx context.Context, domainName string) (*x509.Certi
 	})
 	defer conn.Close()
 	if err := conn.HandshakeContext(ctx); err != nil {
-		return nil, fmt.Errorf("probe: tls handshake %s: %w", domainName, err)
+		return dialResult{}, fmt.Errorf("probe: tls handshake %s: %w", domainName, err)
 	}
-	peers := conn.ConnectionState().PeerCertificates
-	if len(peers) == 0 {
-		return nil, fmt.Errorf("probe: no peer certificate from %s", domainName)
+	state := conn.ConnectionState()
+	if len(state.PeerCertificates) == 0 {
+		return dialResult{}, fmt.Errorf("probe: no peer certificate from %s", domainName)
 	}
-	return peers[0], nil
+	return dialResult{Leaf: state.PeerCertificates[0], TLSVersion: tls.VersionName(state.Version)}, nil
 }
 
 // ---------------------------------------------------------------------
@@ -297,17 +303,19 @@ func (s *probeService) probeOne(
 	if isWildcardSAN(name) {
 		return domain.ProbeResult{Domain: name, Status: domain.ProbeStatusWildcardSkipped}
 	}
-	leaf, err := s.dialer.Dial(context.Background(), name)
+	dr, err := s.dialer.Dial(context.Background(), name)
 	if err != nil {
 		// 拨号失败/DNS 失败/超时 → unreachable（不参与差异告警）
 		return domain.ProbeResult{Domain: name, Status: domain.ProbeStatusUnreachable}
 	}
+	leaf := dr.Leaf
 	onlineFP := leafFingerprintHex(leaf)
 	notAfter := leaf.NotAfter
 	result := domain.ProbeResult{
 		Domain:            name,
 		OnlineFingerprint: onlineFP,
 		OnlineNotAfter:    &notAfter,
+		TLSVersion:        dr.TLSVersion,
 	}
 	switch {
 	// 豁免清单命中：仍探测（线上指纹已记录）但不做差异判定、不告警
@@ -519,15 +527,19 @@ func (s *probeService) probeOneDNS(
 		TenantID:       tgt.TenantID,
 		LinkedResource: linkedResourceType(tgt.LinkedResource),
 	}
-	leaf, err := s.dialer.Dial(context.Background(), tgt.Hostname)
+	dr, err := s.dialer.Dial(context.Background(), tgt.Hostname)
 	if err != nil {
 		result.Status = domain.ProbeStatusUnreachable
 		return result
 	}
+	leaf := dr.Leaf
 	onlineFP := leafFingerprintHex(leaf)
 	notAfter := leaf.NotAfter
 	result.OnlineFingerprint = onlineFP
 	result.OnlineNotAfter = &notAfter
+	result.RecordType = tgt.RecordType
+	result.RecordValue = tgt.RecordValue
+	result.TLSVersion = dr.TLSVersion
 	// expected 判定：豁免 > 引用索引（资源级权威）> 台账覆盖（SAN 通配符感知）
 	switch {
 	case exemptSet[tgt.Hostname]:

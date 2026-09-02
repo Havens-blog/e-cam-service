@@ -270,7 +270,7 @@ type countingDialer struct {
 	called   sync.Map // domain → struct{}
 }
 
-func (c *countingDialer) Dial(ctx context.Context, domainName string) (*x509.Certificate, error) {
+func (c *countingDialer) Dial(ctx context.Context, domainName string) (dialResult, error) {
 	cur := c.inFlight.Add(1)
 	for {
 		max := c.maxSeen.Load()
@@ -717,9 +717,9 @@ type blockingDialer struct {
 	delay time.Duration
 }
 
-func (b *blockingDialer) Dial(_ context.Context, _ string) (*x509.Certificate, error) {
+func (b *blockingDialer) Dial(_ context.Context, _ string) (dialResult, error) {
 	time.Sleep(b.delay)
-	return nil, fmt.Errorf("blockingDialer: simulated failure")
+	return dialResult{}, fmt.Errorf("blockingDialer: simulated failure")
 }
 
 // TestStdTLSDialer_HandshakeOnly 生产拨测端口验证：真实 crypto/tls 握手读对端
@@ -729,11 +729,13 @@ func TestStdTLSDialer_HandshakeOnly(t *testing.T) {
 	srv := newSNIServer(t, map[string]*certtest.CertBundle{"a.example.com": certA})
 
 	d := &stdTLSDialer{timeout: 2 * time.Second, addrOverride: srv.addr}
-	leaf, err := d.Dial(context.Background(), "a.example.com")
+	dr, err := d.Dial(context.Background(), "a.example.com")
 	require.NoError(t, err)
-	require.NotNil(t, leaf)
-	assert.Equal(t, certA.Fingerprint, leafFingerprint(leaf))
-	assert.True(t, leaf.NotAfter.Equal(leafNotAfter(t, certA)))
+	require.NotNil(t, dr.Leaf)
+	assert.Equal(t, certA.Fingerprint, leafFingerprint(dr.Leaf))
+	assert.True(t, dr.Leaf.NotAfter.Equal(leafNotAfter(t, certA)))
+	// 协商版本以 "TLS 1.x" 名称透出（本地测试 server 默认协商 TLS 1.3）
+	assert.Equal(t, "TLS 1.3", dr.TLSVersion)
 
 	// 未登记 SNI → 握手失败
 	_, err = d.Dial(context.Background(), "unknown.example.com")
