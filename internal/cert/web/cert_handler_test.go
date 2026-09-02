@@ -270,21 +270,26 @@ func TestImportCertAPIErrors(t *testing.T) {
 	}
 }
 
-func TestImportCertAPIDuplicateFingerprint(t *testing.T) {
+// TestImportCertAPIDuplicateFingerprintMerge 重复指纹幂等导入：同指纹重导
+// （仅指纹登记 → 补完整链+私钥）返回 200 + 既有 certId + hostingStatus=complete，
+// 不再 409（变更向导要求新证书完整托管，重导升级条目后可直接选用）。
+func TestImportCertAPIDuplicateFingerprintMerge(t *testing.T) {
 	engine, _, _ := newRouter(t)
 	b := certtest.NewBundle(t, "dup.example.com", []string{"dup.example.com"}, nil)
 
 	w := doMultipart(t, engine, http.MethodPost, "/api/v1/certs", nil,
 		[]filePart{{"certFile", "d.crt", b.CertPEM}})
 	require.Equal(t, http.StatusOK, w.Code)
+	first := decode(t, w)
+	require.True(t, first.Success)
 
+	// 重导：同指纹 + 私钥 → 200 幂等合并，同一 certId，托管状态升级
 	w = doMultipart(t, engine, http.MethodPost, "/api/v1/certs", nil,
 		[]filePart{{"certFile", "d.crt", b.CertPEM}, {"keyFile", "d.key", b.KeyPEM}})
-	assert.Equal(t, http.StatusConflict, w.Code, w.Body.String())
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	env := decode(t, w)
-	assert.False(t, env.Success)
-	require.NotNil(t, env.Error)
-	assert.Equal(t, domain.CodeCertDuplicateFingerprint, env.Error.Code)
+	assert.True(t, env.Success)
+	assert.Nil(t, env.Error)
 	assertNoKeyMaterial(t, w, b.KeyPEM)
 }
 

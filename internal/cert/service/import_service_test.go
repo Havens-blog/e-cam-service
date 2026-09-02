@@ -149,14 +149,44 @@ func TestImportCertValidationErrors(t *testing.T) {
 	}
 }
 
-func TestImportCertDuplicateFingerprint(t *testing.T) {
-	svc, _, _, _ := newSvc(t)
+// TestImportCertDuplicateFingerprintMerge 重复指纹幂等导入：同指纹重导不报 409，
+// 改为合并材料——补链（CertPEM 覆盖）+ 补私钥（hostingStatus 升级 complete），
+// 返回已有 certID（变更向导要求新证书完整托管，早期仅指纹登记条目经重导升级）。
+func TestImportCertDuplicateFingerprintMerge(t *testing.T) {
+	svc, certs, _, _ := newSvc(t)
 	b := certtest.NewBundle(t, "dup.example.com", []string{"dup.example.com"}, nil)
 
-	_, err := svc.ImportCert(context.Background(), b.CertPEM, nil, "")
+	// 首导：仅指纹登记（无私钥）
+	first, err := svc.ImportCert(context.Background(), b.CertPEM, nil, "")
 	require.NoError(t, err)
-	_, err = svc.ImportCert(context.Background(), b.CertPEM, b.KeyPEM, "")
-	require.ErrorIs(t, err, domain.ErrDuplicateFingerprint)
+	assert.Equal(t, domain.HostingStatusFingerprintOnly, first.HostingStatus)
+
+	// 重导：同指纹 + 完整链 + 私钥 → 幂等成功，返回同一 certID
+	res, err := svc.ImportCert(context.Background(), b.CertPEM, b.KeyPEM, "")
+	require.NoError(t, err)
+	assert.Equal(t, first.CertID, res.CertID)
+	assert.Equal(t, domain.HostingStatusComplete, res.HostingStatus)
+
+	// 台账侧材料已升级：hostingStatus=complete，可被变更向导选用
+	stored, err := certs.GetByFingerprint(context.Background(), res.Fingerprint)
+	require.NoError(t, err)
+	assert.Equal(t, domain.HostingStatusComplete, stored.HostingStatus)
+	assert.NotEmpty(t, stored.EncryptedPrivateKey)
+}
+
+// TestImportCertDuplicateNoKeyIdempotent 重导不含私钥（仅补链/重复导入）→
+// 幂等成功且不改变既有托管状态。
+func TestImportCertDuplicateNoKeyIdempotent(t *testing.T) {
+	svc, _, _, _ := newSvc(t)
+	b := certtest.NewBundle(t, "dup2.example.com", []string{"dup2.example.com"}, nil)
+
+	first, err := svc.ImportCert(context.Background(), b.CertPEM, nil, "")
+	require.NoError(t, err)
+
+	again, err := svc.ImportCert(context.Background(), b.CertPEM, nil, "")
+	require.NoError(t, err)
+	assert.Equal(t, first.CertID, again.CertID)
+	assert.Equal(t, domain.HostingStatusFingerprintOnly, again.HostingStatus)
 }
 
 // ---- AC3：批量导入（逐文件隔离 + 会话持久化 + 终态收敛）----

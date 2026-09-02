@@ -74,6 +74,19 @@ func (r *certificateRepository) AttachPrivateKey(ctx context.Context, id string,
 	return err
 }
 
+// UpdateCertPEM 更新证书 PEM 材料（重复指纹幂等导入补链）。
+func (r *certificateRepository) UpdateCertPEM(ctx context.Context, id string, certPEM string) error {
+	oid, err := objectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Collection(CertificatesCollection).UpdateOne(ctx,
+		bson.M{"_id": oid},
+		bson.M{"$set": bson.M{"certPem": certPEM}},
+	)
+	return err
+}
+
 // List 全量台账（到期扫描/统计用）。
 func (r *certificateRepository) List(ctx context.Context) ([]domain.Certificate, error) {
 	cursor, err := r.db.Collection(CertificatesCollection).Find(ctx, bson.M{})

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
@@ -97,13 +98,61 @@ func (s *importService) ImportCert(ctx context.Context, certPEM, keyPEM []byte, 
 	}
 
 	if err := s.certs.Create(ctx, cert); err != nil {
-		return ImportResult{}, err // uk_fingerprint 冲突 → ErrDuplicateFingerprint
+		// uk_fingerprint 冲突 → 幂等合并：同指纹重导不报 409，改为补全已有
+		// 台账条目材料（补链/补私钥升级 hostingStatus），返回已有 certID——
+		// 变更向导要求新证书完整托管，云端发现导入/早期仅指纹登记的条目
+		// 经重导完整证书链升级，不再被去重唯一键挡住
+		if !errors.Is(err, domain.ErrDuplicateFingerprint) {
+			return ImportResult{}, err
+		}
+		return s.mergeExisting(ctx, parsed, string(certPEM), keyPEM, expectedDomain)
 	}
 
 	res := ImportResult{
 		CertID:        cert.ID.Hex(),
 		Fingerprint:   parsed.Fingerprint,
 		HostingStatus: cert.HostingStatus,
+	}
+	if expectedDomain != "" {
+		res.ExpectedDomainMissing = domain.CheckSANCover(parsed.Sans, []string{expectedDomain})
+	}
+	return res, nil
+}
+
+// mergeExisting 重复指纹幂等导入：按指纹取已有条目，新材料合并——
+//   - 传入 certPEM 与存量不同（如叶子 → 完整链）→ UpdateCertPEM 覆盖；
+//   - 传入私钥且存量非 complete → ParseCertAndKey 已验证匹配，信封加密
+//     AttachPrivateKey 升级 hostingStatus=complete（已 complete 不覆盖存量密文）；
+//   - 返回已有 certID 与合并后的 hostingStatus（响应形态与新建导入一致）。
+func (s *importService) mergeExisting(
+	ctx context.Context,
+	parsed *domain.ParsedCert,
+	certPEM string, keyPEM []byte, expectedDomain string,
+) (ImportResult, error) {
+	existing, err := s.certs.GetByFingerprint(ctx, parsed.Fingerprint)
+	if err != nil {
+		return ImportResult{}, fmt.Errorf("cert: load existing by fingerprint for merge: %w", err)
+	}
+	if strings.TrimSpace(existing.CertPEM) != strings.TrimSpace(certPEM) {
+		if err := s.certs.UpdateCertPEM(ctx, existing.ID.Hex(), certPEM); err != nil {
+			return ImportResult{}, err
+		}
+	}
+	hosting := existing.HostingStatus
+	if len(keyPEM) > 0 && hosting != domain.HostingStatusComplete {
+		secret, err := s.encryptKey(keyPEM)
+		if err != nil {
+			return ImportResult{}, err
+		}
+		if err := s.certs.AttachPrivateKey(ctx, existing.ID.Hex(), secret); err != nil {
+			return ImportResult{}, err
+		}
+		hosting = domain.HostingStatusComplete
+	}
+	res := ImportResult{
+		CertID:        existing.ID.Hex(),
+		Fingerprint:   parsed.Fingerprint,
+		HostingStatus: hosting,
 	}
 	if expectedDomain != "" {
 		res.ExpectedDomainMissing = domain.CheckSANCover(parsed.Sans, []string{expectedDomain})

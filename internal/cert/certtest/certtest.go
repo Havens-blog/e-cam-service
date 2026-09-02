@@ -373,6 +373,22 @@ func (f *FakeCertificateRepo) DeleteByFingerprint(_ context.Context, fingerprint
 	return nil
 }
 
+// UpdateCertPEM 更新证书 PEM 材料（重复指纹幂等导入补链）。
+func (f *FakeCertificateRepo) UpdateCertPEM(_ context.Context, id string, certPEM string) error {
+	oid, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return fmt.Errorf("%w: %q", domain.ErrInvalidID, id)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c, ok := f.byID[oid.Hex()]
+	if !ok {
+		return fmt.Errorf("%w: %q", mongo.ErrNoDocuments, id)
+	}
+	c.CertPEM = certPEM
+	return nil
+}
+
 // AttachPrivateKey 补传私钥升级：密文写入与 hostingStatus=complete 同步生效。
 func (f *FakeCertificateRepo) AttachPrivateKey(_ context.Context, id string, secret *domain.EncryptedSecret) error {
 	oid, err := primitive.ObjectIDFromHex(id)

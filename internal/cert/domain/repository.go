@@ -49,6 +49,9 @@ type CertificateRepository interface {
 	// AttachPrivateKey 补传私钥升级：同一原子 update 写入 encryptedPrivateKey 并将
 	// hostingStatus 置 complete（幂等：已 complete 的证书重传匹配私钥时覆盖密文）。
 	AttachPrivateKey(ctx context.Context, id string, secret *EncryptedSecret) error
+	// UpdateCertPEM 更新证书 PEM 材料（重复指纹幂等导入补链：早期导入仅叶子
+	// 证书，重导完整证书链时以新材料覆盖；按文档 ID 定位）。
+	UpdateCertPEM(ctx context.Context, id string, certPEM string) error
 	// UpdateExpiryAlertLevel 更新到期分级去重状态（仅升级触发时调用，任务 4.2）。
 	UpdateExpiryAlertLevel(ctx context.Context, fingerprint string, level ExpiryAlertLevel) error
 	// SetProtectUntil 设置回滚保护期截止（任务 5.1：变更单进入 completed/
