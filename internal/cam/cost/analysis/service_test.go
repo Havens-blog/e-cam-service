@@ -437,3 +437,119 @@ func TestGetCostSummary_DateRanges(t *testing.T) {
 	assert.Equal(t, 2, queriedStarts[lastMonthStart],
 		"both last-month ranges (full month and same-period) should be queried")
 }
+
+// --- 汇总表降级测试（汇总表覆盖范围有限，范围外查询必须降级明细表）---
+
+// mockSummaryQuerier 用于测试的汇总表 DAO mock
+type mockSummaryQuerier struct {
+	hasDataFn          func(ctx context.Context) bool
+	sumAmountFn        func(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error)
+	aggregateByFieldFn func(ctx context.Context, tenantID int64, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error)
+	aggregateDailyFn   func(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error)
+}
+
+func (m *mockSummaryQuerier) HasData(ctx context.Context) bool {
+	if m.hasDataFn != nil {
+		return m.hasDataFn(ctx)
+	}
+	return true
+}
+
+func (m *mockSummaryQuerier) SumAmount(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error) {
+	if m.sumAmountFn != nil {
+		return m.sumAmountFn(ctx, filter)
+	}
+	return 0, nil
+}
+
+func (m *mockSummaryQuerier) AggregateByField(ctx context.Context, tenantID int64, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
+	if m.aggregateByFieldFn != nil {
+		return m.aggregateByFieldFn(ctx, tenantID, field, startDate, endDate, filter)
+	}
+	return nil, nil
+}
+
+func (m *mockSummaryQuerier) AggregateDailyAmount(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+	if m.aggregateDailyFn != nil {
+		return m.aggregateDailyFn(ctx, tenantID, startDate, endDate, filter)
+	}
+	return nil, nil
+}
+
+func TestAggregateByField_SummaryNoDataForRange_FallsBackToBills(t *testing.T) {
+	// 汇总表存在(HasData=true)但所查范围(2026-08)无数据 -> 必须降级明细表
+	svc, _ := setupTestService(t, &mockBillDAO{})
+	svc.SetSummaryDAO(&mockSummaryQuerier{
+		aggregateByFieldFn: func(_ context.Context, _ int64, _ string, _, _ string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
+			return nil, nil // 汇总表 8 月无数据
+		},
+	})
+	svc.billDAO = &mockBillDAO{
+		aggregateByFieldFn: func(_ context.Context, _ int64, _ string, _, _ string) ([]repository.AggregateResult, error) {
+			return []repository.AggregateResult{{Key: "compute", AmountCNY: 100}}, nil
+		},
+	}
+
+	results, err := svc.aggregateByField(context.Background(), 3, "service_type", "2026-08-01", "2026-08-31", repository.UnifiedBillFilter{})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "compute", results[0].Key)
+}
+
+func TestAggregateByField_SummaryHit_DoesNotQueryBills(t *testing.T) {
+	billQueried := false
+	svc, _ := setupTestService(t, &mockBillDAO{
+		aggregateByFieldFn: func(_ context.Context, _ int64, _ string, _, _ string) ([]repository.AggregateResult, error) {
+			billQueried = true
+			return []repository.AggregateResult{{Key: "bill"}}, nil
+		},
+	})
+	svc.SetSummaryDAO(&mockSummaryQuerier{
+		aggregateByFieldFn: func(_ context.Context, _ int64, _ string, _, _ string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
+			return []repository.AggregateResult{{Key: "summary"}}, nil
+		},
+	})
+
+	results, err := svc.aggregateByField(context.Background(), 3, "service_type", "2026-01-01", "2026-01-31", repository.UnifiedBillFilter{})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "summary", results[0].Key)
+	assert.False(t, billQueried, "汇总表命中时不应再查明细表")
+}
+
+func TestSumAmount_SummaryZero_FallsBackToBills(t *testing.T) {
+	svc, _ := setupTestService(t, &mockBillDAO{})
+	svc.SetSummaryDAO(&mockSummaryQuerier{
+		sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) {
+			return 0, nil // 汇总表该范围无数据
+		},
+	})
+	svc.billDAO = &mockBillDAO{
+		sumAmountFn: func(_ context.Context, _ repository.UnifiedBillFilter) (float64, error) {
+			return 123.45, nil
+		},
+	}
+
+	v, err := svc.sumAmount(context.Background(), repository.UnifiedBillFilter{})
+	require.NoError(t, err)
+	assert.InDelta(t, 123.45, v, 0.001)
+}
+
+func TestAggregateDailyAmount_SummaryEmpty_FallsBackToBills(t *testing.T) {
+	svc, _ := setupTestService(t, &mockBillDAO{})
+	svc.SetSummaryDAO(&mockSummaryQuerier{
+		aggregateDailyFn: func(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+			return nil, nil
+		},
+	})
+	svc.billDAO = &mockBillDAO{
+		aggregateDailyFn: func(_ context.Context, _ int64, _, _ string, _ repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
+			return []repository.DailyAmount{{Date: "2026-08-15", AmountCNY: 50}}, nil
+		},
+	}
+
+	results, err := svc.aggregateDailyAmount(context.Background(), 3, "2026-08-01", "2026-08-31", repository.UnifiedBillFilter{})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "2026-08-15", results[0].Date)
+}

@@ -104,26 +104,45 @@ func (s *CostService) SetSummaryDAO(dao SummaryQuerier) {
 	s.summaryDAO = dao
 }
 
-// sumAmount 优先从汇总表查询，降级到明细表
+// sumAmount 优先从汇总表查询，该范围无数据时降级到明细表。
+// 汇总表覆盖范围有限（历史任务生成、当前无写入方，实测仅 2025-12 ~ 2026-03），
+// HasData 只能证明表非空、不能证明所查时间范围有数据，因此必须按查询结果判空降级，
+// 否则范围外的查询（如当月）会恒返回空。
 func (s *CostService) sumAmount(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error) {
-	if s.summaryDAO != nil && s.summaryDAO.HasData(ctx) {
-		return s.summaryDAO.SumAmount(ctx, filter)
+	if s.summaryDAO != nil {
+		v, err := s.summaryDAO.SumAmount(ctx, filter)
+		if err != nil {
+			s.logger.Warn("汇总表 SumAmount 查询失败，降级明细表", elog.FieldErr(err))
+		} else if v != 0 {
+			return v, nil
+		}
 	}
 	return s.billDAO.SumAmount(ctx, filter)
 }
 
-// aggregateByField 优先从汇总表查询，降级到明细表
+// aggregateByField 优先从汇总表查询，该范围无数据时降级到明细表（原因见 sumAmount 注释）
 func (s *CostService) aggregateByField(ctx context.Context, tenantID int64, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
-	if s.summaryDAO != nil && s.summaryDAO.HasData(ctx) {
-		return s.summaryDAO.AggregateByField(ctx, tenantID, field, startDate, endDate, filter)
+	if s.summaryDAO != nil {
+		results, err := s.summaryDAO.AggregateByField(ctx, tenantID, field, startDate, endDate, filter)
+		if err != nil {
+			s.logger.Warn("汇总表 AggregateByField 查询失败，降级明细表",
+				elog.String("field", field), elog.FieldErr(err))
+		} else if len(results) > 0 {
+			return results, nil
+		}
 	}
 	return s.billDAO.AggregateByField(ctx, tenantID, field, startDate, endDate, filter)
 }
 
-// aggregateDailyAmount 优先从汇总表查询，降级到明细表
+// aggregateDailyAmount 优先从汇总表查询，该范围无数据时降级到明细表（原因见 sumAmount 注释）
 func (s *CostService) aggregateDailyAmount(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error) {
-	if s.summaryDAO != nil && s.summaryDAO.HasData(ctx) {
-		return s.summaryDAO.AggregateDailyAmount(ctx, tenantID, startDate, endDate, filter)
+	if s.summaryDAO != nil {
+		results, err := s.summaryDAO.AggregateDailyAmount(ctx, tenantID, startDate, endDate, filter)
+		if err != nil {
+			s.logger.Warn("汇总表 AggregateDailyAmount 查询失败，降级明细表", elog.FieldErr(err))
+		} else if len(results) > 0 {
+			return results, nil
+		}
 	}
 	return s.billDAO.AggregateDailyAmount(ctx, tenantID, startDate, endDate, filter)
 }
