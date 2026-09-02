@@ -129,6 +129,7 @@ type SLBLogEntry struct {
 	TLSProtocol       string         `json:"tls_protocol"`
 	TLSCipher         string         `json:"tls_cipher"`
 	RequestID         string         `json:"request_id"`
+	UserAgent         string         `json:"user_agent"`
 	Raw               map[string]any `json:"raw"`
 }
 

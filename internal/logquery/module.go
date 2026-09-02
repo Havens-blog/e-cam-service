@@ -11,6 +11,12 @@ import (
 	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
 	"github.com/Havens-blog/e-cam-service/internal/logquery/service"
 	"github.com/Havens-blog/e-cam-service/internal/logquery/web"
+
+	// 云 provider 注册(各包 init() 调 logquery.RegisterProvider;
+	// blank import 是注册的唯一入口,新增云必须在此补一行)。
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery/aliyun"
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery/huawei"
+
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
