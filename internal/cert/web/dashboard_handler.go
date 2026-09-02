@@ -147,23 +147,36 @@ func (h *DashboardHandler) ListProbes(c *gin.Context) {
 	WriteOK(c, http.StatusOK, items, nil)
 }
 
-// TriggerProbe POST /api/v1/certs/probes/scan —— 立即触发一轮 DNS 源探测（异步，
-// 后台 goroutine）。202 + 已触发；409 ErrProbeRunning（已在跑）；503 dnsSource 未装配。
+// TriggerProbe POST /api/v1/certs/probes/scan —— 触发一轮 DNS 源探测（异步，
+// 后台 goroutine）。可选 JSON body {"rootDomain":"x.com"}：仅拨测该根域下目标
+// （定向刷新）；缺省/空 body = 全量。202 + 已触发；409 已在跑；404 根域无目标；
+// 503 dnsSource 未装配。
 func (h *DashboardHandler) TriggerProbe(c *gin.Context) {
 	if h.probe == nil {
 		WriteAPIError(c, http.StatusServiceUnavailable, CodeInternalError, "探测服务未装配（DNS 源未注入）")
 		return
 	}
-	if err := h.probe.TriggerProbeAsync(c.Request.Context()); err != nil {
-		if errors.Is(err, service.ErrProbeRunning) {
+	var req struct {
+		RootDomain string `json:"rootDomain"`
+	}
+	_ = c.ShouldBindJSON(&req) // 空 body/非 JSON = 全量触发（不拦截）
+	var err error
+	if req.RootDomain == "" {
+		err = h.probe.TriggerProbeAsync(c.Request.Context())
+	} else {
+		err = h.probe.TriggerProbeRootAsync(c.Request.Context(), req.RootDomain)
+	}
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrProbeRunning):
 			WriteAPIError(c, http.StatusConflict, domain.CodeScanInProgress, "探测正在进行中")
-			return
-		}
-		if errors.Is(err, service.ErrNoDNSSource) {
+		case errors.Is(err, service.ErrNoDNSSource):
 			WriteAPIError(c, http.StatusServiceUnavailable, CodeInternalError, "DNS 记录源未装配，请先完成 DNS 同步")
-			return
+		case errors.Is(err, service.ErrNoProbeTargets):
+			WriteAPIError(c, http.StatusNotFound, domain.CodeProbeNoTargets, "该根域名下无可拨测目标（DNS 记录未同步或域名不存在）")
+		default:
+			WriteError(c, err)
 		}
-		WriteError(c, err)
 		return
 	}
 	WriteOK(c, http.StatusAccepted, map[string]any{"triggered": true}, nil)

@@ -21,6 +21,8 @@ const (
 	CodeCertHasRefs = "CERT_HAS_REFS"
 	// CodeScanInProgress 扫描进行中（防重触发，409，任务 3.5）。
 	CodeScanInProgress = "SCAN_IN_PROGRESS"
+	// CodeProbeNoTargets 定向探测根域无可拨测目标（404）。
+	CodeProbeNoTargets = "PROBE_NO_TARGETS"
 	// CodeNoSnapshot 无完成态扫描快照（409，cert-cloud-discovery-import 任务 3）：
 	// 发现预览数据源缺失——前端引导"触发扫描→轮询快照状态（snapshot-status）
 	// →done 进入预览"；区别于 SCAN_STALE（有快照但超新鲜度阈值）。

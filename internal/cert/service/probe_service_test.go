@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Havens-blog/e-cam-service/internal/cam/dns"
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/stretchr/testify/assert"
@@ -758,4 +759,85 @@ func TestNewProbeService_DefaultDialer(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, domain.ProbeStatusUnreachable, results[0].Status)
+}
+
+// ==================== TriggerProbeRootAsync（根域定向探测） ====================
+
+// rootTargetSource 单租户固定目标集的 DNS 源（定向探测预检/过滤测试用）。
+type rootTargetSource struct {
+	targets []dns.ProbeTarget
+}
+
+func (f *rootTargetSource) ListTenantsWithRecords(context.Context) ([]int64, error) {
+	return []int64{3}, nil
+}
+
+func (f *rootTargetSource) ListProbeTargets(context.Context, int64) ([]dns.ProbeTarget, error) {
+	return f.targets, nil
+}
+
+// newRootProbeHarness 构造带 DNS 源的 probe 服务（dialer 失败即可，不关心结果内容）。
+func newRootProbeHarness(t *testing.T, targets []dns.ProbeTarget) (*probeService, *fakeProbeRepo) {
+	t.Helper()
+	probes := &fakeProbeRepo{}
+	svc := &probeService{
+		certs:    certtest.NewFakeCertificateRepo(),
+		probes:   probes,
+		exempts:  &fakeExemptionRepo{},
+		alertCfg: &fakeAlertCfgRepo{cfg: domain.DefaultAlertConfig()},
+		orders:   &fakeChangeOrderRepo{},
+		dialer:   &blockingDialer{delay: time.Millisecond},
+		dnsSource: &rootTargetSource{targets: targets},
+	}
+	return svc, probes
+}
+
+func TestTriggerProbeRootAsyncFiltersByRoot(t *testing.T) {
+	svc, probes := newRootProbeHarness(t, []dns.ProbeTarget{
+		{Hostname: "www.easyeda.com", RecordType: "CNAME", TenantID: 3},
+		{Hostname: "easyeda.com", RecordType: "A", TenantID: 3},
+		{Hostname: "api.jlcerp.com", RecordType: "A", TenantID: 3},
+	})
+	require.NoError(t, svc.TriggerProbeRootAsync(context.Background(), " EASYEDA.com "))
+	// 轮询等待后台轮完成（dialer 立即失败 → 两条 unreachable 全部落库）
+	deadline := time.Now().Add(2 * time.Second)
+	for len(probes.created) < 2 {
+		if time.Now().After(deadline) {
+			t.Fatalf("expected 2 persisted results, got %d", len(probes.created))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	domains := map[string]bool{}
+	for _, r := range probes.created {
+		domains[r.Domain] = true
+	}
+	assert.True(t, domains["www.easyeda.com"], "根域子域名应命中")
+	assert.True(t, domains["easyeda.com"], "根域本身应命中")
+	assert.False(t, domains["api.jlcerp.com"], "其他根域不应被拨测")
+}
+
+func TestTriggerProbeRootAsyncNoTargets(t *testing.T) {
+	svc, probes := newRootProbeHarness(t, []dns.ProbeTarget{
+		{Hostname: "api.jlcerp.com", RecordType: "A", TenantID: 3},
+	})
+	err := svc.TriggerProbeRootAsync(context.Background(), "easyeda.com")
+	require.ErrorIs(t, err, ErrNoProbeTargets)
+	assert.Empty(t, probes.created, "无目标不应起后台轮")
+}
+
+func TestTriggerProbeRootAsyncEmptyEqualsFull(t *testing.T) {
+	svc, _ := newRootProbeHarness(t, []dns.ProbeTarget{
+		{Hostname: "www.easyeda.com", RecordType: "CNAME", TenantID: 3},
+	})
+	// 空白参数等价全量触发：占住防重锁后再次触发返回 ErrProbeRunning
+	require.NoError(t, svc.TriggerProbeRootAsync(context.Background(), "  "))
+	deadline := time.Now().Add(2 * time.Second)
+	for !svc.probeRunning.Load() {
+		if time.Now().After(deadline) {
+			t.Fatal("background probe goroutine should be running")
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+	err := svc.TriggerProbeRootAsync(context.Background(), "")
+	assert.ErrorIs(t, err, ErrProbeRunning)
 }

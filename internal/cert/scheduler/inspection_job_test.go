@@ -81,6 +81,10 @@ func (f *fakeProbeService) TriggerProbeAsync(_ context.Context) error {
 	return service.ErrNoDNSSource
 }
 
+func (f *fakeProbeService) TriggerProbeRootAsync(_ context.Context, _ string) error {
+	return service.ErrNoDNSSource
+}
+
 // ProbeLedgerDomains 模拟真实 4.1：目标 = 台账全部 sans 展开去重。
 func (f *fakeProbeService) ProbeLedgerDomains(ctx context.Context) ([]domain.ProbeResult, error) {
 	if f.order != nil {

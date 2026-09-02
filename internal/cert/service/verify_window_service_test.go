@@ -765,6 +765,10 @@ func (f *failingProber) TriggerProbeAsync(context.Context) error {
 	return f.err
 }
 
+func (f *failingProber) TriggerProbeRootAsync(context.Context, string) error {
+	return f.err
+}
+
 // failingTransitions 终态迁移故障注入（VerifyWindowTransitions 端口）。
 type failingTransitions struct{ err error }
 

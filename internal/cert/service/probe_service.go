@@ -116,6 +116,11 @@ type ProbeService interface {
 	// TriggerProbeAsync 立即触发一轮 DNS 源探测（后台 goroutine，立即返回）；
 	// 防重：已有探测在跑返回 ErrProbeRunning。前端轮询 GET /certs/probes 看新结果。
 	TriggerProbeAsync(ctx context.Context) error
+	// TriggerProbeRootAsync 定向触发：仅拨测指定根域名下的目标（hostname==root
+	// 或 *.root 子域名），全量轮数千目标数分钟的刷新收口到秒级。rootDomain 为空
+	// 等价 TriggerProbeAsync 全量；根域无可拨测目标返回 ErrNoProbeTargets（同步
+	// 预检，不空转起 goroutine）。防重同 TriggerProbeAsync。
+	TriggerProbeRootAsync(ctx context.Context, rootDomain string) error
 }
 
 // DNSRecordSource DNS 记录只读端口（cam/dns 模块 RecordReadPort 的 cert 侧投影）：
@@ -131,6 +136,10 @@ var ErrNoDNSSource = errors.New("probe: dns record source not configured")
 
 // ErrProbeRunning 探测已在运行（防重：手动触发与巡检并发时拒绝重复）。
 var ErrProbeRunning = errors.New("probe: already running")
+
+// ErrNoProbeTargets 定向探测的根域名下无可拨测目标（DNS 记录无该根域的
+// A/AAAA/CNAME 条目；同步预检即返回，不空转）。
+var ErrNoProbeTargets = errors.New("probe: no targets under root domain")
 
 type probeService struct {
 	certs     domain.CertificateRepository
@@ -440,6 +449,60 @@ func (s *probeService) TriggerProbeAsync(ctx context.Context) error {
 	return nil
 }
 
+// TriggerProbeRootAsync 定向探测：空参数等价全量；否则同步预检该根域的目标数
+// （无目标直接 ErrNoProbeTargets，不占用防重锁空转），后台仅拨测命中目标。
+// 根域匹配：hostname==root 或以 "."+root 结尾（不解析 eTLD——根域由调用方显式给定）。
+func (s *probeService) TriggerProbeRootAsync(ctx context.Context, rootDomain string) error {
+	if s.dnsSource == nil {
+		return ErrNoDNSSource
+	}
+	rootDomain = strings.ToLower(strings.TrimSpace(rootDomain))
+	if rootDomain == "" {
+		return s.TriggerProbeAsync(ctx)
+	}
+	if !s.probeRunning.CompareAndSwap(false, true) {
+		return ErrProbeRunning
+	}
+	targets, err := s.listRootTargets(context.Background(), rootDomain)
+	if err != nil {
+		s.probeRunning.Store(false)
+		return err
+	}
+	if len(targets) == 0 {
+		s.probeRunning.Store(false)
+		return ErrNoProbeTargets
+	}
+	go func() {
+		defer s.probeRunning.Store(false)
+		_, _ = s.probeTargets(context.Background(), targets)
+	}()
+	return nil
+}
+
+// listRootTargets 汇总各租户拨测目标并按根域过滤（预检与拨测同一份目标清单，
+// 避免预检/执行窗口期目标漂移）。
+func (s *probeService) listRootTargets(ctx context.Context, rootDomain string) ([]dns.ProbeTarget, error) {
+	tenants, err := s.dnsSource.ListTenantsWithRecords(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("probe: list dns tenants: %w", err)
+	}
+	var out []dns.ProbeTarget
+	suffix := "." + rootDomain
+	for _, tid := range tenants {
+		targets, err := s.dnsSource.ListProbeTargets(ctx, tid)
+		if err != nil {
+			return nil, fmt.Errorf("probe: list dns targets for tenant %d: %w", tid, err)
+		}
+		for _, t := range targets {
+			h := strings.ToLower(strings.TrimSpace(t.Hostname))
+			if h == rootDomain || strings.HasSuffix(h, suffix) {
+				out = append(out, t)
+			}
+		}
+	}
+	return out, nil
+}
+
 // ProbeTenantDNS 单租户 DNS 探测：拉该租户全部 TLS-relevant DNS 记录导出的子域名，
 // 受控并发 SNI 拨测，通配符感知的台账覆盖判定六态，逐域写 ProbeResult（带
 // tenantId/linkedResource）。单域名拨测/写库失败不中断整轮。
@@ -451,9 +514,12 @@ func (s *probeService) ProbeTenantDNS(ctx context.Context, tenantID int64) ([]do
 	if err != nil {
 		return nil, fmt.Errorf("probe: list dns targets for tenant %d: %w", tenantID, err)
 	}
-	if len(targets) == 0 {
-		return nil, nil
-	}
+	return s.probeTargets(ctx, targets)
+}
+
+// probeTargets 拨测主干：受控并发 SNI 拨测 + 六态判定 + 逐域落库（全量轮与
+// 根域定向轮共用；判定上下文逐轮一次性读取）。单域名拨测/写库失败不中断整轮。
+func (s *probeService) probeTargets(ctx context.Context, targets []dns.ProbeTarget) ([]domain.ProbeResult, error) {
 	// 逐轮一次性读取判定上下文（同 ProbeDomains）
 	exemptions, err := s.exempts.List(ctx)
 	if err != nil {
