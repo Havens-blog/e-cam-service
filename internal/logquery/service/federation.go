@@ -37,7 +37,7 @@ type SearchRequest struct {
 	Clouds     []domain.CloudProvider // 可选,限定云
 	AccountIDs []int64                // 可选,限定云账号
 	Resources  []string               // 可选,限定资源(域名/LB ID)
-	Limit      int                    // 单源上限(默认 100,硬顶 500)
+	Limit      int                    // 每日志源上限(默认 100,硬顶 500;ADR D4)
 }
 
 // SourceOutcome 单源查询结果状态(UI 逐源展示;失败不静默)。
@@ -158,21 +158,16 @@ func (s *FederationService) Search(ctx context.Context, tenantID int64, req Sear
 		})
 	}
 	_ = g.Wait()
-	// 截断标记:联邦超时,或任一源触达单源上限(深翻页不支持,ADR D4)
+	// 截断标记:联邦超时,或归并结果触达联邦硬顶(limit 为每日志源上限,
+	// provider 归并后总量可合理超过单源上限,不能以 Count>=perSource 判截断)
 	if ctx.Err() != nil {
 		truncate = true
-	}
-	for _, oc := range outcomes {
-		if oc.Count >= perSource {
-			truncate = true
-			break
-		}
 	}
 	// 跨源归并:时间倒序
 	sort.SliceStable(entries, func(i, j int) bool {
 		return entries[i].GetTimestamp() > entries[j].GetTimestamp()
 	})
-	// 联邦级截断:单源上限 * 账号源数之上再截到 1000 硬顶,防响应过大
+	// 联邦级硬顶 1000:多账号多源归并后防响应过大(每源上限由 provider 侧执行)
 	const federatedCap = 1000
 	if len(entries) > federatedCap {
 		entries = entries[:federatedCap]

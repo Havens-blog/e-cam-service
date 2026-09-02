@@ -37,12 +37,13 @@ func (f *fakeAccountSource) List(_ context.Context, filter domain.CloudAccountFi
 
 // fakeProvider 可编程 provider:返回固定条目或错误。
 type fakeProvider struct {
-	cloud   domain.CloudProvider
-	logType logquery.LogType
-	entries []logquery.LogEntry
-	err     error
-	listed  []logquery.LogSource
-	listErr error
+	cloud       domain.CloudProvider
+	logType     logquery.LogType
+	entries     []logquery.LogEntry
+	err         error
+	listed      []logquery.LogSource
+	listErr     error
+	ignoreLimit bool // 模拟多内部源归并总量超限的 provider(不做每源截断)
 }
 
 func (p *fakeProvider) Cloud() domain.CloudProvider { return p.cloud }
@@ -54,8 +55,8 @@ func (p *fakeProvider) Search(_ context.Context, _ *domain.CloudAccount, params 
 	if p.err != nil {
 		return nil, p.err
 	}
-	// 模拟单源上限截断行为
-	if len(p.entries) > params.Limit {
+	// 模拟每日志源上限截断行为(ignoreLimit 除外)
+	if !p.ignoreLimit && len(p.entries) > params.Limit {
 		return p.entries[:params.Limit], nil
 	}
 	return p.entries, nil
@@ -219,7 +220,8 @@ func TestListSources(t *testing.T) {
 	}
 }
 
-// TestSearchFederatedCap 联邦级 1000 硬顶截断。
+// TestSearchFederatedCap 联邦级 1000 硬顶截断(limit 为每日志源上限,
+// provider 归并总量可超单源上限;仅当总量触达 1000 才标记截断)。
 func TestSearchFederatedCap(t *testing.T) {
 	now := time.Now().UnixMilli()
 	var entries []logquery.LogEntry
@@ -230,17 +232,35 @@ func TestSearchFederatedCap(t *testing.T) {
 	svc := NewFederationService(&fakeAccountSource{accounts: []domain.CloudAccount{
 		testAccount(1, testCloud),
 	}}, nil)
+	// 600 条 < 联邦硬顶:limit 600 被钳到单源硬顶 500,fake 源返回 600
 	resp, err := svc.Search(context.Background(), 3, SearchRequest{
 		LogType: logquery.LogTypeCDN, StartTime: now - 7200_000, EndTime: now,
-		Limit: 600, // 600 > 单源硬顶 500
+		Limit: 600,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !resp.Truncated {
-		t.Error("should be truncated")
+	if resp.Truncated {
+		t.Error("600 entries below federated cap should not be truncated")
 	}
 	if resp.Total > 1000 {
 		t.Errorf("total = %d exceeds federated cap", resp.Total)
+	}
+	// 1500 条 > 联邦硬顶:ignoreLimit 桩模拟多源归并总量超限
+	logquery.RegisterProvider(testCloud, logquery.LogTypeWAF, func(*domain.CloudAccount) (logquery.LogProvider, error) {
+		return &fakeProvider{cloud: testCloud, logType: logquery.LogTypeWAF, entries: entries, ignoreLimit: true}, nil
+	})
+	resp2, err := svc.Search(context.Background(), 3, SearchRequest{
+		LogType: logquery.LogTypeWAF, StartTime: now - 7200_000, EndTime: now,
+		Limit: 100,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resp2.Truncated {
+		t.Error("1500 entries should be truncated at federated cap")
+	}
+	if resp2.Total != 1000 {
+		t.Errorf("total = %d, want 1000", resp2.Total)
 	}
 }

@@ -281,11 +281,14 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 	for i := range targets {
 		entries = append(entries, results[i]...)
 	}
+	// limit 为每日志源(ACL/域名)上限(ADR D4);归并后全局 1000 硬顶,
+	// 不做 provider 级总截断(防热点域名吃掉全部配额,长尾域名被挤出局)
 	sort.SliceStable(entries, func(i, j int) bool {
 		return entries[i].GetTimestamp() > entries[j].GetTimestamp()
 	})
-	if len(entries) > limit {
-		entries = entries[:limit]
+	const providerCap = 1000
+	if len(entries) > providerCap {
+		entries = entries[:providerCap]
 	}
 	return entries, nil
 }

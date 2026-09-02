@@ -248,12 +248,15 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 			}
 		}
 	}
-	// 时间倒序
+	// 时间倒序;总硬顶与联邦级一致(ADR D4:limit 为**每日志源**上限,
+	// 多源归并后按时间排序,全局 1000 防响应过大;不做 provider 级总截断,
+	// 否则热点源会吃掉全部配额,其他源(域名)被挤出局)
 	sort.SliceStable(entries, func(i, j int) bool {
 		return entries[i].GetTimestamp() > entries[j].GetTimestamp()
 	})
-	if len(entries) > limit {
-		entries = entries[:limit]
+	const providerCap = 1000
+	if len(entries) > providerCap {
+		entries = entries[:providerCap]
 	}
 	return entries, nil
 }

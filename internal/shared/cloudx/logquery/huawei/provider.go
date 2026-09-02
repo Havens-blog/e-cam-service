@@ -235,8 +235,11 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 	sort.SliceStable(entries, func(i, j int) bool {
 		return entries[i].GetTimestamp() > entries[j].GetTimestamp()
 	})
-	if len(entries) > limit {
-		entries = entries[:limit]
+	// limit 为每日志流上限(ADR D4);归并后全局 1000 硬顶,不做 provider 级
+	// 总截断(防热点流吃掉全部配额)
+	const providerCap = 1000
+	if len(entries) > providerCap {
+		entries = entries[:providerCap]
 	}
 	return entries, nil
 }

@@ -123,7 +123,7 @@ func (h *LogQueryHandler) RegisterRoutes(g *gin.RouterGroup) {
 
 // Types GET /types 字段字典。
 func (h *LogQueryHandler) Types(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"code": 0, "data": logTypes})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": logTypes})
 }
 
 // Sources GET /sources?log_type=cdn&clouds=aliyun,aws 日志源清单。
@@ -145,7 +145,7 @@ func (h *LogQueryHandler) Sources(c *gin.Context) {
 	if sources == nil {
 		sources = []logquery.LogSource{}
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 0, "data": sources})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": sources})
 }
 
 // searchRequest POST /search 请求体。
@@ -188,7 +188,7 @@ func (h *LogQueryHandler) Search(c *gin.Context) {
 	if resp.Entries == nil {
 		resp.Entries = []logquery.LogEntry{}
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 0, "data": resp})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": resp})
 }
 
 // ---------------------------------------------------------------------
