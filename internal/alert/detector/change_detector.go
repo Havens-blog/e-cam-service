@@ -9,6 +9,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/alert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/alert/service"
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
+	"github.com/Havens-blog/e-cam-service/internal/shared/timex"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -193,15 +194,18 @@ func (d *ChangeDetector) DetectExpiration(
 	now := time.Now()
 
 	for _, inst := range instances {
-		expireTimeStr := inst.GetStringAttribute("expire_time")
-		if expireTimeStr == "" {
+		// 到期时间由执行器同步写入 attributes.expired_time，格式混存多种
+		// （见 timex.ParseExpiredTime），用宽容解析；单一 RFC3339 严格解析
+		// 会漏掉大部分存量数据
+		raw, ok := inst.Attributes["expired_time"]
+		if !ok {
 			continue
 		}
-
-		expireTime, err := time.Parse(time.RFC3339, expireTimeStr)
-		if err != nil {
+		expireTime, ok := timex.ParseExpiredTime(raw)
+		if !ok {
 			continue
 		}
+		expireTimeStr := expireTime.Format(time.RFC3339)
 
 		daysLeft := int(expireTime.Sub(now).Hours() / 24)
 		if daysLeft < 0 {

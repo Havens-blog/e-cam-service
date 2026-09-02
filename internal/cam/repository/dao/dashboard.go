@@ -2,12 +2,13 @@ package dao
 
 import (
 	"context"
+	"sort"
 	"time"
 
+	"github.com/Havens-blog/e-cam-service/internal/shared/timex"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // DashboardDAO 仪表盘数据访问接口
@@ -86,42 +87,70 @@ func (d *dashboardDAO) GetExpiringInstances(ctx context.Context, tenantID int64,
 	now := time.Now()
 	deadline := now.AddDate(0, 0, withinDays)
 
-	// 过期时间存储在 attributes.expire_time，格式为 RFC3339 字符串
-	// 查询条件: expire_time 存在 且 expire_time <= deadline 且 expire_time > now
+	// 到期时间落在 attributes.expired_time（执行器同步路径写入的字段名）。
+	// 云厂商格式混存多种字符串与 BSON date（见 timex.ParseExpiredTime），
+	// 无法在 MongoDB 侧做统一的字符串区间比较，故先粗筛存在性，
+	// 再在内存中按解析结果过滤/排序/分页（候选量 ≤ 数千，开销可忽略）。
 	filter := bson.M{
-		"attributes.expire_time": bson.M{
+		"attributes.expired_time": bson.M{
 			"$exists": true,
-			"$ne":     "",
-			"$gt":     now.Format(time.RFC3339),
-			"$lte":    deadline.Format(time.RFC3339),
+			"$nin":    bson.A{"", nil},
 		},
 	}
 	// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集，
 	// 而不是退化为「不加过滤」从而返回全部租户数据。
 	filter["tenant_id"] = tenantID
 
-	total, err := d.collection().CountDocuments(ctx, filter)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	opts := options.Find().
-		SetSort(bson.D{{Key: "attributes.expire_time", Value: 1}}).
-		SetSkip(offset).
-		SetLimit(limit)
-
-	cursor, err := d.collection().Find(ctx, filter, opts)
+	cursor, err := d.collection().Find(ctx, filter)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer cursor.Close(ctx)
 
-	var instances []Instance
-	if err := cursor.All(ctx, &instances); err != nil {
+	var candidates []Instance
+	if err := cursor.All(ctx, &candidates); err != nil {
 		return nil, 0, err
 	}
 
-	return instances, total, nil
+	expiring := selectExpiring(candidates, now, deadline)
+
+	total := int64(len(expiring))
+	if offset >= total {
+		return []Instance{}, total, nil
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return expiring[offset:end], total, nil
+}
+
+// selectExpiring 从候选实例中筛出「即将过期」(now < expire_time <= deadline)
+// 并按到期时间升序排序。解析失败（含 0001-01-01 零值）的实例视为无到期时间跳过。
+func selectExpiring(candidates []Instance, now, deadline time.Time) []Instance {
+	type expiringInstance struct {
+		inst  Instance
+		expAt time.Time
+	}
+	filtered := make([]expiringInstance, 0, len(candidates))
+	for _, inst := range candidates {
+		expAt, ok := timex.ParseExpiredTime(inst.Attributes["expired_time"])
+		if !ok {
+			continue
+		}
+		if !expAt.After(now) || expAt.After(deadline) {
+			continue
+		}
+		filtered = append(filtered, expiringInstance{inst: inst, expAt: expAt})
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].expAt.Before(filtered[j].expAt)
+	})
+	result := make([]Instance, 0, len(filtered))
+	for _, it := range filtered {
+		result = append(result, it.inst)
+	}
+	return result
 }
 
 // aggregateGroup 通用分组聚合
