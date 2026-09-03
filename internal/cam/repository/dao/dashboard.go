@@ -138,7 +138,13 @@ func (d *dashboardDAO) GetExpiringInstances(ctx context.Context, tenantID int64,
 		} `bson:"total"`
 		Items []Instance `bson:"items"`
 	}
-	if err := cursor.All(ctx, &facet); err != nil {
+	// $facet 恒返回单个文档，用 Next+Decode；cursor.All 要求切片指针会直接报错
+	if cursor.Next(ctx) {
+		if err := cursor.Decode(&facet); err != nil {
+			return nil, 0, err
+		}
+	}
+	if err := cursor.Err(); err != nil {
 		return nil, 0, err
 	}
 
