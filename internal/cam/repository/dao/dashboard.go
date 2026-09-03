@@ -2,13 +2,12 @@ package dao
 
 import (
 	"context"
-	"sort"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/timex"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // DashboardDAO 仪表盘数据访问接口
@@ -87,70 +86,67 @@ func (d *dashboardDAO) GetExpiringInstances(ctx context.Context, tenantID int64,
 	now := time.Now()
 	deadline := now.AddDate(0, 0, withinDays)
 
-	// 到期时间落在 attributes.expired_time（执行器同步路径写入的字段名）。
-	// 云厂商格式混存多种字符串与 BSON date（见 timex.ParseExpiredTime），
-	// 无法在 MongoDB 侧做统一的字符串区间比较，故先粗筛存在性，
-	// 再在内存中按解析结果过滤/排序/分页（候选量 ≤ 数千，开销可忽略）。
-	filter := bson.M{
-		"attributes.expired_time": bson.M{
-			"$exists": true,
-			"$nin":    bson.A{"", nil},
-		},
-	}
-	// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集，
-	// 而不是退化为「不加过滤」从而返回全部租户数据。
-	filter["tenant_id"] = tenantID
+	// 到期时间落在 attributes.expired_time（执行器同步路径写入的字段名），
+	// 云厂商格式混存多种字符串与 BSON date（同 timex.ParseExpiredTime 的输入）。
+	// 在服务端归一化为 BSON date 后过滤/排序/分页，仅传输当前页的瘦身文档——
+	// 曾因全量拉取肥文档到内存过滤导致该接口 WAN 下 10s+。
+	// 无时区字符串按 +08:00 解释（与云控制台展示时区一致，勿改用服务器本地时区）。
+	expExpr := bson.M{"$ifNull": bson.A{
+		// ISO-8601 字符串（RFC3339 带时区/Z、分钟精度 UTC）与 BSON date 直通
+		bson.M{"$convert": bson.M{"input": "$attributes.expired_time", "to": "date", "onError": nil}},
+		bson.M{"$dateFromString": bson.M{"dateString": "$attributes.expired_time", "timezone": "+08:00", "onError": nil}},
+		bson.M{"$dateFromString": bson.M{"dateString": "$attributes.expired_time", "format": "%Y-%m-%d %H:%M:%S", "timezone": "+08:00", "onError": nil}},
+		bson.M{"$dateFromString": bson.M{"dateString": "$attributes.expired_time", "format": "%Y-%m-%d", "timezone": "+08:00", "onError": nil}},
+	}}
 
-	cursor, err := d.collection().Find(ctx, filter)
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{
+			// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集
+			"tenant_id":               tenantID,
+			"attributes.expired_time": bson.M{"$exists": true, "$nin": bson.A{"", nil}},
+		}}},
+		{{Key: "$addFields", Value: bson.M{"_exp": expExpr}}},
+		{{Key: "$match", Value: bson.M{"_exp": bson.M{"$gt": now, "$lte": deadline}}}},
+		{{Key: "$facet", Value: bson.M{
+			"total": bson.A{bson.M{"$count": "n"}},
+			"items": bson.A{
+				bson.M{"$sort": bson.M{"_exp": 1}},
+				// 瘦身投影：VO 需要 provider/region/status/expired_time，其余肥属性不出网
+				bson.M{"$project": bson.M{
+					"id": 1, "model_uid": 1, "asset_id": 1, "asset_name": 1,
+					"tenant_id": 1, "account_id": 1, "ctime": 1, "utime": 1,
+					"attributes.provider":      1,
+					"attributes.region":        1,
+					"attributes.status":        1,
+					"attributes.expired_time": 1,
+				}},
+				bson.M{"$skip": offset},
+				bson.M{"$limit": limit},
+			},
+		}}},
+	}
+
+	cursor, err := d.collection().Aggregate(ctx, pipeline, options.Aggregate().SetAllowDiskUse(true))
 	if err != nil {
 		return nil, 0, err
 	}
 	defer cursor.Close(ctx)
 
-	var candidates []Instance
-	if err := cursor.All(ctx, &candidates); err != nil {
+	var facet struct {
+		Total []struct {
+			N int64 `bson:"n"`
+		} `bson:"total"`
+		Items []Instance `bson:"items"`
+	}
+	if err := cursor.All(ctx, &facet); err != nil {
 		return nil, 0, err
 	}
 
-	expiring := selectExpiring(candidates, now, deadline)
-
-	total := int64(len(expiring))
-	if offset >= total {
-		return []Instance{}, total, nil
+	var total int64
+	if len(facet.Total) > 0 {
+		total = facet.Total[0].N
 	}
-	end := offset + limit
-	if end > total {
-		end = total
-	}
-	return expiring[offset:end], total, nil
-}
-
-// selectExpiring 从候选实例中筛出「即将过期」(now < expire_time <= deadline)
-// 并按到期时间升序排序。解析失败（含 0001-01-01 零值）的实例视为无到期时间跳过。
-func selectExpiring(candidates []Instance, now, deadline time.Time) []Instance {
-	type expiringInstance struct {
-		inst  Instance
-		expAt time.Time
-	}
-	filtered := make([]expiringInstance, 0, len(candidates))
-	for _, inst := range candidates {
-		expAt, ok := timex.ParseExpiredTime(inst.Attributes["expired_time"])
-		if !ok {
-			continue
-		}
-		if !expAt.After(now) || expAt.After(deadline) {
-			continue
-		}
-		filtered = append(filtered, expiringInstance{inst: inst, expAt: expAt})
-	}
-	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].expAt.Before(filtered[j].expAt)
-	})
-	result := make([]Instance, 0, len(filtered))
-	for _, it := range filtered {
-		result = append(result, it.inst)
-	}
-	return result
+	return facet.Items, total, nil
 }
 
 // aggregateGroup 通用分组聚合

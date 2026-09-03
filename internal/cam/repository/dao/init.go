@@ -89,6 +89,13 @@ func initInstanceIndexes(ctx context.Context, db *mongox.Mongo) error {
 			},
 		},
 		{
+			// 仪表盘「即将过期」查询:tenant_id + attributes.expired_time 粗筛
+			Keys: bson.D{
+				{Key: "tenant_id", Value: 1},
+				{Key: "attributes.expired_time", Value: 1},
+			},
+		},
+		{
 			Keys: bson.D{
 				{Key: "asset_name", Value: "text"},
 			},
