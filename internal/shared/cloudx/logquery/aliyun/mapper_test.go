@@ -264,3 +264,31 @@ func TestSplitByDomain(t *testing.T) {
 		t.Error("non-CDN kind should return nil")
 	}
 }
+
+// TestDomainNamesFromSample 域名清单热度序(样本数降序;ListLogSources
+// 域名枚举与 Search 扇出共用此排序)。
+func TestDomainNamesFromSample(t *testing.T) {
+	probe := []map[string]string{
+		{"domain": "hot.com"},
+		{"domain": "warm.com"},
+		{"domain": "hot.com"},
+		{"domain": "hot.com"},
+		{"domain": ""}, // 空域名丢弃
+	}
+	got := domainNamesFromSample(kindDCDN, probe)
+	want := []string{"hot.com", "warm.com"}
+	if len(got) != len(want) {
+		t.Fatalf("domains = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("domains[%d] = %q, want %q(热度序:样本数降序)", i, got[i], want[i])
+		}
+	}
+	if got := domainNamesFromSample(kindDCDN, nil); len(got) != 0 {
+		t.Errorf("empty probe should yield no domains, got %v", got)
+	}
+	if got := domainNamesFromSample(kindALB, probe); len(got) != 0 {
+		t.Errorf("non-CDN kind should yield no domains, got %v", got)
+	}
+}

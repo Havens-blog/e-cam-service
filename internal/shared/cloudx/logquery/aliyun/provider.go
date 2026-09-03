@@ -56,8 +56,11 @@ var catalog = []slsSource{
 		logstore: "wafnew-logstore", name: "WAF3.0(海外)", note: "eu-central-1 WAF 日志库"},
 	{region: "cn-shenzhen", project: "aliyun-cloudsiem-channel-1210557380197478-cn-shenzhen", logType: logquery.LogTypeWAF, kind: kindWAF3,
 		logstore: "wafng-logstore", name: "WAF3.0(国内渠道)", note: "云安全中心渠道,与 wafnew 同 schema"},
+	// Akamai 自采(Phase 0 实测两 store 均在 eu-central-1,误写 cn-shenzhen 会静默查空)
+	{region: "eu-central-1", project: "jlc-prod-akamai-cdnwaf-log", logType: logquery.LogTypeWAF, kind: kindAkamaiWAF,
+		logstore: "jlc-prod-akamai-waf-log", name: "Akamai WAF(自采)", note: "Akamai WAF 日志自采入库(CEF 展开)"},
 	// ---- CDN ----
-	{region: "cn-shenzhen", project: "jlc-prod-akamai-cdnwaf-log", logType: logquery.LogTypeCDN, kind: kindAkamaiCDN,
+	{region: "eu-central-1", project: "jlc-prod-akamai-cdnwaf-log", logType: logquery.LogTypeCDN, kind: kindAkamaiCDN,
 		logstore: "jlc-prod-akamai-cdn-log", name: "Akamai CDN(自采)", note: "Akamai CDN 日志自采入库", mixedDomains: true},
 	{region: "cn-shenzhen", project: "dcdn-edge-rtlog-cn-42d9825f", logType: logquery.LogTypeCDN, kind: kindDCDN,
 		logstore: "dcdn-edge-rtlog", name: "DCDN 边缘实时", note: "DCDN 实时日志", mixedDomains: true},
@@ -121,7 +124,15 @@ func (p *provider) ListLogSources(ctx context.Context, account *domain.CloudAcco
 			continue
 		}
 		if src.logstore != "" {
-			out = append(out, p.toSource(src, src.logstore, true))
+			s := p.toSource(src, src.logstore, true)
+			if src.mixedDomains {
+				s.Note = src.note + " · 全部域名(整源查询)"
+				out = append(out, s)
+				// 混装源的选择粒度是域名:探查活跃域名生成域名级子源
+				out = append(out, p.domainSources(ctx, src)...)
+				continue
+			}
+			out = append(out, s)
 			continue
 		}
 		// 动态枚举 logstore(过滤 metrics/diagnostic 内部流)
@@ -156,6 +167,32 @@ func (p *provider) toSource(src slsSource, logstore string, enabled bool) logque
 		Enabled:     enabled,
 		Note:        src.note,
 	}
+}
+
+// domainSources 混装源活跃域名枚举:近 24h 小样本探查(100 条,热度序),
+// 每个域名生成一个域名级子源(ResourceID=域名)。用户在下拉里选域名后
+// resources 传域名,Search 的域名扇出(fetchCDNByDomains)按其过滤。
+// 探查失败静默降级——只返回 logstore 级条目,不阻塞其余源枚举。
+func (p *provider) domainSources(ctx context.Context, src slsSource) []logquery.LogSource {
+	now := time.Now().UnixMilli()
+	probe, err := p.probeDomains(ctx, src, src.logstore, logquery.SearchParams{
+		StartTime: now - 24*3600_000,
+		EndTime:   now,
+	}, 100)
+	if err != nil {
+		p.logger.Warn("[logquery-aliyun] domain probe failed",
+			elog.String("project", src.project), elog.String("logstore", src.logstore),
+			elog.FieldErr(err))
+		return nil
+	}
+	domains := domainNamesFromSample(src.kind, probe)
+	out := make([]logquery.LogSource, 0, len(domains))
+	for _, d := range domains {
+		s := p.toSource(src, d, true)
+		s.Note = "活跃域名(近24小时)"
+		out = append(out, s)
+	}
+	return out
 }
 
 // Search 查询窗口内日志并映射统一模型:逐 catalog 查询,单源失败跳过并记日志,
@@ -368,6 +405,20 @@ func splitByDomain(kind mapperKind, logs []map[string]string) map[string][]map[s
 	return grouped
 }
 
+// domainNamesFromSample 从探查样本提取域名清单(热度序:样本数降序)。
+// ListLogSources 域名枚举与 Search 域名扇出共用此排序。
+func domainNamesFromSample(kind mapperKind, probe []map[string]string) []string {
+	grouped := splitByDomain(kind, probe)
+	domains := make([]string, 0, len(grouped))
+	for d := range grouped {
+		domains = append(domains, d)
+	}
+	sort.Slice(domains, func(i, j int) bool {
+		return len(grouped[domains[i]]) > len(grouped[domains[j]])
+	})
+	return domains
+}
+
 // probeDomains logstore 探查:小样本拉取活跃域名集合(probeLimit 条,
 // 兼作首批数据;探查失败返回 nil——扇出退化为整 store 查询)。
 func (p *provider) probeDomains(ctx context.Context, src slsSource, logstore string, params logquery.SearchParams, probeLimit int) ([]map[string]string, error) {
@@ -441,14 +492,7 @@ func (p *provider) fetchCDNByDomains(ctx context.Context, src slsSource, logstor
 	if len(grouped) == 0 {
 		return probe
 	}
-	domains := make([]string, 0, len(grouped))
-	for d := range grouped {
-		domains = append(domains, d)
-	}
-	// 热度序:按样本数降序
-	sort.Slice(domains, func(i, j int) bool {
-		return len(grouped[domains[i]]) > len(grouped[domains[j]])
-	})
+	domains := domainNamesFromSample(src.kind, probe)
 
 	// 用户指定资源过滤:域名清单收敛为其交集。
 	// Resources 可能是域名(混装源的展示/选择粒度)或 logstore 名(选中整个
