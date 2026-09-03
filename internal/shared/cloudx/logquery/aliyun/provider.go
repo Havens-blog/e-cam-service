@@ -201,7 +201,10 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 			stores = filterInternalStores(ls)
 		}
 		for _, ls := range stores {
-			if len(resourceFilter) > 0 && !resourceFilter[ls] && !resourceFilter[src.project] {
+			// mixedDomains 源的资源语义是"域名"(扇出内部过滤),logstore 名
+			// 仅作整体开关;此处不按 logstore 过滤(否则选域名时混装源被整流跳过)
+			if !src.mixedDomains && len(resourceFilter) > 0 &&
+				!resourceFilter[ls] && !resourceFilter[src.project] {
 				continue
 			}
 			targets = append(targets, fetchTarget{src: src, logstore: ls})
@@ -447,25 +450,36 @@ func (p *provider) fetchCDNByDomains(ctx context.Context, src slsSource, logstor
 		return len(grouped[domains[i]]) > len(grouped[domains[j]])
 	})
 
-	// 用户指定资源过滤:域名清单收敛为其交集
+	// 用户指定资源过滤:域名清单收敛为其交集。
+	// Resources 可能是域名(混装源的展示/选择粒度)或 logstore 名(选中整个
+	// 混装源)——logstore 名等于本源自身时视为"不过滤域名,查全源"。
 	if len(params.Resources) > 0 {
+		wholeSource := false
 		allowed := make(map[string]bool, len(params.Resources))
 		for _, r := range params.Resources {
+			if r == logstore || r == src.project {
+				wholeSource = true
+			}
 			allowed[r] = true
 		}
-		filtered := domains[:0]
-		for _, d := range domains {
-			if allowed[d] {
-				filtered = append(filtered, d)
-			}
+		if wholeSource {
+			allowed = nil // 整源:不限域名
 		}
-		if len(filtered) == 0 {
-			// 指定资源不在探查样本中(低频域名):按指定清单全量查
-			for _, r := range params.Resources {
-				filtered = append(filtered, r)
+		if allowed != nil {
+			filtered := domains[:0]
+			for _, d := range domains {
+				if allowed[d] {
+					filtered = append(filtered, d)
+				}
 			}
+			if len(filtered) == 0 {
+				// 指定资源不在探查样本中(低频域名):按指定清单全量查
+				for _, r := range params.Resources {
+					filtered = append(filtered, r)
+				}
+			}
+			domains = filtered
 		}
-		domains = filtered
 	}
 
 	// 逐域名并发,每域名配额 = limit - 探查已得(探查样本均分抵扣)
