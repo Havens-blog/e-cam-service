@@ -120,7 +120,7 @@ func extractAssetType(modelUID string) string {
 		return "vswitch"
 	}
 	// aliyun_ecs -> ecs, aws_rds -> rds, etc.
-	for _, suffix := range []string{"_ecs", "_disk", "_snapshot", "_security_group", "_rds", "_redis", "_mongodb", "_vpc", "_eip", "_vswitch", "_subnet", "_lb", "_slb", "_alb", "_nlb", "_cdn", "_waf", "_image", "_nas", "_oss", "_kafka", "_elasticsearch"} {
+	for _, suffix := range []string{"_ecs", "_disk", "_snapshot", "_security_group", "_rds", "_redis", "_mongodb", "_vpc", "_eip", "_eni", "_vswitch", "_subnet", "_lb", "_slb", "_alb", "_nlb", "_cdn", "_waf", "_image", "_nas", "_oss", "_kafka", "_elasticsearch"} {
 		if len(modelUID) > len(suffix) && modelUID[len(modelUID)-len(suffix):] == suffix {
 			return suffix[1:] // 去掉前缀下划线
 		}

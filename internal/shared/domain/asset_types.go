@@ -1,5 +1,7 @@
 package domain
 
+import "strings"
+
 // DefaultSyncAssetTypes 默认同步的资产类型清单。
 // 账号未显式配置 SupportedAssetTypes 时，自动同步按此清单执行。
 // 注意：dns 必须包含在内。DNS 是账号级全局资产（不按地域），历史上
@@ -42,4 +44,29 @@ var DefaultCMDBSyncAssetTypes = []string{
 	"vpc", "eip", "lb", "cdn", "waf", "eni", "dns",
 	// 存储
 	"nas", "oss",
+}
+
+// AttachmentAssetTypes 附属/衍生资源类型:依附于主体资源存在,没有独立
+// 业务实例语义——eni/vswitch/security_group 挂载于 ECS/VPC,disk 是
+// ECS 的块设备配置,snapshot/image 是磁盘/系统的衍生物。
+// 仪表盘「资产总数」「类型分布」等统计口径统一排除这些类型
+// (同步仍全量采集,仅统计排除)。
+var AttachmentAssetTypes = []string{
+	"eni", "vswitch", "security_group", "disk", "snapshot", "image",
+}
+
+// IsAttachmentAssetType 判断(去厂商前缀后的)资产类型是否为附属资源。
+func IsAttachmentAssetType(assetType string) bool {
+	for _, t := range AttachmentAssetTypes {
+		if assetType == t {
+			return true
+		}
+	}
+	return false
+}
+
+// AttachmentModelUIDPattern 返回匹配附属资源 model_uid 的正则,
+// 如 "_(eni|vswitch|...)$",配合 $not 用于 mongo 查询排除。
+func AttachmentModelUIDPattern() string {
+	return "_(" + strings.Join(AttachmentAssetTypes, "|") + ")$"
 }

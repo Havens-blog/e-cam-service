@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	shareddomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -434,6 +435,11 @@ func (d *instanceDAO) AggregateAllStats(ctx context.Context, tenantID int64) (*A
 	// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集，
 	// 而不是退化为「不加过滤」从而返回全部租户数据。
 	match["tenant_id"] = tenantID
+	// 附属资源(网卡/子网/安全组/云盘/快照/镜像)不作独立实例统计,
+	// 与仪表盘资产总数口径一致(见 domain.AttachmentAssetTypes)
+	match["model_uid"] = bson.M{
+		"$not": bson.M{"$regex": shareddomain.AttachmentModelUIDPattern()},
+	}
 
 	pipeline := mongo.Pipeline{
 		{{Key: "$match", Value: match}},

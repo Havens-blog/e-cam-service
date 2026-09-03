@@ -364,8 +364,10 @@ func extractAssetType(modelUID string) string {
 	case "cloud_slb":
 		return "slb"
 	}
-	// 云厂商模型: "aliyun_ecs" → "ecs"
-	if idx := strings.LastIndex(modelUID, "_"); idx > 0 {
+	// 云厂商模型: 去掉厂商前缀段 "aliyun_security_group" → "security_group"。
+	// 注意必须按首个下划线切,多词类型(security_group/elasticsearch)用
+	// LastIndex 会切错成 "group"
+	if idx := strings.Index(modelUID, "_"); idx > 0 {
 		return modelUID[idx+1:]
 	}
 	return modelUID

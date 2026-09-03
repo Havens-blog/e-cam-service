@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -78,6 +79,11 @@ func (d *dashboardDAO) GetTotalCount(ctx context.Context, tenantID int64) (int64
 	// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集，
 	// 而不是退化为「不加过滤」从而返回全部租户数据。
 	filter["tenant_id"] = tenantID
+	// 附属资源(网卡/子网/安全组/云盘/快照/镜像)不作独立实例统计,
+	// 与资产类型分布等全部统计口径一致(见 domain.AttachmentAssetTypes)
+	filter["model_uid"] = bson.M{
+		"$not": bson.M{"$regex": domain.AttachmentModelUIDPattern()},
+	}
 	return d.collection().CountDocuments(ctx, filter)
 }
 
@@ -164,6 +170,10 @@ func (d *dashboardDAO) aggregateGroup(ctx context.Context, tenantID int64, group
 	// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集，
 	// 而不是退化为「不加过滤」从而返回全部租户数据。
 	match["tenant_id"] = tenantID
+	// 附属资源不作独立实例统计(与 GetTotalCount 口径一致)
+	match["model_uid"] = bson.M{
+		"$not": bson.M{"$regex": domain.AttachmentModelUIDPattern()},
+	}
 	if len(match) > 0 {
 		pipeline = append(pipeline, bson.D{{Key: "$match", Value: match}})
 	}
