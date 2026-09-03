@@ -38,6 +38,10 @@ type slsSource struct {
 	name     string               // 展示名(logstore 动态枚举时的前缀描述)
 	fixed    []logquery.LogSource // 固定源(不枚举,直接给)
 	note     string
+	// mixedDomains 单 logstore 混装全部域名(需要按域名扇出查询)。
+	// 仅 DCDN 边缘实时与 Akamai 自采两类;域名转存类 logstore 即单域名资源,
+	// 整流查询即可。
+	mixedDomains bool
 }
 
 // catalog 阿里侧 SLS 日志源清单(Phase 0 实测;project 名账号内稳定)。
@@ -54,11 +58,9 @@ var catalog = []slsSource{
 		logstore: "wafng-logstore", name: "WAF3.0(国内渠道)", note: "云安全中心渠道,与 wafnew 同 schema"},
 	// ---- CDN ----
 	{region: "cn-shenzhen", project: "jlc-prod-akamai-cdnwaf-log", logType: logquery.LogTypeCDN, kind: kindAkamaiCDN,
-		logstore: "jlc-prod-akamai-cdn-log", name: "Akamai CDN(自采)", note: "Akamai CDN 日志自采入库"},
+		logstore: "jlc-prod-akamai-cdn-log", name: "Akamai CDN(自采)", note: "Akamai CDN 日志自采入库", mixedDomains: true},
 	{region: "cn-shenzhen", project: "dcdn-edge-rtlog-cn-42d9825f", logType: logquery.LogTypeCDN, kind: kindDCDN,
-		logstore: "dcdn-edge-rtlog", name: "DCDN 边缘实时", note: "DCDN 实时日志"},
-	{region: "cn-shenzhen", project: "jlc-prod-cdn-log", logType: logquery.LogTypeCDN, kind: kindDCDN,
-		logstore: "", name: "CDN 域名转存", note: "离线转存,近 30 天无数据(schema 同 DCDN)"},
+		logstore: "dcdn-edge-rtlog", name: "DCDN 边缘实时", note: "DCDN 实时日志", mixedDomains: true},
 }
 
 // provider 阿里云 SLS 日志 provider(单账号)。
@@ -207,6 +209,9 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 	}
 
 	// ---- logstore 级并发拉取(8 并发上限,单源失败隔离) ----
+	// CDN 类(DCDN/Akamai)单 logstore 混装全部域名:先小样本探查活跃域名,
+	// 再按域名扇出并发查询(每域名各自凑配额,热点域名不挤占长尾);
+	// 其余类(ALB/WAF)单流本身就是单源,直接整流查询。
 	results := make([][]map[string]string, len(targets))
 	sem := make(chan struct{}, 8)
 	var wg sync.WaitGroup
@@ -216,12 +221,18 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			logs, err := p.fetchLogs(ctx, tgt.src, tgt.logstore, params, limit)
-			if err != nil {
-				p.logger.Warn("[logquery-aliyun] fetch logs failed",
-					elog.String("project", tgt.src.project), elog.String("logstore", tgt.logstore),
-					elog.FieldErr(err))
-				return
+			var logs []map[string]string
+			if tgt.src.mixedDomains {
+				logs = p.fetchCDNByDomains(ctx, tgt.src, tgt.logstore, params, limit)
+			} else {
+				var err error
+				logs, err = p.fetchLogs(ctx, tgt.src, tgt.logstore, params, limit)
+				if err != nil {
+					p.logger.Warn("[logquery-aliyun] fetch logs failed",
+						elog.String("project", tgt.src.project), elog.String("logstore", tgt.logstore),
+						elog.FieldErr(err))
+					return
+				}
 			}
 			results[i] = logs
 		}()
@@ -317,6 +328,189 @@ func buildQuery(kind mapperKind, userQuery string) string {
 		return q
 	}
 	return q + " and " + topic
+}
+
+// ---------------------------------------------------------------------
+// CDN 按域名扇出(单 logstore 混装全部域名,热点域名会吃掉整窗配额——
+// 100 条样本实测单一域名占 51%。按域名拆分并发查询,每域名各自凑配额,
+// 长尾域名不被挤出结果)
+// ---------------------------------------------------------------------
+
+// domainField 按 kind 返回域名原始字段名(单测覆盖)。
+func domainField(kind mapperKind) string {
+	switch kind {
+	case kindDCDN:
+		return "domain"
+	case kindAkamaiCDN:
+		return "reqHost"
+	default:
+		return ""
+	}
+}
+
+// splitByDomain 把探查样本按域名分组(保序:域名首现顺序即热度序)。
+func splitByDomain(kind mapperKind, logs []map[string]string) map[string][]map[string]string {
+	field := domainField(kind)
+	if field == "" {
+		return nil
+	}
+	grouped := make(map[string][]map[string]string)
+	for _, l := range logs {
+		d := l[field]
+		if d == "" {
+			continue
+		}
+		grouped[d] = append(grouped[d], l)
+	}
+	return grouped
+}
+
+// probeDomains logstore 探查:小样本拉取活跃域名集合(probeLimit 条,
+// 兼作首批数据;探查失败返回 nil——扇出退化为整 store 查询)。
+func (p *provider) probeDomains(ctx context.Context, src slsSource, logstore string, params logquery.SearchParams, probeLimit int) ([]map[string]string, error) {
+	return p.fetchLogs(ctx, src, logstore, params, probeLimit)
+}
+
+// fetchPerDomain 单域名查询:domain 过滤 + 用户检索式,凑满 limit 即停。
+func (p *provider) fetchPerDomain(ctx context.Context, src slsSource, logstore, domain string, params logquery.SearchParams, limit int) ([]map[string]string, error) {
+	client := p.clientFor(src.region)
+	from := params.StartTime / 1000
+	to := params.EndTime / 1000
+	// 域名过滤拼接用户检索式(SLS 查询语法 and 连接)
+	q := strings.TrimSpace(params.Query)
+	domainTerm := domainField(src.kind) + ": " + domain
+	if q == "" || q == "*" {
+		q = domainTerm
+	} else {
+		q = "(" + q + ") and " + domainTerm
+	}
+	var all []map[string]string
+	offset := int64(0)
+	const pageSize = 100
+	for int64(len(all)) < int64(limit) {
+		resp, err := client.GetLogsV2(src.project, logstore, &sls.GetLogRequest{
+			From:    from,
+			To:      to,
+			Query:   q,
+			Lines:   pageSize,
+			Offset:  offset,
+			Reverse: true,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("sls get_logs %s/%s domain=%s: %w", src.project, logstore, domain, err)
+		}
+		if len(resp.Logs) == 0 {
+			break
+		}
+		all = append(all, resp.Logs...)
+		if len(resp.Logs) < pageSize || !resp.IsComplete() {
+			break
+		}
+		offset += int64(len(resp.Logs))
+	}
+	return all, nil
+}
+
+// fetchCDNByDomains CDN 类按域名扇出:
+//  1. 探查(probeLimit 条,兼作首批数据)-> 域名集合(热度序);
+//  2. 用户指定 Resources 时按其过滤域名(同时作为唯一域名清单);
+//  3. 逐域名并发(8 上限)查询,每域名各自凑满 limit;
+//  4. 探查失败降级为整 store 查询(总截断到 limit,退回旧行为)。
+func (p *provider) fetchCDNByDomains(ctx context.Context, src slsSource, logstore string, params logquery.SearchParams, limit int) []map[string]string {
+	const probeLimit = 100
+	probe, err := p.probeDomains(ctx, src, logstore, params, probeLimit)
+	if err != nil {
+		p.logger.Warn("[logquery-aliyun] cdn probe failed, fallback to whole-store query",
+			elog.String("project", src.project), elog.String("logstore", logstore),
+			elog.FieldErr(err))
+		logs, ferr := p.fetchLogs(ctx, src, logstore, params, limit)
+		if ferr != nil {
+			p.logger.Warn("[logquery-aliyun] fetch logs failed",
+				elog.String("project", src.project), elog.String("logstore", logstore),
+				elog.FieldErr(ferr))
+			return nil
+		}
+		return logs
+	}
+
+	// 域名清单 = 探查结果分组(保热度序);探查样本直接计入对应域名配额
+	grouped := splitByDomain(src.kind, probe)
+	if len(grouped) == 0 {
+		return probe
+	}
+	domains := make([]string, 0, len(grouped))
+	for d := range grouped {
+		domains = append(domains, d)
+	}
+	// 热度序:按样本数降序
+	sort.Slice(domains, func(i, j int) bool {
+		return len(grouped[domains[i]]) > len(grouped[domains[j]])
+	})
+
+	// 用户指定资源过滤:域名清单收敛为其交集
+	if len(params.Resources) > 0 {
+		allowed := make(map[string]bool, len(params.Resources))
+		for _, r := range params.Resources {
+			allowed[r] = true
+		}
+		filtered := domains[:0]
+		for _, d := range domains {
+			if allowed[d] {
+				filtered = append(filtered, d)
+			}
+		}
+		if len(filtered) == 0 {
+			// 指定资源不在探查样本中(低频域名):按指定清单全量查
+			for _, r := range params.Resources {
+				filtered = append(filtered, r)
+			}
+		}
+		domains = filtered
+	}
+
+	// 逐域名并发,每域名配额 = limit - 探查已得(探查样本均分抵扣)
+	type domainResult struct {
+		logs []map[string]string
+	}
+	perDomainQuota := limit / len(domains)
+	if perDomainQuota < 1 {
+		perDomainQuota = 1
+	}
+	results := make([]domainResult, len(domains))
+	sem2 := make(chan struct{}, 8)
+	var wg2 sync.WaitGroup
+	for i, d := range domains {
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			sem2 <- struct{}{}
+			defer func() { <-sem2 }()
+			quota := perDomainQuota
+			if got := len(grouped[d]); got < quota {
+				quota -= got // 探查已贡献部分配额
+			} else {
+				results[i] = domainResult{logs: grouped[d]}
+				return // 探查样本已凑满该域名配额
+			}
+			logs, err := p.fetchPerDomain(ctx, src, logstore, d, params, quota)
+			if err != nil {
+				p.logger.Warn("[logquery-aliyun] per-domain fetch failed",
+					elog.String("domain", d), elog.FieldErr(err))
+				// 单域名失败隔离:退回探查样本保底
+			}
+			// 合并探查样本 + 域名查询(查询从最新开始,探查样本可能重叠,
+			// 按时间戳去重由映射层后排序兜底;此处直接拼接)
+			merged := append(append([]map[string]string{}, grouped[d]...), logs...)
+			results[i] = domainResult{logs: merged}
+		}()
+	}
+	wg2.Wait()
+
+	var out []map[string]string
+	for i := range domains {
+		out = append(out, results[i].logs...)
+	}
+	return out
 }
 
 // filterInternalStores 过滤 SLS 内部流(metrics/diagnostic/ml)。

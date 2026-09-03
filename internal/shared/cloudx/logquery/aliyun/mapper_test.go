@@ -228,3 +228,39 @@ func TestMapEntryUnknownKind(t *testing.T) {
 		t.Errorf("unknown kind should return nil, got %v", got)
 	}
 }
+
+// TestDomainField CDN 类域名原始字段名(按域名扇出的分组键)。
+func TestDomainField(t *testing.T) {
+	cases := map[mapperKind]string{
+		kindDCDN:      "domain",
+		kindAkamaiCDN: "reqHost",
+		kindALB:       "",
+		kindWAF3:      "",
+	}
+	for kind, want := range cases {
+		if got := domainField(kind); got != want {
+			t.Errorf("domainField(%q) = %q, want %q", kind, got, want)
+		}
+	}
+}
+
+// TestSplitByDomain 探查样本按域名分组(空域名行丢弃,分组键正确)。
+func TestSplitByDomain(t *testing.T) {
+	logs := []map[string]string{
+		{"domain": "a.com"},
+		{"domain": "b.com"},
+		{"domain": "a.com"},
+		{"domain": ""},     // 空域名丢弃
+		{"reqHost": "c.com"}, // 非 domain 键,DCDN 分组下丢弃
+	}
+	got := splitByDomain(kindDCDN, logs)
+	if len(got) != 2 {
+		t.Fatalf("groups = %d, want 2: %v", len(got), got)
+	}
+	if len(got["a.com"]) != 2 || len(got["b.com"]) != 1 {
+		t.Errorf("group counts wrong: %v", got)
+	}
+	if splitByDomain(kindALB, logs) != nil {
+		t.Error("non-CDN kind should return nil")
+	}
+}
