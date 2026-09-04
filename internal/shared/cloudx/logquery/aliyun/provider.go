@@ -565,10 +565,10 @@ func (p *provider) fetchCDNByDomains(ctx context.Context, src slsSource, logstor
 					elog.String("domain", d), elog.FieldErr(err))
 				// 单域名失败隔离:退回探查样本保底
 			}
-			// 合并探查样本 + 域名查询(查询从最新开始,探查样本可能重叠,
-			// 按时间戳去重由映射层后排序兜底;此处直接拼接)
+			// 合并探查样本 + 域名查询(同一窗口都从最新开始,重叠是常态,
+			// 按 request_id/组合键去重,否则趋势图条数虚高)
 			merged := append(append([]map[string]string{}, grouped[d]...), logs...)
-			results[i] = domainResult{logs: merged}
+			results[i] = domainResult{logs: dedupLogs(merged)}
 		}()
 	}
 	wg2.Wait()
@@ -576,6 +576,32 @@ func (p *provider) fetchCDNByDomains(ctx context.Context, src slsSource, logstor
 	var out []map[string]string
 	for i := range domains {
 		out = append(out, results[i].logs...)
+	}
+	return out
+}
+
+// dedupLogs 探查样本与按域名查询重叠去重(键:request_id/uuid,缺失时回退
+// 域名+时间+客户端 IP 组合;两条同键保留首条)。探查与单域名查询同一窗口
+// 且都从最新开始,重叠是常态,直接拼接会让趋势图条数虚高。
+func dedupLogs(logs []map[string]string) []map[string]string {
+	if len(logs) == 0 {
+		return nil
+	}
+	type key struct{ a, b string }
+	seen := make(map[key]bool, len(logs))
+	out := make([]map[string]string, 0, len(logs))
+	for _, l := range logs {
+		var k key
+		if rid := l["uuid"]; rid != "" {
+			k = key{rid, ""}
+		} else {
+			k = key{l["domain"], l["unixtime"] + "|" + l["client_ip"] + "|" + l["uri"] + l["uri_param"]}
+		}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, l)
 	}
 	return out
 }

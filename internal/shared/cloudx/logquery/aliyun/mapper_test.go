@@ -345,6 +345,26 @@ func TestSplitByDomain(t *testing.T) {
 	}
 }
 
+// TestDedupProbeOverlap 探查样本与按域名查询重叠去重(同 request_id 只留一条;
+// 无 request_id 用 host+ts+ip+url 组合键)。曾直接拼接导致趋势图条数虚高。
+func TestDedupProbeOverlap(t *testing.T) {
+	logs := []map[string]string{
+		{"uuid": "r1", "domain": "a.com", "unixtime": "100"},
+		{"uuid": "r1", "domain": "a.com", "unixtime": "100"}, // 探查+查询重叠
+		{"uuid": "r2", "domain": "a.com", "unixtime": "101"},
+		{"domain": "b.com", "unixtime": "100"}, // 无 uuid:组合键去重
+		{"domain": "b.com", "unixtime": "100"}, // 同上,重复
+		{"domain": "b.com", "unixtime": "102"},
+	}
+	got := dedupLogs(logs)
+	if len(got) != 4 {
+		t.Fatalf("dedup = %d, want 4: %v", len(got), got)
+	}
+	if dedupLogs(nil) != nil {
+		t.Error("nil input should return nil")
+	}
+}
+
 // TestDomainNamesFromSample 域名清单热度序(样本数降序;ListLogSources
 // 域名枚举与 Search 扇出共用此排序)。
 func TestDomainNamesFromSample(t *testing.T) {
