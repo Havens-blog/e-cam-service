@@ -330,6 +330,58 @@ func TestDiscoveryPreview_EmptyItems(t *testing.T) {
 	assert.Empty(t, got.Items, "无可用云引用 → 空清单（K8s-only 快照等场景）")
 }
 
+// TestDiscoveryPreview_CASLibraryEntries 证书库条目（product=cas）与资源引用
+// 条目同管道聚合（cert-cas-library-scan）：预览/导入零接口改动——cas 条目按
+// (cloud, accountKey, cloudCertId) 三元组去重出条目、parseable=true 可勾选。
+// 同证书多形态条目（cas "27029968" vs waf "27029968-cn-hangzhou"）是预期行为：
+// 两个三元组各自展示，导入收敛同指纹。
+func TestDiscoveryPreview_CASLibraryEntries(t *testing.T) {
+	d := newDiscoveryPreviewDeps()
+	snapID := d.seedDoneSnapshot(t, time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC))
+
+	// 同三元组两条 cas 引用（同证书不同引用名）→ 去重 1 条 refCount=2
+	_, err := d.refs.CreateMulti(context.Background(), []domain.CertReference{
+		{CertFingerprint: dfp(1), Cloud: domain.CloudAliyun, Product: domain.ProductCAS,
+			ResourceID: "jlccam.com-2026-09", ReferencedCloudCertID: "27029968",
+			AccountKey: "acct-main", SnapshotID: snapID},
+		{CertFingerprint: dfp(1), Cloud: domain.CloudAliyun, Product: domain.ProductCAS,
+			ResourceID: "jlccam.com-2026-09-san", ReferencedCloudCertID: "27029968",
+			AccountKey: "acct-main", SnapshotID: snapID},
+		// 同证书库另一张证书 → 独立条目
+		{CertFingerprint: dfp(2), Cloud: domain.CloudAliyun, Product: domain.ProductCAS,
+			ResourceID: "legacy.example.com-2025", ReferencedCloudCertID: "20275346",
+			AccountKey: "acct-main", SnapshotID: snapID},
+		// 同证书绑定 WAF 的资源引用形态（cloudCertId 带 region 后缀）→ 独立条目
+		{CertFingerprint: dfp(1), Cloud: domain.CloudAliyun, Product: domain.ProductWAF,
+			ResourceID: "jlccam.com", ReferencedCloudCertID: "27029968-cn-hangzhou",
+			AccountKey: "acct-main", SnapshotID: snapID},
+	})
+	require.NoError(t, err)
+
+	got, err := d.svc().Preview(context.Background())
+	require.NoError(t, err)
+	require.Len(t, got.Items, 3)
+
+	byKey := map[string]DiscoveryPreviewEntry{}
+	for _, it := range got.Items {
+		byKey[it.Cloud+"/"+it.AccountKey+"/"+it.CloudCertID] = it
+	}
+	casEntry := byKey["aliyun/acct-main/27029968"]
+	assert.Equal(t, 2, casEntry.RefCount, "同三元组两条 cas 引用去重后 refCount=2")
+	assert.True(t, casEntry.Parseable, "cas 条目可选（非华为/AWS IAM-hosted）")
+	assert.Empty(t, casEntry.ParseReason)
+	assert.False(t, casEntry.InLedger, "台账空 → 未登记可导入")
+
+	assert.Equal(t, 1, byKey["aliyun/acct-main/20275346"].RefCount)
+	assert.Equal(t, 1, byKey["aliyun/acct-main/27029968-cn-hangzhou"].RefCount,
+		"waf 资源引用形态独立三元组（双条目预期行为，不做合并）")
+
+	// 字典序（cloudCertId）：20275346 < 27029968 < 27029968-cn-hangzhou
+	assert.Equal(t, "20275346", got.Items[0].CloudCertID)
+	assert.Equal(t, "27029968", got.Items[1].CloudCertID)
+	assert.Equal(t, "27029968-cn-hangzhou", got.Items[2].CloudCertID)
+}
+
 // TestPlaceholderFingerprintForFormula 占位公式与扫描侧同源（certscan-unresolved
 // 前缀 + 三元组 pipe 连接 cacheKey），确定性可重算。
 func TestPlaceholderFingerprintForFormula(t *testing.T) {

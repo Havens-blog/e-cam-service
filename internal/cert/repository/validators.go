@@ -80,12 +80,15 @@ var collectionValidators = map[string]bson.M{
 	),
 
 	// cert_references 引用扫描发现
+	// product 含 cas（阿里云 CAS 证书库清单形态引用，cert-cas-library-scan）：
+	// 仅引用发现语义，cert_change_items.resourceRef.product enum 不含 cas
+	//（证书库条目无资源绑定语义，不可部署）。
 	CertReferencesCollection: jsonSchema(
 		bson.A{"certFingerprint", "snapshotId", "scannedAt"},
 		bson.M{
 			"certFingerprint":       fingerprintPattern(),
 			"cloud":                 enumStr("aliyun", "tencent", "huawei", "aws", "azure"),
-			"product":               enumStr("cdn", "dcdn", "waf", "alb", "clb", "nlb", "crd"),
+			"product":               enumStr("cdn", "dcdn", "waf", "alb", "clb", "nlb", "crd", "cas"),
 			"clusterId":             str(),
 			"namespace":             str(),
 			"kind":                  str(),

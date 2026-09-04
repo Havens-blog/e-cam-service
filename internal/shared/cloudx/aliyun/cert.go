@@ -41,6 +41,10 @@ const (
 	CertProductALB = "alb"
 	// CertProductNLB 网络型负载均衡 NLB
 	CertProductNLB = "nlb"
+	// CertProductCAS CAS 证书库（SSL 证书服务「我的证书」）清单形态引用：
+	// 仅 ListReferences 发现语义（cert-cas-library-scan），无资源绑定语义——
+	// 不入 certSupportedProducts（UploadCert/BindResource 显式报错）
+	CertProductCAS = "cas"
 )
 
 // certSupportedProducts 首期支持的证书可部署产品（clb 等未实现产品显式报错）
@@ -66,11 +70,11 @@ var (
 // CloudCertRef 云侧证书引用（对齐 CertReference 落库字段需求：
 // cloud/product/resourceId/referencedCloudCertId/accountKey，见 schema.sql cert_references）
 type CloudCertRef struct {
-	Cloud                 string // 固定 "aliyun"
-	Product               string // cdn|dcdn|waf|alb|nlb
-	ResourceID            string // 云资源标识：CDN/DCDN/WAF=域名，ALB/NLB="{LoadBalancerId}/{ListenerId}" 复合形态
-	ReferencedCloudCertID string // 云侧证书 ID（ALB/NLB 为 "{certId}-{region}" 形态）
-	AccountKey            string // 云账号标识（取 CloudAccount.Name）
+	Cloud                 string   // 固定 "aliyun"
+	Product               string   // cdn|dcdn|waf|alb|nlb|cas
+	ResourceID            string   // 云资源标识：CDN/DCDN/WAF=域名，ALB/NLB="{LoadBalancerId}/{ListenerId}" 复合形态，cas=证书名称
+	ReferencedCloudCertID string   // 云侧证书 ID（ALB/NLB 为 "{certId}-{region}" 形态，cas 为数字证书 ID 串）
+	AccountKey            string   // 云账号标识（取 CloudAccount.Name）
 	ServedDomains         []string // ALB 监听规则提取的 served hostname（Host 条件值；非 ALB 产品为空）
 }
 
@@ -85,11 +89,14 @@ type CloudCertInfo struct {
 	CertChainPEM string
 }
 
-// casCertAPI CAS（SSL 证书服务）SDK 窄接口：上传/详情/删除，*cas.Client 天然满足
+// casCertAPI CAS（SSL 证书服务）SDK 窄接口：上传/详情/删除/证书库清单，
+// *cas.Client 天然满足。ListUserCertificateOrder 仅用于只读发现
+// （cert-cas-library-scan 的 cas 产品线），不引入任何写通路。
 type casCertAPI interface {
 	UploadUserCertificate(request *cas.UploadUserCertificateRequest) (*cas.UploadUserCertificateResponse, error)
 	GetUserCertificateDetail(request *cas.GetUserCertificateDetailRequest) (*cas.GetUserCertificateDetailResponse, error)
 	DeleteUserCertificate(request *cas.DeleteUserCertificateRequest) (*cas.DeleteUserCertificateResponse, error)
+	ListUserCertificateOrder(request *cas.ListUserCertificateOrderRequest) (*cas.ListUserCertificateOrderResponse, error)
 }
 
 // cdnCertAPI CDN SDK 窄接口（cert_cdn.go 使用）
@@ -290,6 +297,8 @@ func (a *CertAdapter) ListReferences(ctx context.Context, creds *domain.CloudAcc
 		return a.listALBReferences(ctx, creds)
 	case CertProductNLB:
 		return a.listNLBReferences(ctx, creds)
+	case CertProductCAS:
+		return a.listCASReferences(ctx, creds)
 	default:
 		return nil, certProductNotSupported(product)
 	}

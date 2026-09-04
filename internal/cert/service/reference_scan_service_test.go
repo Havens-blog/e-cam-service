@@ -425,6 +425,49 @@ func TestScanCloudFingerprintResolution(t *testing.T) {
 	assert.NotEqual(t, fpUnknown, fpSHA1, "不同云证书 ID 占位指纹不同")
 }
 
+// TestScanCASProductLine 阿里云证书库（cas）产品线（cert-cas-library-scan）：
+// 产品注册进扫描范围 + 发现→引用落库路径——证书库清单与资源引用同管道
+// （三元组形态），指纹经既有 GetCert 通道解析。
+func TestScanCASProductLine(t *testing.T) {
+	adapter := aliyunAdapter(domain.ProductCAS)
+	adapter.refs[domain.ProductCAS] = []DiscoveredRef{
+		// 新换发证书：resourceId=证书名称、referencedCloudCertId=数字证书 ID
+		{Cloud: "aliyun", Product: "cas", ResourceID: "jlccam.com-2026-09", ReferencedCloudCertID: "27029968", AccountKey: "acc-1"},
+		{Cloud: "aliyun", Product: "cas", ResourceID: "jlccam.com-2026-08", ReferencedCloudCertID: "20275346", AccountKey: "acc-1"},
+	}
+	// 27029968 经 GetCert 解析出真实 SHA256（PEM 通道口径）；20275346 无指纹 → 占位
+	adapter.certs["27029968"] = CloudCertStatus{Exists: true, Fingerprint: dfp(42)}
+
+	h := newScanHarness(t, []CloudScanAdapter{adapter}, &fakeAssetSource{
+		counts: map[CloudProductKey]int{{Cloud: domain.CloudAliyun, Product: domain.ProductCAS}: 2},
+	})
+
+	res, err := h.svc.StartScan(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, domain.ScanStatusDone, res.Status)
+	require.Equal(t, 1, res.ChannelsAttempted, "cas 产品线独立扫描通道")
+	assert.Empty(t, res.PartialFailures)
+
+	refs, err := h.refs.ListBySnapshotID(context.Background(), res.SnapshotID)
+	require.NoError(t, err)
+	require.Len(t, refs, 2)
+	byResource := make(map[string]domain.CertReference, len(refs))
+	for _, r := range refs {
+		byResource[r.ResourceID] = r
+	}
+	newRef := byResource["jlccam.com-2026-09"]
+	assert.Equal(t, domain.ProductCAS, newRef.Product)
+	assert.Equal(t, domain.CloudAliyun, newRef.Cloud)
+	assert.Equal(t, "27029968", newRef.ReferencedCloudCertID)
+	assert.Equal(t, "acc-1", newRef.AccountKey)
+	assert.Equal(t, dfp(42), newRef.CertFingerprint, "证书库条目指纹经 GetCert 解析为真实 SHA256")
+
+	// 无指纹可解析的条目 → 确定性占位指纹（引用保留，云证书 ID 关联）
+	legacyRef := byResource["jlccam.com-2026-08"]
+	assert.Regexp(t, validFingerprintRe, legacyRef.CertFingerprint)
+	assert.NotEqual(t, dfp(42), legacyRef.CertFingerprint)
+}
+
 // TestScanUnresolvedFingerprintStable 占位指纹确定性：同云证书 ID 多处引用
 // 指纹一致（跨资源稳定，供后续登记关联去重）。
 func TestScanUnresolvedFingerprintStable(t *testing.T) {
@@ -830,7 +873,7 @@ func TestCloudShimMetadata(t *testing.T) {
 		products []domain.Product
 	}{
 		{"aliyun", NewAliyunScanAdapter(nil), domain.CloudAliyun,
-			[]domain.Product{domain.ProductCDN, domain.ProductDCDN, domain.ProductWAF, domain.ProductALB, domain.ProductNLB}},
+			[]domain.Product{domain.ProductCDN, domain.ProductDCDN, domain.ProductWAF, domain.ProductALB, domain.ProductNLB, domain.ProductCAS}},
 		{"tencent", NewTencentScanAdapter(nil), domain.CloudTencent,
 			[]domain.Product{domain.ProductCDN, domain.ProductWAF, domain.ProductCLB}},
 		{"huawei", NewHuaweiScanAdapter(nil), domain.CloudHuawei,

@@ -20,6 +20,8 @@ const (
 // Product 云产品枚举。对齐 schema.sql cert_references.product enum。
 // crd 仅出现在引用发现（cert_references），可部署产品为 cdn/dcdn/waf/alb/clb/nlb
 // （见 schema.sql cert_change_items.resourceRef.product enum）。
+// cas 为阿里云 CAS 证书库清单形态引用（cert-cas-library-scan）：同属引用发现、
+// 无资源绑定语义，不可部署（不进 cert_change_items.resourceRef enum）。
 type Product string
 
 const (
@@ -30,6 +32,8 @@ const (
 	ProductCLB  Product = "clb"
 	ProductNLB  Product = "nlb"
 	ProductCRD  Product = "crd"
+	// ProductCAS 阿里云 CAS 证书库（SSL 证书服务「我的证书」）清单条目
+	ProductCAS Product = "cas"
 )
 
 // CertReference 引用扫描发现文档（cert_references）。
@@ -46,6 +50,6 @@ type CertReference struct {
 	ReferencedCloudCertID string             `bson:"referencedCloudCertId,omitempty"` // 云侧证书 ID
 	AccountKey            string             `bson:"accountKey,omitempty"`
 	ServedDomains         []string           `bson:"servedDomains,omitempty"` // ALB 监听规则提取的 served hostname（external DNS 记录→ALB 资源级 expected 对齐）
-	SnapshotID            string             `bson:"snapshotId"` // 来源扫描快照
-	ScannedAt             time.Time          `bson:"scannedAt"`  // DEFAULT=now()
+	SnapshotID            string             `bson:"snapshotId"`              // 来源扫描快照
+	ScannedAt             time.Time          `bson:"scannedAt"`               // DEFAULT=now()
 }

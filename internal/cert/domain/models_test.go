@@ -147,8 +147,8 @@ func TestEnumValuesMatchSchema(t *testing.T) {
 		[]string{string(CloudAliyun), string(CloudTencent), string(CloudHuawei), string(CloudAWS), string(CloudAzure)},
 		[]string{"aliyun", "tencent", "huawei", "aws", "azure"})
 	assertEnum("product",
-		[]string{string(ProductCDN), string(ProductDCDN), string(ProductWAF), string(ProductALB), string(ProductCLB), string(ProductNLB), string(ProductCRD)},
-		[]string{"cdn", "dcdn", "waf", "alb", "clb", "nlb", "crd"})
+		[]string{string(ProductCDN), string(ProductDCDN), string(ProductWAF), string(ProductALB), string(ProductCLB), string(ProductNLB), string(ProductCRD), string(ProductCAS)},
+		[]string{"cdn", "dcdn", "waf", "alb", "clb", "nlb", "crd", "cas"})
 	assertEnum("scanSnapshot.status",
 		[]string{string(ScanStatusRunning), string(ScanStatusDone), string(ScanStatusFailed)},
 		[]string{"running", "done", "failed"})

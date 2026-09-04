@@ -187,6 +187,7 @@ func NewReferenceScanService(
 //  4. 逐云顺序发现（部分失败不阻塞其他云，记入 partialFailures）；
 //  5. 写引用（certFingerprint 解析 + snapshotId/scannedAt 写通）；
 //  6. 收敛：coverageMeta（covered=去重资源数）+ 终态（done / failed）。
+//
 // StartScan 全量引用扫描编排（同步至终态；调度器调用）：beginScan + runScan 串行。
 // HTTP 立即扫描走 StartScanAsync（beginScan 同步建 running 快照 + 后台 runScan），
 // 避免真实账号发现+GetCert 指纹解析耗时超过 HTTP/axios 30s 超时。
@@ -742,10 +743,13 @@ func (a cloudScanAdapter) GetCert(ctx context.Context, creds *sharedomain.CloudA
 }
 
 // NewAliyunScanAdapter 阿里云扫描适配（3.1 五方法适配只读面）。
+// products 含 cas（cert-cas-library-scan）：CAS 证书库清单与资源引用同管道，
+// 发现预览清单 = 资源引用 ∪ 证书库全集；cas 条目为清单形态引用（无资源绑定
+// 语义），变更/部署面（changelist、deployer）不感知 cas。
 func NewAliyunScanAdapter(a *aliyun.CertAdapter) CloudScanAdapter {
 	return cloudScanAdapter{
 		cloud:    domain.CloudAliyun,
-		products: []domain.Product{domain.ProductCDN, domain.ProductDCDN, domain.ProductWAF, domain.ProductALB, domain.ProductNLB},
+		products: []domain.Product{domain.ProductCDN, domain.ProductDCDN, domain.ProductWAF, domain.ProductALB, domain.ProductNLB, domain.ProductCAS},
 		listRefs: func(ctx context.Context, creds *sharedomain.CloudAccount, product domain.Product) ([]DiscoveredRef, error) {
 			refs, err := a.ListReferences(ctx, creds, string(product))
 			if err != nil {

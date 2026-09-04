@@ -781,12 +781,12 @@ func newRootProbeHarness(t *testing.T, targets []dns.ProbeTarget) (*probeService
 	t.Helper()
 	probes := &fakeProbeRepo{}
 	svc := &probeService{
-		certs:    certtest.NewFakeCertificateRepo(),
-		probes:   probes,
-		exempts:  &fakeExemptionRepo{},
-		alertCfg: &fakeAlertCfgRepo{cfg: domain.DefaultAlertConfig()},
-		orders:   &fakeChangeOrderRepo{},
-		dialer:   &blockingDialer{delay: time.Millisecond},
+		certs:     certtest.NewFakeCertificateRepo(),
+		probes:    probes,
+		exempts:   &fakeExemptionRepo{},
+		alertCfg:  &fakeAlertCfgRepo{cfg: domain.DefaultAlertConfig()},
+		orders:    &fakeChangeOrderRepo{},
+		dialer:    &blockingDialer{delay: time.Millisecond},
 		dnsSource: &rootTargetSource{targets: targets},
 	}
 	return svc, probes
@@ -840,4 +840,43 @@ func TestTriggerProbeRootAsyncEmptyEqualsFull(t *testing.T) {
 	}
 	err := svc.TriggerProbeRootAsync(context.Background(), "")
 	assert.ErrorIs(t, err, ErrProbeRunning)
+}
+
+// ==================== buildReferenceIndex（expected 侧引用索引） ====================
+
+// TestBuildReferenceIndex_ExcludesCAS cas 证书库条目不参与 expected 侧引用索引
+// （cert-cas-library-scan 行为锁定）：refIndex 仅聚合 cdn/dcdn/waf（resourceId=域名）
+// 与 alb/nlb（ServedDomains 展开）；cas 条目为证书库清单形态（resourceId=证书名称、
+// 非资源绑定域名），混入会使探测 expected 侧误判——锁定该排除行为。
+func TestBuildReferenceIndex_ExcludesCAS(t *testing.T) {
+	snaps := certtest.NewFakeScanSnapshotRepo()
+	refs := certtest.NewFakeCertReferenceRepo()
+	snapID, err := snaps.Create(context.Background(), &domain.ScanSnapshot{StartedAt: time.Now()})
+	require.NoError(t, err)
+	require.NoError(t, snaps.MarkFinished(context.Background(), snapID, domain.ScanStatusDone, ""))
+	_, err = refs.CreateMulti(context.Background(), []domain.CertReference{
+		// cas 证书库条目（若被聚合即破坏 expected 侧口径）
+		{CertFingerprint: dfp(1), Cloud: domain.CloudAliyun, Product: domain.ProductCAS,
+			ResourceID: "jlccam.com-2026-09", ReferencedCloudCertID: "27029968",
+			AccountKey: "acc-1", SnapshotID: snapID},
+		// 对照组：cdn 资源引用照常入索引（expected 侧行为不变）
+		{CertFingerprint: dfp(2), Cloud: domain.CloudAliyun, Product: domain.ProductCDN,
+			ResourceID: "cdn.example.com", ReferencedCloudCertID: "111",
+			AccountKey: "acc-1", SnapshotID: snapID},
+	})
+	require.NoError(t, err)
+
+	svc := &probeService{
+		probes:    &fakeProbeRepo{},
+		certs:     certtest.NewFakeCertificateRepo(),
+		exempts:   &fakeExemptionRepo{},
+		alertCfg:  &fakeAlertCfgRepo{cfg: domain.DefaultAlertConfig()},
+		orders:    &fakeChangeOrderRepo{},
+		refs:      refs,
+		snapshots: snaps,
+	}
+	idx := svc.buildReferenceIndex(context.Background())
+	require.NotNil(t, idx)
+	assert.NotEmpty(t, idx["cdn|cdn.example.com"], "cdn 引用照常聚合")
+	assert.Empty(t, idx["cas|jlccam.com-2026-09"], "cas 条目不参与 refIndex 聚合")
 }
