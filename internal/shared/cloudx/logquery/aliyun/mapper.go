@@ -14,11 +14,12 @@ import (
 type mapperKind string
 
 const (
-	kindALB       mapperKind = "alb"        // 阿里 ALB 访问日志(topic=alb_layer7_access_log;含聚合 LB logstore 同 schema)
-	kindWAF3      mapperKind = "waf3"       // 阿里 WAF3.0 访问日志(topic=waf_access_log)
-	kindDCDN      mapperKind = "dcdn"       // DCDN 边缘实时日志(同 CDN 离线转存 schema)
-	kindAkamaiCDN mapperKind = "akamai_cdn" // Akamai CDN(自采,69 字段)
-	kindAkamaiWAF mapperKind = "akamai_waf" // Akamai WAF(自采,CEF 展开为字段)
+	kindALB        mapperKind = "alb"         // 阿里 ALB 访问日志(topic=alb_layer7_access_log;含聚合 LB logstore 同 schema)
+	kindWAF3       mapperKind = "waf3"        // 阿里 WAF3.0 访问日志(topic=waf_access_log)
+	kindDCDN       mapperKind = "dcdn"        // DCDN 边缘实时日志(CDN 实时投递(监控)同构,复用)
+	kindCDNOffline mapperKind = "cdn_offline" // CDN 离线转存(独立 PascalCase schema,域名在 RequestURL)
+	kindAkamaiCDN  mapperKind = "akamai_cdn"  // Akamai CDN(自采,69 字段)
+	kindAkamaiWAF  mapperKind = "akamai_waf"  // Akamai WAF(自采,CEF 展开为字段)
 )
 
 // mapEntry 按 kind 把一条 SLS 原始日志映射为统一模型(Raw 全量保留,ADR D3)。
@@ -36,6 +37,8 @@ func mapEntry(kind mapperKind, m logquery.LogMeta, raw map[string]string) logque
 		return mapWAF3(m, r, raw)
 	case kindDCDN:
 		return mapDCDN(m, r, raw)
+	case kindCDNOffline:
+		return mapCDNOffline(m, r, raw)
 	case kindAkamaiCDN:
 		return mapAkamaiCDN(m, r, raw)
 	case kindAkamaiWAF:
@@ -109,7 +112,7 @@ func mapWAF3(m logquery.LogMeta, r map[string]any, raw map[string]string) *logqu
 	}
 }
 
-// mapDCDN DCDN 边缘实时日志 / CDN 转存 -> CDNLogEntry(field-mapping.md §三.7)。
+// mapDCDN DCDN 边缘实时日志 / CDN 实时投递(监控) -> CDNLogEntry(field-mapping.md §三.7)。
 func mapDCDN(m logquery.LogMeta, r map[string]any, raw map[string]string) *logquery.CDNLogEntry {
 	if raw["domain"] != "" {
 		m.ResourceID = raw["domain"]
@@ -123,7 +126,8 @@ func mapDCDN(m logquery.LogMeta, r map[string]any, raw map[string]string) *logqu
 		URL:       buildURL(raw["scheme"], raw["domain"], raw["uri"], raw["uri_param"]),
 		Status:    int(logquery.Int(raw["return_code"])),
 		BytesSent: logquery.Int(raw["response_size"]),
-		LatencyMs: secondsToMs(raw["request_time"]),
+		// request_time 已是 ms(边缘日志量纲;fixture 实测 2~10001,按秒解读会是小时级)
+		LatencyMs: logquery.Int(raw["request_time"]),
 		Referer:   buildURL(raw["refer_protocol"], raw["refer_domain"], raw["refer_uri"]),
 		UserAgent: raw["user_agent"],
 		// via_info "cache15.l2eu95-4[161,0], ens-cache5.cn9564[236,0]":
@@ -135,6 +139,48 @@ func mapDCDN(m logquery.LogMeta, r map[string]any, raw map[string]string) *logqu
 	// hit_info "-,WS|CHARGE|NOTLAST":取 "|" 首段再取 "," 首段做命中率判据
 	e.CacheHit = logquery.NormalizeCacheHit(firstSegment(firstSegment(raw["hit_info"], "|"), ","))
 	return e
+}
+
+// mapCDNOffline CDN 离线转存 -> CDNLogEntry(field-mapping.md §三.10)。
+// 独立 PascalCase schema,与 DCDN 完全不同(Phase 0 误判同构,2026-09-04 实测独立);
+// 域名无独立字段,藏在 RequestURL 里。RequestTime 实测 78~194 与 API 耗时吻合,
+// 按 ms 语义映射。ProxyIP(回源代理)无统一字段对应,留 Raw。
+func mapCDNOffline(m logquery.LogMeta, r map[string]any, raw map[string]string) *logquery.CDNLogEntry {
+	host := domainFromURL(raw["RequestURL"])
+	if host != "" {
+		m.ResourceID = host // 转存任务即站点,ResourceID 收敛到域名(与 DCDN/Akamai 一致)
+	}
+	referer := raw["Referer"]
+	if referer == "-" {
+		referer = ""
+	}
+	return &logquery.CDNLogEntry{
+		Meta: m,
+		// Time 为 nginx 格式 "3/Sep/2026:11:23:01 +0800"(ParseTimeMs 已支持)
+		Timestamp: logquery.ParseTimeMs(raw["Time"]),
+		ClientIP:  raw["RemoteIP"],
+		Method:    raw["HTTPMethod"],
+		Host:      host,
+		URL:       raw["RequestURL"],
+		Status:    int(logquery.Int(raw["HTTPStatus"])),
+		BytesSent: logquery.Int(raw["ResponseSize"]),
+		LatencyMs: logquery.Int(raw["RequestTime"]),
+		Referer:   referer,
+		UserAgent: raw["UserAgent"],
+		CacheHit:  logquery.NormalizeCacheHit(raw["HitInfo"]),
+		Raw:       r,
+	}
+}
+
+// domainFromURL 从完整 URL 提取 host(去端口;解析失败容忍为空)。
+func domainFromURL(u string) string {
+	if u == "" {
+		return ""
+	}
+	if parsed, err := url.Parse(u); err == nil {
+		return parsed.Hostname()
+	}
+	return ""
 }
 
 // mapAkamaiCDN Akamai CDN(自采) -> CDNLogEntry(field-mapping.md §三.8)。

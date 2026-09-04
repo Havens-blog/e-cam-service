@@ -2,6 +2,7 @@ package aliyun
 
 import (
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -220,6 +221,85 @@ func TestMapAkamaiWAFGolden(t *testing.T) {
 	if e.Host != "wmsc.lcsc.com" {
 		t.Errorf("host = %q, want wmsc.lcsc.com", e.Host)
 	}
+}
+
+// TestMapCDNMonitorGolden CDN 实时投递(监控)golden:与 DCDN 边缘实时同构,
+// 复用 kindDCDN mapper(fixture: aliyun-cdn-monitor,2026-09-04 实时拉取)。
+func TestMapCDNMonitorGolden(t *testing.T) {
+	f := loadFixture(t, "aliyun-cdn-monitor")
+	for i, raw := range f.Samples {
+		e, ok := mapEntry(kindDCDN, testMeta(f), raw).(*logquery.CDNLogEntry)
+		if !ok {
+			t.Fatalf("sample %d: not CDNLogEntry", i)
+		}
+		if e.Timestamp <= 0 || e.Host == "" || e.Status == 0 {
+			t.Errorf("sample %d: core fields bad: %+v", i, e)
+		}
+		if e.Host != raw["domain"] {
+			t.Errorf("sample %d: host = %q, want domain %q", i, e.Host, raw["domain"])
+		}
+	}
+	e, _ := mapEntry(kindDCDN, testMeta(f), f.Samples[0]).(*logquery.CDNLogEntry)
+	if e.Timestamp != 1788488570000 {
+		t.Errorf("timestamp = %d, want 1788488570000", e.Timestamp)
+	}
+	if e.Host != "static-passport.jlc.com" {
+		t.Errorf("host = %q, want static-passport.jlc.com", e.Host)
+	}
+	// request_time 已是 ms 语义(不能套 ALB 的秒->ms 换算,曾放大 1000 倍)
+	if want := int64(2); e.LatencyMs != want {
+		t.Errorf("latency = %d, want %d(request_time 原值即 ms)", e.LatencyMs, want)
+	}
+}
+
+// TestMapCDNOfflineGolden CDN 离线转存(独立 PascalCase schema)golden
+// (field-mapping.md §三.10;fixture: aliyun-cdn-offline,2026-09-04 实时拉取)。
+// 坑位:Time 为 nginx 格式 '3/Sep/2026:11:23:01 +0800';域名藏在 RequestURL 里;
+// RequestTime 为 ms 语义(实测 78~194 与 API 耗时吻合)。
+func TestMapCDNOfflineGolden(t *testing.T) {
+	f := loadFixture(t, "aliyun-cdn-offline")
+	for i, raw := range f.Samples {
+		e, ok := mapEntry(kindCDNOffline, testMeta(f), raw).(*logquery.CDNLogEntry)
+		if !ok {
+			t.Fatalf("sample %d: not CDNLogEntry", i)
+		}
+		if e.Timestamp <= 0 {
+			t.Errorf("sample %d: timestamp bad(Time=%q)", i, raw["Time"])
+		}
+		if e.Host == "" || e.Host != hostOf(raw["RequestURL"]) {
+			t.Errorf("sample %d: host not parsed from RequestURL: %q vs %q", i, e.Host, raw["RequestURL"])
+		}
+		if e.URL != raw["RequestURL"] || e.ClientIP != raw["RemoteIP"] {
+			t.Errorf("sample %d: url/clientip not mapped: %q / %q", i, e.URL, e.ClientIP)
+		}
+		if e.Status == 0 || e.BytesSent == 0 {
+			t.Errorf("sample %d: status/bytes empty", i)
+		}
+		if len(e.Raw) != len(raw) {
+			t.Errorf("sample %d: raw not preserved: %d != %d", i, len(e.Raw), len(raw))
+		}
+	}
+	e, _ := mapEntry(kindCDNOffline, testMeta(f), f.Samples[0]).(*logquery.CDNLogEntry)
+	if e.Timestamp != 1788405781000 {
+		t.Errorf("timestamp = %d, want 1788405781000('3/Sep/2026:11:23:01 +0800' -> UTC)", e.Timestamp)
+	}
+	if e.Status != 200 || e.BytesSent != 507 || e.LatencyMs != 194 {
+		t.Errorf("status/bytes/latency = %d/%d/%d, want 200/507/194", e.Status, e.BytesSent, e.LatencyMs)
+	}
+	if e.CacheHit != "miss" {
+		t.Errorf("cache hit = %q, want miss(HitInfo=MISS)", e.CacheHit)
+	}
+	if e.Meta.ResourceID != "www.jlcfa.com" {
+		t.Errorf("resource id = %q, want www.jlcfa.com(域名取自 RequestURL)", e.Meta.ResourceID)
+	}
+}
+
+// hostOf 从 URL 提取 host(测试辅助,与 mapper 内 domainFromURL 同逻辑)。
+func hostOf(u string) string {
+	if u2, err := url.Parse(u); err == nil {
+		return u2.Hostname()
+	}
+	return ""
 }
 
 // TestMapEntryUnknownKind 未知 kind 返回 nil(新增源未配 mapper 时不静默产出错误数据)。

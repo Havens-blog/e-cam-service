@@ -3,9 +3,11 @@
 // Phase 0 实测(source-status.md):阿里侧全部日志已汇聚 SLS,无需碰
 // Kafka/日志文件包;每账号 8 类源按固定 catalog 查询:
 //   - SLB:cn-shenzhen/jlc-lb-log(ALB 实例流 + 聚合流)、eu-central-1/jlc-prod-overseas-log(海外)
-//   - WAF:eu-central-1 wafnew-project(WAF3.0)、cn-shenzhen 云安全中心渠道 wafng-logstore
-//   - CDN:cn-shenzhen dcdn-edge-rtlog-*(DCDN 边缘实时)、jlc-prod-cdn-log(域名转存,
-//     Phase 0 观察期无数据但 schema 与 DCDN 转存同构)、jlc-prod-akamai-cdnwaf-log(Akamai CDN/WAF 自采)
+//   - WAF:eu-central-1 wafnew-project(WAF3.0)、cn-shenzhen 云安全中心渠道 wafng-logstore、
+//     eu-central-1 Akamai 自采(jlc-prod-akamai-waf-log)
+//   - CDN:cn-shenzhen dcdn-edge-rtlog-*(DCDN 边缘实时)、jlc-prod-cdn-log-monitor
+//     (CDN 实时投递,与 DCDN 同构)、jlc-prod-cdn-log(离线转存,独立 PascalCase
+//     schema,域名在 RequestURL)、eu-central-1 Akamai 自采(jlc-prod-akamai-cdn-log)
 package aliyun
 
 import (
@@ -64,6 +66,13 @@ var catalog = []slsSource{
 		logstore: "jlc-prod-akamai-cdn-log", name: "Akamai CDN(自采)", note: "Akamai CDN 日志自采入库", mixedDomains: true},
 	{region: "cn-shenzhen", project: "dcdn-edge-rtlog-cn-42d9825f", logType: logquery.LogTypeCDN, kind: kindDCDN,
 		logstore: "dcdn-edge-rtlog", name: "DCDN 边缘实时", note: "DCDN 实时日志", mixedDomains: true},
+	// CDN(非 DCDN)实时投递(监控):schema 与 DCDN 边缘实时完全同构,复用 mapper 与域名扇出
+	{region: "cn-shenzhen", project: "jlc-prod-cdn-log-monitor", logType: logquery.LogTypeCDN, kind: kindDCDN,
+		logstore: "jlc-prod-cdn-log-monitor", name: "CDN 实时(监控投递)", note: "CDN 实时日志投递(监控),schema 同 DCDN", mixedDomains: true},
+	// CDN 离线转存:logstore 即转存任务(单站点,PascalCase schema),动态枚举
+	// (当前 jlcfa-his=www.jlcfa.com + api_forface3d_com;metrics/internal 流被过滤)
+	{region: "cn-shenzhen", project: "jlc-prod-cdn-log", logType: logquery.LogTypeCDN, kind: kindCDNOffline,
+		logstore: "", name: "CDN 离线转存", note: "CDN 离线日志转存(按转存任务)"},
 }
 
 // provider 阿里云 SLS 日志 provider(单账号)。

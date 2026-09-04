@@ -149,6 +149,7 @@ func (e *SLBLogEntry) GetMeta() LogMeta { return e.Meta }
 //   - ISO8601 Z 尾:"2026-08-27T09:56:02.000Z"
 //   - 纯数字字符串/数值:按量级自适应 sec/ms/µs/ns(如 Akamai _unixtimestamp_ 为纳秒)
 //   - "秒.小数" 形态:"1787824562.04"(华为 ELB 首列)
+//   - nginx 访问日志格式:"3/Sep/2026:11:23:01 +0800"(CDN 离线转存 Time)
 //
 // 解析失败返回 0(缺失容忍:字段可空,UI 显 -)。
 func ParseTimeMs(v any) int64 {
@@ -174,7 +175,11 @@ func ParseTimeMs(v any) int64 {
 			}
 			return 0
 		}
-		for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.000Z", "2006-01-02T15:04:05Z"} {
+		for _, layout := range []string{
+			time.RFC3339Nano, time.RFC3339,
+			"2006-01-02T15:04:05.000Z", "2006-01-02T15:04:05Z",
+			"2/Jan/2006:15:04:05 -0700", // nginx 访问日志格式(CDN 离线转存 Time)
+		} {
 			if ts, err := time.Parse(layout, s); err == nil {
 				return ts.UnixMilli()
 			}
