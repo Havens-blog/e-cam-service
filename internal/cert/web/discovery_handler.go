@@ -47,11 +47,12 @@ func (h *DiscoveryHandler) RegisterRoutes(g *gin.RouterGroup) {
 }
 
 // DiscoveryPreviewEntryVO 预览唯一证书条目（AC 七类字段：cloud/accountKey/
-// cloudCertId/refCount/inLedger/notAfter/parseable）。
+// cloudCertId/refCount/inLedger/notAfter/parseable；label 为可读名补充）。
 type DiscoveryPreviewEntryVO struct {
 	Cloud       string `json:"cloud"`
 	AccountKey  string `json:"accountKey"`
 	CloudCertID string `json:"cloudCertId"`
+	Label       string `json:"label,omitempty"` // 引用 resourceId 采样（cas=证书名称、cdn/waf=域名、alb/nlb=复合 ID）
 	RefCount    int    `json:"refCount"`
 	InLedger    bool   `json:"inLedger"`
 	NotAfter    string `json:"notAfter"` // 台账 RFC3339；未登记为占位文案
@@ -230,6 +231,7 @@ func toDiscoveryPreviewVO(v service.DiscoveryPreview) DiscoveryPreviewVO {
 			Cloud:       it.Cloud,
 			AccountKey:  it.AccountKey,
 			CloudCertID: it.CloudCertID,
+			Label:       it.Label,
 			RefCount:    it.RefCount,
 			InLedger:    it.InLedger,
 			NotAfter:    notAfter,

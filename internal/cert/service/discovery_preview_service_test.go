@@ -141,6 +141,9 @@ func TestDiscoveryPreview_SC1_DedupAndExclusions(t *testing.T) {
 		assert.False(t, it.InLedger, "台账空时全部 inLedger=false（%s/%s）", it.Cloud, it.CloudCertID)
 		assert.Nil(t, it.NotAfter)
 	}
+	// label = 首个引用 resourceId（预览可读名：cas=证书名称、cdn/waf=域名）
+	assert.Equal(t, "cdn-res-1", got.Items[0].Label)
+	assert.Equal(t, "waf-res-1", got.Items[6].Label)
 }
 
 // ---------------------------------------------------------------------

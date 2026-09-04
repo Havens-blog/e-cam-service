@@ -46,7 +46,8 @@ type DiscoveryPreviewEntry struct {
 	Cloud       string
 	AccountKey  string
 	CloudCertID string
-	RefCount    int // 快照内该三元组的引用资源数
+	Label       string // 可读名（引用 resourceId 采样：cas=证书名称、cdn/waf=域名、alb/nlb=复合 ID）；空=引用未带
+	RefCount    int    // 快照内该三元组的引用资源数
 	InLedger    bool
 	NotAfter    *time.Time // 双通道命中且台账可查时为台账值；未登记为 nil（web 层占位显示）
 	Parseable   bool       // false=不可选组（华为云/AWS IAM-hosted）
@@ -107,6 +108,7 @@ type previewEntryAccum struct {
 	accountKey   string
 	cloudCertID  string
 	refCount     int
+	label        string // 首个引用的 resourceId（cas=证书名称、cdn/waf=域名、alb/nlb=复合 ID），预览可读性
 	fingerprints map[string]struct{}
 }
 
@@ -150,6 +152,9 @@ func (s *discoveryPreviewService) Preview(ctx context.Context) (DiscoveryPreview
 			order = append(order, k)
 		}
 		acc.refCount++
+		if acc.label == "" && r.ResourceID != "" {
+			acc.label = r.ResourceID
+		}
 		if r.CertFingerprint != "" {
 			if acc.fingerprints == nil {
 				acc.fingerprints = make(map[string]struct{}, 2)
@@ -196,6 +201,7 @@ func (s *discoveryPreviewService) buildEntry(
 		Cloud:       acc.cloud,
 		AccountKey:  acc.accountKey,
 		CloudCertID: acc.cloudCertID,
+		Label:       acc.label,
 		RefCount:    acc.refCount,
 	}
 
