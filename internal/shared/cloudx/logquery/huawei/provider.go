@@ -1,6 +1,7 @@
 package huawei
 
 import (
+	"encoding/json"
 	"context"
 	"fmt"
 	"sort"
@@ -308,6 +309,205 @@ func (p *provider) fetchStreamLogs(ctx context.Context, groupID string, kind map
 		}
 	}
 	return entries, nil
+}
+
+// Aggregate 窗口内真实聚合(plan.md §8):LTS is_analysis_query 管道 SQL
+// 下推(活体验证 24h/98.7 万条 1.2s),每流分桶(+TopN,仅 ELB host 维度),
+// Total = 分桶求和。单流失败隔离。方言差异见 aggregate.go 头注。
+func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, params logquery.AggregateParams) (*logquery.AggregateResult, error) {
+	if params.EndTime <= params.StartTime {
+		return nil, fmt.Errorf("huawei logquery aggregate: invalid time window")
+	}
+	if params.BucketSec <= 0 {
+		params.BucketSec = logquery.PickBucketSec(params.StartTime, params.EndTime)
+	}
+	ids, err := p.groupIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resources := make(map[string]bool, len(params.Resources))
+	for _, r := range params.Resources {
+		resources[r] = true
+	}
+
+	type streamTarget struct {
+		group  hGroup
+		kind   mapperKind
+		stream ltsmodel.ListLogStreamsResponseBody1LogStreams
+	}
+	var targets []streamTarget
+	for _, src := range catalog {
+		if id := ids[src.group]; id == "" {
+			continue
+		}
+		streams, err := p.lts().ListLogStreams(&ltsmodel.ListLogStreamsRequest{
+			LogGroupName: &src.group,
+		})
+		if err != nil {
+			p.logger.Warn("[logquery-huawei] aggregate list streams failed",
+				elog.String("group", src.group), elog.FieldErr(err))
+			continue
+		}
+		for _, s := range derefStreams(streams.LogStreams) {
+			kind, ok := classify(src.group, s.LogStreamName)
+			if !ok {
+				continue
+			}
+			logType := logquery.LogTypeWAF
+			if kind == kindELB {
+				logType = logquery.LogTypeSLB
+			}
+			if logType != p.logType {
+				continue
+			}
+			if len(resources) > 0 {
+				hit := false
+				for _, r := range params.Resources {
+					if r == s.LogStreamName || r == src.group+"/"+s.LogStreamName {
+						hit = true
+						break
+					}
+				}
+				if !hit {
+					continue
+				}
+			}
+			targets = append(targets, streamTarget{group: src, kind: kind, stream: s})
+		}
+	}
+
+	results := make([]*logquery.AggregateResult, len(targets))
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	for i, tgt := range targets {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			results[i] = p.aggregateStream(ids[tgt.group.group], tgt.kind, tgt.stream, params)
+		}()
+	}
+	wg.Wait()
+
+	merged := &logquery.AggregateResult{}
+	for _, r := range results {
+		if r == nil {
+			continue
+		}
+		merged.Total += r.Total
+		merged.Buckets = append(merged.Buckets, r.Buckets...)
+		merged.TopN = append(merged.TopN, r.TopN...)
+	}
+	sort.Slice(merged.Buckets, func(i, j int) bool {
+		return merged.Buckets[i].Timestamp < merged.Buckets[j].Timestamp
+	})
+	if len(merged.TopN) > 1 {
+		counts := make(map[string]int64, len(merged.TopN))
+		for _, t := range merged.TopN {
+			counts[t.Name] += t.Count
+		}
+		merged.TopN = merged.TopN[:0]
+		for name, c := range counts {
+			merged.TopN = append(merged.TopN, logquery.TopNItem{Name: name, Count: c})
+		}
+		sort.Slice(merged.TopN, func(i, j int) bool {
+			return merged.TopN[i].Count > merged.TopN[j].Count
+		})
+	}
+	const providerTopN = 10
+	if len(merged.TopN) > providerTopN {
+		merged.TopN = merged.TopN[:providerTopN]
+	}
+	return merged, nil
+}
+
+// aggregateStream 单流两条 SQL:分桶 + TopN(无维度的流跳过 TopN)。
+// analysisLogs 行为 map[string]any;t 已是毫秒(LTS __time 量纲)。
+func (p *provider) aggregateStream(groupID string, kind mapperKind, stream ltsmodel.ListLogStreamsResponseBody1LogStreams, params logquery.AggregateParams) *logquery.AggregateResult {
+	result := &logquery.AggregateResult{}
+	runSQL := func(sql string, lines int32) ([]map[string]any, error) {
+		body := &ltsmodel.QueryLtsLogParams{
+			StartTime:       strconv.FormatInt(params.StartTime, 10),
+			EndTime:         strconv.FormatInt(params.EndTime, 10),
+			Query:           &sql,
+			IsAnalysisQuery: boolPtr(true),
+			Limit:           &lines,
+		}
+		resp, err := p.lts().ListLogs(&ltsmodel.ListLogsRequest{
+			LogGroupId:  groupID,
+			LogStreamId: stream.LogStreamId,
+			Body:        body,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("lts aggregate sql %s: %w", stream.LogStreamName, err)
+		}
+		if resp.AnalysisLogs == nil {
+			return nil, nil
+		}
+		rows := make([]map[string]any, 0, len(*resp.AnalysisLogs))
+		for _, raw := range *resp.AnalysisLogs {
+			if m, ok := raw.(map[string]any); ok {
+				rows = append(rows, m)
+			}
+		}
+		return rows, nil
+	}
+
+	bucketRows, err := runSQL(buildAggregateBucketSQL(params.BucketSec), 200)
+	if err != nil {
+		p.logger.Warn("[logquery-huawei] aggregate bucket sql failed",
+			elog.String("stream", stream.LogStreamName), elog.FieldErr(err))
+		return result
+	}
+	for _, row := range bucketRows {
+		ms, ok := jsonInt64(row["t"])
+		c, ok2 := jsonInt64(row["c"])
+		if !ok || !ok2 {
+			continue
+		}
+		result.Buckets = append(result.Buckets, logquery.AggregateBucket{Timestamp: ms, Count: c})
+		result.Total += c
+	}
+	if expr := aggregateTopNExpr(kind); expr != "" {
+		topnRows, err := runSQL(buildAggregateTopNSQL(expr, 10), 10)
+		if err != nil {
+			p.logger.Warn("[logquery-huawei] aggregate topn sql failed",
+				elog.String("stream", stream.LogStreamName), elog.FieldErr(err))
+		} else {
+			for _, row := range topnRows {
+				k, ok := row["k"].(string)
+				c, ok2 := jsonInt64(row["c"])
+				if !ok || k == "" || !ok2 {
+					continue
+				}
+				result.TopN = append(result.TopN, logquery.TopNItem{Name: k, Count: c})
+			}
+		}
+	}
+	return result
+}
+
+// jsonInt64 analysisLogs 行值容错取数。华为 SDK 对动态字段用 json.Number
+// 反序列化(非 float64/string),必须显式处理,否则整行被丢(total 恒 0)。
+func jsonInt64(v any) (int64, bool) {
+	switch t := v.(type) {
+	case float64:
+		return int64(t), true
+	case int64:
+		return t, true
+	case int:
+		return int64(t), true
+	case json.Number:
+		if f, err := t.Float64(); err == nil {
+			return int64(f), true
+		}
+	case string:
+		if f, err := strconv.ParseFloat(t, 64); err == nil {
+			return int64(f), true
+		}
+	}
+	return 0, false
 }
 
 func boolPtr(b bool) *bool { return &b }

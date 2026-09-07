@@ -321,6 +321,150 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 	return entries, nil
 }
 
+// Aggregate 窗口内真实聚合(plan.md §8):每 logstore 两条检索|SQL——
+// 时间分桶(求和即精确总数)+ TopN(按 kind 维度),百万/千万级行下推
+// SLS 分析引擎,只回传分桶与分组结果。单 logstore 失败跳过并记日志。
+func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, params logquery.AggregateParams) (*logquery.AggregateResult, error) {
+	if params.EndTime <= params.StartTime {
+		return nil, fmt.Errorf("aliyun logquery aggregate: invalid time window")
+	}
+	if params.BucketSec <= 0 {
+		params.BucketSec = logquery.PickBucketSec(params.StartTime, params.EndTime)
+	}
+	resourceFilter := make(map[string]bool, len(params.Resources))
+	for _, r := range params.Resources {
+		resourceFilter[r] = true
+	}
+
+	// ---- 收集聚合目标(catalog x logstore;与 Search 的资源过滤语义一致) ----
+	type aggrTarget struct {
+		src      slsSource
+		logstore string
+	}
+	var targets []aggrTarget
+	for _, src := range catalog {
+		if src.logType != p.logType {
+			continue
+		}
+		stores := []string{src.logstore}
+		if src.logstore == "" {
+			ls, err := p.clientFor(src.region).ListLogStore(src.project)
+			if err != nil {
+				p.logger.Warn("[logquery-aliyun] aggregate list logstores failed",
+					elog.String("project", src.project), elog.FieldErr(err))
+				continue
+			}
+			stores = filterInternalStores(ls)
+		}
+		for _, ls := range stores {
+			// 与 Search 相同:混装源的资源语义是域名(拼进检索段),整 store 条目放行
+			if !src.mixedDomains && len(resourceFilter) > 0 &&
+				!resourceFilter[ls] && !resourceFilter[src.project] {
+				continue
+			}
+			targets = append(targets, aggrTarget{src: src, logstore: ls})
+		}
+	}
+
+	// ---- logstore 级并发聚合(单源失败隔离) ----
+	results := make([]*logquery.AggregateResult, len(targets))
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	for i, tgt := range targets {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			results[i] = p.aggregateStore(ctx, tgt.src, tgt.logstore, params)
+		}()
+	}
+	wg.Wait()
+
+	merged := &logquery.AggregateResult{}
+	for _, r := range results {
+		if r == nil {
+			continue
+		}
+		merged.Total += r.Total
+		merged.Buckets = append(merged.Buckets, r.Buckets...)
+		merged.TopN = append(merged.TopN, r.TopN...)
+	}
+	sort.Slice(merged.Buckets, func(i, j int) bool {
+		return merged.Buckets[i].Timestamp < merged.Buckets[j].Timestamp
+	})
+	// 跨 logstore 的 TopN 归并(同名求和,取前 10)
+	if len(merged.TopN) > 1 {
+		counts := make(map[string]int64, len(merged.TopN))
+		for _, t := range merged.TopN {
+			counts[t.Name] += t.Count
+		}
+		merged.TopN = merged.TopN[:0]
+		for name, c := range counts {
+			merged.TopN = append(merged.TopN, logquery.TopNItem{Name: name, Count: c})
+		}
+		sort.Slice(merged.TopN, func(i, j int) bool {
+			return merged.TopN[i].Count > merged.TopN[j].Count
+		})
+	}
+	const providerTopN = 10
+	if len(merged.TopN) > providerTopN {
+		merged.TopN = merged.TopN[:providerTopN]
+	}
+	return merged, nil
+}
+
+// aggregateStore 单 logstore 两条 SQL:分桶 + TopN(无维度的源跳过 TopN)。
+// 失败返回 nil(隔离,不阻塞其他 logstore)。
+func (p *provider) aggregateStore(ctx context.Context, src slsSource, logstore string, params logquery.AggregateParams) *logquery.AggregateResult {
+	client := p.clientFor(src.region)
+	searchPart := buildAggregateSearchPart(src.kind, params.Query, params.Resources)
+	from := params.StartTime / 1000
+	to := params.EndTime / 1000
+
+	result := &logquery.AggregateResult{}
+	// 分桶:t 为桶起点 Unix 秒,c 为精确条数;Total = 求和
+	bucketSQL := buildAggregateBucketSQL(searchPart, params.BucketSec)
+	resp, err := client.GetLogsV2(src.project, logstore, &sls.GetLogRequest{
+		From: from, To: to, Query: bucketSQL, Lines: 200,
+	})
+	if err != nil {
+		p.logger.Warn("[logquery-aliyun] aggregate bucket sql failed",
+			elog.String("project", src.project), elog.String("logstore", logstore), elog.FieldErr(err))
+		return nil
+	}
+	for _, row := range resp.Logs {
+		sec := logquery.Int(row["t"])
+		if sec <= 0 && row["t"] != "0" {
+			continue
+		}
+		result.Buckets = append(result.Buckets, logquery.AggregateBucket{
+			Timestamp: sec * 1000,
+			Count:     logquery.Int(row["c"]),
+		})
+		result.Total += logquery.Int(row["c"])
+	}
+
+	// TopN:无维度的源(waf3 访问流)跳过
+	if expr := aggregateTopNExpr(src.kind); expr != "" {
+		topnSQL := buildAggregateTopNSQL(searchPart, expr, 10)
+		resp, err := client.GetLogsV2(src.project, logstore, &sls.GetLogRequest{
+			From: from, To: to, Query: topnSQL, Lines: 10,
+		})
+		if err != nil {
+			p.logger.Warn("[logquery-aliyun] aggregate topn sql failed",
+				elog.String("project", src.project), elog.String("logstore", logstore), elog.FieldErr(err))
+		} else {
+			for _, row := range resp.Logs {
+				if k := row["k"]; k != "" {
+					result.TopN = append(result.TopN, logquery.TopNItem{Name: k, Count: logquery.Int(row["c"])})
+				}
+			}
+		}
+	}
+	return result
+}
+
 // fetchLogs 单 logstore 分页拉取(SLS 单次 Lines<=100)。
 func (p *provider) fetchLogs(ctx context.Context, src slsSource, logstore string, params logquery.SearchParams, limit int) ([]map[string]string, error) {
 	client := p.clientFor(src.region)

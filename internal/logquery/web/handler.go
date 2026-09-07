@@ -119,6 +119,7 @@ func (h *LogQueryHandler) RegisterRoutes(g *gin.RouterGroup) {
 	g.GET("/types", h.Types)
 	g.GET("/sources", h.Sources)
 	g.POST("/search", h.Search)
+	g.POST("/aggregate", h.Aggregate)
 }
 
 // Types GET /types 字段字典。
@@ -187,6 +188,51 @@ func (h *LogQueryHandler) Search(c *gin.Context) {
 	}
 	if resp.Entries == nil {
 		resp.Entries = []logquery.LogEntry{}
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": resp})
+}
+
+// aggregateRequest POST /aggregate 请求体(与 searchRequest 对齐,无 limit)。
+type aggregateRequest struct {
+	LogType    string   `json:"log_type" binding:"required"`
+	StartTime  int64    `json:"start_time" binding:"required"`
+	EndTime    int64    `json:"end_time" binding:"required"`
+	Query      string   `json:"query"`
+	Clouds     []string `json:"clouds"`
+	AccountIDs []int64  `json:"account_ids"`
+	Resources  []string `json:"resources"`
+}
+
+// Aggregate POST /aggregate 窗口内真实聚合(趋势/总数/TopN 下推云引擎,
+// 不受采样上限约束;不支持的源显式标注)。
+func (h *LogQueryHandler) Aggregate(c *gin.Context) {
+	var req aggregateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "invalid request: "+err.Error())
+		return
+	}
+	tenantID, ok := tenantID(c)
+	if !ok {
+		return
+	}
+	resp, err := h.svc.Aggregate(c.Request.Context(), tenantID, service.AggregateRequest{
+		LogType:    logquery.LogType(req.LogType),
+		StartTime:  req.StartTime,
+		EndTime:    req.EndTime,
+		Query:      req.Query,
+		Clouds:     toProviders(req.Clouds),
+		AccountIDs: req.AccountIDs,
+		Resources:  req.Resources,
+	})
+	if err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if resp.Buckets == nil {
+		resp.Buckets = []logquery.AggregateBucket{}
+	}
+	if resp.TopN == nil {
+		resp.TopN = []logquery.TopNItem{}
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": resp})
 }

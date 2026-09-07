@@ -59,6 +59,145 @@ type SearchResponse struct {
 	Sources   []SourceOutcome     `json:"sources"`   // per-source 状态
 }
 
+// AggregateRequest 联邦聚合请求(字段与 SearchRequest 对齐,无 limit——
+// 聚合下推云引擎,只回传分桶/分组,不受采样上限约束)。
+type AggregateRequest struct {
+	LogType    logquery.LogType
+	StartTime  int64
+	EndTime    int64
+	Query      string
+	Clouds     []domain.CloudProvider
+	AccountIDs []int64
+	Resources  []string
+}
+
+// AggregateSourceOutcome 单源聚合状态(不支持聚合的源显式标注,不静默缺失)。
+type AggregateSourceOutcome struct {
+	Cloud       domain.CloudProvider `json:"cloud"`
+	AccountID   string               `json:"account_id"`
+	AccountName string               `json:"account_name"`
+	Total       int64                `json:"total"` // 该源窗口精确总数
+	Error       string               `json:"error"` // 失败/不支持原因(空=成功)
+	DurationMs  int64                `json:"duration_ms"`
+}
+
+// AggregateResponse 联邦聚合响应(跨源归并:分桶求和、TopN 求和取前 10)。
+type AggregateResponse struct {
+	LogType string                        `json:"log_type"`
+	Total   int64                         `json:"total"`   // 窗口精确总数(全源求和)
+	Buckets []logquery.AggregateBucket    `json:"buckets"` // 时间分桶(真实分布)
+	TopN    []logquery.TopNItem           `json:"topn"`    // TopN(域名/规则按类型)
+	Sources []AggregateSourceOutcome      `json:"sources"`
+}
+
+// Aggregate 窗口内真实聚合入口(plan.md §8):分桶下推各云引擎,百万级行
+// 不过网关;单源失败/不支持/超时隔离,聚合结果由已完成源合成。
+func (s *FederationService) Aggregate(ctx context.Context, tenantID int64, req AggregateRequest) (*AggregateResponse, error) {
+	if !logquery.IsValidLogType(req.LogType) {
+		return nil, fmt.Errorf("invalid log type: %s", req.LogType)
+	}
+	if req.EndTime <= req.StartTime {
+		return nil, fmt.Errorf("invalid time window: end %d <= start %d", req.EndTime, req.StartTime)
+	}
+	bucketSec := logquery.PickBucketSec(req.StartTime, req.EndTime)
+	accounts, err := s.activeAccounts(ctx, tenantID, req.Clouds, req.AccountIDs)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, FederationTimeout)
+	defer cancel()
+
+	var (
+		mu       sync.Mutex
+		buckets  = make(map[int64]int64)
+		topn     = make(map[string]int64)
+		outcomes []AggregateSourceOutcome
+	)
+	g, gctx := errgroup.WithContext(ctx)
+	for i := range accounts {
+		acc := accounts[i]
+		creator, err := logquery.GetProvider(acc.Provider, req.LogType)
+		if err != nil {
+			mu.Lock()
+			outcomes = append(outcomes, AggregateSourceOutcome{
+				Cloud: acc.Provider, AccountID: fmt.Sprintf("%d", acc.ID),
+				AccountName: acc.Name, Error: "provider not registered",
+			})
+			mu.Unlock()
+			continue
+		}
+		g.Go(func() error {
+			start := time.Now()
+			p, err := creator(&acc)
+			var result *logquery.AggregateResult
+			// 可选能力:未实现 Aggregator 的 provider(如 S3 文件类)显式标注
+			if agg, ok := p.(logquery.Aggregator); err == nil && ok {
+				result, err = agg.Aggregate(gctx, &acc, logquery.AggregateParams{
+					StartTime: req.StartTime,
+					EndTime:   req.EndTime,
+					Query:     req.Query,
+					BucketSec: bucketSec,
+					Resources: req.Resources,
+				})
+			} else if err == nil {
+				err = errAggregateUnsupported
+			}
+			oc := AggregateSourceOutcome{
+				Cloud:       acc.Provider,
+				AccountID:   fmt.Sprintf("%d", acc.ID),
+				AccountName: acc.Name,
+				DurationMs:  time.Since(start).Milliseconds(),
+			}
+			if err != nil {
+				if gctx.Err() == nil { // 联邦级超时不计入单源失败
+					oc.Error = err.Error()
+				}
+			} else {
+				oc.Total = result.Total
+			}
+			mu.Lock()
+			outcomes = append(outcomes, oc)
+			if result != nil {
+				for _, b := range result.Buckets {
+					buckets[b.Timestamp] += b.Count
+				}
+				for _, t := range result.TopN {
+					topn[t.Name] += t.Count
+				}
+			}
+			mu.Unlock()
+			return nil // 单源失败隔离,永不中断 errgroup
+		})
+	}
+	_ = g.Wait()
+
+	resp := &AggregateResponse{
+		LogType: string(req.LogType),
+		Sources: outcomes,
+	}
+	for ts, c := range buckets {
+		resp.Buckets = append(resp.Buckets, logquery.AggregateBucket{Timestamp: ts, Count: c})
+		resp.Total += c
+	}
+	sort.Slice(resp.Buckets, func(i, j int) bool {
+		return resp.Buckets[i].Timestamp < resp.Buckets[j].Timestamp
+	})
+	for name, c := range topn {
+		resp.TopN = append(resp.TopN, logquery.TopNItem{Name: name, Count: c})
+	}
+	sort.Slice(resp.TopN, func(i, j int) bool {
+		return resp.TopN[i].Count > resp.TopN[j].Count
+	})
+	const federatedTopN = 10
+	if len(resp.TopN) > federatedTopN {
+		resp.TopN = resp.TopN[:federatedTopN]
+	}
+	return resp, nil
+}
+
+// errAggregateUnsupported provider 未实现聚合能力(显式标注用)。
+var errAggregateUnsupported = fmt.Errorf("aggregate not supported for this provider")
+
 // AccountSource 云账号源(仓储窄接口:联邦层只需按过滤条件列账号;
 // accountrepo.CloudAccountRepository 结构性满足,凭证解密在仓储读取路径完成)。
 type AccountSource interface {

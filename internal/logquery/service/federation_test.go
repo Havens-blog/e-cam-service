@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -218,6 +219,154 @@ func TestListSources(t *testing.T) {
 	if _, err := svc.ListSources(context.Background(), 3, logquery.LogTypeSLB, nil, nil); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// fakeAggregator 可编程聚合 provider:实现 Search(复用 fakeProvider 语义)+ Aggregate。
+type fakeAggregator struct {
+	fakeProvider
+	result *logquery.AggregateResult
+	err    error
+	// seenBucketSec 记录服务层下发的分桶秒数(对齐校验)
+	seenBucketSec int64
+}
+
+func (p *fakeAggregator) Aggregate(_ context.Context, _ *domain.CloudAccount, params logquery.AggregateParams) (*logquery.AggregateResult, error) {
+	p.seenBucketSec = params.BucketSec
+	return p.result, p.err
+}
+
+// TestAggregateHappyPath 两账号联邦聚合:分桶求和、TopN 归并、Total 精确总数。
+func TestAggregateHappyPath(t *testing.T) {
+	logquery.RegisterProvider(testCloud, logquery.LogTypeCDN, func(*domain.CloudAccount) (logquery.LogProvider, error) {
+		return &fakeAggregator{
+			fakeProvider: fakeProvider{cloud: testCloud, logType: logquery.LogTypeCDN},
+			result: &logquery.AggregateResult{
+				Total: 300,
+				Buckets: []logquery.AggregateBucket{
+					{Timestamp: 1000, Count: 100}, {Timestamp: 2000, Count: 200},
+				},
+				TopN: []logquery.TopNItem{{Name: "a.com", Count: 150}},
+			},
+		}, nil
+	})
+	svc := NewFederationService(&fakeAccountSource{accounts: []domain.CloudAccount{
+		testAccount(1, testCloud), testAccount(2, testCloud),
+	}}, nil)
+	start := time.Now().Add(-6 * time.Hour)
+	resp, err := svc.Aggregate(context.Background(), 3, AggregateRequest{
+		LogType: logquery.LogTypeCDN, StartTime: start.UnixMilli(), EndTime: time.Now().UnixMilli(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Total != 600 {
+		t.Errorf("total = %d, want 600(两源求和)", resp.Total)
+	}
+	if len(resp.Buckets) != 2 || resp.Buckets[0].Count != 200 || resp.Buckets[1].Count != 400 {
+		t.Errorf("buckets not summed: %+v", resp.Buckets)
+	}
+	if len(resp.TopN) != 1 || resp.TopN[0].Count != 300 {
+		t.Errorf("topn not merged: %+v", resp.TopN)
+	}
+	// 分桶秒数服务层统一计算并下发(6h 窗口 -> 300s)
+	if resp.Sources[0].Error != "" {
+		t.Fatalf("unexpected source error: %+v", resp.Sources)
+	}
+}
+
+// TestAggregateUnsupportedIsolated 未实现 Aggregator 的源显式标注不支持,
+// 其他源正常归并(不静默缺失)。
+func TestAggregateUnsupportedIsolated(t *testing.T) {
+	logquery.RegisterProvider(testCloud, logquery.LogTypeWAF, func(*domain.CloudAccount) (logquery.LogProvider, error) {
+		return &fakeAggregator{
+			fakeProvider: fakeProvider{cloud: testCloud, logType: logquery.LogTypeWAF},
+			result: &logquery.AggregateResult{
+				Total:   42,
+				Buckets: []logquery.AggregateBucket{{Timestamp: 1000, Count: 42}},
+			},
+		}, nil
+	})
+	// aliyun provider 已注册(Search 用)但未实现 Aggregator? 实际上已实现——
+	// 用一个只含 Search 的 provider 模拟:注册到独立测试云
+	const cloud2 domain.CloudProvider = "testcloud2"
+	logquery.RegisterProvider(cloud2, logquery.LogTypeWAF, func(*domain.CloudAccount) (logquery.LogProvider, error) {
+		return &fakeProvider{cloud: cloud2, logType: logquery.LogTypeWAF}, nil
+	})
+	svc := NewFederationService(&fakeAccountSource{accounts: []domain.CloudAccount{
+		testAccount(1, testCloud), testAccount(2, cloud2),
+	}}, nil)
+	now := time.Now()
+	resp, err := svc.Aggregate(context.Background(), 3, AggregateRequest{
+		LogType: logquery.LogTypeWAF, StartTime: now.Add(-time.Hour).UnixMilli(), EndTime: now.UnixMilli(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Total != 42 {
+		t.Errorf("total = %d, want 42(仅支持源计入)", resp.Total)
+	}
+	var unsupported []AggregateSourceOutcome
+	for _, s := range resp.Sources {
+		if s.Error != "" {
+			unsupported = append(unsupported, s)
+		}
+	}
+	if len(unsupported) != 1 || unsupported[0].AccountID != "2" {
+		t.Errorf("want account 2 marked unsupported, got %+v", resp.Sources)
+	}
+}
+
+// TestAggregateBucketSecAligned 分桶秒数由服务层按窗口统一计算并下发(全源对齐)。
+func TestAggregateBucketSecAligned(t *testing.T) {
+	var mu sync.Mutex
+	var seen []int64
+	logquery.RegisterProvider(testCloud, logquery.LogTypeSLB, func(*domain.CloudAccount) (logquery.LogProvider, error) {
+		return &fakeAggregator{
+			fakeProvider: fakeProvider{cloud: testCloud, logType: logquery.LogTypeSLB},
+			result:       &logquery.AggregateResult{},
+		}, nil
+	})
+	// 捕获型:每次构造的 Aggregate 都会记下下发参数
+	logquery.RegisterProvider(testCloud, logquery.LogTypeWAF, func(*domain.CloudAccount) (logquery.LogProvider, error) {
+		return &capturingAggregator{onAggregate: func(sec int64) {
+			mu.Lock()
+			seen = append(seen, sec)
+			mu.Unlock()
+		}}, nil
+	})
+	svc := NewFederationService(&fakeAccountSource{accounts: []domain.CloudAccount{
+		testAccount(1, testCloud), testAccount(2, testCloud),
+	}}, nil)
+	now := time.Now()
+	if _, err := svc.Aggregate(context.Background(), 3, AggregateRequest{
+		LogType: logquery.LogTypeWAF, StartTime: now.Add(-2 * time.Hour).UnixMilli(), EndTime: now.UnixMilli(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 2 {
+		t.Fatalf("aggregate calls = %d, want 2", len(seen))
+	}
+	if seen[0] != seen[1] || seen[0] != 300 {
+		t.Errorf("bucket sec not aligned to 300(2h/300s=24 桶 ≤100): %v", seen)
+	}
+}
+
+// capturingAggregator 记录 AggregateParams.BucketSec(对齐校验用)。
+type capturingAggregator struct {
+	onAggregate func(sec int64)
+}
+
+func (p *capturingAggregator) Cloud() domain.CloudProvider { return testCloud }
+func (p *capturingAggregator) LogType() logquery.LogType   { return logquery.LogTypeWAF }
+func (p *capturingAggregator) ListLogSources(context.Context, *domain.CloudAccount) ([]logquery.LogSource, error) {
+	return nil, nil
+}
+func (p *capturingAggregator) Search(context.Context, *domain.CloudAccount, logquery.SearchParams) ([]logquery.LogEntry, error) {
+	return nil, nil
+}
+func (p *capturingAggregator) Aggregate(_ context.Context, _ *domain.CloudAccount, params logquery.AggregateParams) (*logquery.AggregateResult, error) {
+	p.onAggregate(params.BucketSec)
+	return &logquery.AggregateResult{}, nil
 }
 
 // TestSearchFederatedCap 联邦级 1000 硬顶截断(limit 为每日志源上限,
