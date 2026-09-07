@@ -1,13 +1,22 @@
 package web
 
 import (
+	"context"
 	"strconv"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson"
 )
+
+// CDNCacheConfigService 详情页缓存配置按需查询(web 层只依赖此接口)
+type CDNCacheConfigService interface {
+	GetCacheConfig(ctx context.Context, tenantID, accountID int64, domainName, domainID string) ([]types.CDNCacheRule, error)
+}
 
 // ListCDN 获取CDN加速域名列表
 func (h *AssetHandler) ListCDN(ctx *gin.Context) {
@@ -20,6 +29,8 @@ func (h *AssetHandler) ListCDN(ctx *gin.Context) {
 
 	// CDN 特有过滤参数
 	businessType := ctx.Query("business_type")
+	serviceArea := ctx.Query("service_area")
+	httpsEnabled := ctx.Query("https_enabled")
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
@@ -33,11 +44,19 @@ func (h *AssetHandler) ListCDN(ctx *gin.Context) {
 	if region != "" {
 		attributes["region"] = region
 	}
+	// 状态/业务类型/服务区域统一枚举 → $in 历史原始值,
+	// 归一化重同步前后两代数据都能命中
 	if status != "" {
-		attributes["status"] = status
+		attributes["status"] = bson.M{"$in": cloudx.StatusVariants(status)}
 	}
 	if businessType != "" {
-		attributes["business_type"] = businessType
+		attributes["business_type"] = bson.M{"$in": cloudx.BusinessTypeVariants(businessType)}
+	}
+	if serviceArea != "" {
+		attributes["service_area"] = bson.M{"$in": cloudx.ServiceAreaVariants(serviceArea)}
+	}
+	if httpsEnabled != "" {
+		attributes["https_enabled"] = httpsEnabled == "true"
 	}
 
 	filter := domain.InstanceFilter{
@@ -66,6 +85,36 @@ func (h *AssetHandler) ListCDN(ctx *gin.Context) {
 // GetCDN 获取CDN加速域名详情
 func (h *AssetHandler) GetCDN(ctx *gin.Context) {
 	h.getAsset(ctx, "cdn")
+}
+
+// CDNCacheConfigResp CDN缓存配置响应
+type CDNCacheConfigResp struct {
+	Domain string              `json:"domain"`
+	Rules  []types.CDNCacheRule `json:"rules"`
+}
+
+// GetCDNCacheConfig 按需查询 CDN 域名缓存配置(实时经厂商 API)
+func (h *AssetHandler) GetCDNCacheConfig(ctx *gin.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	accountID, _ := strconv.ParseInt(ctx.Query("account_id"), 10, 64)
+	domainName := ctx.Query("domain_name")
+	domainID := ctx.Query("domain_id")
+
+	if accountID <= 0 || (domainName == "" && domainID == "") {
+		ctx.JSON(400, ErrorResultWithMsg(errs.FieldInvalid, "缺少 account_id 或域名标识"))
+		return
+	}
+
+	rules, err := h.cdnQuery.GetCacheConfig(ctx.Request.Context(), tenantID, accountID, domainName, domainID)
+	if err != nil {
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
+	}
+
+	ctx.JSON(200, Result(CDNCacheConfigResp{
+		Domain: domainName,
+		Rules:  rules,
+	}))
 }
 
 // ListWAF 获取WAF实例列表

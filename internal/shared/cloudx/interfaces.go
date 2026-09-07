@@ -607,6 +607,16 @@ type CDNAdapter interface {
 	ListInstancesWithFilter(ctx context.Context, region string, filter *types.CDNInstanceFilter) ([]types.CDNInstance, error)
 }
 
+// CDNCacheQuerier 可选能力:按域名实时查询 CDN 缓存配置。
+// 缓存规则不随同步落库,详情页打开时按需调用(见 web.GetCDNCacheConfig);
+// CDNAdapter 实现方可按需实现本接口,未实现时前端展示"暂无"。
+type CDNCacheQuerier interface {
+	// GetCacheConfig 查询缓存规则
+	// domainName 为加速域名(多数厂商的检索键);domainID 为域名/分发 ID
+	// (AWS CloudFront 仅认 ID)。两者至少传一。
+	GetCacheConfig(ctx context.Context, domainName, domainID string) ([]types.CDNCacheRule, error)
+}
+
 // ============================================================================
 // WAFAdapter - WAF Web应用防火墙适配器接口
 // ============================================================================

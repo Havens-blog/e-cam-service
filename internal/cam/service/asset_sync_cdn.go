@@ -42,6 +42,9 @@ func (s *assetSyncService) syncCDNInstances(
 	s.cleanupStaleInstances(ctx, tenantID, modelUID, account.ID, "", cloudAssetIDs)
 
 	for _, inst := range instances {
+		// 枚举归一化(业务类型/服务区域/状态),原始值保留到 *_raw
+		cloudx.NormalizeCDNInstance(&inst)
+
 		// 提取源站地址列表（用于拓扑链路匹配）
 		var originAddrs []string
 		for _, o := range inst.Origins {
@@ -53,9 +56,11 @@ func (s *assetSyncService) syncCDNInstances(
 		attrs := map[string]interface{}{
 			"provider": string(account.Provider), "cloud_account_id": account.ID,
 			"domain_id": inst.DomainID, "domain_name": inst.DomainName,
-			"cname": inst.Cname, "status": inst.Status,
+			"cname": inst.Cname, "status": inst.Status, "status_raw": inst.StatusRaw,
 			"region": inst.Region, "business_type": inst.BusinessType,
-			"service_area": inst.ServiceArea, "origin_type": inst.OriginType,
+			"business_type_raw": inst.BusinessTypeRaw,
+			"service_area":      inst.ServiceArea, "service_area_raw": inst.ServiceAreaRaw,
+			"origin_type": inst.OriginType,
 			"origin_host": inst.OriginHost, "https_enabled": inst.HTTPSEnabled,
 			"cert_name": inst.CertName, "http2_enabled": inst.HTTP2Enabled,
 			"bandwidth": inst.Bandwidth, "traffic_total": inst.TrafficTotal,

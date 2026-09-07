@@ -6,12 +6,15 @@ type CDNInstance struct {
 	DomainID   string `json:"domain_id"`   // 域名ID
 	DomainName string `json:"domain_name"` // 加速域名
 	Cname      string `json:"cname"`       // CNAME地址
-	Status     string `json:"status"`      // 状态: online/offline/configuring/checking/check_failed
+	Status     string `json:"status"`      // 状态: online/offline/configuring/checking/check_failed/error(归一化枚举)
 	Region     string `json:"region"`      // 加速区域: domestic/overseas/global
 
-	// 业务类型
-	BusinessType string `json:"business_type"` // 业务类型: web(网页加速)/download(下载加速)/media(流媒体加速)
-	ServiceArea  string `json:"service_area"`  // 服务区域: mainland/overseas/global
+	// 业务类型(同步时经 NormalizeCDNInstance 归一化为统一枚举)
+	BusinessType    string `json:"business_type"`     // 业务类型: web/download/media/whole_site/dynamic/other
+	BusinessTypeRaw string `json:"business_type_raw"` // 厂商原始业务类型(归一化前)
+	ServiceArea     string `json:"service_area"`      // 服务区域: domestic/overseas/global
+	ServiceAreaRaw  string `json:"service_area_raw"`  // 厂商原始服务区域(归一化前)
+	StatusRaw       string `json:"status_raw"`        // 厂商原始状态(归一化前)
 
 	// 源站信息
 	Origins    []CDNOrigin `json:"origins"`     // 源站列表
@@ -61,4 +64,12 @@ type CDNInstanceFilter struct {
 	BusinessType string `json:"business_type,omitempty"` // 业务类型
 	PageNumber   int    `json:"page_number,omitempty"`
 	PageSize     int    `json:"page_size,omitempty"`
+}
+
+// CDNCacheRule CDN 缓存规则(统一格式,由各厂商 GetCacheConfig 归一化产出)
+type CDNCacheRule struct {
+	Path     string `json:"path"`               // 匹配内容: 全站为 *;文件后缀如 jpg,png;目录/精确路径如 /foo/bar
+	Type     string `json:"type"`               // 匹配类型: all/file_ext/directory/full_path
+	TTL      int64  `json:"ttl"`                // 缓存时间(秒): >0 缓存时长;0 不缓存;-1 跟随源站
+	Priority int    `json:"priority,omitempty"` // 优先级(可选,数字越大越优先)
 }

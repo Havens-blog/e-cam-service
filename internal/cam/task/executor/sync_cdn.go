@@ -82,6 +82,9 @@ func (e *SyncAssetsExecutor) syncRegionCDN(
 func (e *SyncAssetsExecutor) convertCDNToInstance(inst types.CDNInstance, account *domain.CloudAccount) camdomain.Instance {
 	modelUID := fmt.Sprintf("%s_cdn", account.Provider)
 
+	// 枚举归一化(业务类型/服务区域/状态),原始值保留到 *_raw
+	cloudx.NormalizeCDNInstance(&inst)
+
 	assetID := inst.DomainName
 	if assetID == "" {
 		assetID = inst.DomainID
@@ -89,15 +92,18 @@ func (e *SyncAssetsExecutor) convertCDNToInstance(inst types.CDNInstance, accoun
 
 	attributes := map[string]any{
 		"status":      inst.Status,
+		"status_raw":  inst.StatusRaw,
 		"region":      inst.Region,
 		"provider":    inst.Provider,
 		"description": inst.Description,
 
-		"domain_id":     inst.DomainID,
-		"domain_name":   inst.DomainName,
-		"cname":         inst.Cname,
-		"business_type": inst.BusinessType,
-		"service_area":  inst.ServiceArea,
+		"domain_id":         inst.DomainID,
+		"domain_name":       inst.DomainName,
+		"cname":             inst.Cname,
+		"business_type":     inst.BusinessType,
+		"business_type_raw": inst.BusinessTypeRaw,
+		"service_area":      inst.ServiceArea,
+		"service_area_raw":  inst.ServiceAreaRaw,
 
 		"origins":     inst.Origins,
 		"origin_type": inst.OriginType,

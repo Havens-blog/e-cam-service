@@ -16,14 +16,16 @@ import (
 type AssetHandler struct {
 	instanceSvc service.InstanceService
 	snapshotDAO dao.StatsSnapshotDAO
+	cdnQuery    CDNCacheConfigService
 	logger      *elog.Component
 }
 
 // NewAssetHandler 创建资产处理器
-func NewAssetHandler(instanceSvc service.InstanceService, snapshotDAO dao.StatsSnapshotDAO) *AssetHandler {
+func NewAssetHandler(instanceSvc service.InstanceService, snapshotDAO dao.StatsSnapshotDAO, cdnQuery CDNCacheConfigService) *AssetHandler {
 	return &AssetHandler{
 		instanceSvc: instanceSvc,
 		snapshotDAO: snapshotDAO,
+		cdnQuery:    cdnQuery,
 		logger:      elog.DefaultLogger,
 	}
 }
@@ -134,6 +136,7 @@ func (h *AssetHandler) registerAssetRoutes(assetsGroup *gin.RouterGroup) {
 	// CDN 内容分发网络
 	assetsGroup.GET("/cdn", h.ListCDN)
 	assetsGroup.GET("/cdn/:asset_id", h.GetCDN)
+	assetsGroup.GET("/cdn/cache-config", h.GetCDNCacheConfig)
 
 	// WAF Web应用防火墙
 	assetsGroup.GET("/waf", h.ListWAF)
