@@ -3,8 +3,8 @@
 // Phase 0 实测(source-status.md):阿里侧全部日志已汇聚 SLS,无需碰
 // Kafka/日志文件包;每账号 8 类源按固定 catalog 查询:
 //   - SLB:cn-shenzhen/jlc-lb-log(ALB 实例流 + 聚合流)、eu-central-1/jlc-prod-overseas-log(海外)
-//   - WAF:eu-central-1 wafnew-project(WAF3.0)、cn-shenzhen 云安全中心渠道 wafng-logstore、
-//     eu-central-1 Akamai 自采(jlc-prod-akamai-waf-log)
+//   - WAF:eu-central-1 wafnew-project(WAF3.0 海外)、cn-hangzhou wafng-project
+//     (WAF3.0 国内主库)、eu-central-1 Akamai 自采(jlc-prod-akamai-waf-log)
 //   - CDN:cn-shenzhen dcdn-edge-rtlog-*(DCDN 边缘实时)、jlc-prod-cdn-log-monitor
 //     (CDN 实时投递,与 DCDN 同构)、jlc-prod-cdn-log(离线转存,独立 PascalCase
 //     schema,域名在 RequestURL)、eu-central-1 Akamai 自采(jlc-prod-akamai-cdn-log)
@@ -56,8 +56,10 @@ var catalog = []slsSource{
 	// ---- WAF(单 store 混装全部 host,与 CDN 同为域名粒度选择) ----
 	{region: "eu-central-1", project: "wafnew-project-1210557380197478-eu-central-1", logType: logquery.LogTypeWAF, kind: kindWAF3,
 		logstore: "wafnew-logstore", name: "WAF3.0(海外)", note: "eu-central-1 WAF 日志库", mixedDomains: true},
-	{region: "cn-shenzhen", project: "aliyun-cloudsiem-channel-1210557380197478-cn-shenzhen", logType: logquery.LogTypeWAF, kind: kindWAF3,
-		logstore: "wafng-logstore", name: "WAF3.0(国内渠道)", note: "云安全中心渠道,与 wafnew 同 schema", mixedDomains: true},
+	// 国内 WAF 主库(2026-09-07 实测:cn-hangzhou wafng-project,30 天 100+ 域名
+	// 在流动;cn-shenzhen 云安全中心渠道 wafng-logstore 是空壳,30 天 0 行)
+	{region: "cn-hangzhou", project: "wafng-project-1210557380197478-cn-hangzhou", logType: logquery.LogTypeWAF, kind: kindWAF3,
+		logstore: "wafng-logstore", name: "WAF3.0(国内)", note: "国内 WAF 日志主库(cn-hangzhou)", mixedDomains: true},
 	// Akamai 自采(Phase 0 实测两 store 均在 eu-central-1,误写 cn-shenzhen 会静默查空)
 	{region: "eu-central-1", project: "jlc-prod-akamai-cdnwaf-log", logType: logquery.LogTypeWAF, kind: kindAkamaiWAF,
 		logstore: "jlc-prod-akamai-waf-log", name: "Akamai WAF(自采)", note: "Akamai WAF 日志自采入库(CEF 展开)", mixedDomains: true},
