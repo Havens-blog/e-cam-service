@@ -107,7 +107,7 @@ func InitModuleWithIAM(db *mongox.Mongo, redisClient redis.Cmdable, alertModule 
 	instanceColl := db.Collection(tag.InstanceCollection)
 	adapterFactory := cloudx.NewAdapterFactory(logger)
 	tagSvc := tag.NewTagService(tagDAO, instanceColl, module.AccountSvc, adapterFactory)
-	module.TagHdl = tag.NewTagHandler(tagSvc)
+	module.TagHdl = tag.NewTagHandler(tagSvc, dao.NewStatsSnapshotDAO(db))
 	logger.Info("标签管理模块初始化成功")
 
 	// 初始化 DNS 管理模块

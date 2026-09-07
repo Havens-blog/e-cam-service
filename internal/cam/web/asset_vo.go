@@ -12,6 +12,17 @@ type ImageStatsResp struct {
 	System int64 `json:"system"`
 	Custom int64 `json:"custom"`
 	Shared int64 `json:"shared"`
+	// Trend 周趋势(当前值 - 7 天前最近基线快照);无基线时为 nil
+	Trend *ImageTrendResp `json:"trend,omitempty"`
+}
+
+// ImageTrendResp 镜像统计周趋势,各值为净变化(可为负)
+type ImageTrendResp struct {
+	BaselineDate string `json:"baseline_date"`
+	Total        int64  `json:"total"`
+	System       int64  `json:"system"`
+	Custom       int64  `json:"custom"`
+	Shared       int64  `json:"shared"`
 }
 
 // UnifiedAssetListResp 统一资产列表响应

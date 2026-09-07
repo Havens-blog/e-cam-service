@@ -1,24 +1,70 @@
 package tag
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 )
 
 // TagHandler 标签管理 HTTP 处理器
 type TagHandler struct {
-	svc TagService
+	svc         TagService
+	snapshotDAO dao.StatsSnapshotDAO
+	logger      *elog.Component
 }
 
 // NewTagHandler 创建标签处理器
-func NewTagHandler(svc TagService) *TagHandler {
-	return &TagHandler{svc: svc}
+func NewTagHandler(svc TagService, snapshotDAO dao.StatsSnapshotDAO) *TagHandler {
+	return &TagHandler{svc: svc, snapshotDAO: snapshotDAO, logger: elog.DefaultLogger}
+}
+
+// upsertTagSnapshotAndTrend 惰性落当日标签统计快照,并取 7 天前最近基线
+// 计算周趋势(净变化,覆盖率为百分点差)。尽力而为:任一失败仅令 trend
+// 缺失,不影响统计返回。
+func (h *TagHandler) upsertTagSnapshotAndTrend(ctx context.Context, tenantID int64, cur *TagStats) {
+	if h.snapshotDAO == nil || cur == nil {
+		return
+	}
+	const domainKey = "tag"
+	now := time.Now()
+	metrics := map[string]any{
+		"total_keys": cur.TotalKeys, "total_values": cur.TotalValues,
+		"tagged_resources": cur.TaggedResources, "coverage_percent": cur.CoveragePercent,
+	}
+	if err := h.snapshotDAO.Upsert(ctx, dao.StatsSnapshot{
+		Domain: domainKey, TenantID: tenantID, Date: dao.SnapshotDate(now), Metrics: metrics,
+	}); err != nil {
+		h.logger.Warn("写入标签统计快照失败", elog.FieldErr(err))
+	}
+	before := dao.SnapshotDate(now.AddDate(0, 0, -7))
+	base, err := h.snapshotDAO.GetNearestOnOrBefore(ctx, domainKey, tenantID, before)
+	if err != nil {
+		h.logger.Warn("查询标签统计基线失败", elog.FieldErr(err))
+		return
+	}
+	if base == nil {
+		return
+	}
+	d := base.Delta(map[string]float64{
+		"total_keys": float64(cur.TotalKeys), "total_values": float64(cur.TotalValues),
+		"tagged_resources": float64(cur.TaggedResources), "coverage_percent": cur.CoveragePercent,
+	})
+	cur.Trend = &TagTrend{
+		BaselineDate:    base.Date,
+		TotalKeys:       int64(d["total_keys"]),
+		TotalValues:     int64(d["total_values"]),
+		TaggedResources: int64(d["tagged_resources"]),
+		CoverageDelta:   d["coverage_percent"],
+	}
 }
 
 // RegisterRoutes 注册标签路由
@@ -86,6 +132,7 @@ func (h *TagHandler) GetTagStats(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
 		return
 	}
+	h.upsertTagSnapshotAndTrend(ctx.Request.Context(), tenantID, stats)
 	ctx.JSON(http.StatusOK, web.Result(stats))
 }
 

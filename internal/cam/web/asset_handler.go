@@ -1,6 +1,11 @@
 package web
 
 import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
@@ -10,14 +15,56 @@ import (
 // 按资产类型提供RESTful风格的API
 type AssetHandler struct {
 	instanceSvc service.InstanceService
+	snapshotDAO dao.StatsSnapshotDAO
 	logger      *elog.Component
 }
 
 // NewAssetHandler 创建资产处理器
-func NewAssetHandler(instanceSvc service.InstanceService) *AssetHandler {
+func NewAssetHandler(instanceSvc service.InstanceService, snapshotDAO dao.StatsSnapshotDAO) *AssetHandler {
 	return &AssetHandler{
 		instanceSvc: instanceSvc,
+		snapshotDAO: snapshotDAO,
 		logger:      elog.DefaultLogger,
+	}
+}
+
+// upsertImageSnapshotAndTrend 惰性落当日镜像统计快照,并取 7 天前最近基线
+// 计算周趋势(净变化)。尽力而为:快照/基线任一失败都只令 trend 缺失,
+// 不影响统计本身。
+func (h *AssetHandler) upsertImageSnapshotAndTrend(ctx context.Context, tenantID int64, accountID int64, provider string, cur ImageStatsResp) *ImageTrendResp {
+	if h.snapshotDAO == nil {
+		return nil
+	}
+	domainKey := fmt.Sprintf("image:p=%s;a=%d", provider, accountID)
+	now := time.Now()
+	metrics := map[string]any{
+		"total": cur.Total, "system": cur.System,
+		"custom": cur.Custom, "shared": cur.Shared,
+	}
+	if err := h.snapshotDAO.Upsert(ctx, dao.StatsSnapshot{
+		Domain: domainKey, TenantID: tenantID, Date: dao.SnapshotDate(now), Metrics: metrics,
+	}); err != nil {
+		h.logger.Warn("写入镜像统计快照失败", elog.FieldErr(err))
+	}
+	before := dao.SnapshotDate(now.AddDate(0, 0, -7))
+	base, err := h.snapshotDAO.GetNearestOnOrBefore(ctx, domainKey, tenantID, before)
+	if err != nil {
+		h.logger.Warn("查询镜像统计基线失败", elog.FieldErr(err))
+		return nil
+	}
+	if base == nil {
+		return nil
+	}
+	d := base.Delta(map[string]float64{
+		"total": float64(cur.Total), "system": float64(cur.System),
+		"custom": float64(cur.Custom), "shared": float64(cur.Shared),
+	})
+	return &ImageTrendResp{
+		BaselineDate: base.Date,
+		Total:        int64(d["total"]),
+		System:       int64(d["system"]),
+		Custom:       int64(d["custom"]),
+		Shared:       int64(d["shared"]),
 	}
 }
 

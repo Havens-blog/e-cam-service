@@ -141,7 +141,7 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	handler := web.NewHandler(serviceService, cloudAccountService, modelService)
 	instanceHandler := web.NewInstanceHandler(instanceService)
 	databaseHandler := web.NewDatabaseHandler(instanceService)
-	assetHandler := web.NewAssetHandler(instanceService)
+	assetHandler := web.NewAssetHandler(instanceService, dao.NewStatsSnapshotDAO(db))
 
 	camModule := &Module{
 		Hdl:           handler,

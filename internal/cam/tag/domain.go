@@ -42,6 +42,17 @@ type TagStats struct {
 	TaggedResources int64   `json:"tagged_resources"`
 	TotalResources  int64   `json:"total_resources"`
 	CoveragePercent float64 `json:"coverage_percent"`
+	// Trend 周趋势(当前值 - 7 天前最近基线快照);无基线时为 nil
+	Trend *TagTrend `json:"trend,omitempty"`
+}
+
+// TagTrend 标签统计周趋势,各值为净变化(可为负;覆盖率为百分点差)
+type TagTrend struct {
+	BaselineDate    string  `json:"baseline_date"`
+	TotalKeys       int64   `json:"total_keys"`
+	TotalValues     int64   `json:"total_values"`
+	TaggedResources int64   `json:"tagged_resources"`
+	CoverageDelta   float64 `json:"coverage_delta"`
 }
 
 // TagFilter 标签列表查询过滤
