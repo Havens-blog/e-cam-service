@@ -128,8 +128,21 @@ func (p *provider) Cloud() domain.CloudProvider { return domain.CloudProviderAli
 func (p *provider) LogType() logquery.LogType { return p.logType }
 
 // ListLogSources 枚举该账号该类型日志源:SLS ListLogStores + catalog 元数据。
+// 混装源的域名枚举(SQL 分组 ~1.5s/条)并发执行且带 10 分钟缓存
+// (串行曾是 WAF sources 5s 的主因);动态枚举 logstore 的 catalog 条目
+// 同样并发。
 func (p *provider) ListLogSources(ctx context.Context, account *domain.CloudAccount) ([]logquery.LogSource, error) {
-	var out []logquery.LogSource
+	type enumTask struct {
+		idx      int // 写入槽位
+		src      slsSource
+		logstore string // 动态枚举时为空
+	}
+	var (
+		out        []logquery.LogSource
+		fixed      []logquery.LogSource // 非枚举条目(整源 + 占位)
+		tasks      []enumTask
+		slots      = make([][]logquery.LogSource, len(catalog))
+	)
 	for _, src := range catalog {
 		if src.logType != p.logType {
 			continue
@@ -138,29 +151,55 @@ func (p *provider) ListLogSources(ctx context.Context, account *domain.CloudAcco
 			s := p.toSource(src, src.logstore, true)
 			if src.mixedDomains {
 				s.Note = src.note + " · 全部域名(整源查询)"
-				out = append(out, s)
-				// 混装源的选择粒度是域名:探查活跃域名生成域名级子源
-				out = append(out, p.domainSources(ctx, src)...)
-				continue
 			}
-			out = append(out, s)
+			fixed = append(fixed, s)
+			if src.mixedDomains {
+				// 混装源:并发跑域名枚举,槽位存子源
+				tasks = append(tasks, enumTask{src: src})
+			}
 			continue
 		}
-		// 动态枚举 logstore(过滤 metrics/diagnostic 内部流)
-		stores, err := p.clientFor(src.region).ListLogStore(src.project)
-		if err != nil {
-			// 枚举失败不阻塞其他源(联邦隔离原则)
-			p.logger.Warn("[logquery-aliyun] list logstores failed",
-				elog.String("project", src.project), elog.FieldErr(err))
-			continue
-		}
-		for _, ls := range stores {
-			if strings.HasSuffix(ls, "-metrics") || strings.HasSuffix(ls, "-metrics-result") ||
-				ls == "internal-ml-log" || strings.HasPrefix(ls, "internal-") {
-				continue
+		// 动态枚举 logstore:并发跑
+		tasks = append(tasks, enumTask{src: src})
+	}
+	// 并发执行枚举任务(单任务失败隔离,记日志不阻塞)
+	var wg sync.WaitGroup
+	for i := range tasks {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			t := &tasks[i]
+			if t.src.logstore != "" {
+				// 固定 logstore 的混装源:域名枚举(带缓存)
+				slots[i] = p.domainSourcesCached(ctx, t.src)
+				return
 			}
-			out = append(out, p.toSource(src, ls, true))
-		}
+			// 动态枚举 logstore(logstore 清单分钟级稳定,同走缓存;
+			// 曾每次 sources 都 ListLogStore ×2 project,SLB sources 1.9s 主因)
+			stores := logstoreEnumCache.get(t.src.region+"/"+t.src.project, func() []string {
+				ls, err := p.clientFor(t.src.region).ListLogStore(t.src.project)
+				if err != nil {
+					p.logger.Warn("[logquery-aliyun] list logstores failed",
+						elog.String("project", t.src.project), elog.FieldErr(err))
+					return nil
+				}
+				return ls
+			})
+			var ls []logquery.LogSource
+			for _, store := range stores {
+				if strings.HasSuffix(store, "-metrics") || strings.HasSuffix(store, "-metrics-result") ||
+					store == "internal-ml-log" || strings.HasPrefix(store, "internal-") {
+					continue
+				}
+				ls = append(ls, p.toSource(t.src, store, true))
+			}
+			slots[i] = ls
+		}()
+	}
+	wg.Wait()
+	out = append(out, fixed...)
+	for _, s := range slots {
+		out = append(out, s...)
 	}
 	return out, nil
 }
@@ -180,28 +219,13 @@ func (p *provider) toSource(src slsSource, logstore string, enabled bool) logque
 	}
 }
 
-// domainSources 混装源活跃域名枚举:SQL 分组(服务端聚合,全窗真实分布
-// 不受样本限制——100 条样本会被热点域名占满,66 个 host 只露 5 个),
-// 每个域名生成一个域名级子源(ResourceID=域名)。用户在下拉里选域名后
-// resources 传域名,Search 的域名扇出(fetchCDNByDomains)按其过滤。
-// SQL 失败降级 100 条样本探查,再失败静默(只返回 logstore 级条目)。
-func (p *provider) domainSources(ctx context.Context, src slsSource) []logquery.LogSource {
-	domains := p.activeDomains(ctx, src)
-	if domains == nil {
-		// SQL 不可用(列未建索引等)降级样本探查
-		now := time.Now().UnixMilli()
-		probe, err := p.probeDomains(ctx, src, src.logstore, logquery.SearchParams{
-			StartTime: now - 24*3600_000,
-			EndTime:   now,
-		}, 100)
-		if err != nil {
-			p.logger.Warn("[logquery-aliyun] domain probe failed",
-				elog.String("project", src.project), elog.String("logstore", src.logstore),
-				elog.FieldErr(err))
-			return nil
-		}
-		domains = domainNamesFromSample(src.kind, probe)
-	}
+// domainSourcesCached 混装源活跃域名子源(带 10 分钟进程内缓存:
+// 域名分布分钟级稳定,sources 每次切 Tab 重拉,缓存内零 API 调用)。
+func (p *provider) domainSourcesCached(ctx context.Context, src slsSource) []logquery.LogSource {
+	key := src.region + "/" + src.project + "/" + src.logstore + "/" + string(src.kind)
+	domains := domainEnumCache.get(key, func() []string {
+		return p.enumDomains(ctx, src)
+	})
 	out := make([]logquery.LogSource, 0, len(domains))
 	for _, d := range domains {
 		s := p.toSource(src, d, true)
@@ -209,6 +233,28 @@ func (p *provider) domainSources(ctx context.Context, src slsSource) []logquery.
 		out = append(out, s)
 	}
 	return out
+}
+
+// enumDomains 域名枚举:SQL 分组(全窗真实分布不受样本限制)优先,
+// 失败降级 100 条样本探查。
+func (p *provider) enumDomains(ctx context.Context, src slsSource) []string {
+	domains := p.activeDomains(ctx, src)
+	if domains != nil {
+		return domains
+	}
+	// SQL 不可用(列未建索引等)降级样本探查
+	now := time.Now().UnixMilli()
+	probe, err := p.probeDomains(ctx, src, src.logstore, logquery.SearchParams{
+		StartTime: now - 24*3600_000,
+		EndTime:   now,
+	}, 100)
+	if err != nil {
+		p.logger.Warn("[logquery-aliyun] domain probe failed",
+			elog.String("project", src.project), elog.String("logstore", src.logstore),
+			elog.FieldErr(err))
+		return nil
+	}
+	return domainNamesFromSample(src.kind, probe)
 }
 
 // activeDomains SQL 分组枚举活跃域名(近 30 天,热度序,上限 100):
@@ -278,12 +324,16 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 		}
 		stores := []string{src.logstore}
 		if src.logstore == "" {
-			ls, err := p.clientFor(src.region).ListLogStore(src.project)
-			if err != nil {
-				p.logger.Warn("[logquery-aliyun] list logstores failed",
-					elog.String("project", src.project), elog.FieldErr(err))
-				continue
-			}
+			// logstore 清单走缓存(Search 每请求都来一遍,裸调用曾多耗 ~1s)
+			ls := logstoreEnumCache.get(src.region+"/"+src.project, func() []string {
+				out, err := p.clientFor(src.region).ListLogStore(src.project)
+				if err != nil {
+					p.logger.Warn("[logquery-aliyun] list logstores failed",
+						elog.String("project", src.project), elog.FieldErr(err))
+					return nil
+				}
+				return out
+			})
 			stores = filterInternalStores(ls)
 		}
 		for _, ls := range stores {
@@ -388,12 +438,15 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 		}
 		stores := []string{src.logstore}
 		if src.logstore == "" {
-			ls, err := p.clientFor(src.region).ListLogStore(src.project)
-			if err != nil {
-				p.logger.Warn("[logquery-aliyun] aggregate list logstores failed",
-					elog.String("project", src.project), elog.FieldErr(err))
-				continue
-			}
+			ls := logstoreEnumCache.get(src.region+"/"+src.project, func() []string {
+				out, err := p.clientFor(src.region).ListLogStore(src.project)
+				if err != nil {
+					p.logger.Warn("[logquery-aliyun] aggregate list logstores failed",
+						elog.String("project", src.project), elog.FieldErr(err))
+					return nil
+				}
+				return out
+			})
 			stores = filterInternalStores(ls)
 		}
 		for _, ls := range stores {

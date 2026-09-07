@@ -70,9 +70,6 @@ type provider struct {
 	logType logquery.LogType
 	account *domain.CloudAccount
 	logger  *elog.Component
-
-	mu      sync.Mutex
-	clients map[string]*s3.Client // bucket -> client(region 按桶自动探测)
 }
 
 func newProvider(logType logquery.LogType) logquery.ProviderCreator {
@@ -88,15 +85,14 @@ func newProvider(logType logquery.LogType) logquery.ProviderCreator {
 	}
 }
 
-// clientFor 按 bucket 缓存 S3 client(region 以 catalog 为 hint,首次使用时
+// clientFor 按 bucket 取 S3 client(region 以 catalog 为 hint,首次使用时
 // HeadBucket 探测真实区域并纠正——Go SDK v2 不会像 boto3 自动跟随 301)。
+// 缓存是进程级的:provider 每请求新建(per-request client 缓存形同虚设,
+// 每次 sources 都重复 client 构造 + HeadBucket 探测,实测拖慢 sources 数秒)。
 func (p *provider) clientFor(bucket, hintRegion string) (*s3.Client, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.clients == nil {
-		p.clients = make(map[string]*s3.Client)
-	}
-	if c, ok := p.clients[bucket]; ok {
+	awsClientCache.mu.Lock()
+	defer awsClientCache.mu.Unlock()
+	if c, ok := awsClientCache.clients[bucket]; ok {
 		return c, nil
 	}
 	c, err := s3Client(p.account, hintRegion)
@@ -112,9 +108,18 @@ func (p *provider) clientFor(bucket, hintRegion string) (*s3.Client, error) {
 			c = fixed
 		}
 	}
-	p.clients[bucket] = c
+	if awsClientCache.clients == nil {
+		awsClientCache.clients = make(map[string]*s3.Client)
+	}
+	awsClientCache.clients[bucket] = c
 	return c, nil
 }
+
+// awsClientCache 进程级 bucket -> S3 client 缓存(凭证按账号解密后唯一)。
+var awsClientCache = struct {
+	mu      sync.Mutex
+	clients map[string]*s3.Client
+}{clients: make(map[string]*s3.Client)}
 
 // Cloud 实现 LogProvider。
 func (p *provider) Cloud() domain.CloudProvider { return domain.CloudProviderAWS }
@@ -134,6 +139,8 @@ func (p *provider) sourcesOf() []aSource {
 }
 
 // ListLogSources 枚举日志源:WAF=逐 ACL 前缀下钻;CDN=桶根一级目录(域名)。
+// 前缀发现带 10 分钟缓存(根前缀 list 实测 7s、单层 RTT 230ms,目录结构
+// 变化极慢;sources 每次切 Tab 重拉,无缓存时 WAF sources 5.7s 全耗在此)。
 func (p *provider) ListLogSources(ctx context.Context, account *domain.CloudAccount) ([]logquery.LogSource, error) {
 	var out []logquery.LogSource
 	for _, src := range p.sourcesOf() {
@@ -145,7 +152,10 @@ func (p *provider) ListLogSources(ctx context.Context, account *domain.CloudAcco
 		switch src.kind {
 		case "waf-json":
 			// AWSLogs/<acct>/WAFLogs/cloudfront/<acl>/ -> 深钻 4 级取 ACL
-			aclPrefixes, err := walkPrefixes(ctx, client, src.bucket, src.prefix, 4)
+			key := src.bucket + "/" + src.prefix + "/waf4"
+			aclPrefixes, err := awsPrefixCache.get(key, func() ([]string, error) {
+				return walkPrefixes(ctx, client, src.bucket, src.prefix, 4)
+			})
 			if err != nil {
 				p.logger.Warn("[logquery-aws] walk waf prefixes failed",
 					elog.String("bucket", src.bucket), elog.FieldErr(err))
@@ -156,7 +166,10 @@ func (p *provider) ListLogSources(ctx context.Context, account *domain.CloudAcco
 				out = append(out, p.toSource(src, acl, acl, true))
 			}
 		case "cloudfront-tsv":
-			domainPrefixes, err := listCommonPrefixes(ctx, client, src.bucket, "")
+			key := src.bucket + "/cloudfront1"
+			domainPrefixes, err := awsPrefixCache.get(key, func() ([]string, error) {
+				return listCommonPrefixes(ctx, client, src.bucket, "")
+			})
 			if err != nil {
 				p.logger.Warn("[logquery-aws] list domains failed",
 					elog.String("bucket", src.bucket), elog.FieldErr(err))

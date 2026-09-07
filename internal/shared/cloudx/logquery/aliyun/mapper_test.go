@@ -347,7 +347,37 @@ func TestSplitByDomain(t *testing.T) {
 	}
 }
 
-// TestDedupProbeOverlap 探查样本与按域名查询重叠去重(全字段指纹:
+// TestDomainCacheTTL 域名枚举缓存:命中返回缓存副本、过期重取、缓存 nil 不存。
+func TestDomainCacheTTL(t *testing.T) {
+	c := newDomainCache()
+	calls := 0
+	fetch := func() []string {
+		calls++
+		return []string{"a.com", "b.com"}
+	}
+	got := c.get("k1", fetch)
+	if len(got) != 2 || calls != 1 {
+		t.Fatalf("first get = %v calls=%d", got, calls)
+	}
+	got = c.get("k1", fetch) // TTL 内命中
+	if calls != 1 {
+		t.Errorf("second get should hit cache, calls=%d", calls)
+	}
+	// 过期
+	c.expire("k1")
+	_ = c.get("k1", fetch)
+	if calls != 2 {
+		t.Errorf("expired entry should refetch, calls=%d", calls)
+	}
+	// 空 result 不缓存(源数据未就绪时不长期锁死)
+	c.set("k2", nil)
+	if calls2 := 0; calls2 != 0 {
+		t.Error("unreachable")
+	}
+	if got := c.get("k2", func() []string { return []string{"x.com"} }); len(got) != 1 {
+		t.Errorf("nil cached should fall back to fetch, got %v", got)
+	}
+}
 // 字段集完全相同 = 同一条日志)。曾用 CDN 字段名做键,WAF 行字段名不同
 // 全落空键被去重到 1 条。
 func TestDedupProbeOverlap(t *testing.T) {
