@@ -196,7 +196,7 @@ func NewProbeService(
 
 // ProbeLedgerDomains 目标域 = 台账全部 sans 展开去重（expectedDomain 不参与）。
 func (s *probeService) ProbeLedgerDomains(ctx context.Context) ([]domain.ProbeResult, error) {
-	certs, err := s.certs.List(ctx)
+	certs, err := s.certs.ListSummaries(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("probe: list ledger certificates: %w", err)
 	}
@@ -350,7 +350,7 @@ func (s *probeService) probeOne(
 // buildOwnership 台账域名→归属证书指纹集合映射（sans 反查；多证书同域名并存时
 // 集合含全部归属指纹）。
 func (s *probeService) buildOwnership(ctx context.Context) (map[string]map[string]bool, error) {
-	certs, err := s.certs.List(ctx)
+	certs, err := s.certs.ListSummaries(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("probe: list ledger certificates: %w", err)
 	}
@@ -533,7 +533,7 @@ func (s *probeService) probeTargets(ctx context.Context, targets []dns.ProbeTarg
 	if err != nil {
 		return nil, fmt.Errorf("probe: list verifying orders: %w", err)
 	}
-	certs, err := s.certs.List(ctx)
+	certs, err := s.certs.ListSummaries(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("probe: list ledger certificates: %w", err)
 	}

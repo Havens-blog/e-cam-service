@@ -70,6 +70,22 @@ func (r *certReferenceRepository) ListBySnapshotID(ctx context.Context, snapshot
 	return refs, nil
 }
 
+// DistinctCertFingerprints 快照内去重指纹（服务端 Distinct���仅回传指纹字符串）。
+func (r *certReferenceRepository) DistinctCertFingerprints(ctx context.Context, snapshotID string) ([]string, error) {
+	raw, err := r.db.Collection(CertReferencesCollection).
+		Distinct(ctx, "certFingerprint", bson.M{"snapshotId": snapshotID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
 // DeleteBySnapshotID 按快照清理引用（idx_snapshot）。
 func (r *certReferenceRepository) DeleteBySnapshotID(ctx context.Context, snapshotID string) (int64, error) {
 	res, err := r.db.Collection(CertReferencesCollection).

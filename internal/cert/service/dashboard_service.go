@@ -134,7 +134,7 @@ func NewDashboardService(
 
 // Dashboard 看板聚合：单次拉取台账/探测/豁免/配置/引用上下文后内存收敛。
 func (s *dashboardService) Dashboard(ctx context.Context) (DashboardView, error) {
-	certs, err := s.certs.List(ctx)
+	certs, err := s.certs.ListSummaries(ctx)
 	if err != nil {
 		return DashboardView{}, fmt.Errorf("dashboard: list ledger certificates: %w", err)
 	}

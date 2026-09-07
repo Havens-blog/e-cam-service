@@ -42,6 +42,11 @@ type CertificateRepository interface {
 	// 未命中返回 mongo.ErrNoDocuments。
 	GetByID(ctx context.Context, id string) (Certificate, error)
 	List(ctx context.Context) ([]Certificate, error)
+	// ListSummaries 台账全量摘要（不含 CertPEM/EncryptedPrivateKey 大字段）。
+	// 读密集聚合路径（统计/看板/发现预览/探测 expected 侧）只需指纹与解析要素，
+	// 全量 List 会把每证 ~9KB 证书 PEM 拖过网络（WAN 部署下台账页耗时数百 ms）。
+	// 需要证书材料（检查私钥有无/变更部署）的调用方仍用 List/GetByID。
+	ListSummaries(ctx context.Context) ([]Certificate, error)
 	// ListPage 服务端分页+筛选（任务 2.3 台账列表）：notAfter 升序（最快到期优先，
 	// _id 升序稳定排序）；返回当页数据与筛选命中总数。
 	// skip<0 视为 0；limit<=0 视为不限（与 Mongo Find 语义一致）。
@@ -80,6 +85,10 @@ type CertReferenceRepository interface {
 	// ListBySnapshotID 按快照查询全部引用（任务 2.3：refCount 派生与 stats
 	// 分母聚合的数据源；idx_snapshot）。
 	ListBySnapshotID(ctx context.Context, snapshotID string) ([]CertReference, error)
+	// DistinctCertFingerprints 快照内去重指纹（服务端 Distinct）：stats 分母
+	// 聚合只需指纹集合，全量 ListBySnapshotID 会把整轮引用拖过网络（WAN 下
+	// 数百 ms），去重后仅回传指纹字符串。
+	DistinctCertFingerprints(ctx context.Context, snapshotID string) ([]string, error)
 	// BackfillFingerprint 占位指纹引用回填（cert-cloud-discovery-import 任务 4）：
 	// 将 (cloud,accountKey,referencedCloudCertId) 定位且当前指纹仍为 fromFingerprint
 	//（扫描侧占位公式派生值）的引用批量更新为 toFingerprint（导入时点 GetCert 解析

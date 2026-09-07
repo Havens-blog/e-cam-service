@@ -71,6 +71,9 @@ func InitMongoDB() *mongox.Mongo {
 	opts := options.Client().
 		ApplyURI(uri).
 		SetMonitor(monitor).
+		// 网络压缩（MongoDB 4.2+ 支持 zstd）：远端 Mongo（WAN）下证书 PEM/引用/
+		// 探测结果等文本负载压缩比 ~5-10x，是证书域各页响应耗时的主要杠杆。
+		SetCompressors([]string{"zstd", "snappy"}).
 		SetMaxPoolSize(100).           // 最大连接数，限制资源消耗
 		SetMinPoolSize(10).            // 最小连接数
 		SetMaxConnecting(10).         // 最大同时连接数

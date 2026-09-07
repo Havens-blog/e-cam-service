@@ -372,7 +372,7 @@ func (s *ledgerService) deriveReferenceStatus(ctx context.Context, fingerprint s
 // 分母 = 最新成功（status=done）快照 CertReference 指纹去重 ∪ 台账全部指纹；
 // missingRegistrations=扫描发现未登记数；fingerprintOnlyRate=台账内占比。
 func (s *ledgerService) Stats(ctx context.Context) (LedgerStats, error) {
-	certs, err := s.certs.List(ctx)
+	certs, err := s.certs.ListSummaries(ctx)
 	if err != nil {
 		return LedgerStats{}, err
 	}
@@ -399,12 +399,12 @@ func (s *ledgerService) Stats(ctx context.Context) (LedgerStats, error) {
 	case err != nil:
 		return LedgerStats{}, err
 	default:
-		refs, err := s.refs.ListBySnapshotID(ctx, snap.ID.Hex())
+		fps, err := s.refs.DistinctCertFingerprints(ctx, snap.ID.Hex())
 		if err != nil {
 			return LedgerStats{}, err
 		}
-		for _, r := range refs {
-			scanned[r.CertFingerprint] = struct{}{}
+		for _, fp := range fps {
+			scanned[fp] = struct{}{}
 		}
 	}
 

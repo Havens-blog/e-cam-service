@@ -101,6 +101,23 @@ func (r *certificateRepository) List(ctx context.Context) ([]domain.Certificate,
 	return certs, nil
 }
 
+// ListSummaries 台账全量摘要：投影剔除 certPem（每证 ~9KB）与
+// encryptedPrivateKey 大字段，读密集聚合路径（统计/看板/预览/探测）过 WAN
+// 不再拖兆级材料字节（见 domain 接口注释）。
+func (r *certificateRepository) ListSummaries(ctx context.Context) ([]domain.Certificate, error) {
+	cursor, err := r.db.Collection(CertificatesCollection).Find(ctx, bson.M{},
+		options.Find().SetProjection(bson.M{"certPem": 0, "encryptedPrivateKey": 0}))
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	var certs []domain.Certificate
+	if err := cursor.All(ctx, &certs); err != nil {
+		return nil, err
+	}
+	return certs, nil
+}
+
 // ListPage 服务端分页+筛选（任务 2.3）：notAfter 升序（最快到期优先，_id 升序稳定排序）。
 // Search 子串经 QuoteMeta 转义后以不区分大小写 $regex 匹配 commonName/sans/fingerprint
 // （数组字段对元素逐一匹配；对齐 internal/cam/tag 的 $regex 用法）。

@@ -285,6 +285,20 @@ func (f *FakeCertificateRepo) List(_ context.Context) ([]domain.Certificate, err
 	return out, nil
 }
 
+// ListSummaries 模拟 Mongo 投影语义：剔除 CertPEM/EncryptedPrivateKey。
+// 误将本实现当全量 List 用并读取证书材料的调用方在测试期即暴露（PEM 为空）。
+func (f *FakeCertificateRepo) ListSummaries(ctx context.Context) ([]domain.Certificate, error) {
+	out, err := f.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].CertPEM = ""
+		out[i].EncryptedPrivateKey = nil
+	}
+	return out, nil
+}
+
 // ListPage 内存实现（与 Mongo 仓储语义一致）：notAfter 升序 + _id 升序稳定排序；
 // Search 以不区分大小写子串匹配 commonName/sans/fingerprint（等价 $regex+QuoteMeta+"i"）。
 func (f *FakeCertificateRepo) ListPage(_ context.Context, flt domain.CertListFilter, skip, limit int) ([]domain.Certificate, int64, error) {
@@ -741,6 +755,23 @@ func (f *FakeCertReferenceRepo) ListBySnapshotID(_ context.Context, snapshotID s
 	for _, r := range f.refs {
 		if r.SnapshotID == snapshotID {
 			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+// DistinctCertFingerprints 按快照去重指纹（内存 distinct）。
+func (f *FakeCertReferenceRepo) DistinctCertFingerprints(_ context.Context, snapshotID string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	seen := make(map[string]struct{})
+	var out []string
+	for _, r := range f.refs {
+		if r.SnapshotID == snapshotID && r.CertFingerprint != "" {
+			if _, ok := seen[r.CertFingerprint]; !ok {
+				seen[r.CertFingerprint] = struct{}{}
+				out = append(out, r.CertFingerprint)
+			}
 		}
 	}
 	return out, nil

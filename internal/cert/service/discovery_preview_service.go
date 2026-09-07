@@ -127,7 +127,7 @@ func (s *discoveryPreviewService) Preview(ctx context.Context) (DiscoveryPreview
 	if err != nil {
 		return DiscoveryPreview{}, err
 	}
-	ledgerCerts, err := s.certs.List(ctx)
+	ledgerCerts, err := s.certs.ListSummaries(ctx)
 	if err != nil {
 		return DiscoveryPreview{}, err
 	}
