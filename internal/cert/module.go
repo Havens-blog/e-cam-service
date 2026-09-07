@@ -288,7 +288,7 @@ func InitCertModule(
 		DiscoveryHdl:               web.NewDiscoveryHandler(service.NewDiscoveryPreviewService(repos.ScanSnapshots, repos.CertReferences, repos.Certificates, repos.CloudMappings), discoveryImportSvc),
 		LedgerHdl:                  web.NewLedgerHandler(ledgerSvc),
 		DashboardHdl:               web.NewDashboardHandler(dashboardSvc, probeSvc),
-		SettingsHdl:                web.NewSettingsHandler(settingsSvc, crdRegSvc),
+		SettingsHdl:                web.NewSettingsHandler(settingsSvc, crdRegSvc, k8sCredSvc, service.NewK8sCredentialFetchService(service.NewAliyunCSGateway(), accounts, k8sCredSvc)),
 		ChangeHdl:                  web.NewChangeHandler(querySvc, changeSvc, executeSvc, rollbackSvc, auditBridge),
 	}, nil
 }

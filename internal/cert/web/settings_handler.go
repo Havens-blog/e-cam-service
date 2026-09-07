@@ -18,11 +18,19 @@ import (
 type SettingsHandler struct {
 	settings service.SettingsService
 	crds     service.CrdRegistrationService
+	k8sCreds service.K8sCredentialService
+	k8sFetch service.K8sCredentialFetchService
 }
 
-// NewSettingsHandler 创建全局配置 handler。
-func NewSettingsHandler(settings service.SettingsService, crds service.CrdRegistrationService) *SettingsHandler {
-	return &SettingsHandler{settings: settings, crds: crds}
+// NewSettingsHandler 创建全局配置 handler（k8sCreds/k8sFetch 为凭证面依赖，
+// cert-alb-ingress-managed 第一层配套装配；nil 时对应端点显式报错）。
+func NewSettingsHandler(
+	settings service.SettingsService,
+	crds service.CrdRegistrationService,
+	k8sCreds service.K8sCredentialService,
+	k8sFetch service.K8sCredentialFetchService,
+) *SettingsHandler {
+	return &SettingsHandler{settings: settings, crds: crds, k8sCreds: k8sCreds, k8sFetch: k8sFetch}
 }
 
 // RegisterRoutes 注册全局配置端点（组级角色门卫，dashboard 全角色不在此列）：
@@ -47,6 +55,11 @@ func (h *SettingsHandler) RegisterRoutes(g *gin.RouterGroup) {
 	s.POST("/crds", h.RegisterCrd)
 	s.GET("/crds", h.ListCrds)
 	s.DELETE("/crds/:id", h.DeleteCrd)
+	s.GET("/k8s-credentials", h.ListK8sCredentials)
+	s.POST("/k8s-credentials", h.AddK8sCredential)
+	s.DELETE("/k8s-credentials/:name", h.DeleteK8sCredential)
+	s.GET("/k8s-clusters", h.ListAliyunClusters)
+	s.POST("/k8s-credentials/fetch", h.FetchK8sCredentials)
 }
 
 // CodeCrdDuplicateRegistration CRD 登记重复（uk_cluster_group_kind 冲突 → 409）。
@@ -404,5 +417,171 @@ func toDomainVerifyWindowRoute(v *VerifyWindowRouteVO) *domain.VerifyWindowRoute
 		Enabled:     v.Enabled,
 		WebhookURLs: v.WebhookURLs,
 		EmailGroup:  v.EmailGroup,
+	}
+}
+
+// ---------------------------------------------------------------------
+// K8s 集群凭证（cert-alb-ingress-managed 第一层配套：凭证面端点落地 +
+// 云端拉取编排）。
+// ---------------------------------------------------------------------
+
+// CodeK8sClusterDuplicate 集群名重复（uk_cluster_name 冲突 → 409）。
+const CodeK8sClusterDuplicate = "K8S_CLUSTER_DUPLICATE"
+
+// CodeK8sAccountNotFound 云账号不存在或未启用（404）。
+const CodeK8sAccountNotFound = "K8S_ACCOUNT_NOT_FOUND"
+
+// K8sCredentialVO 集群凭证视图（白名单：永不携带 kubeconfig 明文/密文）。
+type K8sCredentialVO struct {
+	ClusterName string `json:"clusterName"`
+	APIEndpoint string `json:"apiEndpoint,omitempty"`
+	CreatedAt   string `json:"createdAt"`
+}
+
+// AliyunClusterVO ACK 集群清单条目。
+type AliyunClusterVO struct {
+	ClusterID   string `json:"clusterId"`
+	Name        string `json:"name"`
+	RegionID    string `json:"regionId"`
+	State       string `json:"state"`
+	ClusterType string `json:"clusterType"`
+}
+
+// k8sCredentialRequest 手动登记入参（kubeconfig 明文 YAML；仅内存用于校验与
+// 加密，登记后即清零——与导入服务入参归零约定一致）。
+type k8sCredentialRequest struct {
+	ClusterName string `json:"clusterName"`
+	Kubeconfig  string `json:"kubeconfig"`
+}
+
+// k8sCredentialFetchRequest 云端拉取登记入参。
+type k8sCredentialFetchRequest struct {
+	AccountKey string   `json:"accountKey"`
+	ClusterIDs []string `json:"clusterIds"`
+	PrivateIP  bool     `json:"privateIp"`
+}
+
+// K8sCredentialFetchResultVO 逐集群拉取登记结果。
+type K8sCredentialFetchResultVO struct {
+	ClusterID   string `json:"clusterId"`
+	ClusterName string `json:"clusterName,omitempty"`
+	Status      string `json:"status"` // registered / duplicate / failed
+	APIEndpoint string `json:"apiEndpoint,omitempty"`
+	Reason      string `json:"reason,omitempty"`
+}
+
+// ListK8sCredentials GET /settings/k8s-credentials —— 白名单视图列表。
+func (h *SettingsHandler) ListK8sCredentials(c *gin.Context) {
+	views, err := h.k8sCreds.ListClusters(c.Request.Context())
+	if err != nil {
+		WriteError(c, err)
+		return
+	}
+	out := make([]K8sCredentialVO, 0, len(views))
+	for _, v := range views {
+		out = append(out, K8sCredentialVO{
+			ClusterName: v.ClusterName, APIEndpoint: v.APIEndpoint, CreatedAt: formatTime(v.CreatedAt),
+		})
+	}
+	WriteOK(c, http.StatusOK, out, nil)
+}
+
+// AddK8sCredential POST /settings/k8s-credentials —— 手动登记（重复 409）。
+func (h *SettingsHandler) AddK8sCredential(c *gin.Context) {
+	var req k8sCredentialRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		WriteAPIError(c, http.StatusBadRequest, CodeInvalidRequest, "invalid request body")
+		return
+	}
+	kubeconfig := []byte(req.Kubeconfig)
+	defer zeroBytes(kubeconfig) // Hard Rule：明文用后清零
+	view, err := h.k8sCreds.AddCluster(c.Request.Context(), service.AddK8sCredentialInput{
+		ClusterName: req.ClusterName,
+		Kubeconfig:  kubeconfig,
+	})
+	if err != nil {
+		h.writeK8sCredError(c, err)
+		return
+	}
+	WriteOK(c, http.StatusOK, K8sCredentialVO{
+		ClusterName: view.ClusterName, APIEndpoint: view.APIEndpoint, CreatedAt: formatTime(view.CreatedAt),
+	}, nil)
+}
+
+// DeleteK8sCredential DELETE /settings/k8s-credentials/:name。
+func (h *SettingsHandler) DeleteK8sCredential(c *gin.Context) {
+	if err := h.k8sCreds.DeleteCluster(c.Request.Context(), c.Param("name")); err != nil {
+		WriteError(c, err)
+		return
+	}
+	WriteOK(c, http.StatusOK, gin.H{"deleted": true}, nil)
+}
+
+// ListAliyunClusters GET /settings/k8s-clusters?accountKey= —— 拉取前置：
+// 列出指定阿里云账号名下全部 ACK 集群（含非 running 态，前端标注）。
+func (h *SettingsHandler) ListAliyunClusters(c *gin.Context) {
+	accountKey := strings.TrimSpace(c.Query("accountKey"))
+	if accountKey == "" {
+		WriteAPIError(c, http.StatusBadRequest, CodeInvalidRequest, "accountKey is required")
+		return
+	}
+	clusters, err := h.k8sFetch.ListAliyunClusters(c.Request.Context(), accountKey)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			WriteAPIError(c, http.StatusNotFound, CodeK8sAccountNotFound, "云账号不存在或未启用")
+			return
+		}
+		WriteError(c, err)
+		return
+	}
+	out := make([]AliyunClusterVO, 0, len(clusters))
+	for _, cl := range clusters {
+		out = append(out, AliyunClusterVO{
+			ClusterID: cl.ClusterID, Name: cl.Name, RegionID: cl.RegionID,
+			State: cl.State, ClusterType: cl.ClusterType,
+		})
+	}
+	WriteOK(c, http.StatusOK, out, nil)
+}
+
+// FetchK8sCredentials POST /settings/k8s-credentials/fetch —— 批量拉取并登记：
+// 单集群失败/重名不中断批次（逐条记因），kubeconfig 明文仅在服务内存流经。
+func (h *SettingsHandler) FetchK8sCredentials(c *gin.Context) {
+	var req k8sCredentialFetchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		WriteAPIError(c, http.StatusBadRequest, CodeInvalidRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(req.AccountKey) == "" || len(req.ClusterIDs) == 0 {
+		WriteAPIError(c, http.StatusBadRequest, CodeInvalidRequest, "accountKey and clusterIds are required")
+		return
+	}
+	results := h.k8sFetch.FetchAndRegister(c.Request.Context(), service.FetchK8sCredentialInput{
+		AccountKey: req.AccountKey, ClusterIDs: req.ClusterIDs, PrivateIP: req.PrivateIP,
+	})
+	out := make([]K8sCredentialFetchResultVO, 0, len(results))
+	for _, r := range results {
+		out = append(out, K8sCredentialFetchResultVO{
+			ClusterID: r.ClusterID, ClusterName: r.ClusterName, Status: r.Status,
+			APIEndpoint: r.APIEndpoint, Reason: r.Reason,
+		})
+	}
+	WriteOK(c, http.StatusOK, out, nil)
+}
+
+// writeK8sCredError 凭证登记错误映射（重复 409 / 其余 500）。
+func (h *SettingsHandler) writeK8sCredError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, domain.ErrDuplicateClusterName):
+		WriteAPIError(c, http.StatusConflict, CodeK8sClusterDuplicate, "集群名已存在（uk_cluster_name 冲突）")
+	default:
+		WriteError(c, err)
+	}
+}
+
+// zeroBytes 就地清零输入缓冲（Hard Rule：敏感明文用后不驻留）。
+func zeroBytes(b []byte) {
+	for i := range b {
+		b[i] = 0
 	}
 }

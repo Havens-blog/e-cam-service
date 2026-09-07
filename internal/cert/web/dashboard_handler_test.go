@@ -69,7 +69,10 @@ func newDashSettingsRouter(t *testing.T, role Role) (*gin.Engine, *dashSettingsD
 		NewCertHandler(importSvc), NewReferenceHandler(querySvc),
 		NewDiscoveryHandler(service.NewDiscoveryPreviewService(d.snaps, d.refs, d.certs, certtest.NewFakeCloudCertMappingRepo()), newDiscoveryImportSvcForRouter()),
 		NewLedgerHandler(ledgerSvc),
-		NewDashboardHandler(dashSvc, nil), NewSettingsHandler(settingsSvc, crdSvc), newChangeHandlerFixture(t))
+		NewDashboardHandler(dashSvc, nil),
+		NewSettingsHandler(settingsSvc, crdSvc,
+			service.NewK8sCredentialService(certtest.NewFakeK8sCredentialRepo(), certtest.NewTestCrypto(t), nil, nil),
+			service.NewK8sCredentialFetchService(nil, nil, nil)), newChangeHandlerFixture(t))
 	return engine, d
 }
 
@@ -87,7 +90,10 @@ func newDashboardSettingsHandlers(
 	settingsSvc := service.NewSettingsService(
 		certtest.NewFakeAlertConfigRepo(), certtest.NewFakeExemptionRepo(), nil)
 	crdSvc := service.NewCrdRegistrationService(certtest.NewFakeCrdRegistrationRepo())
-	return NewDashboardHandler(dashSvc, nil), NewSettingsHandler(settingsSvc, crdSvc)
+	return NewDashboardHandler(dashSvc, nil),
+		NewSettingsHandler(settingsSvc, crdSvc,
+			service.NewK8sCredentialService(certtest.NewFakeK8sCredentialRepo(), nil, nil, nil),
+			service.NewK8sCredentialFetchService(nil, nil, nil))
 }
 
 // doJSON 发起 JSON 请求并返回响应记录器。
