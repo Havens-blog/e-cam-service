@@ -69,7 +69,17 @@ type CDNInstanceFilter struct {
 // CDNCacheRule CDN 缓存规则(统一格式,由各厂商 GetCacheConfig 归一化产出)
 type CDNCacheRule struct {
 	Path     string `json:"path"`               // 匹配内容: 全站为 *;文件后缀如 jpg,png;目录/精确路径如 /foo/bar
-	Type     string `json:"type"`               // 匹配类型: all/file_ext/directory/full_path
+	Type     string `json:"type"`               // 匹配类型: all/file_ext/directory/full_path/status_code/query_filter
 	TTL      int64  `json:"ttl"`                // 缓存时间(秒): >0 缓存时长;0 不缓存;-1 跟随源站
 	Priority int    `json:"priority,omitempty"` // 优先级(可选,数字越大越优先)
+
+	// ---- 高级缓存行为(阿里云 swift_*/force_revalidate 开关;其他云为缺省零值) ----
+	FollowOriginCache bool `json:"follow_origin_cache,omitempty"` // 遵循源站缓存时长(swift_follow_cachetime)
+	ForceRevalidate   bool `json:"force_revalidate,omitempty"`    // 强制回源校验(忽略源站缓存头)
+	NoCacheLowFreq    bool `json:"no_cache_low_freq,omitempty"`   // 低频不缓存(swift_no_cache_low)
+	CacheHighFreq     bool `json:"cache_high_freq,omitempty"`     // 高频强制缓存(swift_origin_cache_high)
+
+	// ---- 特有规则形态 ----
+	CodeString string `json:"code_string,omitempty"` // status_code 规则码表(如 301=0,302=0)
+	QueryArgs  string `json:"query_args,omitempty"`  // query_filter 规则语义描述
 }
