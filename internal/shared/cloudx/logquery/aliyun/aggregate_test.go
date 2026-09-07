@@ -97,8 +97,8 @@ func TestBuildAggregateTopNSQL(t *testing.T) {
 	}
 }
 
-// TestAggregateTopNExpr kind 维度映射(CDN=域名/转存=URL 提取/Akamai=reqHost/
-// Akamai WAF=规则名/WAF3 访问流跳过/ALB=host)。
+// TestAggregateTopNExpr 统计 TopN 维度映射(CDN=域名/转存=URL 提取/
+// Akamai CDN=reqHost/Akamai WAF=规则名/WAF3 访问流跳过/ALB=host)。
 func TestAggregateTopNExpr(t *testing.T) {
 	cases := map[mapperKind]string{
 		kindDCDN:       "domain",
@@ -110,6 +110,32 @@ func TestAggregateTopNExpr(t *testing.T) {
 	}
 	for kind, want := range cases {
 		got := aggregateTopNExpr(kind)
+		if want == "" {
+			if got != "" {
+				t.Errorf("kind %q expr = %q, want empty", kind, got)
+			}
+			continue
+		}
+		if !strings.Contains(got, want) {
+			t.Errorf("kind %q expr = %q, want containing %q", kind, got, want)
+		}
+	}
+}
+
+// TestActiveDomainExpr 源选择粒度的 host 维度(与统计 TopN 维度是两个语义:
+// Akamai WAF 源选择=dhost,统计 TopN=规则名 name;曾混用导致域名枚举按
+// 规则名分组,66 个 host 只出 2 个规则名)。
+func TestActiveDomainExpr(t *testing.T) {
+	cases := map[mapperKind]string{
+		kindDCDN:       "domain",
+		kindAkamaiCDN:  "reqHost",
+		kindCDNOffline: "regexp_extract(RequestURL",
+		kindWAF3:       "host",
+		kindAkamaiWAF:  "dhost",
+		kindALB:        "", // 实例流单资源,非混装
+	}
+	for kind, want := range cases {
+		got := activeDomainExpr(kind)
 		if want == "" {
 			if got != "" {
 				t.Errorf("kind %q expr = %q, want empty", kind, got)

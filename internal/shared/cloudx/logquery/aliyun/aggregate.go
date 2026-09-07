@@ -7,8 +7,9 @@ import (
 	"strings"
 )
 
-// aggregateTopNExpr 按 kind 返回 TopN 分组表达式(空=该源无此维度,跳过 TopN)。
-// 与前端统计图对齐:CDN=域名,WAF=规则名(waf3 访问流无规则字段,跳过),SLB=host。
+// aggregateTopNExpr 按 kind 返回统计 TopN 分组表达式(空=该源无此维度,
+// 跳过 TopN)。与前端统计图对齐:CDN=域名,WAF=规则名,SLB=host。
+// 注意与 activeDomainExpr(host 维度,源选择粒度)是两个语义,勿混用。
 func aggregateTopNExpr(kind mapperKind) string {
 	switch kind {
 	case kindDCDN:
@@ -24,6 +25,27 @@ func aggregateTopNExpr(kind mapperKind) string {
 		return "http_host"
 	default:
 		return "" // kindWAF3 访问流无规则维度
+	}
+}
+
+// activeDomainExpr 按 kind 返回源选择粒度的 host 维度表达式(空=该源不是
+// 混装 host 形态)。统计 TopN 的维度(如 Akamai WAF 的规则名 name)与源
+// 选择的 host 维度(dhost)是两个语义——曾混用导致 Akamai WAF 域名枚举
+// 按"规则名"分组,66 个 host 只出 2 个规则名。
+func activeDomainExpr(kind mapperKind) string {
+	switch kind {
+	case kindDCDN:
+		return "domain"
+	case kindAkamaiCDN:
+		return "reqHost"
+	case kindCDNOffline:
+		return "regexp_extract(RequestURL, '^(?:https?://)?([^/?]+)', 1)"
+	case kindWAF3:
+		return "host"
+	case kindAkamaiWAF:
+		return "dhost"
+	default:
+		return "" // kindALB 实例流单资源,非混装
 	}
 }
 

@@ -178,28 +178,66 @@ func (p *provider) toSource(src slsSource, logstore string, enabled bool) logque
 	}
 }
 
-// domainSources 混装源活跃域名枚举:近 24h 小样本探查(100 条,热度序),
+// domainSources 混装源活跃域名枚举:SQL 分组(服务端聚合,全窗真实分布
+// 不受样本限制——100 条样本会被热点域名占满,66 个 host 只露 5 个),
 // 每个域名生成一个域名级子源(ResourceID=域名)。用户在下拉里选域名后
 // resources 传域名,Search 的域名扇出(fetchCDNByDomains)按其过滤。
-// 探查失败静默降级——只返回 logstore 级条目,不阻塞其余源枚举。
+// SQL 失败降级 100 条样本探查,再失败静默(只返回 logstore 级条目)。
 func (p *provider) domainSources(ctx context.Context, src slsSource) []logquery.LogSource {
-	now := time.Now().UnixMilli()
-	probe, err := p.probeDomains(ctx, src, src.logstore, logquery.SearchParams{
-		StartTime: now - 24*3600_000,
-		EndTime:   now,
-	}, 100)
-	if err != nil {
-		p.logger.Warn("[logquery-aliyun] domain probe failed",
-			elog.String("project", src.project), elog.String("logstore", src.logstore),
-			elog.FieldErr(err))
-		return nil
+	domains := p.activeDomains(ctx, src)
+	if domains == nil {
+		// SQL 不可用(列未建索引等)降级样本探查
+		now := time.Now().UnixMilli()
+		probe, err := p.probeDomains(ctx, src, src.logstore, logquery.SearchParams{
+			StartTime: now - 24*3600_000,
+			EndTime:   now,
+		}, 100)
+		if err != nil {
+			p.logger.Warn("[logquery-aliyun] domain probe failed",
+				elog.String("project", src.project), elog.String("logstore", src.logstore),
+				elog.FieldErr(err))
+			return nil
+		}
+		domains = domainNamesFromSample(src.kind, probe)
 	}
-	domains := domainNamesFromSample(src.kind, probe)
 	out := make([]logquery.LogSource, 0, len(domains))
 	for _, d := range domains {
 		s := p.toSource(src, d, true)
-		s.Note = "活跃域名(近24小时)"
+		s.Note = "活跃域名(近30天;低频域名近期可能无日志)"
 		out = append(out, s)
+	}
+	return out
+}
+
+// activeDomains SQL 分组枚举活跃域名(近 30 天,热度序,上限 100):
+// 一条 select <维度>, count(1) group by 拿全量分布。窗口取 30 天对齐
+// 域名目录口径(如 www.lcsc.com 近 7 天无流量但 30 天 8364 万条,枚举
+// 窗口短了会漏列;选中近窗无流量的域名查询为空是真实数据,非 bug)。
+func (p *provider) activeDomains(ctx context.Context, src slsSource) []string {
+	expr := activeDomainExpr(src.kind)
+	if expr == "" {
+		return nil
+	}
+	client := p.clientFor(src.region)
+	now := time.Now().UnixMilli()
+	searchPart := buildAggregateSearchPart(src.kind, "", nil, src.logstore, src.project)
+	sql := buildAggregateTopNSQL(searchPart, expr, 100)
+	resp, err := client.GetLogsV2(src.project, src.logstore, &sls.GetLogRequest{
+		From:  (now - 30*86400_000) / 1000,
+		To:    now / 1000,
+		Query: sql,
+		Lines: 100,
+	})
+	if err != nil {
+		p.logger.Warn("[logquery-aliyun] active domains sql failed",
+			elog.String("project", src.project), elog.String("logstore", src.logstore), elog.FieldErr(err))
+		return nil
+	}
+	out := make([]string, 0, len(resp.Logs))
+	for _, row := range resp.Logs {
+		if k := row["k"]; k != "" {
+			out = append(out, k)
+		}
 	}
 	return out
 }
