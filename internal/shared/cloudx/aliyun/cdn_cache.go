@@ -92,7 +92,9 @@ func parseSetTTLArgs(args []cdn.FunctionArg) (types.CDNCacheRule, bool) {
 	}, true
 }
 
-// getDCDNCacheConfig DCDN 域名:DescribeDcdnDomainConfigs FunctionNames=set_ttl(通用请求)
+// getDCDNCacheConfig DCDN 域名:DescribeDcdnDomainConfigs(通用请求)。
+// DCDN 的缓存 TTL 函数名是 filetype_based_ttl_set(CDN 产品才是 set_ttl,
+// 曾误用后者导致 DCDN 域名查询 500:InvalidFunctionName.ValueNotSupported)。
 func (a *CDNAdapter) getDCDNCacheConfig(domainName string) ([]types.CDNCacheRule, error) {
 	client, err := sdk.NewClientWithAccessKey(a.defaultRegion, a.accessKeyID, a.accessKeySecret)
 	if err != nil {
@@ -106,7 +108,7 @@ func (a *CDNAdapter) getDCDNCacheConfig(domainName string) ([]types.CDNCacheRule
 	request.Version = "2018-01-15"
 	request.ApiName = "DescribeDcdnDomainConfigs"
 	request.QueryParams["DomainName"] = domainName
-	request.QueryParams["FunctionNames"] = "set_ttl"
+	request.QueryParams["FunctionNames"] = "filetype_based_ttl_set"
 
 	response, err := client.ProcessCommonRequest(request)
 	if err != nil {
@@ -117,9 +119,13 @@ func (a *CDNAdapter) getDCDNCacheConfig(domainName string) ([]types.CDNCacheRule
 		DomainConfigs struct {
 			DomainConfig []struct {
 				FunctionName string `json:"FunctionName"`
-				FunctionArgs []struct {
-					ArgName  string `json:"ArgName"`
-					ArgValue string `json:"ArgValue"`
+				// FunctionArgs 是对象包装 {"FunctionArg":[...]}(与 CDN SDK
+				// 展开后的形态不同,直接按原始 JSON 建模)
+				FunctionArgs struct {
+					FunctionArg []struct {
+						ArgName  string `json:"ArgName"`
+						ArgValue string `json:"ArgValue"`
+					} `json:"FunctionArg"`
 				} `json:"FunctionArgs"`
 			} `json:"DomainConfig"`
 		} `json:"DomainConfigs"`
@@ -130,11 +136,11 @@ func (a *CDNAdapter) getDCDNCacheConfig(domainName string) ([]types.CDNCacheRule
 
 	rules := make([]types.CDNCacheRule, 0)
 	for _, cfg := range resp.DomainConfigs.DomainConfig {
-		if cfg.FunctionName != "set_ttl" {
+		if cfg.FunctionName != "filetype_based_ttl_set" {
 			continue
 		}
-		args := make([]cdn.FunctionArg, 0, len(cfg.FunctionArgs))
-		for _, arg := range cfg.FunctionArgs {
+		args := make([]cdn.FunctionArg, 0, len(cfg.FunctionArgs.FunctionArg))
+		for _, arg := range cfg.FunctionArgs.FunctionArg {
 			args = append(args, cdn.FunctionArg{ArgName: arg.ArgName, ArgValue: arg.ArgValue})
 		}
 		if rule, ok := parseSetTTLArgs(args); ok {
