@@ -40,9 +40,9 @@ type slsSource struct {
 	name     string               // 展示名(logstore 动态枚举时的前缀描述)
 	fixed    []logquery.LogSource // 固定源(不枚举,直接给)
 	note     string
-	// mixedDomains 单 logstore 混装全部域名(需要按域名扇出查询)。
-	// 仅 DCDN 边缘实时与 Akamai 自采两类;域名转存类 logstore 即单域名资源,
-	// 整流查询即可。
+	// mixedDomains 单 logstore 混装全部域名/host(需要按域名扇出查询):
+	// CDN(DCDN 边缘实时/实时投递/Akamai 自采)与 WAF(WAF3.0 两渠道/
+	// Akamai 自采)均混装;域名转存类 logstore 即单域名资源,整流查询即可。
 	mixedDomains bool
 }
 
@@ -53,14 +53,14 @@ var catalog = []slsSource{
 		logstore: "", name: "ALB", note: "国内 ALB/CLB 访问日志(实例流+聚合)"},
 	{region: "eu-central-1", project: "jlc-prod-overseas-log", logType: logquery.LogTypeSLB, kind: kindALB,
 		logstore: "", name: "海外 ALB", note: "海外 ALB 访问日志"},
-	// ---- WAF ----
+	// ---- WAF(单 store 混装全部 host,与 CDN 同为域名粒度选择) ----
 	{region: "eu-central-1", project: "wafnew-project-1210557380197478-eu-central-1", logType: logquery.LogTypeWAF, kind: kindWAF3,
-		logstore: "wafnew-logstore", name: "WAF3.0(海外)", note: "eu-central-1 WAF 日志库"},
+		logstore: "wafnew-logstore", name: "WAF3.0(海外)", note: "eu-central-1 WAF 日志库", mixedDomains: true},
 	{region: "cn-shenzhen", project: "aliyun-cloudsiem-channel-1210557380197478-cn-shenzhen", logType: logquery.LogTypeWAF, kind: kindWAF3,
-		logstore: "wafng-logstore", name: "WAF3.0(国内渠道)", note: "云安全中心渠道,与 wafnew 同 schema"},
+		logstore: "wafng-logstore", name: "WAF3.0(国内渠道)", note: "云安全中心渠道,与 wafnew 同 schema", mixedDomains: true},
 	// Akamai 自采(Phase 0 实测两 store 均在 eu-central-1,误写 cn-shenzhen 会静默查空)
 	{region: "eu-central-1", project: "jlc-prod-akamai-cdnwaf-log", logType: logquery.LogTypeWAF, kind: kindAkamaiWAF,
-		logstore: "jlc-prod-akamai-waf-log", name: "Akamai WAF(自采)", note: "Akamai WAF 日志自采入库(CEF 展开)"},
+		logstore: "jlc-prod-akamai-waf-log", name: "Akamai WAF(自采)", note: "Akamai WAF 日志自采入库(CEF 展开)", mixedDomains: true},
 	// ---- CDN ----
 	{region: "eu-central-1", project: "jlc-prod-akamai-cdnwaf-log", logType: logquery.LogTypeCDN, kind: kindAkamaiCDN,
 		logstore: "jlc-prod-akamai-cdn-log", name: "Akamai CDN(自采)", note: "Akamai CDN 日志自采入库", mixedDomains: true},
@@ -418,7 +418,8 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 // 失败返回 nil(隔离,不阻塞其他 logstore)。
 func (p *provider) aggregateStore(ctx context.Context, src slsSource, logstore string, params logquery.AggregateParams) *logquery.AggregateResult {
 	client := p.clientFor(src.region)
-	searchPart := buildAggregateSearchPart(src.kind, params.Query, params.Resources)
+	// 整源选择(Resources 含本 logstore/project)时不加域名过滤
+	searchPart := buildAggregateSearchPart(src.kind, params.Query, params.Resources, logstore, src.project)
 	from := params.StartTime / 1000
 	to := params.EndTime / 1000
 
@@ -499,17 +500,22 @@ func (p *provider) fetchLogs(ctx context.Context, src slsSource, logstore string
 	return all, nil
 }
 
-// buildQuery 原始查询式 + kind 专属 __topic__ 过滤(服务端过滤:
-// 聚合 project 里混有 nacos/app 等非 LB 日志流,topic 是 ALB/WAF 访问日志的
-// 稳定判据;无 topic 的源(DCDN rtlog/Akamai)不加过滤)。
-func buildQuery(kind mapperKind, userQuery string) string {
-	var topic string
+// topicFilter kind 专属 __topic__ 过滤(服务端过滤:聚合 project 里混有
+// nacos/app 等非 LB 日志流,topic 是 ALB/WAF 访问日志的稳定判据;无 topic
+// 的源(DCDN rtlog/Akamai/转存)不加过滤)。
+func topicFilter(kind mapperKind) string {
 	switch kind {
 	case kindALB:
-		topic = "__topic__:alb_layer7_access_log"
+		return "__topic__:alb_layer7_access_log"
 	case kindWAF3:
-		topic = "__topic__:waf_access_log"
+		return "__topic__:waf_access_log"
 	}
+	return ""
+}
+
+// buildQuery 原始查询式 + kind 专属 __topic__ 过滤。
+func buildQuery(kind mapperKind, userQuery string) string {
+	topic := topicFilter(kind)
 	q := strings.TrimSpace(userQuery)
 	if q == "" || q == "*" {
 		if topic == "" {
@@ -536,6 +542,10 @@ func domainField(kind mapperKind) string {
 		return "domain"
 	case kindAkamaiCDN:
 		return "reqHost"
+	case kindWAF3:
+		return "host"
+	case kindAkamaiWAF:
+		return "dhost"
 	default:
 		return ""
 	}
@@ -578,19 +588,22 @@ func (p *provider) probeDomains(ctx context.Context, src slsSource, logstore str
 	return p.fetchLogs(ctx, src, logstore, params, probeLimit)
 }
 
-// fetchPerDomain 单域名查询:domain 过滤 + 用户检索式,凑满 limit 即停。
+// fetchPerDomain 单域名查询:topic 过滤 + 用户检索式 + domain 过滤,凑满 limit 即停。
 func (p *provider) fetchPerDomain(ctx context.Context, src slsSource, logstore, domain string, params logquery.SearchParams, limit int) ([]map[string]string, error) {
 	client := p.clientFor(src.region)
 	from := params.StartTime / 1000
 	to := params.EndTime / 1000
-	// 域名过滤拼接用户检索式(SLS 查询语法 and 连接)
-	q := strings.TrimSpace(params.Query)
-	domainTerm := domainField(src.kind) + ": " + domain
-	if q == "" || q == "*" {
-		q = domainTerm
-	} else {
-		q = "(" + q + ") and " + domainTerm
+	// topic 过滤必须随扇出保留(WAF3 渠道 store 混有噪声流),否则按 host
+	// 查询会把噪声流也算进来
+	var parts []string
+	if t := topicFilter(src.kind); t != "" {
+		parts = append(parts, t)
 	}
+	if u := strings.TrimSpace(params.Query); u != "" && u != "*" {
+		parts = append(parts, "("+u+")")
+	}
+	parts = append(parts, domainField(src.kind)+": "+domain)
+	q := strings.Join(parts, " and ")
 	var all []map[string]string
 	offset := int64(0)
 	const pageSize = 100
@@ -724,23 +737,18 @@ func (p *provider) fetchCDNByDomains(ctx context.Context, src slsSource, logstor
 	return out
 }
 
-// dedupLogs 探查样本与按域名查询重叠去重(键:request_id/uuid,缺失时回退
-// 域名+时间+客户端 IP 组合;两条同键保留首条)。探查与单域名查询同一窗口
-// 且都从最新开始,重叠是常态,直接拼接会让趋势图条数虚高。
+// dedupLogs 探查样本与按域名查询重叠去重。键 = 全字段指纹(键名排序拼接):
+// 探查与单域名查询同一窗口且都从最新开始,重叠行字段集完全相同;不同请求
+// 必有 request_id/时间/UA 等差异,不会误合。此前用 CDN 字段名(domain/
+// unixtime)做组合键,WAF 行字段名不同全落空键,整源被去重到只剩 1 条。
 func dedupLogs(logs []map[string]string) []map[string]string {
 	if len(logs) == 0 {
 		return nil
 	}
-	type key struct{ a, b string }
-	seen := make(map[key]bool, len(logs))
+	seen := make(map[string]bool, len(logs))
 	out := make([]map[string]string, 0, len(logs))
 	for _, l := range logs {
-		var k key
-		if rid := l["uuid"]; rid != "" {
-			k = key{rid, ""}
-		} else {
-			k = key{l["domain"], l["unixtime"] + "|" + l["client_ip"] + "|" + l["uri"] + l["uri_param"]}
-		}
+		k := logKey(l)
 		if seen[k] {
 			continue
 		}
@@ -748,6 +756,23 @@ func dedupLogs(logs []map[string]string) []map[string]string {
 		out = append(out, l)
 	}
 	return out
+}
+
+// logKey 全字段指纹(键名排序拼接,与字段名无关,全 kind 通用)。
+func logKey(l map[string]string) string {
+	keys := make([]string, 0, len(l))
+	for k := range l {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(l[k])
+		b.WriteByte('|')
+	}
+	return b.String()
 }
 
 // filterInternalStores 过滤 SLS 内部流(metrics/diagnostic/ml)。

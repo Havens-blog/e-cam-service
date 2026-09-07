@@ -96,6 +96,9 @@ func mapWAF3(m logquery.LogMeta, r map[string]any, raw map[string]string) *logqu
 	if q := raw["querystring"]; q != "" && !strings.Contains(uri, "?") {
 		uri += "?" + q
 	}
+	if host := pickHost(raw["host"], raw["matched_host"]); host != "" {
+		m.ResourceID = host // 混装 store 的选择粒度是 host(与 DCDN 一致)
+	}
 	return &logquery.WAFLogEntry{
 		Meta:      m,
 		Timestamp: logquery.ParseTimeMs(raw["start_time"]),
@@ -220,6 +223,9 @@ func mapAkamaiWAF(m logquery.LogMeta, r map[string]any, raw map[string]string) *
 	uri := raw["request"]
 	if uri == "" {
 		uri = buildURLFromPath(raw["dhost"], raw["dpath"])
+	}
+	if raw["dhost"] != "" {
+		m.ResourceID = raw["dhost"] // 混装 store 的选择粒度是 host
 	}
 	return &logquery.WAFLogEntry{
 		Meta:      m,

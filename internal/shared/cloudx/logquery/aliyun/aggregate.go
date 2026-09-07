@@ -29,26 +29,34 @@ func aggregateTopNExpr(kind mapperKind) string {
 
 // buildAggregateSearchPart 管道前的检索段:kind 专属 __topic__ 过滤(与
 // Search 的 buildQuery 同源,防聚合 project 噪声流)+ 用户检索式 + 混装源
-// 域名过滤(Resources 与 Search 扇出同语义 = 域名清单)。
-func buildAggregateSearchPart(kind mapperKind, userQuery string, resources []string) string {
+// 域名过滤(Resources 与 Search 扇出同语义 = 域名清单;资源等于本源
+// logstore/project 时视为整源查询,不加域名过滤)。
+func buildAggregateSearchPart(kind mapperKind, userQuery string, resources []string, selfNames ...string) string {
 	var parts []string
-	switch kind {
-	case kindALB:
-		parts = append(parts, "__topic__:alb_layer7_access_log")
-	case kindWAF3:
-		parts = append(parts, "__topic__:waf_access_log")
+	if t := topicFilter(kind); t != "" {
+		parts = append(parts, t)
 	}
 	if q := strings.TrimSpace(userQuery); q != "" && q != "*" {
 		parts = append(parts, "("+q+")")
 	}
 	if field := domainField(kind); field != "" && len(resources) > 0 {
+		self := make(map[string]bool, len(selfNames))
+		for _, n := range selfNames {
+			if n != "" {
+				self[n] = true
+			}
+		}
+		wholeSource := false
 		var terms []string
 		for _, r := range resources {
-			if r != "" {
+			if self[r] {
+				wholeSource = true
+			}
+			if r != "" && !self[r] {
 				terms = append(terms, field+": "+r)
 			}
 		}
-		if len(terms) > 0 {
+		if !wholeSource && len(terms) > 0 {
 			parts = append(parts, "("+strings.Join(terms, " or ")+")")
 		}
 	}

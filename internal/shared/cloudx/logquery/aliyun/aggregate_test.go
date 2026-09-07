@@ -14,6 +14,7 @@ func TestBuildAggregateSearchPart(t *testing.T) {
 		kind       mapperKind
 		query      string
 		resources  []string
+		selfNames  []string
 		wantSubstr []string
 		wantNot    []string
 	}{
@@ -38,13 +39,24 @@ func TestBuildAggregateSearchPart(t *testing.T) {
 			wantNot: []string{"a.com"},
 		},
 		{
+			name: "waf3 host resources", kind: kindWAF3, resources: []string{"a.com", "b.com"},
+			wantSubstr: []string{"__topic__:waf_access_log", "(host: a.com or host: b.com)"},
+		},
+		{
+			name: "whole-source self name skips domain filter", kind: kindDCDN,
+			query: "", resources: []string{"dcdn-edge-rtlog"},
+			selfNames:  []string{"dcdn-edge-rtlog", "dcdn-edge-rtlog-cn-42d9825f"},
+			wantSubstr: []string{"*"},
+			wantNot:    []string{"domain:"},
+		},
+		{
 			name: "empty query no user term", kind: kindDCDN,
 			wantSubstr: []string{"*"},
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := buildAggregateSearchPart(c.kind, c.query, c.resources)
+			got := buildAggregateSearchPart(c.kind, c.query, c.resources, c.selfNames...)
 			if got == "" {
 				got = "*"
 			}

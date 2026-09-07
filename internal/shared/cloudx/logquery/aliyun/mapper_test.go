@@ -309,13 +309,15 @@ func TestMapEntryUnknownKind(t *testing.T) {
 	}
 }
 
-// TestDomainField CDN 类域名原始字段名(按域名扇出的分组键)。
+// TestDomainField 混装源的域名/host 原始字段名(按域名扇出的分组键;
+// CDN 与 WAF 源均为域名粒度选择,ALB/转存整流查询无此维度)。
 func TestDomainField(t *testing.T) {
 	cases := map[mapperKind]string{
 		kindDCDN:      "domain",
 		kindAkamaiCDN: "reqHost",
+		kindWAF3:      "host",
+		kindAkamaiWAF: "dhost",
 		kindALB:       "",
-		kindWAF3:      "",
 	}
 	for kind, want := range cases {
 		if got := domainField(kind); got != want {
@@ -345,16 +347,17 @@ func TestSplitByDomain(t *testing.T) {
 	}
 }
 
-// TestDedupProbeOverlap 探查样本与按域名查询重叠去重(同 request_id 只留一条;
-// 无 request_id 用 host+ts+ip+url 组合键)。曾直接拼接导致趋势图条数虚高。
+// TestDedupProbeOverlap 探查样本与按域名查询重叠去重(全字段指纹:
+// 字段集完全相同 = 同一条日志)。曾用 CDN 字段名做键,WAF 行字段名不同
+// 全落空键被去重到 1 条。
 func TestDedupProbeOverlap(t *testing.T) {
 	logs := []map[string]string{
 		{"uuid": "r1", "domain": "a.com", "unixtime": "100"},
-		{"uuid": "r1", "domain": "a.com", "unixtime": "100"}, // 探查+查询重叠
+		{"uuid": "r1", "domain": "a.com", "unixtime": "100"}, // 探查+查询重叠(全同)
 		{"uuid": "r2", "domain": "a.com", "unixtime": "101"},
-		{"domain": "b.com", "unixtime": "100"}, // 无 uuid:组合键去重
-		{"domain": "b.com", "unixtime": "100"}, // 同上,重复
-		{"domain": "b.com", "unixtime": "102"},
+		{"host": "b.com", "start_time": "100", "real_client_ip": "1.1.1.1"}, // WAF 形态
+		{"host": "b.com", "start_time": "100", "real_client_ip": "1.1.1.1"}, // 同上,重复
+		{"host": "b.com", "start_time": "102", "real_client_ip": "1.1.1.1"},
 	}
 	got := dedupLogs(logs)
 	if len(got) != 4 {
