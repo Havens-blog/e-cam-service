@@ -1118,3 +1118,69 @@ func TestStartScanAsyncPanicGuard(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// ==================== 托管标注（cert-alb-ingress-managed 任务 1） ====================
+
+func TestManagedAlbInstances(t *testing.T) {
+	objects := []K8sObject{
+		{Namespace: "kube-system", Name: "alb-conf-main", Content: map[string]interface{}{
+			"spec": map[string]interface{}{
+				"config": map[string]interface{}{"instanceId": "alb-main-1"},
+				"listeners": []interface{}{},
+			},
+		}},
+		{Namespace: "app", Name: "alb-conf-second", Content: map[string]interface{}{
+			"spec": map[string]interface{}{
+				"config": map[string]interface{}{"instanceId": "alb-second-2"},
+			},
+		}},
+		{Namespace: "app", Name: "alb-auto-create", Content: map[string]interface{}{
+			"spec": map[string]interface{}{
+				"config": map[string]interface{}{}, // instanceId 缺省（自动建实例）→ 跳过
+			},
+		}},
+		{Namespace: "app", Name: "no-config", Content: map[string]interface{}{
+			"spec": map[string]interface{}{},
+		}},
+	}
+	regs := []domain.CrdRegistration{
+		{ClusterID: "cluster-a", APIGroup: "alb.alibabacloud.com", Kind: "AlbConfig"},
+		{ClusterID: "cluster-a", APIGroup: "networking.k8s.io", Kind: "Ingress"},
+	}
+	got := managedAlbInstances("cluster-a", regs[0], objects)
+	require.NotNil(t, got)
+	require.Len(t, got, 2)
+	assert.Equal(t, "cluster-a/kube-system/alb-conf-main", got["alb-main-1"])
+	assert.Equal(t, "cluster-a/app/alb-conf-second", got["alb-second-2"])
+
+	// 非 AlbConfig 登记恒 nil；空提取也 nil
+	assert.Nil(t, managedAlbInstances("cluster-a", regs[1], objects))
+	assert.Nil(t, managedAlbInstances("cluster-a", regs[0], nil))
+}
+
+func TestMarkManagedReferences(t *testing.T) {
+	managedSet := map[string]string{"alb-main-1": "cluster-a/kube-system/alb-conf-main"}
+	refs := []domain.CertReference{
+		{Cloud: domain.CloudAliyun, Product: domain.ProductALB, ResourceID: "alb-main-1/lsn-abc"},
+		{Cloud: domain.CloudAliyun, Product: domain.ProductNLB, ResourceID: "alb-main-1/lsn-def"},
+		{Cloud: domain.CloudAliyun, Product: domain.ProductALB, ResourceID: "alb-other-9/lsn-xyz"},   // 未托管
+		{Cloud: domain.CloudAliyun, Product: domain.ProductCDN, ResourceID: "alb-main-1"},            // 非 ALB/NLB 产品
+		{Cloud: domain.CloudTencent, Product: domain.ProductALB, ResourceID: "alb-main-1/lsn-qqq"},   // 非阿里云
+		{Cloud: domain.CloudAliyun, Product: domain.ProductALB, ResourceID: "lsn-legacy"},            // 纯监听存量形态
+		{Product: domain.ProductCRD, ClusterID: "cluster-a", ResourceID: "alb-conf-main"},            // crd 引用不触碰
+	}
+	markManagedReferences(refs, managedSet)
+
+	assert.Equal(t, "alb-ingress", refs[0].ManagedBy)
+	assert.Equal(t, "cluster-a/kube-system/alb-conf-main", refs[0].ManagedOwner)
+	assert.Equal(t, "alb-ingress", refs[1].ManagedBy)
+	for i := 2; i < len(refs); i++ {
+		assert.Empty(t, refs[i].ManagedBy, "ref %d 不应被标注", i)
+		assert.Empty(t, refs[i].ManagedOwner)
+	}
+
+	// 空集合零操作（无集群登记场景行为不变）
+	refs2 := []domain.CertReference{{Cloud: domain.CloudAliyun, Product: domain.ProductALB, ResourceID: "alb-main-1/lsn-abc"}}
+	markManagedReferences(refs2, map[string]string{})
+	assert.Empty(t, refs2[0].ManagedBy)
+}

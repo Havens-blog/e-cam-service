@@ -28,6 +28,7 @@ func TestBsonTagsMatchSchema(t *testing.T) {
 		{"CertReference", CertReference{}, true, []string{
 			"certFingerprint", "cloud", "product", "clusterId", "namespace", "kind",
 			"resourceId", "referencedCloudCertId", "accountKey", "servedDomains",
+			"managedBy", "managedOwner",
 			"snapshotId", "scannedAt",
 		}},
 		{"ScanSnapshot", ScanSnapshot{}, true, []string{

@@ -41,6 +41,8 @@ type ReferenceItemVO struct {
 	AccountKey            string `json:"accountKey,omitempty"`
 	Namespace             string `json:"namespace,omitempty"` // K8s 引用
 	Kind                  string `json:"kind,omitempty"`      // K8s 引用
+	ManagedBy             string `json:"managedBy,omitempty"` // 托管标注（cert-alb-ingress-managed）
+	ManagedOwner          string `json:"managedOwner,omitempty"`
 }
 
 // ReferenceGroupVO 按云/产品/集群分组的引用集合。
@@ -86,6 +88,8 @@ type ReverseRefVO struct {
 	ResourceID            string `json:"resourceId"`
 	ReferencedCloudCertID string `json:"referencedCloudCertId"`
 	AccountKey            string `json:"accountKey,omitempty"`
+	ManagedBy             string `json:"managedBy,omitempty"` // 托管标注（cert-alb-ingress-managed）
+	ManagedOwner          string `json:"managedOwner,omitempty"`
 }
 
 // ReverseEntryVO 反向查询单证书条目（按指纹严格区分，不做同域名合并）。
@@ -202,6 +206,8 @@ func toReferenceViewVO(v service.ReferenceView) ReferenceViewVO {
 				AccountKey:            it.AccountKey,
 				Namespace:             it.Namespace,
 				Kind:                  it.Kind,
+				ManagedBy:             it.ManagedBy,
+				ManagedOwner:          it.ManagedOwner,
 			})
 		}
 		groups = append(groups, ReferenceGroupVO{
@@ -260,6 +266,8 @@ func toReverseResultVO(query string, entries []service.ReverseCertEntry) Reverse
 				ResourceID:            r.ResourceID,
 				ReferencedCloudCertID: r.ReferencedCloudCertID,
 				AccountKey:            r.AccountKey,
+				ManagedBy:             r.ManagedBy,
+				ManagedOwner:          r.ManagedOwner,
 			})
 		}
 		items = append(items, ReverseEntryVO{

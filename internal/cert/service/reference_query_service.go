@@ -136,6 +136,8 @@ type ReferenceItem struct {
 	AccountKey            string
 	Namespace             string // K8s 引用
 	Kind                  string // K8s 引用
+	ManagedBy             string // 托管标注（cert-alb-ingress-managed；空=未托管）
+	ManagedOwner          string // 托管资源定位 "cluster/ns/name"
 }
 
 // ReferenceGroup 按云/产品/集群分组的引用集合。
@@ -170,6 +172,8 @@ type ReverseReference struct {
 	ResourceID            string
 	ReferencedCloudCertID string
 	AccountKey            string
+	ManagedBy             string // 托管标注（cert-alb-ingress-managed；空=未托管）
+	ManagedOwner          string
 }
 
 // ReverseCertEntry 反向查询单证书条目（Hard Rule：按指纹严格区分，不做同域名合并）。
@@ -288,6 +292,8 @@ func groupReferences(refs []domain.CertReference, fingerprint string) []Referenc
 			AccountKey:            r.AccountKey,
 			Namespace:             r.Namespace,
 			Kind:                  r.Kind,
+			ManagedBy:             r.ManagedBy,
+			ManagedOwner:          r.ManagedOwner,
 		})
 	}
 	sort.Slice(order, func(i, j int) bool {
@@ -416,6 +422,8 @@ func toReverseReference(r domain.CertReference) ReverseReference {
 		ResourceID:            r.ResourceID,
 		ReferencedCloudCertID: r.ReferencedCloudCertID,
 		AccountKey:            r.AccountKey,
+		ManagedBy:             r.ManagedBy,
+		ManagedOwner:          r.ManagedOwner,
 	}
 }
 

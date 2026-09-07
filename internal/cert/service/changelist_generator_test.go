@@ -720,3 +720,43 @@ func TestGenerateChangeList_ErrorPropagation(t *testing.T) {
 		assert.ErrorIs(t, err, errInjected)
 	})
 }
+
+// ==================== 托管监听变更路由（cert-alb-ingress-managed 任务 2） ====================
+
+func TestBuildChangeItems_ManagedListenerExcluded(t *testing.T) {
+	h := newGenHarness(t, nil)
+	managedRef := cloudRef(changeTestFP, domain.CloudAliyun, domain.ProductALB, "acc-a", "alb-main-1/lsn-abc", "cert-20275346-cn-hangzhou")
+	managedRef.ManagedBy = "alb-ingress"
+	managedRef.ManagedOwner = "cluster-a/kube-system/alb-conf-main"
+	normalRef := cloudRef(changeTestFP, domain.CloudAliyun, domain.ProductCDN, "acc-a", "www.example.com", "cert-cdn-1")
+	crdItem := k8sRef(changeTestFP, "cluster-a", "kube-system", "AlbConfig", "alb-conf-main", "cert-20275346-cn-hangzhou")
+
+	newCertID, _ := h.seedValid(t, managedRef, normalRef, crdItem)
+	list, err := h.svc.GenerateChangeList(context.Background(), changeTestFP, newCertID)
+	require.NoError(t, err)
+
+	byTarget := map[string]domain.ChangeAction{}
+	var reasons []string
+	for _, it := range list.Items {
+		byTarget[it.Target.ResourceID] = it.Action
+		if it.Reason != "" {
+			reasons = append(reasons, it.Reason)
+		}
+	}
+	// 托管监听不出 upload_and_bind（分区为不可执行项，原因可机读+定位 AlbConfig）
+	action, exists := byTarget["alb-main-1/lsn-abc"]
+	require.True(t, exists, "托管监听应保留清单项（skipped 形态）")
+	assert.Equal(t, domain.ActionUploadAndBind, action)
+	foundManagedReason := false
+	for _, r := range reasons {
+		if strings.HasPrefix(r, "K8S_MANAGED_RESOURCE") && strings.Contains(r, "alb-conf-main") {
+			foundManagedReason = true
+		}
+	}
+	assert.True(t, foundManagedReason, "托管原因须含 K8S_MANAGED_RESOURCE 标记与 AlbConfig 定位，got %v", reasons)
+
+	// 未托管引用照常生成（回归锁定）
+	assert.Equal(t, domain.ActionUploadAndBind, byTarget["www.example.com"])
+	// 同证书 AlbConfig CRD 引用按既有路径出 patch_crd（闭环承接）
+	assert.Equal(t, domain.ActionPatchCRD, byTarget["alb-conf-main"])
+}

@@ -370,6 +370,7 @@ func (s *referenceScanService) runScan(ctx context.Context, sc scanContext) (Sca
 	}
 
 	// K8s 发现：固定枚举（EnsureBuiltinRegistrations 播种）+ enabled 自定义登记
+	managedSet := map[string]string{} // 控制器托管 ALB 实例：instanceId → "cluster/ns/name"
 	if len(k8sRegs) > 0 {
 		byCluster := make(map[string][]domain.CrdRegistration)
 		for _, reg := range k8sRegs {
@@ -378,7 +379,7 @@ func (s *referenceScanService) runScan(ctx context.Context, sc scanContext) (Sca
 		for cluster, clusterRegs := range byCluster {
 			for _, reg := range clusterRegs {
 				attempted++
-				objRefs, err := s.discoverK8sRegistration(ctx, cluster, reg, snapID, fpCache)
+				objRefs, managed, err := s.discoverK8sRegistration(ctx, cluster, reg, snapID, fpCache)
 				if err != nil {
 					failed++
 					partials = append(partials, domain.ScanChannelFailure{
@@ -389,9 +390,18 @@ func (s *referenceScanService) runScan(ctx context.Context, sc scanContext) (Sca
 					continue
 				}
 				discovered = append(discovered, objRefs...)
+				// AlbConfig 实例的 spec.config.instanceId → 托管 ALB 集合
+				//（cert-alb-ingress-managed：CRD 为证书绑定权威源，云 API 直改会被调谐回滚）
+				for instanceID, owner := range managed {
+					managedSet[instanceID] = owner
+				}
 			}
 		}
 	}
+
+	// 托管标注：云侧 ALB/NLB 监听引用命中托管实例集合 → managedBy/managedOwner
+	//（无集群登记/无 AlbConfig 时集合为空，零标记行为不变）
+	markManagedReferences(discovered, managedSet)
 
 	// 5. 写引用（snapshotId/scannedAt 写通；DEFAULT scannedAt=now 由仓储填充）
 	written, err := s.refs.CreateMulti(ctx, discovered)
@@ -428,19 +438,22 @@ func (s *referenceScanService) runScan(ctx context.Context, sc scanContext) (Sca
 
 // discoverK8sRegistration 单登记项发现：列出集群内该 apiGroup+kind 全部实例，
 // 按 certFieldPath 读取证书引用字段（每值一引用，含 clusterId/namespace/kind）。
+// AlbConfig 登记额外提取 spec.config.instanceId 返回托管实例映射
+//（instanceId → "cluster/ns/name"），供云侧 ALB/NLB 引用标注托管来源；
+// 非 AlbConfig 登记恒返回 nil。instanceId 缺省（自动建实例形态）不入映射。
 func (s *referenceScanService) discoverK8sRegistration(
 	ctx context.Context,
 	cluster string,
 	reg domain.CrdRegistration,
 	snapID string,
 	fpCache map[string]string,
-) ([]domain.CertReference, error) {
+) ([]domain.CertReference, map[string]string, error) {
 	if err := k8s.ValidateCertFieldPath(reg.CertFieldPath); err != nil {
-		return nil, err // 登记期已校验；防御性兜底（非法路径报错并记入通道失败）
+		return nil, nil, err // 登记期已校验；防御性兜底（非法路径报错并记入通道失败）
 	}
 	objects, err := s.k8sGateway.ListObjects(ctx, cluster, reg.APIGroup, reg.Kind)
 	if err != nil {
-		return nil, err // ErrK8sUnreachable 等透传，记入通道失败
+		return nil, nil, err // ErrK8sUnreachable 等透传，记入通道失败
 	}
 	var refs []domain.CertReference
 	for _, obj := range objects {
@@ -460,7 +473,62 @@ func (s *referenceScanService) discoverK8sRegistration(
 			})
 		}
 	}
-	return refs, nil
+	return refs, managedAlbInstances(cluster, reg, objects), nil
+}
+
+// albConfigKind AlbConfig 内置登记的 kind（控制器托管 ALB 的 CRD 权威源）。
+const albConfigKind = "AlbConfig"
+
+// managedAlbInstances AlbConfig 实例的托管锚点提取：spec.config.instanceId →
+// "cluster/ns/name"。非 AlbConfig 登记恒 nil；instanceId 缺省跳过（自动建
+// 实例形态无法关联云侧，引用照旧不标注）。instanceId 为阿里云全局唯一 ID，
+// 跨集群同名冲突以首见为准（良性：指向同一云实例）。
+func managedAlbInstances(cluster string, reg domain.CrdRegistration, objects []K8sObject) map[string]string {
+	if reg.Kind != albConfigKind {
+		return nil
+	}
+	out := map[string]string{}
+	for _, obj := range objects {
+		ids := extractCertFieldValues(obj.Content, "spec.config.instanceId")
+		if len(ids) == 0 || ids[0] == "" {
+			continue
+		}
+		instanceID := ids[0]
+		if _, exists := out[instanceID]; !exists {
+			out[instanceID] = cluster + "/" + obj.Namespace + "/" + obj.Name
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// managedByALBIngress 托管标注值：ALB Ingress Controller 经 AlbConfig CRD 管理。
+const managedByALBIngress = "alb-ingress"
+
+// markManagedReferences 就地标注云侧 ALB/NLB 监听引用的托管来源：
+// 复合 resourceId（"{lbId}/{listenerId}"）的 lbId 命中托管实例集合 →
+// managedBy=alb-ingress + managedOwner。其余引用（含 K8s crd 引用自身）
+// 不触碰。无标记场景集合为空时循环零命中（行为不变）。
+func markManagedReferences(refs []domain.CertReference, managedSet map[string]string) {
+	if len(managedSet) == 0 {
+		return
+	}
+	for i := range refs {
+		r := &refs[i]
+		if r.Cloud != domain.CloudAliyun || (r.Product != domain.ProductALB && r.Product != domain.ProductNLB) {
+			continue
+		}
+		lbID, _, found := strings.Cut(r.ResourceID, "/")
+		if !found || lbID == "" {
+			continue
+		}
+		if owner, ok := managedSet[lbID]; ok {
+			r.ManagedBy = managedByALBIngress
+			r.ManagedOwner = owner
+		}
+	}
 }
 
 // ---------------------------------------------------------------------

@@ -93,6 +93,11 @@ const (
 	reasonK8sUnprobed         = "K8S_MANAGEMENT_UNPROBED: 管理权探测通道未接入（5.6），暂不可自动变更"
 	reasonK8sProbeFailedFmt   = "K8S_MANAGEMENT_PROBE_FAILED: %s"
 	reasonK8sNotManageableFmt = "K8S_MANAGEMENT_SIGNAL: %s"
+	// reasonManagedListenerFmt 托管监听不生成云 bind 项的原因（首词可机读）：
+	// ALB Ingress Controller 经 AlbConfig CRD 声明管理，云 API 直接绑定会被
+	// 调谐回滚（cert-alb-ingress-managed）；实际替换由同证书的 AlbConfig
+	// CRD 引用 patch_crd 项闭环。
+	reasonManagedListenerFmt = "K8S_MANAGED_RESOURCE: %s 由 AlbConfig CRD 托管，云 API 直接绑定会被调谐回滚；请更新对应 AlbConfig 的证书绑定（同证书的 CRD 引用将自动生成 patch_crd 变更项）"
 )
 
 // GenerateChangeList 清单生成（tech-design Interface 3）：
@@ -254,6 +259,15 @@ func (s *changeService) buildChangeItems(ctx context.Context, orderID string, re
 		}
 		changeable, reason := s.assessChangeable(ctx, target)
 		if !changeable {
+			unchangeable++
+		}
+		// 托管监听（cert-alb-ingress-managed 任务 2）：云通道 bind 会被 CRD 调谐
+		// 回滚——按不可执行项分区（skipped + 显式原因，不计成功率分母，Hard Rule
+		// "不可执行项不静默放行"）；实际替换由同证书 AlbConfig CRD 引用的
+		// patch_crd 项闭环（其按既有 crd 路径独立生成）。
+		if changeable && r.ManagedBy != "" {
+			changeable = false
+			reason = fmt.Sprintf(reasonManagedListenerFmt, r.ManagedOwner)
 			unchangeable++
 		}
 		item := domain.ChangeItem{

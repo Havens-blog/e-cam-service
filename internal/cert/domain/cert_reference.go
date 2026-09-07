@@ -50,6 +50,12 @@ type CertReference struct {
 	ReferencedCloudCertID string             `bson:"referencedCloudCertId,omitempty"` // 云侧证书 ID
 	AccountKey            string             `bson:"accountKey,omitempty"`
 	ServedDomains         []string           `bson:"servedDomains,omitempty"` // ALB 监听规则提取的 served hostname（external DNS 记录→ALB 资源级 expected 对齐）
+	// ManagedBy/ManagedOwner 托管标注（cert-alb-ingress-managed）：引用资源由
+	// K8s 控制器经 CRD 声明管理（alb-ingress=ALB Ingress Controller），证书
+	// 变更须经其管理管道（AlbConfig），云 API 直接绑定会被调谐回滚。
+	// ManagedOwner 为托管资源定位 "cluster/namespace/name"（空=未托管）。
+	ManagedBy    string `bson:"managedBy,omitempty"`
+	ManagedOwner string `bson:"managedOwner,omitempty"`
 	SnapshotID            string             `bson:"snapshotId"`              // 来源扫描快照
 	ScannedAt             time.Time          `bson:"scannedAt"`               // DEFAULT=now()
 }
