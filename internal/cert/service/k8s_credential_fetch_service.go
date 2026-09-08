@@ -127,6 +127,21 @@ func (s *k8sCredentialFetchService) FetchAndRegister(ctx context.Context, in Fet
 		}
 		results = append(results, s.fetchOne(ctx, creds, clusterID, in))
 	}
+	registered, duplicate, failed := 0, 0, 0
+	for _, r := range results {
+		switch r.Status {
+		case FetchStatusRegistered:
+			registered++
+		case FetchStatusDuplicate:
+			duplicate++
+		default:
+			failed++
+		}
+	}
+	slog.Info("cert k8s credential fetch: batch done",
+		slog.String("accountKey", in.AccountKey),
+		slog.Int("total", len(results)), slog.Int("registered", registered),
+		slog.Int("duplicate", duplicate), slog.Int("failed", failed))
 	return results
 }
 
@@ -145,6 +160,7 @@ func (s *k8sCredentialFetchService) fetchOne(ctx context.Context, creds *domain.
 	view, err := s.creds.AddCluster(ctx, AddK8sCredentialInput{
 		ClusterName: clusterID, // 集群名以 ACK clusterId 登记（跨账号唯一；可读名存 APIEndpoint 旁路）
 		Kubeconfig:  []byte(cfg),
+		APIEndpoint: kubeconfigServer(cfg),
 	})
 	if err != nil {
 		if isDuplicateClusterErr(err) {
@@ -157,7 +173,21 @@ func (s *k8sCredentialFetchService) fetchOne(ctx context.Context, creds *domain.
 	res.ClusterName = view.ClusterName
 	res.Status = FetchStatusRegistered
 	res.APIEndpoint = view.APIEndpoint
+	slog.Info("cert k8s credential fetch: registered",
+		slog.String("accountKey", in.AccountKey), slog.String("clusterId", clusterID))
 	return res
+}
+
+// kubeconfigServer 从 kubeconfig 提取 APIServer endpoint（首个 server: 行，
+// 行级解析足够——ACK kubeconfig 结构固定；提取失败返回空串不阻塞登记）。
+func kubeconfigServer(cfg string) string {
+	for _, line := range strings.Split(cfg, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if url, ok := strings.CutPrefix(trimmed, "server:"); ok {
+			return strings.TrimSpace(url)
+		}
+	}
+	return ""
 }
 
 // isDuplicateClusterErr 重名幂等判定（ErrDuplicateClusterName）。
