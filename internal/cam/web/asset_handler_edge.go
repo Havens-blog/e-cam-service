@@ -16,6 +16,9 @@ import (
 // CDNCacheConfigService 详情页缓存配置按需查询(web 层只依赖此接口)
 type CDNCacheConfigService interface {
 	GetCacheConfig(ctx context.Context, tenantID, accountID int64, domainName, domainID string) ([]types.CDNCacheRule, error)
+	// GetDomainSettings CDN 域名功能配置全景按需查询（性能优化/访问控制/
+	// 流量限制/HTTPS/重定向/回源；仅 account_id+域名标识命中时调用）。
+	GetDomainSettings(ctx context.Context, tenantID, accountID int64, domainName, domainID string) (*types.CDNDomainSettings, error)
 }
 
 // ListCDN 获取CDN加速域名列表
@@ -115,6 +118,28 @@ func (h *AssetHandler) GetCDNCacheConfig(ctx *gin.Context) {
 		Domain: domainName,
 		Rules:  rules,
 	}))
+}
+
+// GetCDNDomainSettings 按需查询 CDN 域名功能配置全景(性能优化/访问控制/
+// 流量限制/HTTPS/重定向/回源,实时经厂商 API)
+func (h *AssetHandler) GetCDNDomainSettings(ctx *gin.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	accountID, _ := strconv.ParseInt(ctx.Query("account_id"), 10, 64)
+	domainName := ctx.Query("domain_name")
+	domainID := ctx.Query("domain_id")
+
+	if accountID <= 0 || (domainName == "" && domainID == "") {
+		ctx.JSON(400, ErrorResultWithMsg(errs.FieldInvalid, "缺少 account_id 或域名标识"))
+		return
+	}
+
+	settings, err := h.cdnQuery.GetDomainSettings(ctx.Request.Context(), tenantID, accountID, domainName, domainID)
+	if err != nil {
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
+	}
+
+	ctx.JSON(200, Result(settings))
 }
 
 // ListWAF 获取WAF实例列表
