@@ -77,6 +77,36 @@ func TestFetchAndRegister_BatchSemantics(t *testing.T) {
 	assert.Equal(t, FetchStatusDuplicate, res[0].Status)
 }
 
+// TestFetchAndRegister_DisplayNameBackfill 幂等重复命中存量行时回填可读集群名
+//（仅空缺时生效；登记键 ClusterName 不变——列表"集群名/集群ID"两列数据源）。
+func TestFetchAndRegister_DisplayNameBackfill(t *testing.T) {
+	validCfg := []byte("apiVersion: v1\nkind: Config\nclusters:\n- name: c\n  cluster:\n    server: https://1.2.3.4\nusers:\n- name: u\n  user:\n    token: t\ncurrent-context: c\ncontexts:\n- name: c\n  context:\n    cluster: c\n    user: u\n")
+	gw := &fakeCSGateway{
+		clusters:   []AliyunCluster{{ClusterID: "c-1", Name: "prod-cluster", RegionID: "cn-shenzhen", State: "running"}},
+		kubeconfig: map[string]string{"c-1": string(validCfg)},
+	}
+	accounts := &fakeAccountRepo{accounts: []sharedomain.CloudAccount{{
+		Name: "集团-阿里云", Provider: sharedomain.CloudProviderAliyun, Status: sharedomain.CloudAccountStatusActive,
+		Regions: []string{"cn-shenzhen"},
+	}}}
+	repo := certtest.NewFakeK8sCredentialRepo()
+	creds := NewK8sCredentialService(repo, certtest.NewTestCrypto(t), nil, nil)
+	svc := NewK8sCredentialFetchService(gw, accounts, creds)
+
+	// 存量行：仅登记键（无 DisplayName，模拟旧版本拉取的行）
+	_, err := creds.AddCluster(context.Background(), AddK8sCredentialInput{ClusterName: "c-1", Kubeconfig: validCfg})
+	require.NoError(t, err)
+
+	res := svc.FetchAndRegister(context.Background(), FetchK8sCredentialInput{AccountKey: "集团-阿里云", ClusterIDs: []string{"c-1"}})
+	require.Len(t, res, 1)
+	assert.Equal(t, FetchStatusDuplicate, res[0].Status)
+
+	cred, err := repo.GetByClusterName(context.Background(), "c-1")
+	require.NoError(t, err)
+	assert.Equal(t, "prod-cluster", cred.DisplayName)
+	assert.Equal(t, "c-1", cred.ClusterName) // 登记键不被覆盖
+}
+
 // TestFetchAndRegister_SkipsBlankIDs 空白集群 ID 跳过（入参防御）。
 func TestFetchAndRegister_SkipsBlankIDs(t *testing.T) {
 	accounts := &fakeAccountRepo{accounts: []sharedomain.CloudAccount{{

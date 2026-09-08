@@ -26,7 +26,8 @@ type ClientCacheInvalidator interface {
 // K8sCredentialView 集群凭证视图（Hard Rule 白名单：仅 clusterName/apiEndpoint/
 // createdAt 三字段；任何读取路径不返回 kubeconfig 明文或密文）。
 type K8sCredentialView struct {
-	ClusterName string
+	ClusterName string // 登记键（云端拉取=ACK clusterId，跨账号唯一）
+	DisplayName string // 可读集群名（云端拉取=ACK 集群名；手动登记为空）
 	APIEndpoint string
 	CreatedAt   time.Time
 }
@@ -36,6 +37,7 @@ type K8sCredentialView struct {
 // 输入缓冲归调用方所有（web 层负责用后清零，与导入服务入参约定一致）。
 type AddK8sCredentialInput struct {
 	ClusterName string
+	DisplayName string // 可读集群名（云端拉取传入 ACK 集群名；手动登记为空）
 	Kubeconfig  []byte
 	APIEndpoint string
 }
@@ -52,6 +54,9 @@ type K8sCredentialService interface {
 	// DeleteCluster 按集群名删除凭证并失效 dynamic client 缓存；
 	// 未命中返回 mongo.ErrNoDocuments。
 	DeleteCluster(ctx context.Context, clusterName string) error
+	// UpdateDisplayNameIfEmpty 可读集群名回填（仅当前为空时生效；云端拉取命中
+	// 幂等重复时为存量行补 ACK 集群名）。
+	UpdateDisplayNameIfEmpty(ctx context.Context, clusterName, displayName string) error
 }
 
 type k8sCredentialService struct {
@@ -91,6 +96,7 @@ func (s *k8sCredentialService) AddCluster(ctx context.Context, in AddK8sCredenti
 	}
 	cred := &domain.K8sCredential{
 		ClusterName: name,
+		DisplayName: strings.TrimSpace(in.DisplayName),
 		Kubeconfig: &domain.EncryptedSecret{
 			Ciphertext: ciphertext,
 			KeyVersion: keyVersion,
@@ -106,7 +112,7 @@ func (s *k8sCredentialService) AddCluster(ctx context.Context, in AddK8sCredenti
 			return K8sCredentialView{}, fmt.Errorf("cert: cluster %q registered but builtin crd registration init failed (retryable): %w", name, err)
 		}
 	}
-	return K8sCredentialView{ClusterName: cred.ClusterName, APIEndpoint: cred.APIEndpoint, CreatedAt: cred.CreatedAt}, nil
+	return K8sCredentialView{ClusterName: cred.ClusterName, DisplayName: cred.DisplayName, APIEndpoint: cred.APIEndpoint, CreatedAt: cred.CreatedAt}, nil
 }
 
 // ListClusters 白名单视图（永不携带 kubeconfig 明文/密文）。
@@ -119,6 +125,7 @@ func (s *k8sCredentialService) ListClusters(ctx context.Context) ([]K8sCredentia
 	for _, c := range creds {
 		views = append(views, K8sCredentialView{
 			ClusterName: c.ClusterName,
+			DisplayName: c.DisplayName,
 			APIEndpoint: c.APIEndpoint,
 			CreatedAt:   c.CreatedAt,
 		})
@@ -142,4 +149,9 @@ func (s *k8sCredentialService) DeleteCluster(ctx context.Context, clusterName st
 		s.cache.Invalidate(name)
 	}
 	return nil
+}
+
+// UpdateDisplayNameIfEmpty 可读集群名回填（透传仓储；仅当前为空时生效）。
+func (s *k8sCredentialService) UpdateDisplayNameIfEmpty(ctx context.Context, clusterName, displayName string) error {
+	return s.creds.UpdateDisplayNameIfEmpty(ctx, clusterName, displayName)
 }

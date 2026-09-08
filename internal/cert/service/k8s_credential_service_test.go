@@ -165,15 +165,16 @@ func TestAddClusterTrimsClusterName(t *testing.T) {
 // 列表：白名单视图
 // ---------------------------------------------------------------------
 
-// TestK8sCredentialViewWhitelist 视图结构体仅含 clusterName/apiEndpoint/createdAt
-// 三字段（AC：任何读取路径不返回明文，仅此三字段——结构体白名单为编译期保证）。
+// TestK8sCredentialViewWhitelist 视图结构体仅含 clusterName/displayName/
+// apiEndpoint/createdAt 四字段（AC：任何读取路径不返回明文，仅此白名单——
+// 结构体白名单为编译期保证；displayName 为可读集群名展示列）。
 func TestK8sCredentialViewWhitelist(t *testing.T) {
 	typ := reflect.TypeOf(K8sCredentialView{})
 	fields := map[string]bool{}
 	for i := 0; i < typ.NumField(); i++ {
 		fields[typ.Field(i).Name] = true
 	}
-	assert.Equal(t, map[string]bool{"ClusterName": true, "APIEndpoint": true, "CreatedAt": true}, fields)
+	assert.Equal(t, map[string]bool{"ClusterName": true, "DisplayName": true, "APIEndpoint": true, "CreatedAt": true}, fields)
 }
 
 func TestListClustersNoKubeconfigLeak(t *testing.T) {

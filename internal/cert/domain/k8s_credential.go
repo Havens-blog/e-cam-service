@@ -11,7 +11,11 @@ import (
 type K8sCredential struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty"`
 	ClusterName string             `bson:"clusterName"` // 唯一
-	Kubeconfig  *EncryptedSecret   `bson:"kubeconfig"`  // 密文形态，必填
-	APIEndpoint string             `bson:"apiEndpoint,omitempty"`
-	CreatedAt   time.Time          `bson:"createdAt"` // DEFAULT=now()
+	// DisplayName 可读集群名（云端拉取时为 ACK 集群名；手动登记为空——clusterName
+	// 即用户命名）。登记键恒为 ClusterName（云端拉取=clusterId，跨账号唯一），
+	// 仅列表展示区分"集群名/集群ID"两列。
+	DisplayName string           `bson:"displayName,omitempty"`
+	Kubeconfig  *EncryptedSecret `bson:"kubeconfig"` // 密文形态，必填
+	APIEndpoint string           `bson:"apiEndpoint,omitempty"`
+	CreatedAt   time.Time        `bson:"createdAt"` // DEFAULT=now()
 }

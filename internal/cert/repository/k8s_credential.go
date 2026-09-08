@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
@@ -58,5 +59,17 @@ func (r *k8sCredentialRepository) List(ctx context.Context) ([]domain.K8sCredent
 // DeleteByClusterName 按集群名删除。
 func (r *k8sCredentialRepository) DeleteByClusterName(ctx context.Context, clusterName string) error {
 	_, err := r.db.Collection(K8sCredentialsCollection).DeleteOne(ctx, bson.M{"clusterName": clusterName})
+	return err
+}
+
+// UpdateDisplayNameIfEmpty 回填可读集群名：仅命中 displayName 缺失/空串的行
+// （幂等；已有值不覆盖——手动改名的场景不被云端拉取冲掉）。
+func (r *k8sCredentialRepository) UpdateDisplayNameIfEmpty(ctx context.Context, clusterName, displayName string) error {
+	if strings.TrimSpace(displayName) == "" {
+		return nil
+	}
+	_, err := r.db.Collection(K8sCredentialsCollection).UpdateOne(ctx,
+		bson.M{"clusterName": clusterName, "displayName": bson.M{"$in": bson.A{nil, ""}}},
+		bson.M{"$set": bson.M{"displayName": strings.TrimSpace(displayName)}})
 	return err
 }

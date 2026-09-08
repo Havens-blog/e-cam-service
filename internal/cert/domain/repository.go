@@ -328,6 +328,9 @@ type K8sCredentialRepository interface {
 	GetByClusterName(ctx context.Context, clusterName string) (K8sCredential, error)
 	List(ctx context.Context) ([]K8sCredential, error)
 	DeleteByClusterName(ctx context.Context, clusterName string) error
+	// UpdateDisplayNameIfEmpty 可读集群名回填（仅当当前为空时生效；云端拉取
+	// 命中幂等重复时为存量行补 DisplayName，已有值不覆盖）。
+	UpdateDisplayNameIfEmpty(ctx context.Context, clusterName, displayName string) error
 }
 
 // CertBatchSessionRepository 批量导入会话仓储（cert_batch_sessions，TTL 30 天）。

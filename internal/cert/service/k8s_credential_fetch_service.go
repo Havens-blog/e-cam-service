@@ -119,13 +119,23 @@ func (s *k8sCredentialFetchService) FetchAndRegister(ctx context.Context, in Fet
 	if creds == nil {
 		return batchFailure(in.ClusterIDs, reasonK8sFetchAccountMissing)
 	}
+	// 可读集群名映射（DescribeClustersV1 尽力获取；失败不阻塞拉取，列表列展示为空）
+	names := map[string]string{}
+	if clusters, err := s.csGateway.ListClusters(ctx, creds); err == nil {
+		for _, c := range clusters {
+			names[c.ClusterID] = c.Name
+		}
+	} else {
+		slog.Warn("cert k8s credential fetch: cluster name lookup failed",
+			slog.String("accountKey", in.AccountKey), slog.Any("err", err))
+	}
 	results := make([]FetchK8sCredentialResult, 0, len(in.ClusterIDs))
 	for _, id := range in.ClusterIDs {
 		clusterID := strings.TrimSpace(id)
 		if clusterID == "" {
 			continue
 		}
-		results = append(results, s.fetchOne(ctx, creds, clusterID, in))
+		results = append(results, s.fetchOne(ctx, creds, clusterID, names[clusterID], in))
 	}
 	registered, duplicate, failed := 0, 0, 0
 	for _, r := range results {
@@ -145,8 +155,9 @@ func (s *k8sCredentialFetchService) FetchAndRegister(ctx context.Context, in Fet
 	return results
 }
 
-// fetchOne 单集群：拉取 → AddCluster（校验/加密/播种复用）。
-func (s *k8sCredentialFetchService) fetchOne(ctx context.Context, creds *domain.CloudAccount, clusterID string, in FetchK8sCredentialInput) FetchK8sCredentialResult {
+// fetchOne 单集群：拉取 → AddCluster（校验/加密/播种复用）。displayName 为
+// ACK 可读集群名（登记与幂等回填共用；空串=名录获取失败，仅缺展示列）。
+func (s *k8sCredentialFetchService) fetchOne(ctx context.Context, creds *domain.CloudAccount, clusterID, displayName string, in FetchK8sCredentialInput) FetchK8sCredentialResult {
 	res := FetchK8sCredentialResult{ClusterID: clusterID}
 	cfg, err := s.csGateway.GetKubeconfig(ctx, creds, clusterID, in.PrivateIP)
 	if err != nil {
@@ -158,12 +169,18 @@ func (s *k8sCredentialFetchService) fetchOne(ctx context.Context, creds *domain.
 		return FetchK8sCredentialResult{ClusterID: clusterID, Status: FetchStatusFailed, Reason: reasonK8sFetchEmpty}
 	}
 	view, err := s.creds.AddCluster(ctx, AddK8sCredentialInput{
-		ClusterName: clusterID, // 集群名以 ACK clusterId 登记（跨账号唯一；可读名存 APIEndpoint 旁路）
+		ClusterName: clusterID, // 登记键=ACK clusterId（跨账号唯一）
+		DisplayName: displayName,
 		Kubeconfig:  []byte(cfg),
 		APIEndpoint: kubeconfigServer(cfg),
 	})
 	if err != nil {
 		if isDuplicateClusterErr(err) {
+			// 幂等重复：为存量行回填可读集群名（仅空缺时生效，失败不影响结果）
+			if err := s.creds.UpdateDisplayNameIfEmpty(ctx, clusterID, displayName); err != nil {
+				slog.Warn("cert k8s credential fetch: display name backfill failed",
+					slog.String("clusterId", clusterID), slog.Any("err", err))
+			}
 			return FetchK8sCredentialResult{ClusterID: clusterID, Status: FetchStatusDuplicate, Reason: err.Error()}
 		}
 		slog.Error("cert k8s credential fetch: register failed",

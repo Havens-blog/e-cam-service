@@ -433,7 +433,8 @@ const CodeK8sAccountNotFound = "K8S_ACCOUNT_NOT_FOUND"
 
 // K8sCredentialVO 集群凭证视图（白名单：永不携带 kubeconfig 明文/密文）。
 type K8sCredentialVO struct {
-	ClusterName string `json:"clusterName"`
+	ClusterName string `json:"clusterName"` // 登记键（云端拉取=ACK clusterId）
+	DisplayName string `json:"displayName,omitempty"` // 可读集群名（云端拉取=ACK 集群名）
 	APIEndpoint string `json:"apiEndpoint,omitempty"`
 	CreatedAt   string `json:"createdAt"`
 }
@@ -480,6 +481,7 @@ func (h *SettingsHandler) ListK8sCredentials(c *gin.Context) {
 	out := make([]K8sCredentialVO, 0, len(views))
 	for _, v := range views {
 		out = append(out, K8sCredentialVO{
+			DisplayName: v.DisplayName,
 			ClusterName: v.ClusterName, APIEndpoint: v.APIEndpoint, CreatedAt: formatTime(v.CreatedAt),
 		})
 	}
@@ -504,7 +506,8 @@ func (h *SettingsHandler) AddK8sCredential(c *gin.Context) {
 		return
 	}
 	WriteOK(c, http.StatusOK, K8sCredentialVO{
-		ClusterName: view.ClusterName, APIEndpoint: view.APIEndpoint, CreatedAt: formatTime(view.CreatedAt),
+		ClusterName: view.ClusterName, DisplayName: view.DisplayName,
+		APIEndpoint: view.APIEndpoint, CreatedAt: formatTime(view.CreatedAt),
 	}, nil)
 }
 
