@@ -20,6 +20,10 @@ type Queue struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	mu        sync.RWMutex
+	// enqueued 已在 channel 中等待的任务ID。
+	// DB pending 任务的恢复是周期性的,而任务状态只有被 worker 取走才会变更;
+	// 不去重会把同一任务重复入队,迅速灌满缓冲 channel 并挤占新任务提交。
+	enqueued sync.Map
 }
 
 // Config 任务队列配置
@@ -126,6 +130,73 @@ func (q *Queue) recoverPendingTasks() {
 	go q.pendingTaskRecoverLoop()
 }
 
+// enqueuePendingBatch 把 DB 中尚未入队的 pending 任务投递一轮(每 tick 调一次)。
+// 已在 channel 中的任务跳过,避免重复入队。
+func (q *Queue) enqueuePendingBatch(ctx context.Context) {
+	const batchSize = int64(100) // 每次处理100条
+
+	filter := TaskFilter{
+		Status: TaskStatusPending,
+		Limit:  batchSize,
+	}
+	pendingTasks, err := q.repo.List(ctx, filter)
+	if err != nil {
+		q.logger.Error("查询 pending 任务失败", elog.FieldErr(err))
+		return
+	}
+	if len(pendingTasks) == 0 {
+		return
+	}
+
+	recovered := 0
+	for i := range pendingTasks {
+		task := pendingTasks[i]
+		// 已在 channel 中等待的任务不再重复入队
+		if q.isEnqueued(task.ID) {
+			continue
+		}
+
+		// 检查是否已有对应的执行器
+		q.mu.RLock()
+		_, ok := q.executors[task.Type]
+		q.mu.RUnlock()
+		if !ok {
+			continue
+		}
+
+		// 尝试入队（非阻塞）
+		select {
+		case q.taskChan <- &task:
+			q.markEnqueued(task.ID)
+			recovered++
+		case <-q.ctx.Done():
+			return
+		default:
+			// 队列满了，下次再试
+		}
+	}
+
+	if recovered > 0 {
+		q.logger.Info("本轮恢复任务", elog.Int("recovered", recovered))
+	}
+}
+
+// markEnqueued 标记任务已入队
+func (q *Queue) markEnqueued(id string) {
+	q.enqueued.Store(id, struct{}{})
+}
+
+// unmarkEnqueued 取消入队标记(任务被 worker 取走时调用)
+func (q *Queue) unmarkEnqueued(id string) {
+	q.enqueued.Delete(id)
+}
+
+// isEnqueued 查询任务是否已在 channel 中等待
+func (q *Queue) isEnqueued(id string) bool {
+	_, ok := q.enqueued.Load(id)
+	return ok
+}
+
 // pendingTaskRecoverLoop 持续从数据库恢复 pending 任务
 func (q *Queue) pendingTaskRecoverLoop() {
 	defer q.wg.Done()
@@ -135,65 +206,15 @@ func (q *Queue) pendingTaskRecoverLoop() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	batchSize := int64(100) // 每次处理100条
-	processedCount := 0
-
 	for {
 		select {
 		case <-ticker.C:
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-
-			// 查询 pending 任务
-			filter := TaskFilter{
-				Status: TaskStatusPending,
-				Limit:  batchSize,
-			}
-			pendingTasks, err := q.repo.List(ctx, filter)
+			q.enqueuePendingBatch(ctx)
 			cancel()
 
-			if err != nil {
-				q.logger.Error("查询 pending 任务失败", elog.FieldErr(err))
-				continue
-			}
-
-			if len(pendingTasks) == 0 {
-				continue
-			}
-
-			q.logger.Info("发现 pending 任务", elog.Int("count", len(pendingTasks)))
-
-			recovered := 0
-			for _, task := range pendingTasks {
-				// 检查是否已有对应的执行器
-				q.mu.RLock()
-				_, ok := q.executors[task.Type]
-				q.mu.RUnlock()
-
-				if !ok {
-					continue
-				}
-
-				// 尝试重新入队（非阻塞）
-				select {
-				case q.taskChan <- &task:
-					recovered++
-					processedCount++
-				case <-q.ctx.Done():
-					return
-				default:
-					// 队列满了，下次再试
-				}
-			}
-
-			if recovered > 0 {
-				q.logger.Info("本轮恢复任务",
-					elog.Int("recovered", recovered),
-					elog.Int("total_processed", processedCount))
-			}
-
 		case <-q.ctx.Done():
-			q.logger.Info("pending 任务恢复协程退出",
-				elog.Int("total_processed", processedCount))
+			q.logger.Info("pending 任务恢复协程退出")
 			return
 		}
 	}
@@ -226,6 +247,7 @@ func (q *Queue) Submit(task *Task) error {
 				elog.String("task_id", task.ID),
 				elog.FieldErr(err))
 		}
+		q.markEnqueued(task.ID)
 
 		q.logger.Info("提交任务",
 			elog.String("task_id", task.ID),
@@ -267,6 +289,9 @@ func (q *Queue) executeTask(workerID int, task *Task) {
 		elog.Int("worker_id", workerID),
 		elog.String("task_id", task.ID),
 		elog.String("task_type", string(task.Type)))
+
+	// 任务已离开 channel,允许恢复流程在其重新落库 pending 时再次入队
+	q.unmarkEnqueued(task.ID)
 
 	// 更新任务状态为运行中
 	if err := q.repo.UpdateStatus(context.Background(), task.ID, TaskStatusRunning, "任务开始执行"); err != nil {
@@ -320,6 +345,7 @@ func (q *Queue) executeTask(workerID int, task *Task) {
 			// 重新入队
 			select {
 			case q.taskChan <- task:
+				q.markEnqueued(task.ID)
 				q.logger.Info("任务重新入队",
 					elog.String("task_id", task.ID),
 					elog.Int("retry_count", task.RetryCount),
