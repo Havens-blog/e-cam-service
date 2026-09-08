@@ -31,9 +31,11 @@ type Task struct {
 	Message     string                 `json:"message" bson:"message"`         // 当前消息
 	CreatedBy   string                 `json:"created_by" bson:"created_by"`   // 创建者
 	CreatedAt   time.Time              `json:"created_at" bson:"created_at"`   // 创建时间
-	StartedAt   *time.Time             `json:"started_at,omitempty" bson:"started_at"`     // 开始时间
-	CompletedAt *time.Time             `json:"completed_at,omitempty" bson:"completed_at"` // 完成时间
-	Duration    int64                  `json:"duration,omitempty" bson:"duration"`         // 执行时长（秒）
+	// 生命周期字段 bson 必须 omitempty:整结构体 Update 会以 $set 写回内存副本,
+	// 若 nil/0 被写成 null,将抹掉 UpdateStatus 刚落库的开始/完成时间与时长
+	StartedAt   *time.Time             `json:"started_at,omitempty" bson:"started_at,omitempty"`     // 开始时间
+	CompletedAt *time.Time             `json:"completed_at,omitempty" bson:"completed_at,omitempty"` // 完成时间
+	Duration    int64                  `json:"duration,omitempty" bson:"duration,omitempty"`         // 执行时长（秒）
 	RetryCount  int                    `json:"retry_count,omitempty" bson:"retry_count"`   // 重试次数
 	MaxRetries  int                    `json:"max_retries,omitempty" bson:"max_retries"`   // 最大重试次数（默认3）
 }

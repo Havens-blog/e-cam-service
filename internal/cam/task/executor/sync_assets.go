@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
@@ -31,6 +32,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/gotomicro/ego/core/elog"
 	"go.mongodb.org/mongo-driver/mongo"
+	"strings"
 )
 
 // 定义任务类型常量
@@ -48,6 +50,11 @@ type SyncAssetsExecutor struct {
 	dnsDomainColl  *mongo.Collection // DNS 域名集合 (c_dns_domain)
 	dnsRecordColl  *mongo.Collection // DNS 记录集合 (c_dns_record)
 	logger         *elog.Component
+	// syncingNow 账号级同步互斥(account_id -> task_id)。
+	// 手动连点/调度器/重试会产生同一账号的多个并发同步任务,
+	// 全量同步互相踩踏浪费厂商 API 配额且更慢,故同账号同时只放行一个任务。
+	syncMu     sync.Mutex
+	syncingNow map[int64]string
 }
 
 // NewSyncAssetsExecutor 创建同步资产任务执行器
@@ -65,6 +72,27 @@ func NewSyncAssetsExecutor(
 		cloudxFactory:  cloudx.NewAdapterFactory(logger),
 		taskRepo:       taskRepo,
 		logger:         logger,
+		syncingNow:     make(map[int64]string),
+	}
+}
+
+// tryAcquireAccount 占用账号同步权;已被其他任务持有返回 false(持有者自身幂等)。
+func (e *SyncAssetsExecutor) tryAcquireAccount(accountID int64, taskID string) bool {
+	e.syncMu.Lock()
+	defer e.syncMu.Unlock()
+	if owner, busy := e.syncingNow[accountID]; busy && owner != taskID {
+		return false
+	}
+	e.syncingNow[accountID] = taskID
+	return true
+}
+
+// releaseAccount 释放账号同步权(仅持有者可释放)。
+func (e *SyncAssetsExecutor) releaseAccount(accountID int64, taskID string) {
+	e.syncMu.Lock()
+	defer e.syncMu.Unlock()
+	if owner, busy := e.syncingNow[accountID]; busy && owner == taskID {
+		delete(e.syncingNow, accountID)
 	}
 }
 
@@ -136,8 +164,19 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 
 	totalSynced := 0
 	totalAccounts := len(accounts)
+	skippedAccounts := make([]string, 0)
 
 	for ai, account := range accounts {
+		// 账号级互斥:该账号已有同步任务在执行时直接跳过,不与其踩踏
+		if !e.tryAcquireAccount(account.ID, t.ID) {
+			e.logger.Warn("该账号已有同步任务在执行,本任务跳过该账号",
+				elog.String("account", account.Name),
+				elog.Int64("account_id", account.ID),
+				elog.String("task_id", t.ID))
+			skippedAccounts = append(skippedAccounts, account.Name)
+			continue
+		}
+
 		accountProgress := 20 + (ai*70)/totalAccounts
 		e.taskRepo.UpdateProgress(ctx, t.ID, accountProgress,
 			fmt.Sprintf("正在同步账号 %s (%d/%d)", account.Name, ai+1, totalAccounts))
@@ -148,6 +187,7 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 			e.logger.Error("创建适配器失败",
 				elog.String("account", account.Name),
 				elog.FieldErr(err))
+			e.releaseAccount(account.ID, t.ID)
 			continue
 		}
 
@@ -157,6 +197,7 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 			e.logger.Error("获取地域列表失败",
 				elog.String("account", account.Name),
 				elog.FieldErr(err))
+			e.releaseAccount(account.ID, t.ID)
 			continue
 		}
 
@@ -225,6 +266,7 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 				elog.FieldErr(err))
 		}
 
+		e.releaseAccount(account.ID, t.ID)
 		totalSynced += accountSynced
 	}
 
@@ -235,8 +277,9 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 	result := SyncAssetsResult{
 		TotalCount: totalSynced,
 		Details: map[string]any{
-			"accounts_synced": totalAccounts,
-			"asset_types":     params.AssetTypes,
+			"accounts_synced":  totalAccounts - len(skippedAccounts),
+			"accounts_skipped": skippedAccounts,
+			"asset_types":      params.AssetTypes,
 		},
 	}
 
@@ -246,7 +289,12 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 
 	t.Result = resultMap
 	t.Progress = 100
-	t.Message = fmt.Sprintf("同步完成，共同步 %d 个账号 %d 个资产", totalAccounts, totalSynced)
+	if len(skippedAccounts) > 0 {
+		t.Message = fmt.Sprintf("同步完成，共同步 %d 个账号 %d 个资产（%d 个账号因并发同步被跳过: %s）",
+			totalAccounts-len(skippedAccounts), totalSynced, len(skippedAccounts), strings.Join(skippedAccounts, "、"))
+	} else {
+		t.Message = fmt.Sprintf("同步完成，共同步 %d 个账号 %d 个资产", totalAccounts, totalSynced)
+	}
 
 	e.logger.Info("同步资产任务执行完成",
 		elog.String("task_id", t.ID),
