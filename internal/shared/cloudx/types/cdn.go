@@ -66,6 +66,28 @@ type CDNInstanceFilter struct {
 	PageSize     int    `json:"page_size,omitempty"`
 }
 
+// CDNConfigSetting 域名功能配置项(归一化,由各厂商 GetDomainSettings 产出)
+type CDNConfigSetting struct {
+	Key     string            `json:"key"`               // 原始函数名(gzip / ali_ua / limit_rate)
+	Name    string            `json:"name"`              // 归一化展示名(智能压缩 / UA 黑白名单)
+	Enabled *bool             `json:"enabled,omitempty"` // 启用状态(可判定时;nil=不适用)
+	Summary string            `json:"summary"`           // 参数摘要(人话;敏感参数脱敏)
+	Params  map[string]string `json:"params,omitempty"`  // 关键参数(脱敏后,详情追溯)
+}
+
+// CDNConfigGroup 功能分组(按语义归类渲染)
+type CDNConfigGroup struct {
+	Category string             `json:"category"` // access_control/traffic_limit/performance/https/redirect/origin/basic
+	Label    string             `json:"label"`    // 分组名(访问控制)
+	Items    []CDNConfigSetting `json:"items"`
+}
+
+// CDNDomainSettings 域名功能配置全景
+type CDNDomainSettings struct {
+	Domain string           `json:"domain"`
+	Groups []CDNConfigGroup `json:"groups"`
+}
+
 // CDNCacheRule CDN 缓存规则(统一格式,由各厂商 GetCacheConfig 归一化产出)
 type CDNCacheRule struct {
 	Path     string `json:"path"`               // 匹配内容: 全站为 *;文件后缀如 jpg,png;目录/精确路径如 /foo/bar

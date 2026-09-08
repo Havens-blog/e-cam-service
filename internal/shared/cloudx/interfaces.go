@@ -617,6 +617,12 @@ type CDNCacheQuerier interface {
 	GetCacheConfig(ctx context.Context, domainName, domainID string) ([]types.CDNCacheRule, error)
 }
 
+// CDNSettingsQuerier 可选能力:按域名实时查询功能配置全景(性能优化/
+// 访问控制/流量限制/HTTPS/重定向/回源等),详情页按需调用。
+type CDNSettingsQuerier interface {
+	GetDomainSettings(ctx context.Context, domainName, domainID string) (*types.CDNDomainSettings, error)
+}
+
 // ============================================================================
 // WAFAdapter - WAF Web应用防火墙适配器接口
 // ============================================================================

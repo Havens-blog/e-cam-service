@@ -74,3 +74,46 @@ func (s *CDNQueryService) GetCacheConfig(
 	}
 	return rules, nil
 }
+
+// GetDomainSettings 查询指定账号下 CDN 域名的功能配置全景(性能优化/
+// 访问控制/流量限制/HTTPS/重定向/回源)。
+func (s *CDNQueryService) GetDomainSettings(
+	ctx context.Context,
+	tenantID, accountID int64,
+	domainName, domainID string,
+) (*types.CDNDomainSettings, error) {
+	if accountID <= 0 {
+		return nil, fmt.Errorf("缺少云账号参数")
+	}
+
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("获取云账号失败: %w", err)
+	}
+	if account.TenantID != tenantID {
+		return nil, fmt.Errorf("云账号不存在")
+	}
+
+	adapter, err := s.adapterFactory.CreateAdapter(&account)
+	if err != nil {
+		return nil, fmt.Errorf("创建云厂商适配器失败: %w", err)
+	}
+	cdnAdapter := adapter.CDN()
+	if cdnAdapter == nil {
+		return nil, fmt.Errorf("该云厂商不支持CDN")
+	}
+	querier, ok := cdnAdapter.(cloudx.CDNSettingsQuerier)
+	if !ok {
+		return nil, fmt.Errorf("该云厂商暂不支持功能配置查询")
+	}
+
+	settings, err := querier.GetDomainSettings(ctx, domainName, domainID)
+	if err != nil {
+		s.logger.Warn("查询CDN功能配置失败",
+			elog.String("provider", string(account.Provider)),
+			elog.String("domain", domainName),
+			elog.FieldErr(err))
+		return nil, err
+	}
+	return settings, nil
+}

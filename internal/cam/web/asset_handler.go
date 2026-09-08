@@ -137,6 +137,7 @@ func (h *AssetHandler) registerAssetRoutes(assetsGroup *gin.RouterGroup) {
 	assetsGroup.GET("/cdn", h.ListCDN)
 	assetsGroup.GET("/cdn/:asset_id", h.GetCDN)
 	assetsGroup.GET("/cdn/cache-config", h.GetCDNCacheConfig)
+	assetsGroup.GET("/cdn/domain-settings", h.GetCDNDomainSettings)
 
 	// WAF Web应用防火墙
 	assetsGroup.GET("/waf", h.ListWAF)
