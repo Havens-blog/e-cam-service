@@ -379,3 +379,99 @@ func (a *CertAdapter) findNlbListener(creds *domain.CloudAccount, loadBalancerID
 	}
 	return "", nlb.ListenerInfo{}, nil, fmt.Errorf("aliyun nlb cert bind: listener %s not found in account regions", listenerID)
 }
+
+// ---------------------------------------------------------------------
+// 托管实例标签提取（cert-alb-ingress-managed：无 kubeconfig 的托管识别）。
+// ALB Ingress Controller 在管理的 ALB 实例上打标（实测 2026-09）：
+//   ingress.k8s.alibaba/albconfig = {namespace}/{albconfig-name}
+//   ack.aliyun.com                = {cluster-id}
+// 据此构建"控制器托管 ALB 实例 → 托管方"映射，证书变更须经 CRD 管理管道。
+// ---------------------------------------------------------------------
+
+// ALB 标签键（ALB Ingress Controller 托管标记）。
+const (
+	tagKeyAlbConfig  = "ingress.k8s.alibaba/albconfig"
+	tagKeyAckCluster = "ack.aliyun.com"
+)
+
+// AlbManagedRef 单实例托管关系（标签派生）。
+type AlbManagedRef struct {
+	ClusterID string // ack.aliyun.com 标签值（ACK 集群 ID）；缺省空
+	Owner     string // 托管定位 "{clusterId}/{ns}/{albconfigName}"（无集群标签时退化为 "{ns}/{name}"）
+}
+
+// managedRefFromTags 标签 → 托管关系解析（无 albconfig 标签 = 非控制器托管）。
+func managedRefFromTags(tags map[string]string) (AlbManagedRef, bool) {
+	cfg := tags[tagKeyAlbConfig]
+	if cfg == "" {
+		return AlbManagedRef{}, false
+	}
+	cluster := tags[tagKeyAckCluster]
+	owner := cfg
+	if cluster != "" {
+		owner = cluster + "/" + cfg
+	}
+	return AlbManagedRef{ClusterID: cluster, Owner: owner}, true
+}
+
+// albTagBatchSize ListTagResources 单请求资源 ID 上限（API 约束 20）。
+const albTagBatchSize = 20
+
+// ListALBManagedInstances 批量查询 ALB 实例标签中的托管关系。分批（每批
+// albTagBatchSize 个 ID）遍历，按地域执行（标签 API 为地域性端点；单地域
+// 失败容忍跳过——标签缺失仅导致该实例不标注，不影响引用扫描主干）。
+func (a *CertAdapter) ListALBManagedInstances(ctx context.Context, creds *domain.CloudAccount, lbIDs []string) (map[string]AlbManagedRef, error) {
+	if creds == nil {
+		return nil, fmt.Errorf("aliyun alb tag list: nil creds")
+	}
+	out := map[string]AlbManagedRef{}
+	for _, region := range credsRegions(creds) {
+		client, err := a.newAlbClient(creds, region)
+		if err != nil {
+			return nil, err
+		}
+		for start := 0; start < len(lbIDs); start += albTagBatchSize {
+			end := start + albTagBatchSize
+			if end > len(lbIDs) {
+				end = len(lbIDs)
+			}
+			batch := lbIDs[start:end]
+			nextToken := ""
+			for {
+				if err := a.waitRateLimit(ctx); err != nil {
+					return nil, err
+				}
+				request := alb.CreateListTagResourcesRequest()
+				request.Scheme = "https"
+				request.ResourceType = "loadbalancer"
+				request.ResourceId = &batch
+				request.NextToken = nextToken
+				response, err := client.ListTagResources(request)
+				if err != nil {
+					// 单地域/单批失败容忍（辅助信号不阻塞扫描主干），记日志继续
+					a.logger.Warn("aliyun alb tag list failed",
+						elog.String("region", region), elog.Any("err", err))
+					break
+				}
+				// 按 resourceId 聚合本页标签
+				byID := map[string]map[string]string{}
+				for _, t := range response.TagResources {
+					if byID[t.ResourceId] == nil {
+						byID[t.ResourceId] = map[string]string{}
+					}
+					byID[t.ResourceId][t.TagKey] = t.TagValue
+				}
+				for id, tags := range byID {
+					if ref, ok := managedRefFromTags(tags); ok {
+						out[id] = ref
+					}
+				}
+				nextToken = response.NextToken
+				if nextToken == "" {
+					break
+				}
+			}
+		}
+	}
+	return out, nil
+}

@@ -26,6 +26,28 @@ type fakeAlbClient struct {
 	listCalls        int
 	rulesByListener  map[string][]alb.Rule // listenerId -> 转发规则（提取 served domain）
 	rulesErr         error
+	tagResources     []alb.TagResource     // ListTagResources 返回（托管标签提取）
+	tagErr           error
+}
+
+func (f *fakeAlbClient) ListTagResources(request *alb.ListTagResourcesRequest) (*alb.ListTagResourcesResponse, error) {
+	if f.tagErr != nil {
+		return nil, f.tagErr
+	}
+	resp := alb.CreateListTagResourcesResponse()
+	wanted := map[string]bool{}
+	if request.ResourceId != nil {
+		for _, id := range *request.ResourceId {
+			wanted[id] = true
+		}
+	}
+	for _, t := range f.tagResources {
+		if !wanted[t.ResourceId] {
+			continue
+		}
+		resp.TagResources = append(resp.TagResources, t)
+	}
+	return resp, nil
 }
 
 func (f *fakeAlbClient) ListListeners(request *alb.ListListenersRequest) (*alb.ListListenersResponse, error) {
@@ -492,4 +514,48 @@ func TestCertAdapterALBListReferencesServedDomains(t *testing.T) {
 	require.Len(t, refs, 1)
 	assert.Equal(t, "alb-1/lsn-1", refs[0].ResourceID)
 	assert.ElementsMatch(t, []string{"www.example.com", "api.example.com"}, refs[0].ServedDomains)
+}
+
+// ==================== 托管实例标签提取（cert-alb-ingress-managed） ====================
+
+func TestManagedRefFromTags(t *testing.T) {
+	// 托管实例：albconfig + 集群标签齐全
+	ref, ok := managedRefFromTags(map[string]string{
+		"ingress.k8s.alibaba/albconfig": "kube-system/jlc-uat-albconfig-internet",
+		"ack.aliyun.com":                "cf9d2e9f8e146450a8fedcd7c9d9f972b",
+		"business":                      "cpp",
+	})
+	assert.True(t, ok)
+	assert.Equal(t, "cf9d2e9f8e146450a8fedcd7c9d9f972b", ref.ClusterID)
+	assert.Equal(t, "cf9d2e9f8e146450a8fedcd7c9d9f972b/kube-system/jlc-uat-albconfig-internet", ref.Owner)
+
+	// 无集群标签退化：owner 保留 ns/name
+	ref, ok = managedRefFromTags(map[string]string{"ingress.k8s.alibaba/albconfig": "kube-system/x"})
+	assert.True(t, ok)
+	assert.Equal(t, "", ref.ClusterID)
+	assert.Equal(t, "kube-system/x", ref.Owner)
+
+	// 非托管实例：无 albconfig 标签
+	_, ok = managedRefFromTags(map[string]string{"business": "cpp"})
+	assert.False(t, ok)
+}
+
+func TestListALBManagedInstances(t *testing.T) {
+	a := NewCertAdapter(nil)
+	a.newAlbClient = func(_ *domain.CloudAccount, _ string) (albCertAPI, error) {
+		return &fakeAlbClient{
+			tagResources: []alb.TagResource{
+				{ResourceId: "alb-main-1", TagKey: "ingress.k8s.alibaba/albconfig", TagValue: "kube-system/alb-conf-main"},
+				{ResourceId: "alb-main-1", TagKey: "ack.aliyun.com", TagValue: "cluster-abc"},
+				{ResourceId: "alb-other-2", TagKey: "business", TagValue: "cpp"}, // 非托管
+			},
+		}, nil
+	}
+	got, err := a.ListALBManagedInstances(context.Background(), &domain.CloudAccount{Regions: []string{"cn-shenzhen"}},
+		[]string{"alb-main-1", "alb-other-2"})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "cluster-abc/kube-system/alb-conf-main", got["alb-main-1"].Owner)
+	_, present := got["alb-other-2"]
+	assert.False(t, present, "非托管实例不入映射")
 }

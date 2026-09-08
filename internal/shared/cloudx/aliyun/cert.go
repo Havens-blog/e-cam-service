@@ -117,6 +117,7 @@ type albCertAPI interface {
 	ListListenerCertificates(request *alb.ListListenerCertificatesRequest) (*alb.ListListenerCertificatesResponse, error)
 	UpdateListenerAttribute(request *alb.UpdateListenerAttributeRequest) (*alb.UpdateListenerAttributeResponse, error)
 	ListRules(request *alb.ListRulesRequest) (*alb.ListRulesResponse, error)
+	ListTagResources(request *alb.ListTagResourcesRequest) (*alb.ListTagResourcesResponse, error)
 }
 
 // nlbCertAPI NLB SDK 窄接口（cert_lb.go 使用）

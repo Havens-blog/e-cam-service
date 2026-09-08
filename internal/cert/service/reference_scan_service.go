@@ -399,8 +399,55 @@ func (s *referenceScanService) runScan(ctx context.Context, sc scanContext) (Sca
 		}
 	}
 
+	// 托管来源二（主路径，cert-alb-ingress-managed）：云侧标签——ALB Ingress
+	// Controller 在托管实例上打 ingress.k8s.alibaba/albconfig + ack.aliyun.com
+	// 标签，ListTagResources 即取（零 K8s 依赖，内网集群也可标注）。
+	// 与来源一（AlbConfig LIST 提取，集群已登记时）合并，标签命中优先。
+	for _, adapter := range s.adapters {
+		sa, ok := adapter.(cloudScanAdapter)
+		if !ok || sa.albTags == nil || sa.cloud != domain.CloudAliyun {
+			continue
+		}
+		accounts := accountsByCloud[sa.cloud]
+		if len(accounts) == 0 {
+			continue
+		}
+		// 本轮发现的阿里云 ALB 实例 ID 去重（复合 resourceId 前缀）
+		lbIDs := make([]string, 0, 16)
+		seen := map[string]bool{}
+		for _, r := range discovered {
+			if r.Cloud != domain.CloudAliyun || r.Product != domain.ProductALB {
+				continue
+			}
+			lbID, _, found := strings.Cut(r.ResourceID, "/")
+			if !found || lbID == "" || seen[lbID] {
+				continue
+			}
+			seen[lbID] = true
+			lbIDs = append(lbIDs, lbID)
+		}
+		if len(lbIDs) == 0 {
+			continue
+		}
+		for _, account := range accounts {
+			refs, err := sa.albTags(ctx, account, lbIDs)
+			if err != nil {
+				partials = append(partials, domain.ScanChannelFailure{
+					Cloud: string(sa.cloud), Product: string(domain.ProductALB),
+					Account: account.Name, Reason: scanFailureReason(err),
+				})
+				continue
+			}
+			for lbID, ref := range refs {
+				if _, exists := managedSet[lbID]; !exists { // 标签命中优先（clusterId 精确）
+					managedSet[lbID] = ref.Owner
+				}
+			}
+		}
+	}
+
 	// 托管标注：云侧 ALB/NLB 监听引用命中托管实例集合 → managedBy/managedOwner
-	//（无集群登记/无 AlbConfig 时集合为空，零标记行为不变）
+	//（无集群登记/无 AlbConfig 且无标签时集合为空，零标记行为不变）
 	markManagedReferences(discovered, managedSet)
 
 	// 5. 写引用（snapshotId/scannedAt 写通；DEFAULT scannedAt=now 由仓储填充）
@@ -794,11 +841,14 @@ func (s *referenceScanService) recoverRunningBefore(ctx context.Context, cutoff 
 // ---------------------------------------------------------------------
 
 // cloudScanAdapter 通用 shim：cloud/products 元数据 + 只读方法闭包。
+// albTags 为可选托管标签查询能力（cert-alb-ingress-managed：仅阿里云装配，
+// nil=不支持托管标注）。
 type cloudScanAdapter struct {
 	cloud    domain.Cloud
 	products []domain.Product
 	listRefs func(ctx context.Context, creds *sharedomain.CloudAccount, product domain.Product) ([]DiscoveredRef, error)
 	getCert  func(ctx context.Context, creds *sharedomain.CloudAccount, cloudCertID string) (CloudCertStatus, error)
+	albTags  func(ctx context.Context, creds *sharedomain.CloudAccount, lbIDs []string) (map[string]aliyun.AlbManagedRef, error)
 }
 
 func (a cloudScanAdapter) Cloud() domain.Cloud        { return a.cloud }
@@ -840,6 +890,9 @@ func NewAliyunScanAdapter(a *aliyun.CertAdapter) CloudScanAdapter {
 		getCert: func(ctx context.Context, creds *sharedomain.CloudAccount, cloudCertID string) (CloudCertStatus, error) {
 			info, err := a.GetCert(ctx, creds, cloudCertID)
 			return CloudCertStatus{Exists: info.Exists, NotAfter: info.NotAfter, Fingerprint: info.Fingerprint}, err
+		},
+		albTags: func(ctx context.Context, creds *sharedomain.CloudAccount, lbIDs []string) (map[string]aliyun.AlbManagedRef, error) {
+			return a.ListALBManagedInstances(ctx, creds, lbIDs)
 		},
 	}
 }
