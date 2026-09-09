@@ -77,7 +77,7 @@ func TestBsonTagsMatchSchema(t *testing.T) {
 			"expiryLevels",
 		}},
 		{"VerifyWindowRoute", VerifyWindowRoute{}, false, []string{"enabled", "webhookUrls", "emailGroup"}},
-		{"K8sCredential", K8sCredential{}, true, []string{"clusterName", "kubeconfig", "apiEndpoint", "createdAt"}},
+		{"K8sCredential", K8sCredential{}, true, []string{"clusterName", "displayName", "kubeconfig", "apiEndpoint", "createdAt"}},
 		{"EncryptedSecret", EncryptedSecret{}, false, []string{"ciphertext", "keyVersion", "algo"}},
 		{"CertBatchSession", CertBatchSession{}, true, []string{
 			"status", "files", "progress", "operator", "createdAt", "finishedAt",

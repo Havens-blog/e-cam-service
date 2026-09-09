@@ -249,6 +249,9 @@ db.createCollection("cert_probe_results", {
       changeOrderId:     { bsonType: "string" },                            // status=change_linked_diff 时关联变更单（验证窗口内预期切换）
       tenantId:          { bsonType: "long" },                              // DNS 源探测：记录所属租户（SAN 探测缺省）
       linkedResource:    { bsonType: "string" }                             // DNS 源探测：链路关联资源类型（cdn/waf/external；SAN 探测缺省）
+      recordType:        { bsonType: "string" },                            // DNS 源探测：记录类型（A/AAAA/CNAME；SAN 探测缺省）
+      recordValue:       { bsonType: "string" },                            // DNS 源探测：解析地址（IP/CNAME 目标）
+      tlsVersion:        { bsonType: "string" }                             // 协商 TLS 版本（unreachable 缺省）
     }
   }}
 });
@@ -322,6 +325,7 @@ db.createCollection("cert_k8s_credentials", {
     required: ["clusterName", "kubeconfig", "createdAt"],
     properties: {
       clusterName: { bsonType: "string" },   // 唯一
+      displayName: { bsonType: "string" },   // 可读集群名（云端拉取=ACK 集群名；手动登记为空）
       kubeconfig: {                          // 加密存储，同私钥加密体系
         bsonType: "object", required: ["ciphertext", "keyVersion", "algo"], properties: {
           ciphertext: { bsonType: "string" },
