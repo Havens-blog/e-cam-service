@@ -176,9 +176,10 @@ func (s *k8sCredentialFetchService) fetchOne(ctx context.Context, creds *domain.
 	})
 	if err != nil {
 		if isDuplicateClusterErr(err) {
-			// 幂等重复：为存量行回填可读集群名（仅空缺时生效，失败不影响结果）
-			if err := s.creds.UpdateDisplayNameIfEmpty(ctx, clusterID, displayName); err != nil {
-				slog.Warn("cert k8s credential fetch: display name backfill failed",
+			// 幂等重复：为旧版本登记的存量行回填可读集群名与 endpoint（仅空缺时
+			// 生效，失败不影响结果）
+			if err := s.creds.BackfillFetchMeta(ctx, clusterID, displayName, kubeconfigServer(cfg)); err != nil {
+				slog.Warn("cert k8s credential fetch: meta backfill failed",
 					slog.String("clusterId", clusterID), slog.Any("err", err))
 			}
 			return FetchK8sCredentialResult{ClusterID: clusterID, Status: FetchStatusDuplicate, Reason: err.Error()}

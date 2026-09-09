@@ -77,9 +77,10 @@ func TestFetchAndRegister_BatchSemantics(t *testing.T) {
 	assert.Equal(t, FetchStatusDuplicate, res[0].Status)
 }
 
-// TestFetchAndRegister_DisplayNameBackfill 幂等重复命中存量行时回填可读集群名
-//（仅空缺时生效；登记键 ClusterName 不变——列表"集群名/集群ID"两列数据源）。
-func TestFetchAndRegister_DisplayNameBackfill(t *testing.T) {
+// TestFetchAndRegister_MetaBackfill 幂等重复命中旧版本登记的存量行时回填
+// 可读集群名与 APIServer endpoint（仅空缺时生效；登记键 ClusterName 不变——
+// 列表"集群名/集群ID"两列数据源）。
+func TestFetchAndRegister_MetaBackfill(t *testing.T) {
 	validCfg := []byte("apiVersion: v1\nkind: Config\nclusters:\n- name: c\n  cluster:\n    server: https://1.2.3.4\nusers:\n- name: u\n  user:\n    token: t\ncurrent-context: c\ncontexts:\n- name: c\n  context:\n    cluster: c\n    user: u\n")
 	gw := &fakeCSGateway{
 		clusters:   []AliyunCluster{{ClusterID: "c-1", Name: "prod-cluster", RegionID: "cn-shenzhen", State: "running"}},
@@ -104,7 +105,8 @@ func TestFetchAndRegister_DisplayNameBackfill(t *testing.T) {
 	cred, err := repo.GetByClusterName(context.Background(), "c-1")
 	require.NoError(t, err)
 	assert.Equal(t, "prod-cluster", cred.DisplayName)
-	assert.Equal(t, "c-1", cred.ClusterName) // 登记键不被覆盖
+	assert.Equal(t, "https://1.2.3.4", cred.APIEndpoint) // kubeconfig server 行回填
+	assert.Equal(t, "c-1", cred.ClusterName)             // 登记键不被覆盖
 }
 
 // TestFetchAndRegister_SkipsBlankIDs 空白集群 ID 跳过（入参防御）。

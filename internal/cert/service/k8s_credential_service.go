@@ -54,9 +54,9 @@ type K8sCredentialService interface {
 	// DeleteCluster 按集群名删除凭证并失效 dynamic client 缓存；
 	// 未命中返回 mongo.ErrNoDocuments。
 	DeleteCluster(ctx context.Context, clusterName string) error
-	// UpdateDisplayNameIfEmpty 可读集群名回填（仅当前为空时生效；云端拉取命中
-	// 幂等重复时为存量行补 ACK 集群名）。
-	UpdateDisplayNameIfEmpty(ctx context.Context, clusterName, displayName string) error
+	// BackfillFetchMeta 云端拉取元数据回填（仅当前为空时生效；幂等重复命中
+	// 存量行时补 ACK 集群名与 APIServer endpoint）。
+	BackfillFetchMeta(ctx context.Context, clusterName, displayName, apiEndpoint string) error
 }
 
 type k8sCredentialService struct {
@@ -151,7 +151,7 @@ func (s *k8sCredentialService) DeleteCluster(ctx context.Context, clusterName st
 	return nil
 }
 
-// UpdateDisplayNameIfEmpty 可读集群名回填（透传仓储；仅当前为空时生效）。
-func (s *k8sCredentialService) UpdateDisplayNameIfEmpty(ctx context.Context, clusterName, displayName string) error {
-	return s.creds.UpdateDisplayNameIfEmpty(ctx, clusterName, displayName)
+// BackfillFetchMeta 云端拉取元数据回填（透传仓储；仅当前为空时生效）。
+func (s *k8sCredentialService) BackfillFetchMeta(ctx context.Context, clusterName, displayName, apiEndpoint string) error {
+	return s.creds.BackfillFetchMeta(ctx, clusterName, displayName, apiEndpoint)
 }

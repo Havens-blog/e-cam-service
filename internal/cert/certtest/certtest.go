@@ -890,16 +890,19 @@ func (f *FakeK8sCredentialRepo) DeleteByClusterName(_ context.Context, clusterNa
 	return nil
 }
 
-// UpdateDisplayNameIfEmpty 回填可读集群名（仅当前为空时生效，与真实仓储同语义）。
-func (f *FakeK8sCredentialRepo) UpdateDisplayNameIfEmpty(_ context.Context, clusterName, displayName string) error {
+// BackfillFetchMeta 回填拉取元数据（仅当前为空时生效，与真实仓储同语义）。
+func (f *FakeK8sCredentialRepo) BackfillFetchMeta(_ context.Context, clusterName, displayName, apiEndpoint string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	c, ok := f.byCluster[clusterName]
-	if !ok || strings.TrimSpace(displayName) == "" {
+	if !ok {
 		return nil
 	}
 	if c.DisplayName == "" {
 		c.DisplayName = strings.TrimSpace(displayName)
+	}
+	if c.APIEndpoint == "" {
+		c.APIEndpoint = strings.TrimSpace(apiEndpoint)
 	}
 	return nil
 }

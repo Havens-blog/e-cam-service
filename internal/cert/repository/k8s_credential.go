@@ -62,14 +62,21 @@ func (r *k8sCredentialRepository) DeleteByClusterName(ctx context.Context, clust
 	return err
 }
 
-// UpdateDisplayNameIfEmpty 回填可读集群名：仅命中 displayName 缺失/空串的行
-// （幂等；已有值不覆盖——手动改名的场景不被云端拉取冲掉）。
-func (r *k8sCredentialRepository) UpdateDisplayNameIfEmpty(ctx context.Context, clusterName, displayName string) error {
-	if strings.TrimSpace(displayName) == "" {
+// BackfillFetchMeta 回填云端拉取元数���：displayName/apiEndpoint 各自仅在缺失/
+// 空串时写入（幂等；已有值不覆盖——手动改名的场景不被云端拉取冲掉）。
+func (r *k8sCredentialRepository) BackfillFetchMeta(ctx context.Context, clusterName, displayName, apiEndpoint string) error {
+	set := bson.M{}
+	if dn := strings.TrimSpace(displayName); dn != "" {
+		set["displayName"] = dn
+	}
+	if ep := strings.TrimSpace(apiEndpoint); ep != "" {
+		set["apiEndpoint"] = ep
+	}
+	if len(set) == 0 {
 		return nil
 	}
 	_, err := r.db.Collection(K8sCredentialsCollection).UpdateOne(ctx,
-		bson.M{"clusterName": clusterName, "displayName": bson.M{"$in": bson.A{nil, ""}}},
-		bson.M{"$set": bson.M{"displayName": strings.TrimSpace(displayName)}})
+		bson.M{"clusterName": clusterName},
+		bson.M{"$set": set})
 	return err
 }
