@@ -24,13 +24,12 @@ func InitApp() (*App, error) {
 	cmdable := InitRedis()
 	provider := InitSessionProvider(cmdable)
 	v := InitGinMiddlewares()
-	client := InitEtcdClient()
-	policyServiceClient := InitEcmdbPolicyClient(client)
-	checkPolicyMiddleware := InitCheckPolicyMiddleware(policyServiceClient)
+	psdk := InitPolicySDK()
+	syncer := InitPermSyncer()
+	providers := InitProviders()
 	mongo := InitMongoDB()
 	module := InitAuditModule(mongo)
 	auditMiddleware := InitAuditMiddleware(module)
-	endpointServiceClient := InitEcmdbEndpointClient(client)
 	endpointModule, err := endpoint.InitModule(mongo)
 	if err != nil {
 		return nil, err
@@ -50,13 +49,11 @@ func InitApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	engine := InitWebServer(provider, v, checkPolicyMiddleware, auditMiddleware, module, endpointServiceClient, v2, camModule, cmdbModule, alertModule, mongo, certModule, logqueryModule)
-	server := InitGrpcServer(client)
+	engine := InitWebServer(provider, v, psdk, syncer, providers, auditMiddleware, module, v2, camModule, cmdbModule, alertModule, mongo, certModule, logqueryModule)
 	v3 := InitJobs(camModule, certModule)
 	app := &App{
 		Logger:         logger,
 		Web:            engine,
-		Grpc:           server,
 		Jobs:           v3,
 		EndModule:      endpointModule,
 		CamModule:      camModule,
@@ -72,13 +69,11 @@ var BaseSet = wire.NewSet(
 	InitLogger,
 	InitMongoDB,
 	InitRedis,
-	InitGrpcServer,
 	InitSessionProvider,
 	InitGinMiddlewares,
-	InitEtcdClient,
-	InitEcmdbPolicyClient,
-	InitEcmdbEndpointClient,
-	InitCheckPolicyMiddleware,
+	InitPolicySDK,
+	InitPermSyncer,
+	InitProviders,
 	InitAuditModule,
 	InitAuditMiddleware,
 	InitWebServer,

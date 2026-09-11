@@ -54,18 +54,10 @@ var Cmd = &cobra.Command{
 		}
 
 		logger.Info("启动HTTP服务器", elog.String("port", cfg.Port))
-		go func() {
-			if err = app.Web.Run(fmt.Sprintf(":%s", cfg.Port)); err != nil {
-				logger.Error("HTTP服务器启动失败", elog.FieldErr(err))
-				panic(fmt.Errorf("HTTP server failed to start: %w", err))
-			}
-		}()
-
-		logger.Info("启动gRPC服务器")
-		// gRPC 服务器启动（阻塞）
-		if err = app.Grpc.Serve(); err != nil {
-			logger.Error("gRPC服务器启动失败", elog.FieldErr(err))
-			panic(fmt.Errorf("gRPC server failed to serve: %w", err))
+		// HTTP 服务器（阻塞，原空壳 gRPC server 已移除）
+		if err = app.Web.Run(fmt.Sprintf(":%s", cfg.Port)); err != nil {
+			logger.Error("HTTP服务器启动失败", elog.FieldErr(err))
+			panic(fmt.Errorf("HTTP server failed to start: %w", err))
 		}
 		return nil
 	},

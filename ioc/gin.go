@@ -1,9 +1,12 @@
 package ioc
 
 import (
+	"context"
+	"strings"
 	"time"
 
-	endpointv1 "github.com/Havens-blog/e-cam-service/api/proto/gen/ecmdb/endpoint/v1"
+	"github.com/Duke1616/eiam/pkg/web/capability"
+	"github.com/Duke1616/eiam/pkg/web/sdk"
 	_ "github.com/Havens-blog/e-cam-service/docs" // 导入生成的文档
 	"github.com/Havens-blog/e-cam-service/internal/alert"
 	"github.com/Havens-blog/e-cam-service/internal/audit"
@@ -24,12 +27,16 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *middleware.CheckPolicyMiddleware, auditMdl *middleware.AuditMiddleware, auditModule *audit.Module, endpointClient endpointv1.EndpointServiceClient, endpointHdl *endpoint.Handler, camModule *cam.Module, cmdbModule *cmdb.Module, alertModule *alert.Module, db *mongox.Mongo, certModule *cert.Module, logQueryModule *logquery.Module) *gin.Engine {
+func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, psdk *sdk.SDK, syncer capability.Syncer, providers []capability.PermissionProvider, auditMdl *middleware.AuditMiddleware, auditModule *audit.Module, endpointHdl *endpoint.Handler, camModule *cam.Module, cmdbModule *cmdb.Module, alertModule *alert.Module, db *mongox.Mongo, certModule *cert.Module, logQueryModule *logquery.Module) *gin.Engine {
 	logger := elog.DefaultLogger
 	logger.Info("开始初始化Web服务器")
 	session.SetDefaultProvider(sp)
 	gin.SetMode(gin.ReleaseMode)
 	server := gin.Default()
+
+	// 与 eiam SDK 的 context 注入通道对齐（ctxutil / pbac 写入 request context）：
+	// 开启后 gin.Context 可作为 context.Context 透传，双通道一致。
+	server.ContextWithFallback = true
 
 	// 添加CORS中间件（最先）
 	logger.Info("配置CORS中间件")
@@ -62,8 +69,13 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 	// 租户由认证中间件从 JWT claims 解析并写入上下文（见 middleware.TenantIDKey），
 	// 不再有独立的租户中间件：客户端自报的租户一律不采纳。
 
-	// ecmdb 策略检查中间件（加固版）
-	server.Use(checkPolicy.Build())
+	// eiam 细粒度授权（CheckAPI，取代已拆除的 ecmdb 策略死链路）：
+	// 仅对 capability 打标（reg.Capability(...).Handle(...)）的 handler 发起
+	// 远程判定，未打标路由直接放行。默认关闭——上线顺序：先开 sync_enabled
+	// 让资产进 eiam 并配置角色，再开 enabled 切强制（详见 config 注释）。
+	if viper.GetBool("policy.enabled") {
+		server.Use(psdk.CheckPolicy())
+	}
 
 	// API 操作审计中间件
 	server.Use(auditMdl.Build())
@@ -251,8 +263,20 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, checkPolicy *mid
 		logger.Info("审计模块路由注册完成")
 	}
 
-	// 启动时将 e-cam-service 的路由注册到 ecmdb 的权限系统
-	go middleware.RegisterEndpointsToEcmdb(server, endpointClient, logger)
+	// 端点资产上报到 eiam（取代原 ecmdb endpoint 死链路）：
+	// 路由注册必须先于本调用完成；Sync 内部启动 30s 全量 tick 协程。
+	// 先于 policy.enabled 开启本项，可在切强制前于 eiam 侧预先配置角色。
+	if viper.GetBool("policy.sync_enabled") {
+		go func() {
+			time.Sleep(time.Second) // 等待端口监听，首轮上报不与启动竞态
+			if err := syncer.WithOption(
+				capability.WithPermissions(providers...),
+				capability.WithRouter(server),
+			).Sync(context.Background()); err != nil {
+				elog.Error("EIAM 资产上报启动失败", elog.FieldErr(err))
+			}
+		}()
+	}
 
 	logger.Info("Web服务器初始化完成")
 	return server
@@ -266,11 +290,59 @@ func InitGinMiddlewares() []gin.HandlerFunc {
 	}
 }
 
+// corsConfig 对应配置文件 cors 配置节。
+type corsConfig struct {
+	AllowAll       bool     `mapstructure:"allow_all"`       // 全放行（仅本地调试）
+	AllowedOrigins []string `mapstructure:"allowed_origins"` // 允许的来源白名单
+}
+
+// corsDefaultOrigins 未配置 allowed_origins 时的内置默认值：本地联调常用入口。
+// 生产环境必须在配置中显式声明真实来源。
+var corsDefaultOrigins = []string{
+	"http://localhost:8888", "http://127.0.0.1:8888",
+	"http://localhost:5173", "http://127.0.0.1:5173",
+	"http://localhost:3333", "http://127.0.0.1:3333",
+}
+
+// originAllowed 判定请求来源是否在白名单内：
+//   - allowAll 为 true 时全放行（仅本地调试）
+//   - 白名单项精确匹配（忽略大小写）；"*.example.com" 形式通配子域
+func originAllowed(origin string, allowed []string, allowAll bool) bool {
+	if allowAll {
+		return true
+	}
+	for _, a := range allowed {
+		if strings.HasPrefix(a, "*.") { // 通配子域：*.jlcops.com
+			if strings.HasSuffix(origin, a[1:]) {
+				return true
+			}
+			continue
+		}
+		if strings.EqualFold(origin, a) {
+			return true
+		}
+	}
+	return false
+}
+
 func corsHdl() gin.HandlerFunc {
+	// CORS 来源白名单：AllowCredentials=true 的场景下全放行等于把 cookie 暴露给
+	// 任意站点（CSRF/凭证泄露面），因此改为配置驱动：
+	//   cors.allow_all: true          —— 仅限本地调试逃生门
+	//   cors.allowed_origins: [...]   —— 精确匹配；*.example.com 形式通配子域
+	// 未配置时回退内���开发默认值（本地联调入口），生产必须在配置中显式声明。
+	var cfg corsConfig
+	if err := viper.UnmarshalKey("cors", &cfg); err != nil {
+		elog.DefaultLogger.Warn("读取 cors 配置失败，回退默认白名单", elog.FieldErr(err))
+	}
+	allowed := cfg.AllowedOrigins
+	if len(allowed) == 0 {
+		allowed = corsDefaultOrigins
+	}
+
 	return cors.New(cors.Config{
 		AllowOriginFunc: func(origin string) bool {
-			// 开发环境允许所有来源，生产环境应限制为具体域名
-			return true
+			return originAllowed(origin, allowed, cfg.AllowAll)
 		},
 		AllowMethods:  []string{"POST", "GET", "PUT", "DELETE", "PATCH", "OPTIONS"},
 		AllowHeaders:  []string{"Content-Type", "Authorization", "X-Finder-Id", "X-Finder-ID", "X-Request-ID"},

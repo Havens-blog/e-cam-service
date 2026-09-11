@@ -53,10 +53,6 @@ mongodb:
   username: ecmdb
   password: 123456
 
-etcd:
-  endpoints:
-    - localhost:2379
-
 cronjob:
   enabled: true
 
@@ -68,20 +64,16 @@ auth:
     - "/docs"
     - "/api/v1/cam/topology/declarations"  # APM 推送脚本内部调用，无需用户 session
 
-# 策略检查中间件配置
-policy:
-  fail_mode: "fail_open"
-  whitelist:
-    - "/api/v1/cam/topology/declarations"  # APM 推送脚本内部调用，跳过策略检查
+# CORS：本地联调全放行（生产严禁 allow_all）
+cors:
+  allow_all: true
 
-grpc:
-  server:
-    name: "e-cam-service"
-    port: 8098
-    etcdTTL: 60
-    key: "1234567890"
-  client:
-    ecmdb:
-      target: "etcd:///service/ecmdb"
-      secure: false
-      key: "1234567890"
+# eiam 远程鉴权（细粒度授权 CheckAPI，取代原 ecmdb 策略死链路）
+# 上线顺序：先 sync_enabled=true 让端点资产进 eiam 并配置角色权限，
+# 再 enabled=true 切强制（未授权请求 403，未打标路由不受影响）。
+# 注意：本地联调需与 eiam 使用同一 Redis session 库（见 eiam config）。
+policy:
+  enabled: false
+  sync_enabled: false
+  auth_url: http://127.0.0.1:9000        # eiam HTTP
+  discovery_url: http://127.0.0.1:9000   # 资产上报，SDK 自动补 /api/v1/discovery/sync

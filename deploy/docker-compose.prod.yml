@@ -13,7 +13,6 @@ services:
     restart: unless-stopped
     ports:
       - "8001:8001"
-      - "8099:8099"
     volumes:
       - ../config:/app/config:ro
       - app_logs:/app/logs
