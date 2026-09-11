@@ -33,12 +33,9 @@ import (
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/redis/go-redis/v9"
 
-	// 注册各云厂商 billing adapter（触发 init() 注册到全局注册表）
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/billing/aliyun"
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/billing/aws"
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/billing/huawei"
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/billing/tencent"
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/billing/volcano"
+	// 厂商注册统一入口（import manifest）：资产/计费/日志/IAM 四张注册表一并触发
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/providers"
+
 )
 
 // InitModuleWithIAM 初始化CAM模块（包含IAM和成本管理）

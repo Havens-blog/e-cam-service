@@ -1,6 +1,8 @@
 package tencent
 
 import (
+	cloudxiam "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam"
+
 	"context"
 	"fmt"
 	"time"
@@ -454,5 +456,11 @@ func (a *Adapter) retryWithBackoff(ctx context.Context, operation func() error) 
 			return true
 		}
 		return false
+	})
+}
+
+func init() {
+	cloudxiam.RegisterIAMAdapter(domain.CloudProviderTencent, func(logger *elog.Component) (cloudxiam.CloudIAMAdapter, error) {
+		return NewAdapterWrapper(NewAdapter(logger)), nil
 	})
 }

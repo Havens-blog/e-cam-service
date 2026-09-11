@@ -88,7 +88,7 @@ func ConvertRAMGroupToUserGroup(ramGroup ram.Group, account *domain.CloudAccount
 		CTime:          createTime.Unix(),
 		UTime:          now.Unix(),
 		Policies:       []domain.PermissionPolicy{}, // 需要单独查�?
-		MemberCount:    0,                            // 需要单独查�?
+		MemberCount:    0,                           // 需要单独查�?
 	}
 
 	return group

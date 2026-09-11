@@ -35,7 +35,7 @@ func (v *AzureValidator) ValidateCredentials(ctx context.Context, account *domai
 	if err := v.callAzureAPI(ctx, account); err != nil {
 		return &ValidationResult{
 			Valid:        false,
-			Message:      fmt.Sprintf("Azure API 调用失败败: %v", err),
+			Message:      fmt.Sprintf("Azure API 调用失败: %v", err),
 			ValidatedAt:  time.Now(),
 			ResponseTime: time.Since(startTime).Milliseconds(),
 		}, nil
@@ -49,7 +49,7 @@ func (v *AzureValidator) ValidateCredentials(ctx context.Context, account *domai
 
 	return &ValidationResult{
 		Valid:        true,
-		Message:      "Azure 凭证验证成功功",
+		Message:      "Azure 凭证验证成功",
 		Regions:      regions,
 		Permissions:  []string{"Microsoft.Compute/virtualMachines/read", "Microsoft.Sql/servers/read", "Microsoft.Storage/storageAccounts/read"},
 		AccountInfo:  fmt.Sprintf("ClientId: %s", maskAccessKey(account.AccessKeyID)),

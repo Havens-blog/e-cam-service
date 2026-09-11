@@ -1,6 +1,8 @@
 package volcano
 
 import (
+	cloudxiam "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam"
+
 	"context"
 	"fmt"
 
@@ -142,4 +144,13 @@ func (a *Adapter) retryWithBackoff(ctx context.Context, operation func() error) 
 		}
 		return false
 	})
+}
+
+func init() {
+	// 与 cloudx/billing 资产注册表保持一致：volcano 与 volcengine 为同一厂商的别名
+	creator := func(logger *elog.Component) (cloudxiam.CloudIAMAdapter, error) {
+		return NewAdapterWrapper(NewAdapter(logger)), nil
+	}
+	cloudxiam.RegisterIAMAdapter(domain.CloudProviderVolcano, creator)
+	cloudxiam.RegisterIAMAdapter(domain.CloudProviderVolcengine, creator)
 }

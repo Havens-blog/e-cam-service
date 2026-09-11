@@ -9,12 +9,9 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
 
-	// 导入各云厂商适配器以触发 init() 注册
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aliyun"
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/tencent"
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/volcano"
+	// 厂商注册统一入口（import manifest），替代原分散 blank import
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/providers"
+
 )
 
 // AdapterFactory 资产适配器工厂

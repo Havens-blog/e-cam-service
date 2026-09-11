@@ -12,14 +12,8 @@ import (
 	taskweb "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 
-	// 注册各云厂商适配器
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aliyun"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/tencent"
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/volcano"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/gotomicro/ego/core/elog"

@@ -5,6 +5,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/gotomicro/ego/core/elog"
 )
 
 // CloudIAMAdapter 云平台IAM适配器接�?
@@ -74,3 +75,7 @@ type CloudIAMAdapterFactory interface {
 	// CreateAdapter 根据云厂商类型创建适配器�?
 	CreateAdapter(provider domain.CloudProvider) (CloudIAMAdapter, error)
 }
+
+// CloudIAMAdapterCreator IAM 适配器创建器：各厂商包在 init() 中自注册，
+// 工厂经注册表查找后调用。logger 由工厂持有，创建时注入。
+type CloudIAMAdapterCreator func(logger *elog.Component) (CloudIAMAdapter, error)

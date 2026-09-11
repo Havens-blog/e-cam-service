@@ -51,7 +51,7 @@ func (a *Adapter) ListGroups(ctx context.Context, account *domain.CloudAccount) 
 		// 转换器用户组组数�?
 		for _, ramGroup := range response.Groups.Group {
 			group := ConvertRAMGroupToUserGroup(ramGroup, account)
-			
+
 			// 获取用户组组的策略列表
 			policies, err := a.listGroupPolicies(ctx, client, ramGroup.GroupName)
 			if err != nil {

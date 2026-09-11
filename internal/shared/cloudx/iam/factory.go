@@ -4,15 +4,12 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam/aliyun"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam/aws"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam/huawei"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam/tencent"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam/volcano"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
 )
 
+// adapterFactory IAM 适配器工厂：按 provider 缓存适配器实例，
+// 创建器经注册表查找（各厂商包 init() 自注册，见 registry.go）。
 type adapterFactory struct {
 	adapters map[domain.CloudProvider]CloudIAMAdapter
 	mu       sync.RWMutex
@@ -41,66 +38,29 @@ func (f *adapterFactory) CreateAdapter(provider domain.CloudProvider) (CloudIAMA
 		return adapter, nil
 	}
 
-	var adapter CloudIAMAdapter
-	var err error
-
-	switch provider {
-	case domain.CloudProviderAliyun:
-		adapter, err = f.createAliyunAdapter()
-	case domain.CloudProviderAWS:
-		adapter, err = f.createAWSAdapter()
-	case domain.CloudProviderHuawei:
-		adapter, err = f.createHuaweiAdapter()
-	case domain.CloudProviderTencent:
-		adapter, err = f.createTencentAdapter()
-	case domain.CloudProviderVolcano:
-		adapter, err = f.createVolcanoAdapter()
-	default:
-		return nil, fmt.Errorf("不支持的云厂�? %s", provider)
+	creator, err := GetIAMAdapterCreator(provider)
+	if err != nil {
+		return nil, err
 	}
 
+	adapter, err := creator(f.logger)
 	if err != nil {
-		return nil, fmt.Errorf("创建适配器失败败: %w", err)
+		return nil, fmt.Errorf("创建适配器失败: %w", err)
 	}
 
 	f.adapters[provider] = adapter
 
-	f.logger.Info("创建云平台适配器成功功",
+	f.logger.Info("创建云平台适配器成功",
 		elog.String("provider", string(provider)))
 
 	return adapter, nil
-}
-
-func (f *adapterFactory) createAliyunAdapter() (CloudIAMAdapter, error) {
-	adapter := aliyun.NewAdapter(f.logger)
-	return aliyun.NewAdapterWrapper(adapter), nil
-}
-
-func (f *adapterFactory) createAWSAdapter() (CloudIAMAdapter, error) {
-	adapter := aws.NewAdapter(f.logger)
-	return aws.NewAdapterWrapper(adapter), nil
-}
-
-func (f *adapterFactory) createHuaweiAdapter() (CloudIAMAdapter, error) {
-	adapter := huawei.NewAdapter(f.logger)
-	return huawei.NewAdapterWrapper(adapter), nil
-}
-
-func (f *adapterFactory) createTencentAdapter() (CloudIAMAdapter, error) {
-	adapter := tencent.NewAdapter(f.logger)
-	return tencent.NewAdapterWrapper(adapter), nil
-}
-
-func (f *adapterFactory) createVolcanoAdapter() (CloudIAMAdapter, error) {
-	adapter := volcano.NewAdapter(f.logger)
-	return volcano.NewAdapterWrapper(adapter), nil
 }
 
 func (f *adapterFactory) ClearCache() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.adapters = make(map[domain.CloudProvider]CloudIAMAdapter)
-	f.logger.Info("清空适配器缓存存")
+	f.logger.Info("清空适配器缓存")
 }
 
 func (f *adapterFactory) GetCachedAdapter(provider domain.CloudProvider) (CloudIAMAdapter, bool) {

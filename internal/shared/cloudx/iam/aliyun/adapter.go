@@ -1,6 +1,8 @@
 package aliyun
 
 import (
+	cloudxiam "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam"
+
 	"context"
 	"fmt"
 
@@ -589,4 +591,10 @@ func (a *Adapter) GetPolicy(ctx context.Context, account *domain.CloudAccount, p
 		elog.String("policy_id", policyID))
 
 	return policy, nil
+}
+
+func init() {
+	cloudxiam.RegisterIAMAdapter(domain.CloudProviderAliyun, func(logger *elog.Component) (cloudxiam.CloudIAMAdapter, error) {
+		return NewAdapterWrapper(NewAdapter(logger)), nil
+	})
 }

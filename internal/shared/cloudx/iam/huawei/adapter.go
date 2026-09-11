@@ -1,6 +1,8 @@
 package huawei
 
 import (
+	cloudxiam "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam"
+
 	"context"
 	"fmt"
 
@@ -146,5 +148,11 @@ func (a *Adapter) retryWithBackoff(ctx context.Context, operation func() error) 
 			return true
 		}
 		return false
+	})
+}
+
+func init() {
+	cloudxiam.RegisterIAMAdapter(domain.CloudProviderHuawei, func(logger *elog.Component) (cloudxiam.CloudIAMAdapter, error) {
+		return NewAdapterWrapper(NewAdapter(logger)), nil
 	})
 }
