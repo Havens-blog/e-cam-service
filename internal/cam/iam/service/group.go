@@ -331,12 +331,14 @@ func (s *userGroupService) validatePolicies(policies []domain.PermissionPolicy) 
 		}
 
 		// 验证云厂商是否支持
+		// 与 iam 工厂的实际实现保持一致（见 cloudx/iam/registry.go 注册表）：
+		// azure 无 IAM 适配器，不在此放行，避免通过校验后在工厂层深层报错
 		validProviders := map[domain.CloudProvider]bool{
 			domain.CloudProviderAliyun:  true,
 			domain.CloudProviderAWS:     true,
 			domain.CloudProviderHuawei:  true,
 			domain.CloudProviderTencent: true,
-			domain.CloudProviderAzure:   true,
+			domain.CloudProviderVolcano: true,
 		}
 		if !validProviders[policy.Provider] {
 			return fmt.Errorf("策略%d的云厂商不支持: %s", i+1, policy.Provider)

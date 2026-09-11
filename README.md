@@ -27,7 +27,8 @@
 
 ### 2. 云账号管理
 
-- **多云厂商支持**：阿里云、AWS、Azure、华为云、腾讯云
+- **多云厂商支持**：阿里云、AWS、华为云、腾讯云、火山引擎（volcano/volcengine 同源别名）
+- **Azure 边界（诚实声明）**：仅支持证书发现导入（Front Door / Application Gateway，经 Key Vault 读取）与凭证格式校验；无 CloudAdapter，资产同步/计费/日志/IAM/DNS 等能力运行时报 `ErrUnsupportedProvider`，属预期早失败
 - **账号凭证管理**：安全存储和管理云账号 AK/SK
 - **连接测试**：验证云账号凭证有效性
 - **账号状态管理**：启用/禁用云账号
@@ -137,14 +138,12 @@ e-cam-service/
 │   │   ├── repository_mongo.go   # MongoDB 仓储
 │   │   └── README.md             # 框架使用文档
 │   ├── mongox/                   # MongoDB 封装
-│   ├── grpcx/                    # gRPC 封装
 │   └── ginx/                     # Gin 框架扩展
 ├── ioc/                          # 依赖注入配置
 │   ├── gin.go                    # HTTP 服务器配置
 │   ├── wire.go                   # Wire 配置
 │   └── wire_gen.go               # Wire 生成代码
 ├── api/                          # API 定义
-│   └── proto/                    # Protobuf 定义
 ├── docs/                         # 📚 文档目录
 │   ├── async-task-framework.md   # 异步任务框架文档
 │   ├── async-task-integration-summary.md
@@ -192,12 +191,11 @@ e-cam-service/
 
 - **阿里云 SDK**：`github.com/aliyun/alibaba-cloud-sdk-go`
 - **AWS SDK v2**：`github.com/aws/aws-sdk-go-v2`
-- **Azure SDK**：`github.com/Azure/azure-sdk-for-go`
+- **Azure**：无 SDK 依赖（证书发现经 net/http 直调 AAD/ARM/Key Vault REST）
 
 ### 开发工具
 
 - **golangci-lint**：代码质量检查
-- **buf**：Protobuf 管理
 - **Docker**：容器化部署
 
 ## 🚀 快速开始
@@ -573,9 +571,6 @@ go install github.com/google/wire/cmd/wire@latest
 
 # 安装 golangci-lint（代码检查）
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-
-# 安装 buf（Protobuf 管理）
-go install github.com/bufbuild/buf/cmd/buf@latest
 ```
 
 2. 生成依赖注入代码：
