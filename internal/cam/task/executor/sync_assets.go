@@ -487,365 +487,45 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 	var cloudxErr error
 
 	for _, assetType := range expandedTypes {
-		switch assetType {
-		case "ecs":
-			synced, err := e.syncRegionECS(ctx, adapter, account, region)
-			if err != nil {
-				e.logger.Error("同步ECS失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "rds":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionRDS(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步RDS失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "redis":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionRedis(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步Redis失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "mongodb":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionMongoDB(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步MongoDB失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "vpc":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionVPC(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步VPC失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "eip":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionEIP(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步EIP失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "eni":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionENI(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步ENI失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "lb":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionLB(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步LB失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "nas":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionNAS(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步NAS失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "oss":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionOSS(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步OSS失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "kafka":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionKafka(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步Kafka失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "elasticsearch", "es":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionElasticsearch(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步Elasticsearch失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "disk":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionDisk(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步云盘失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "snapshot":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionSnapshot(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步快照失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "security_group", "securitygroup", "sg":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionSecurityGroup(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步安全组失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "image":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionImage(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步镜像失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "vswitch", "subnet":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionVSwitch(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步VSwitch失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "cdn":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionCDN(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步CDN失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "waf":
-			// 懒加载 cloudx 适配器
-			if cloudxAdapter == nil && cloudxErr == nil {
-				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-				if cloudxErr != nil {
-					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-				}
-			}
-			if cloudxAdapter == nil {
-				continue
-			}
-			synced, err := e.syncRegionWAF(ctx, cloudxAdapter, account, region)
-			if err != nil {
-				e.logger.Error("同步WAF失败",
-					elog.String("region", region),
-					elog.FieldErr(err))
-				continue
-			}
-			totalSynced += synced
-		case "dns":
-			// DNS 是全局服务，在 syncRegionAssets 中跳过
-			// DNS 同步在账号级别处理（见 Execute 方法中的 syncDNS 调用）
+		if assetType == dnsAssetType {
+			// DNS 是全局服务，在 syncRegionAssets 中跳过（账号级处理，见 Execute 中的 syncDNS）
 			continue
-		default:
-			e.logger.Warn("不支持的资源类型", elog.String("asset_type", assetType))
 		}
+
+		// 计算型资源（ECS）使用 asset 适配器，无需 cloudx
+		if entry, ok := assetSyncFns[assetType]; ok {
+			synced, err := entry.fn(e, ctx, adapter, account, region)
+			if err != nil {
+				e.logger.Error(entry.label, elog.String("region", region), elog.FieldErr(err))
+				continue
+			}
+			totalSynced += synced
+			continue
+		}
+
+		entry, ok := cloudxSyncFns[assetType]
+		if !ok {
+			// 未注册类型不触碰工厂，直接告警（与旧 switch default 行为一致）
+			e.logger.Warn("不支持的资源类型", elog.String("asset_type", assetType))
+			continue
+		}
+
+		// 其余资源懒加载 cloudx 适配器（创建失败/不可用时跳过本类型）
+		if cloudxAdapter == nil && cloudxErr == nil {
+			cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+			if cloudxErr != nil {
+				e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+			}
+		}
+		if cloudxAdapter == nil {
+			continue
+		}
+		synced, err := entry.fn(e, ctx, cloudxAdapter, account, region)
+		if err != nil {
+			e.logger.Error(entry.label, elog.String("region", region), elog.FieldErr(err))
+			continue
+		}
+		totalSynced += synced
 	}
 
 	return totalSynced, nil
