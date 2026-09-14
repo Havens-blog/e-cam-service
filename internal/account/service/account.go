@@ -335,6 +335,13 @@ func (s *cloudAccountService) SyncAccount(ctx context.Context, id int64, req *do
 		CreatedBy: "system",
 	}
 
+	// taskQueue 可能为 nil（如 MCP 独立进程不装配 executor 队列时构造本服务），
+	// 直接 Submit 会对 nil 解引用 panic，此处显式拒绝并给出可诊断错误。
+	if s.taskQueue == nil {
+		s.logger.Error("同步任务队列未初始化",
+			elog.Int64("account_id", id))
+		return nil, fmt.Errorf("同步任务队列未初始化，当前进程不支持资产同步")
+	}
 	if err := s.taskQueue.Submit(t); err != nil {
 		s.logger.Error("提交同步任务失败",
 			elog.Int64("account_id", id),
