@@ -50,6 +50,28 @@ func TestGetRegisteredProviders(t *testing.T) {
 	assert.NotNil(t, providers)
 }
 
+func TestRegisteredPrimaryProviders(t *testing.T) {
+	got := RegisteredPrimaryProviders()
+
+	// 去重：volcengine 别名键不得出现
+	for _, p := range got {
+		assert.NotEqual(t, domain.CloudProviderVolcengine, p)
+	}
+	// azure 尚未注册 CloudAdapter，不得出现（接入后此断言需更新）
+	assert.NotContains(t, got, domain.CloudProviderAzure)
+	// 固定顺序，保证输出稳定
+	assert.IsIncreasing(t, got)
+}
+
+// TestPrimaryAssetProviders_MatchesRegistry 漂移守卫：
+// shared/domain.PrimaryAssetProviders（展示层单源）必须与注册表的主厂商集合一致。
+// azure 接入 CloudAdapter 时本测试会红，提醒先更新 PrimaryAssetProviders 再收尾展示层。
+func TestPrimaryAssetProviders_MatchesRegistry(t *testing.T) {
+	registered := RegisteredPrimaryProviders()
+	require.ElementsMatch(t, domain.PrimaryAssetProviders, registered,
+		"domain.PrimaryAssetProviders 与 cloudx 注册表主厂商漂移：先更新 shared/domain/account.go 的 PrimaryAssetProviders")
+}
+
 func TestRegisterAdapter_Overwrite(t *testing.T) {
 	testProvider := domain.CloudProvider("overwrite_test")
 	callCount := 0

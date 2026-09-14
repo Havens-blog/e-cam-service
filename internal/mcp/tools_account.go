@@ -11,6 +11,13 @@ import (
 
 // registerAccountTools 注册云账号相关 Tools
 func (s *Server) registerAccountTools() {
+	// 云厂商枚举用 shared/domain 的规范主厂商清单（单源、确定性，
+	// 不依赖注册表 init 副作用——mcp-server 的 import 图可能不触发 providers 注册）。
+	providerEnum := make([]string, 0, len(domain.PrimaryAssetProviders))
+	for _, p := range domain.PrimaryAssetProviders {
+		providerEnum = append(providerEnum, string(p))
+	}
+
 	// list_accounts - 列出云账号
 	s.mcpServer.AddTool(
 		mcp.NewTool("list_accounts",
@@ -20,8 +27,8 @@ func (s *Server) registerAccountTools() {
 				mcp.Description("租户ID"),
 			),
 			mcp.WithString("provider",
-				mcp.Description("云厂商过滤: aliyun, aws, huawei, tencent, volcano"),
-				mcp.Enum("aliyun", "aws", "huawei", "tencent", "volcano"),
+				mcp.Description("云厂商过滤"),
+				mcp.Enum(providerEnum...),
 			),
 			mcp.WithString("status",
 				mcp.Description("账号状态过滤: active, disabled, error"),

@@ -2,6 +2,7 @@ package cloudx
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
@@ -49,6 +50,26 @@ func GetRegisteredProviders() []domain.CloudProvider {
 	for provider := range adapterRegistry.creators {
 		providers = append(providers, provider)
 	}
+	return providers
+}
+
+// RegisteredPrimaryProviders 返回已注册的"主"云厂商（排除别名键），按固定顺序排序。
+//
+// 展示层（mcp enum、topology ValidProviders 等）用本函数派生清单，而不是各自硬编码，
+// 避免"azure 有无"这类注册表与实际清单漂移的矛盾（历史教训见 2026-09 架构审查）。
+// 当前别名键：volcengine 是 volcano 的同源别名（同 creator 注册两键），展示层只保留 volcano。
+func RegisteredPrimaryProviders() []domain.CloudProvider {
+	providers := make([]domain.CloudProvider, 0, len(adapterRegistry.creators))
+	adapterRegistry.mu.RLock()
+	for provider := range adapterRegistry.creators {
+		if provider == domain.CloudProviderVolcengine {
+			continue // 别名键，展示层收敛为主键
+		}
+		providers = append(providers, provider)
+	}
+	adapterRegistry.mu.RUnlock()
+
+	slices.Sort(providers)
 	return providers
 }
 

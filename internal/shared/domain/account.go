@@ -28,6 +28,21 @@ const (
 	CloudProviderVolcengine CloudProvider = "volcengine" // 火山引擎
 )
 
+// PrimaryAssetProviders 资产能力的主云厂商规范清单（展示层单源）。
+//
+// 用于 mcp enum、topology ValidProviders 等展示/校验清单，避免各层各自硬编码
+// 导致"azure 有无"类漂移。注意：本清单是"资产能力"子集，不含 azure——azure
+// 当前仅证书发现（无 CloudAdapter）。若 azure 接入 CloudAdapter，必须先在本清单
+// 补 azure（cloudx registry_test 有断言兜底），再收尾展示层。
+// volcengine 是 volcano 的别名键，展示层只保留 volcano，故不在此列。
+var PrimaryAssetProviders = []CloudProvider{
+	CloudProviderAliyun,
+	CloudProviderAWS,
+	CloudProviderTencent,
+	CloudProviderHuawei,
+	CloudProviderVolcano,
+}
+
 // Environment 环境枚举
 type Environment string
 

@@ -3,6 +3,8 @@ package domain
 import (
 	"fmt"
 	"time"
+
+	shareddomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
 )
 
 // 资源类型常量
@@ -86,11 +88,16 @@ var ValidCategories = map[string]bool{
 	CategoryContainer: true, CategoryGateway: true, CategoryDNS: true,
 }
 
-// ValidProviders 所有合法的云厂商
-var ValidProviders = map[string]bool{
-	ProviderAliyun: true, ProviderAWS: true, ProviderTencent: true,
-	ProviderHuawei: true, ProviderVolcano: true, ProviderSelfHosted: true,
-}
+// ValidProviders 所有合法的云厂商：shared/domain 的规范主厂商清单 + self-hosted。
+// 规范清单维护于 shared/domain.PrimaryAssetProviders（单源），漂移由 cloudx
+// registry_test 的断言兜底（azure 接入 CloudAdapter 时须先更新该清单）。
+var ValidProviders = func() map[string]bool {
+	m := map[string]bool{ProviderSelfHosted: true}
+	for _, p := range shareddomain.PrimaryAssetProviders {
+		m[string(p)] = true
+	}
+	return m
+}()
 
 // ValidSourceCollectors 所有合法的数据来源
 var ValidSourceCollectors = map[string]bool{
