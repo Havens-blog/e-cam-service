@@ -40,46 +40,25 @@ func (e *SyncAssetsExecutor) syncRegionDisk(
 		elog.String("region", region),
 		elog.Int("count", len(cloudInstances)))
 
-	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	items := make([]syncItem, 0, len(cloudInstances))
+	for _, inst := range cloudInstances {
+		items = append(items, syncItem{
+			AssetID: inst.DiskID,
+			ToInstance: func() (camdomain.Instance, error) {
+				return e.convertDiskToInstance(inst, account), nil
+			},
+		})
+	}
+
+	synced, deleted, err := e.diffAndUpsert(ctx, account.TenantID, modelUID, account.ID, region, items)
 	if err != nil {
-		localAssetIDs = []string{}
-	}
-
-	cloudAssetIDSet := make(map[string]bool)
-	for _, inst := range cloudInstances {
-		cloudAssetIDSet[inst.DiskID] = true
-	}
-
-	var toDelete []string
-	for _, assetID := range localAssetIDs {
-		if !cloudAssetIDSet[assetID] {
-			toDelete = append(toDelete, assetID)
-		}
-	}
-
-	if len(toDelete) > 0 {
-		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
-		if err != nil {
-			e.logger.Error("删除过期云盘失败", elog.FieldErr(err))
-		} else {
-			e.logger.Info("删除过期云盘", elog.Int64("deleted", deleted))
-		}
-	}
-
-	synced := 0
-	for _, inst := range cloudInstances {
-		instance := e.convertDiskToInstance(inst, account)
-		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
-			e.logger.Error("保存云盘失败", elog.String("asset_id", inst.DiskID), elog.FieldErr(err))
-			continue
-		}
-		synced++
+		return synced, err
 	}
 
 	e.logger.Info("同步地域云盘完成",
 		elog.String("region", region),
 		elog.Int("synced", synced),
-		elog.Int("deleted", len(toDelete)))
+		elog.Int64("deleted", deleted))
 
 	return synced, nil
 }

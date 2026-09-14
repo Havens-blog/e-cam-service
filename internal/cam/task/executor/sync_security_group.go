@@ -88,53 +88,25 @@ func (e *SyncAssetsExecutor) syncRegionSecurityGroup(
 			elog.Int("egress_count", sg.EgressRuleCount))
 	}
 
-	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
-	if err != nil {
-		localAssetIDs = []string{}
-	}
-
-	cloudAssetIDSet := make(map[string]bool)
+	items := make([]syncItem, 0, len(cloudInstances))
 	for _, inst := range cloudInstances {
-		cloudAssetIDSet[inst.SecurityGroupID] = true
+		items = append(items, syncItem{
+			AssetID: inst.SecurityGroupID,
+			ToInstance: func() (camdomain.Instance, error) {
+				return e.convertSecurityGroupToInstance(inst, account), nil
+			},
+		})
 	}
 
-	var toDelete []string
-	for _, assetID := range localAssetIDs {
-		if !cloudAssetIDSet[assetID] {
-			toDelete = append(toDelete, assetID)
-		}
-	}
-
-	if len(toDelete) > 0 {
-		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
-		if err != nil {
-			e.logger.Error("删除过期安全组失败", elog.FieldErr(err))
-		} else {
-			e.logger.Info("删除过期安全组", elog.Int64("deleted", deleted))
-		}
-	}
-
-	synced := 0
-	for i := range cloudInstances {
-		inst := &cloudInstances[i]
-		instance := e.convertSecurityGroupToInstance(*inst, account)
-
-		e.logger.Info("保存安全组",
-			elog.String("sg_id", inst.SecurityGroupID),
-			elog.Int("ingress_rules", len(inst.IngressRules)),
-			elog.Int("egress_rules", len(inst.EgressRules)))
-
-		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
-			e.logger.Error("保存安全组失败", elog.String("asset_id", inst.SecurityGroupID), elog.FieldErr(err))
-			continue
-		}
-		synced++
+	synced, deleted, err := e.diffAndUpsert(ctx, account.TenantID, modelUID, account.ID, region, items)
+	if err != nil {
+		return synced, err
 	}
 
 	e.logger.Info("同步地域安全组完成",
 		elog.String("region", region),
 		elog.Int("synced", synced),
-		elog.Int("deleted", len(toDelete)))
+		elog.Int64("deleted", deleted))
 
 	return synced, nil
 }

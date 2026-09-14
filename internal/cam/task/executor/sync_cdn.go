@@ -30,50 +30,29 @@ func (e *SyncAssetsExecutor) syncRegionCDN(
 		return 0, fmt.Errorf("获取CDN域名列表失败: %w", err)
 	}
 
-	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
-	if err != nil {
-		localAssetIDs = []string{}
-	}
-
-	cloudAssetIDSet := make(map[string]bool)
+	items := make([]syncItem, 0, len(cloudInstances))
 	for _, inst := range cloudInstances {
 		id := inst.DomainName
 		if id == "" {
 			id = inst.DomainID
 		}
-		cloudAssetIDSet[id] = true
+		items = append(items, syncItem{
+			AssetID: id,
+			ToInstance: func() (camdomain.Instance, error) {
+				return e.convertCDNToInstance(inst, account), nil
+			},
+		})
 	}
 
-	var toDelete []string
-	for _, assetID := range localAssetIDs {
-		if !cloudAssetIDSet[assetID] {
-			toDelete = append(toDelete, assetID)
-		}
-	}
-
-	if len(toDelete) > 0 {
-		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
-		if err != nil {
-			e.logger.Error("删除过期CDN域名失败", elog.FieldErr(err))
-		} else {
-			e.logger.Info("删除过期CDN域名", elog.Int64("deleted", deleted))
-		}
-	}
-
-	synced := 0
-	for _, inst := range cloudInstances {
-		instance := e.convertCDNToInstance(inst, account)
-		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
-			e.logger.Error("保存CDN域名失败", elog.String("domain", inst.DomainName), elog.FieldErr(err))
-			continue
-		}
-		synced++
+	synced, deleted, err := e.diffAndUpsert(ctx, account.TenantID, modelUID, account.ID, region, items)
+	if err != nil {
+		return synced, err
 	}
 
 	e.logger.Info("同步地域CDN完成",
 		elog.String("region", region),
 		elog.Int("synced", synced),
-		elog.Int("deleted", len(toDelete)))
+		elog.Int64("deleted", deleted))
 
 	return synced, nil
 }

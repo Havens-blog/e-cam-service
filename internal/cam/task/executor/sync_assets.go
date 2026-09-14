@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
@@ -361,6 +362,66 @@ func expandAssetTypes(assetTypes []string) []string {
 }
 
 // syncRegionAssets 同步单个地域的资产
+// syncItem 待同步的一条云资产：AssetID 用于差集删除，ToInstance 负责转换+upsert 由调用方闭包提供
+type syncItem struct {
+	AssetID    string
+	ToInstance func() (camdomain.Instance, error)
+}
+
+// diffAndUpsert 通用"对比本地 → 删除过期 → 新增/更新"（同步收敛 Phase 2 S5）。
+// 各 syncRegion<X> 构建 []syncItem 后调用本方法，消除 19 份逐文件复制。
+// 语义与既有实现一致：ListAssetIDsByRegion 失败按空本地处理；删除失败仅记日志不阻断；
+// 单条转换/upsert 失败跳过不计入 synced。
+func (e *SyncAssetsExecutor) diffAndUpsert(
+	ctx context.Context,
+	tenantID int64,
+	modelUID string,
+	accountID int64,
+	region string,
+	items []syncItem,
+) (synced int, deleted int64, err error) {
+	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, tenantID, modelUID, accountID, region)
+	if err != nil {
+		localAssetIDs = []string{}
+	}
+
+	cloudSet := make(map[string]bool, len(items))
+	for _, it := range items {
+		cloudSet[it.AssetID] = true
+	}
+
+	var toDelete []string
+	for _, assetID := range localAssetIDs {
+		if !cloudSet[assetID] {
+			toDelete = append(toDelete, assetID)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		d, delErr := e.instanceRepo.DeleteByAssetIDs(ctx, tenantID, modelUID, toDelete)
+		if delErr != nil {
+			e.logger.Error("删除过期实例失败", elog.FieldErr(delErr))
+		} else {
+			deleted = d
+		}
+	}
+
+	for _, it := range items {
+		instance, convErr := it.ToInstance()
+		if convErr != nil {
+			e.logger.Error("转换实例失败", elog.String("asset_id", it.AssetID), elog.FieldErr(convErr))
+			continue
+		}
+		if upErr := e.instanceRepo.Upsert(ctx, instance); upErr != nil {
+			e.logger.Error("保存实例失败", elog.String("asset_id", it.AssetID), elog.FieldErr(upErr))
+			continue
+		}
+		synced++
+	}
+
+	return synced, deleted, nil
+}
+
 func (e *SyncAssetsExecutor) syncRegionAssets(
 	ctx context.Context,
 	adapter asset.CloudAssetAdapter,

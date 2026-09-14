@@ -31,50 +31,25 @@ func (e *SyncAssetsExecutor) syncRegionEIP(
 		return 0, fmt.Errorf("获取EIP列表失败: %w", err)
 	}
 
-	// 获取本地实例 AssetID 列表
-	localAssetIDs, err := e.instanceRepo.ListAssetIDsByRegion(ctx, account.TenantID, modelUID, account.ID, region)
+	items := make([]syncItem, 0, len(cloudInstances))
+	for _, inst := range cloudInstances {
+		items = append(items, syncItem{
+			AssetID: inst.AllocationID,
+			ToInstance: func() (camdomain.Instance, error) {
+				return e.convertEIPToInstance(inst, account), nil
+			},
+		})
+	}
+
+	synced, deleted, err := e.diffAndUpsert(ctx, account.TenantID, modelUID, account.ID, region, items)
 	if err != nil {
-		localAssetIDs = []string{}
-	}
-
-	// 构建云端 AssetID 集合
-	cloudAssetIDSet := make(map[string]bool)
-	for _, inst := range cloudInstances {
-		cloudAssetIDSet[inst.AllocationID] = true
-	}
-
-	// 删除已不存在的实例
-	var toDelete []string
-	for _, assetID := range localAssetIDs {
-		if !cloudAssetIDSet[assetID] {
-			toDelete = append(toDelete, assetID)
-		}
-	}
-
-	if len(toDelete) > 0 {
-		deleted, err := e.instanceRepo.DeleteByAssetIDs(ctx, account.TenantID, modelUID, toDelete)
-		if err != nil {
-			e.logger.Error("删除过期EIP失败", elog.FieldErr(err))
-		} else {
-			e.logger.Info("删除过期EIP", elog.Int64("deleted", deleted))
-		}
-	}
-
-	// 新增或更新实例
-	synced := 0
-	for _, inst := range cloudInstances {
-		instance := e.convertEIPToInstance(inst, account)
-		if err := e.instanceRepo.Upsert(ctx, instance); err != nil {
-			e.logger.Error("保存EIP失败", elog.String("asset_id", inst.AllocationID), elog.FieldErr(err))
-			continue
-		}
-		synced++
+		return synced, err
 	}
 
 	e.logger.Info("同步地域EIP完成",
 		elog.String("region", region),
 		elog.Int("synced", synced),
-		elog.Int("deleted", len(toDelete)))
+		elog.Int64("deleted", deleted))
 
 	return synced, nil
 }
