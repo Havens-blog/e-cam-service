@@ -2,6 +2,7 @@ package ioc
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/audit"
+	"github.com/Havens-blog/e-cam-service/internal/cam"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/gotomicro/ego/core/elog"
@@ -17,6 +18,11 @@ func InitAuditMiddleware(auditModule *audit.Module) *middleware.AuditMiddleware 
 	return middleware.NewAuditMiddleware(auditModule.AuditDAO, elog.DefaultLogger)
 }
 
-// 注：原 WireChangeTracker 将 ChangeTracker 注入死服务 asset_sync（SyncAssets
-// 等零调用者），随同步收敛 Phase 2（96c94d3 之后）删除。资产同步的变更审计若需恢复，
-// 应在 executor（internal/cam/task/executor）侧实现，见 docs/proposals/sync-consolidation-phase2 S3a。
+// WireChangeTracker 将审计模块的变更追踪器注入 CAM 资产同步执行器
+// （同步收敛 Phase 2 S3a：替代已删除的 asset_sync 死服务注入，恢复同步变更审计）。
+func WireChangeTracker(camModule *cam.Module, auditModule *audit.Module) {
+	if camModule.TaskModule == nil || auditModule.ChangeTracker == nil {
+		return
+	}
+	camModule.TaskModule.SetChangeTracker(auditModule.ChangeTracker)
+}

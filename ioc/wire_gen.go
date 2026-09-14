@@ -50,6 +50,8 @@ func InitApp() (*App, error) {
 		return nil, err
 	}
 	engine := InitWebServer(provider, v, psdk, syncer, providers, auditMiddleware, module, v2, camModule, cmdbModule, alertModule, mongo, certModule, logqueryModule)
+	// 资产同步变更追踪注入（同步收敛 Phase 2 S3a）：wire 不支持无返回值副作用调用，故在此显式接线
+	WireChangeTracker(camModule, module)
 	v3 := InitJobs(camModule, certModule)
 	app := &App{
 		Logger:         logger,

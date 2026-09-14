@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	auditdomain "github.com/Havens-blog/e-cam-service/internal/audit/domain"
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
@@ -434,6 +435,77 @@ func newTestExecutor(instanceRepo *mockInstanceRepo) *SyncAssetsExecutor {
 		instanceRepo: instanceRepo,
 		logger:       testLogger(),
 	}
+}
+
+// mockChangeTracker 变更追踪 mock（同步收敛 Phase 2 S3a）
+type mockChangeTracker struct {
+	mock.Mock
+}
+
+func (m *mockChangeTracker) TrackChanges(ctx context.Context, meta auditdomain.ChangeMetadata, oldAttrs, newAttrs map[string]interface{}) (int, error) {
+	args := m.Called(ctx, meta, oldAttrs, newAttrs)
+	return args.Int(0), args.Error(1)
+}
+
+// TestSyncRegionECS_TrackChanges 变更追踪：旧实例存在时 TrackChanges 被调用且元数据正确
+func TestSyncRegionECS_TrackChanges(t *testing.T) {
+	instanceRepo := new(mockInstanceRepo)
+	account := testAccount()
+	c := context.Background()
+
+	assetAdpt := new(mockAssetAdapter)
+	assetAdpt.On("GetECSInstances", c, "cn-hangzhou").Return([]types.ECSInstance{
+		{InstanceID: "i-001", Region: "cn-hangzhou", Provider: "aliyun"},
+	}, nil)
+
+	instanceRepo.On("ListAssetIDsByRegion", c, int64(6), "aliyun_ecs", int64(100), "cn-hangzhou").
+		Return([]string{"i-001"}, nil)
+	instanceRepo.On("DeleteByAssetIDs", c, int64(6), "aliyun_ecs", mock.Anything).Return(int64(0), nil)
+	// 旧实例存在 → 触发变更追踪
+	old := camdomain.Instance{
+		AssetID:    "i-001",
+		Attributes: map[string]interface{}{"status": "running"},
+	}
+	instanceRepo.On("GetByAssetID", c, int64(6), "aliyun_ecs", "i-001").Return(old, nil)
+	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
+
+	ct := new(mockChangeTracker)
+	ct.On("TrackChanges", c, mock.MatchedBy(func(m auditdomain.ChangeMetadata) bool {
+		return m.AssetID == "i-001" &&
+			m.ChangeSource == "sync_task" &&
+			m.Provider == "aliyun" &&
+			m.Region == "cn-hangzhou"
+	}), mock.Anything, mock.Anything).Return(1, nil)
+
+	executor := newTestExecutor(instanceRepo)
+	executor.SetChangeTracker(ct)
+
+	synced, err := executor.syncRegionECS(c, assetAdpt, account, "cn-hangzhou")
+	require.NoError(t, err)
+	assert.Equal(t, 1, synced)
+	ct.AssertCalled(t, "TrackChanges", c, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// TestSyncRegionECS_NoTracker 变更追踪默认关闭：未注入 changeTracker 时不触发额外查询
+func TestSyncRegionECS_NoTracker(t *testing.T) {
+	instanceRepo := new(mockInstanceRepo)
+	account := testAccount()
+	c := context.Background()
+
+	assetAdpt := new(mockAssetAdapter)
+	assetAdpt.On("GetECSInstances", c, "cn-hangzhou").Return([]types.ECSInstance{
+		{InstanceID: "i-001", Region: "cn-hangzhou", Provider: "aliyun"},
+	}, nil)
+
+	instanceRepo.On("ListAssetIDsByRegion", c, int64(6), "aliyun_ecs", int64(100), "cn-hangzhou").
+		Return([]string{"i-001"}, nil)
+	instanceRepo.On("Upsert", c, mock.Anything).Return(nil)
+
+	// 不注入 changeTracker，且未设 GetByAssetID 预期——若被调用会 panic（testify 未设置即报错）
+	executor := newTestExecutor(instanceRepo)
+	synced, err := executor.syncRegionECS(c, assetAdpt, account, "cn-hangzhou")
+	require.NoError(t, err)
+	assert.Equal(t, 1, synced)
 }
 
 // ============================================================================

@@ -67,6 +67,13 @@ func (m *Module) SetDNSCollections(domainColl, recordColl *mongo.Collection) {
 	}
 }
 
+// SetChangeTracker 注入资产同步变更追踪（同步收敛 Phase 2 S3a，nil 关闭）
+func (m *Module) SetChangeTracker(t executor.ChangeTracker) {
+	if m.syncAssetsExecutor != nil {
+		m.syncAssetsExecutor.SetChangeTracker(t)
+	}
+}
+
 // RegisterBillingExecutor 注册账单采集执行器（在成本模块初始化后调用）
 func (m *Module) RegisterBillingExecutor(
 	normalizerSvc *normalizer.NormalizerService,

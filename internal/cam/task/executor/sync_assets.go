@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	auditdomain "github.com/Havens-blog/e-cam-service/internal/audit/domain"
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
@@ -50,6 +51,7 @@ type SyncAssetsExecutor struct {
 	taskRepo       taskx.TaskRepository
 	dnsDomainColl  *mongo.Collection // DNS 域名集合 (c_dns_domain)
 	dnsRecordColl  *mongo.Collection // DNS 记录集合 (c_dns_record)
+	changeTracker  ChangeTracker     // 资产同步变更追踪（nil 不追踪，由 ioc 注入）
 	logger         *elog.Component
 	// syncingNow 账号级同步互斥(account_id -> task_id)。
 	// 手动连点/调度器/重试会产生同一账号的多个并发同步任务,
@@ -362,6 +364,17 @@ func expandAssetTypes(assetTypes []string) []string {
 }
 
 // syncRegionAssets 同步单个地域的资产
+// ChangeTracker 资产同步变更追踪接口（同步收敛 Phase 2 S3a，替代已删除的
+// asset_sync 死服务中的 trackAndUpsert）。nil 时同步不追踪，默认关闭。
+type ChangeTracker interface {
+	TrackChanges(ctx context.Context, meta auditdomain.ChangeMetadata, oldAttrs, newAttrs map[string]interface{}) (int, error)
+}
+
+// SetChangeTracker 注入资产同步变更追踪（nil 关闭追踪）
+func (e *SyncAssetsExecutor) SetChangeTracker(t ChangeTracker) {
+	e.changeTracker = t
+}
+
 // syncItem 待同步的一条云资产：AssetID 用于差集删除，ToInstance 负责转换+upsert 由调用方闭包提供
 type syncItem struct {
 	AssetID    string
@@ -412,6 +425,10 @@ func (e *SyncAssetsExecutor) diffAndUpsert(
 			e.logger.Error("转换实例失败", elog.String("asset_id", it.AssetID), elog.FieldErr(convErr))
 			continue
 		}
+		// 变更追踪（可选注入）：有旧实例才记录，失败不影响同步
+		if e.changeTracker != nil {
+			e.trackChange(ctx, instance)
+		}
 		if upErr := e.instanceRepo.Upsert(ctx, instance); upErr != nil {
 			e.logger.Error("保存实例失败", elog.String("asset_id", it.AssetID), elog.FieldErr(upErr))
 			continue
@@ -420,6 +437,37 @@ func (e *SyncAssetsExecutor) diffAndUpsert(
 	}
 
 	return synced, deleted, nil
+}
+
+// trackChange 查询旧实例并记录变更（同步来源，语义与已删除的 asset_sync trackAndUpsert 一致）
+func (e *SyncAssetsExecutor) trackChange(ctx context.Context, instance camdomain.Instance) {
+	old, err := e.instanceRepo.GetByAssetID(ctx, instance.TenantID, instance.ModelUID, instance.AssetID)
+	if err != nil {
+		e.logger.Warn("查询旧实例用于变更追踪失败",
+			elog.FieldErr(err),
+			elog.String("asset_id", instance.AssetID))
+		return
+	}
+	if old.AssetID == "" || old.Attributes == nil {
+		return
+	}
+
+	meta := auditdomain.ChangeMetadata{
+		AssetID:      instance.AssetID,
+		AssetName:    instance.AssetName,
+		ModelUID:     instance.ModelUID,
+		TenantID:     instance.TenantID,
+		AccountID:    instance.AccountID,
+		ChangeSource: "sync_task",
+	}
+	if p, ok := instance.Attributes["provider"].(string); ok {
+		meta.Provider = p
+	}
+	if r, ok := instance.Attributes["region"].(string); ok {
+		meta.Region = r
+	}
+	// TrackChanges 内部失败仅记录日志，不影响同步
+	_, _ = e.changeTracker.TrackChanges(ctx, meta, old.Attributes, instance.Attributes)
 }
 
 func (e *SyncAssetsExecutor) syncRegionAssets(
