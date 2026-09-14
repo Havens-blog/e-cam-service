@@ -99,6 +99,12 @@ func (f *AdapterFactory) CreateAdapterFromDomain(account *domain.CloudAccount) (
 	}, nil
 }
 
+// ClearAccountCache 清空指定账号的适配器缓存（透传到底层共享缓存，
+// 凭证轮换后由云账号服务调用，见 cam/service/account.go UpdateAccount）
+func (f *AdapterFactory) ClearAccountCache(provider domain.CloudProvider, accountID int64) {
+	f.unifiedFactory.ClearAccountCache(provider, accountID)
+}
+
 // CreateAdapterByProvider 根据云厂商类型和凭证创建适配器（用于测试）
 func (f *AdapterFactory) CreateAdapterByProvider(
 	provider types.CloudProvider,

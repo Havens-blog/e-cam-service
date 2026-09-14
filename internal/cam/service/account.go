@@ -235,6 +235,13 @@ func (s *cloudAccountService) UpdateAccount(ctx context.Context, id int64, req *
 		return errs.SystemError
 	}
 
+	// 凭证轮换：AK/SK 变更后失效该账号的云适配器缓存，否则下次
+	// CreateAdapter 会命中旧凭证的缓存适配器（adapterCache 为全局共享缓存，
+	// 一次失效覆盖 account/tag/dns/sync 所有路径）。
+	if req.AccessKeyID != nil || req.AccessKeySecret != nil {
+		s.adapterFactory.ClearAccountCache(account.Provider, account.ID)
+	}
+
 	s.logger.Info("cloud account updated successfully", elog.Int64("id", id))
 	return nil
 }
