@@ -8,11 +8,11 @@
 //	包含完整的"获取云端列表 → 对比本地 → 删除过期 → Upsert 新增/更新"清理逻辑。
 //
 // 与其他同步文件的关系：
-//   - internal/cam/service/asset_sync.go          ← API 直接调用的同步服务（AssetSyncService）。
+//   - internal/cam/service/asset_sync.go          ← 已删除（同步收敛 Phase 2，死服务零调用者）。
 //   - internal/task/executor/sync_assets.go       ← 旧版/备用执行器，不参与运行时。
 //   - 本文件（sync_assets.go）                     ← 生产环境实际运行的任务执行器。
 //
-// 注意：两条同步路径写入同一个 c_instance 集合，model_uid 必须保持一致，
+// 注意：本执行器是唯一写入 c_instance 的同步实现，model_uid 必须保持一致，
 //
 //	统一使用 fmt.Sprintf("%s_xxx", account.Provider) 格式（如 aliyun_ecs）。
 package executor

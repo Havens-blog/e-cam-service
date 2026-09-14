@@ -29,7 +29,6 @@ type Module struct {
 	AccountSvc        CloudAccountService
 	ModelSvc          ModelService
 	InstanceSvc       service.InstanceService
-	AssetSyncSvc      service.AssetSyncService // 资产同步服务 (同步到CMDB)
 	TaskModule        *task.Module
 	TaskSvc           taskservice.TaskService
 	TaskHdl           *taskweb.TaskHandler

@@ -96,8 +96,6 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	modelFieldRepository := repository.NewModelFieldRepository(modelFieldDAO)
 	modelFieldGroupDAO := InitModelFieldGroupDAO(db)
 	modelFieldGroupRepository := repository.NewModelFieldGroupRepository(modelFieldGroupDAO)
-	instanceRelationDAO := InitInstanceRelationDAO(db)
-	instanceRelationRepository := repository.NewInstanceRelationRepository(instanceRelationDAO)
 
 	// 适配器工厂
 	component := logger
@@ -108,7 +106,6 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	serviceService := service.NewService(assetRepository, cloudAccountRepository, adapterFactory, component)
 	modelService := service.NewModelService(modelRepository, modelFieldRepository, modelFieldGroupRepository)
 	instanceService := service.NewInstanceService(instanceRepository)
-	assetSyncService := service.NewAssetSyncService(instanceRepository, instanceRelationRepository, cloudAccountRepository, cloudxAdapterFactory, component)
 
 	// Task 模块
 	taskModule, err := task.InitModule(db, cloudAccountRepository, instanceRepository, adapterFactory, component)
@@ -148,7 +145,6 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 		AccountSvc:    cloudAccountService,
 		ModelSvc:      modelService,
 		InstanceSvc:   instanceService,
-		AssetSyncSvc:  assetSyncService,
 		TaskModule:    taskModule,
 		TaskSvc:       taskService,
 		TaskHdl:       taskHandler,

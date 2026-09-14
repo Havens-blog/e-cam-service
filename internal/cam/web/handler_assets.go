@@ -5,6 +5,7 @@ import (
 
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
 	"github.com/gin-gonic/gin"
 )
@@ -276,7 +277,11 @@ func (h *Handler) DiscoverAssets(ctx *gin.Context, req DiscoverAssetsReq) (ginx.
 // @Deprecated
 // @Router /cam/assets/sync [post]
 func (h *Handler) SyncAssets(ctx *gin.Context, req SyncAssetsReq) (ginx.Result, error) {
-	synced, err := h.svc.SyncAssets(ctx.Request.Context(), req.AccountID, req.AssetTypes)
+	// 同步收敛 Phase 2 (S4)：废弃直写 ecam_cloud_asset 的同步段，转投任务队列，
+	// 与新端点同路径（executor 写 ecam_instance）。
+	result, err := h.accountSvc.SyncAccount(ctx.Request.Context(), req.AccountID, &domain.SyncAccountRequest{
+		AssetTypes: req.AssetTypes,
+	})
 	if err != nil {
 		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
 	}
@@ -284,7 +289,8 @@ func (h *Handler) SyncAssets(ctx *gin.Context, req SyncAssetsReq) (ginx.Result, 
 	return Result(map[string]any{
 		"account_id":  req.AccountID,
 		"asset_types": req.AssetTypes,
-		"synced":      synced,
+		"task_id":     result.SyncID,
+		"status":      result.Status,
 		"message":     "此接口已废弃，请使用 POST /api/v1/cam/cloud-accounts/{id}/sync",
 	}), nil
 }
