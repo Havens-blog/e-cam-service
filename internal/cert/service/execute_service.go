@@ -136,6 +136,15 @@ type ChannelCredentialSource interface {
 // defaultItemHeartbeatInterval 执行期心跳间隔（tech-design：固定 30 秒）。
 const defaultItemHeartbeatInterval = 30 * time.Second
 
+// defaultK8sMappingPollInterval / defaultK8sMappingPollMaxWait patch_crd 云证书
+// 映射等待参数（任务 5.7 加固）：同批云上传项异步派发，上传+绑定含限流退避
+// （部署器内 ≤15s）通常秒级完成；3s 轮询 × ≤60s 预算覆盖最坏情况，心跳（30s）
+// 随等待刷新保活，不触发 executing-timeout。字段化便于测试注入缩小等待。
+const (
+	defaultK8sMappingPollInterval = 3 * time.Second
+	defaultK8sMappingPollMaxWait  = 60 * time.Second
+)
+
 // ItemRateLimitPolicy 项级限流退避策略：部署器（5.4/5.5）内部已有有界退避
 // （哨兵语义经 %w 透传），本策略为引擎级外层闸门——项遇 CLOUD_API_RATELIMITED
 // 标记 rate_limited（进度轮询可见"限流重试中"）后按序列退避重试，次数或总
@@ -219,6 +228,10 @@ type changeExecuteService struct {
 
 	heartbeatInterval time.Duration                                    // 执行期心跳间隔（默认 30s）
 	rateLimit         ItemRateLimitPolicy                              // 项级限流退避（引擎级外层闸门）
+	k8sMappingPoll    struct {
+		interval time.Duration // patch_crd 云证书映射轮询间隔（默认 3s）
+		maxWait  time.Duration // 映射等待预算上限（默认 60s）
+	}
 	now               func() time.Time                                 // 测试可注入时间源
 	sleep             func(ctx context.Context, d time.Duration) error // 测试可注入退避睡眠
 }
@@ -249,7 +262,7 @@ func NewChangeExecuteService(
 			chs[string(c.Type())] = c
 		}
 	}
-	return &changeExecuteService{
+	svc := &changeExecuteService{
 		orders:            orders,
 		items:             items,
 		certs:             certs,
@@ -268,6 +281,9 @@ func NewChangeExecuteService(
 		now:               time.Now,
 		sleep:             sleepWithContext,
 	}
+	svc.k8sMappingPoll.interval = defaultK8sMappingPollInterval
+	svc.k8sMappingPoll.maxWait = defaultK8sMappingPollMaxWait
+	return svc
 }
 
 // 编译期断言。
@@ -419,11 +435,29 @@ func itemRefKey(ref domain.ResourceRef) string {
 //     的批大小校验——仅发生拆分时；单引用清单无灰度拆分语义）。
 //
 // 返回逐项 batchNo 指派与 batchInfo（currentBatch=1、paused=false）。
+// batchActionRank 批次排序优先级（任务 5.7 加固，依赖感知分批）：
+// upload_and_bind（云上传，产出新证书 active 映射）必须排在 patch_crd（依赖
+// 该映射解析云证书 ID）之前——云字面量排序不可靠（tencent>"crd"），显式按
+// 动作排序消除 patch_crd 先于其上传源进批的死锁可能。
+func batchActionRank(it domain.ChangeItem) int {
+	switch it.Action {
+	case domain.ActionUploadAndBind:
+		return 0
+	case domain.ActionPatchCRD:
+		return 1
+	default:
+		return 2
+	}
+}
+
 func allocateBatches(items []domain.ChangeItem, conf deployer.BatchConf) ([]domain.ItemBatchAssignment, *domain.BatchInfo, error) {
 	sorted := make([]domain.ChangeItem, len(items))
 	copy(sorted, items)
 	sort.SliceStable(sorted, func(i, j int) bool {
 		a, b := sorted[i].ResourceRef, sorted[j].ResourceRef
+		if ra, rb := batchActionRank(sorted[i]), batchActionRank(sorted[j]); ra != rb {
+			return ra < rb
+		}
 		if a.Cloud != b.Cloud {
 			return a.Cloud < b.Cloud
 		}
@@ -633,6 +667,11 @@ func (s *changeExecuteService) ExecuteItem(ctx context.Context, orderID, itemID 
 	policy := s.rateLimit.normalized()
 	waited := time.Duration(0)
 	attempt := 0
+	// 映射等待预算（任务 5.7 加固）：同批云上传项与 patch_crd 项异步派发无顺序
+	// 保证——patch_crd 先于上传完成执行时等待映射就绪，有界超时后明确失败
+	//（不静默、不无限等待；清单生成期已把"无云上传源且无既有映射"的必败项跳过，
+	// 故此处等待有上界：上传完成即可解析）。
+	mappingWaited := time.Duration(0)
 	for {
 		attempt++
 		result, derr := channel.Deploy(ctx, creds, target, newCert.Fingerprint)
@@ -656,6 +695,22 @@ func (s *changeExecuteService) ExecuteItem(ctx context.Context, orderID, itemID 
 				return fmt.Errorf("change: item %s rate limit backoff interrupted: %w", itemID, serr)
 			}
 			waited += backoff
+			continue
+		}
+		// 任务 5.7 加固：patch_crd 项云证书 ID 未就绪（同批云上传异步未完成）→
+		// 有界等待映射出现（心跳保活，超时明确失败）。映射歧义（多云证书 ID）
+		// 属不可等待错误，超时预算内重复探测后按同一错误码失败。
+		if errors.Is(derr, deployer.ErrCloudCertIDUnresolved) {
+			if mappingWaited >= s.k8sMappingPoll.maxWait {
+				s.finishItem(ctx, orderID, itemID, domain.ItemStatusFailed,
+					fmt.Sprintf("%s: 等待新证书云证书映射 %s 后仍无法解析云证书 ID: %v",
+						domain.CodeK8sCloudCertUnresolved, s.k8sMappingPoll.maxWait, derr), "")
+				return nil
+			}
+			if serr := s.sleep(ctx, s.k8sMappingPoll.interval); serr != nil {
+				return fmt.Errorf("change: item %s k8s mapping wait interrupted: %w", itemID, serr)
+			}
+			mappingWaited += s.k8sMappingPoll.interval
 			continue
 		}
 		s.finishItem(ctx, orderID, itemID, domain.ItemStatusFailed,

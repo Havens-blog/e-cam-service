@@ -59,6 +59,10 @@ type changeService struct {
 	// 清单生成依赖（任务 5.2）
 	snapshots domain.ScanSnapshotRepository
 	refs      domain.CertReferenceRepository
+	// mappings 云证书映射仓储（任务 5.7 加固）：patch_crd 项预校验——新证书
+	// 无 active 云证书映射且本单无云上传项时按不可执行项分区（避免生成必败项）。
+	// nil=跳过映射检查（仅按云上传源判定，生产装配恒非 nil）。
+	mappings domain.CloudCertMappingRepository
 	// probe K8s 管理权三信号探测端口（实际探测属 5.6 K8sAPIChannel，接口注入
 	// 解耦）：nil=探测通道未接入，K8s 项按不可执行项分区（不静默放行）。
 	probe ManagementProbe
@@ -72,6 +76,7 @@ func NewChangeService(
 	alertCfg domain.AlertConfigRepository,
 	snapshots domain.ScanSnapshotRepository,
 	refs domain.CertReferenceRepository,
+	mappings domain.CloudCertMappingRepository,
 	probe ManagementProbe,
 ) ChangeService {
 	return &changeService{
@@ -81,6 +86,7 @@ func NewChangeService(
 		alertCfg:  alertCfg,
 		snapshots: snapshots,
 		refs:      refs,
+		mappings:  mappings,
 		probe:     probe,
 	}
 }

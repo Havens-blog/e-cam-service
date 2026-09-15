@@ -105,7 +105,7 @@ func newChangeHandlerFixture(t *testing.T) *ChangeHandler {
 	alertCfg := certtest.NewFakeAlertConfigRepo()
 	snaps := certtest.NewFakeScanSnapshotRepo()
 	refs := certtest.NewFakeCertReferenceRepo()
-	changeSvc := service.NewChangeService(orders, items, certs, alertCfg, snaps, refs, nil)
+	changeSvc := service.NewChangeService(orders, items, certs, alertCfg, snaps, refs, nil, nil)
 	execSvc := service.NewChangeExecuteService(orders, items, certs, alertCfg, snaps, refs, nil, nil, nil, nil, nil, nil, nil)
 	rbSvc := service.NewChangeRollbackService(orders, items, certs, alertCfg, nil, nil, nil, nil, nil, nil)
 	querySvc := service.NewChangeQueryService(orders, items, snaps, certtest.NewFakeProbeResultRepo(), alertCfg, nil, nil, nil)
@@ -131,7 +131,7 @@ func newChangeRouter(t *testing.T, role Role) (*gin.Engine, *changeWebDeps) {
 		k8s:         deployer.NewSimulatedChannel(deployer.ChannelTypeK8sAPI),
 		auditWriter: &fakeChangeAuditWriter{},
 	}
-	changeSvc := service.NewChangeService(d.orders, d.items, d.certs, d.alertCfg, d.snaps, d.refs, nil)
+	changeSvc := service.NewChangeService(d.orders, d.items, d.certs, d.alertCfg, d.snaps, d.refs, nil, nil)
 	execSvc := service.NewChangeExecuteService(d.orders, d.items, d.certs, d.alertCfg,
 		d.snaps, d.refs, []deployer.ExecutionChannel{d.k8s}, fakeChangeCreds{}, nil, nil, nil, nil, nil)
 	rbSvc := service.NewChangeRollbackService(d.orders, d.items, d.certs, d.alertCfg,

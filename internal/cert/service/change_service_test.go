@@ -34,7 +34,7 @@ func newChangeHarness(t *testing.T) *changeHarness {
 		snapshots: certtest.NewFakeScanSnapshotRepo(),
 		refs:      certtest.NewFakeCertReferenceRepo(),
 	}
-	h.svc = NewChangeService(h.orders, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil)
+	h.svc = NewChangeService(h.orders, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil, nil)
 	return h
 }
 
@@ -497,7 +497,7 @@ func TestChangeService_ErrorPropagation(t *testing.T) {
 
 	t.Run("Transition GetByID 失败", func(t *testing.T) {
 		h := newChangeHarness(t)
-		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, getByIDErr: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil)
+		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, getByIDErr: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil, nil)
 		err := h.svc.Transition(ctx, "000000000000000000000000", domain.ChangeStatusPendingConfirm)
 		assert.ErrorIs(t, err, errInjected)
 	})
@@ -505,7 +505,7 @@ func TestChangeService_ErrorPropagation(t *testing.T) {
 	t.Run("Transition 活跃态迁移失败", func(t *testing.T) {
 		h := newChangeHarness(t)
 		id := h.seedOrder(t, domain.ChangeStatusDraft, changeTestFP, nil)
-		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, transitionA: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil)
+		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, transitionA: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil, nil)
 		err := h.svc.Transition(ctx, id, domain.ChangeStatusPendingConfirm)
 		assert.ErrorIs(t, err, errInjected)
 	})
@@ -513,7 +513,7 @@ func TestChangeService_ErrorPropagation(t *testing.T) {
 	t.Run("Transition 完成终态 配置读取失败", func(t *testing.T) {
 		h := newChangeHarness(t)
 		id := h.seedOrder(t, domain.ChangeStatusVerifying, changeTestFP, nil)
-		h.svc = NewChangeService(h.orders, h.items, h.certs, &failingAlertCfg{FakeAlertConfigRepo: h.alertCfg, getErr: errInjected}, h.snapshots, h.refs, nil)
+		h.svc = NewChangeService(h.orders, h.items, h.certs, &failingAlertCfg{FakeAlertConfigRepo: h.alertCfg, getErr: errInjected}, h.snapshots, h.refs, nil, nil)
 		err := h.svc.Transition(ctx, id, domain.ChangeStatusCompleted)
 		assert.ErrorIs(t, err, errInjected)
 	})
@@ -521,7 +521,7 @@ func TestChangeService_ErrorPropagation(t *testing.T) {
 	t.Run("Transition 完成终态 保护终态迁移失败", func(t *testing.T) {
 		h := newChangeHarness(t)
 		id := h.seedOrder(t, domain.ChangeStatusVerifying, changeTestFP, nil)
-		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, terminalPErr: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil)
+		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, terminalPErr: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil, nil)
 		err := h.svc.Transition(ctx, id, domain.ChangeStatusCompleted)
 		assert.ErrorIs(t, err, errInjected)
 	})
@@ -529,7 +529,7 @@ func TestChangeService_ErrorPropagation(t *testing.T) {
 	t.Run("Transition 完成终态 旧证书保护期写入失败上抛不回滚", func(t *testing.T) {
 		h := newChangeHarness(t)
 		id := h.seedOrder(t, domain.ChangeStatusVerifying, changeTestFP, nil)
-		h.svc = NewChangeService(h.orders, h.items, &failingCerts{FakeCertificateRepo: h.certs, protectErr: errInjected}, h.alertCfg, h.snapshots, h.refs, nil)
+		h.svc = NewChangeService(h.orders, h.items, &failingCerts{FakeCertificateRepo: h.certs, protectErr: errInjected}, h.alertCfg, h.snapshots, h.refs, nil, nil)
 		err := h.svc.Transition(ctx, id, domain.ChangeStatusCompleted)
 		assert.ErrorIs(t, err, errInjected)
 		order, getErr := h.orders.GetByID(ctx, id)
@@ -540,14 +540,14 @@ func TestChangeService_ErrorPropagation(t *testing.T) {
 	t.Run("Transition 普通终态迁移失败", func(t *testing.T) {
 		h := newChangeHarness(t)
 		id := h.seedOrder(t, domain.ChangeStatusPartialCompleted, changeTestFP, nil)
-		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, terminalErr: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil)
+		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, terminalErr: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil, nil)
 		err := h.svc.Transition(ctx, id, domain.ChangeStatusRolledBack)
 		assert.ErrorIs(t, err, errInjected)
 	})
 
 	t.Run("Cancel GetByID 失败", func(t *testing.T) {
 		h := newChangeHarness(t)
-		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, getByIDErr: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil)
+		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, getByIDErr: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil, nil)
 		err := h.svc.Cancel(ctx, "000000000000000000000000")
 		assert.ErrorIs(t, err, errInjected)
 	})
@@ -555,7 +555,7 @@ func TestChangeService_ErrorPropagation(t *testing.T) {
 	t.Run("Cancel 整单 标记失败不迁移终态", func(t *testing.T) {
 		h := newChangeHarness(t)
 		id := h.seedOrder(t, domain.ChangeStatusDraft, changeTestFP, nil)
-		h.svc = NewChangeService(h.orders, &failingItems{FakeChangeItemRepo: h.items, markErr: errInjected}, h.certs, h.alertCfg, h.snapshots, h.refs, nil)
+		h.svc = NewChangeService(h.orders, &failingItems{FakeChangeItemRepo: h.items, markErr: errInjected}, h.certs, h.alertCfg, h.snapshots, h.refs, nil, nil)
 		err := h.svc.Cancel(ctx, id)
 		assert.ErrorIs(t, err, errInjected)
 		order, getErr := h.orders.GetByID(ctx, id)
@@ -566,7 +566,7 @@ func TestChangeService_ErrorPropagation(t *testing.T) {
 	t.Run("Cancel 中止路径 标记失败", func(t *testing.T) {
 		h := newChangeHarness(t)
 		id := h.seedOrder(t, domain.ChangeStatusExecuting, changeTestFP, nil)
-		h.svc = NewChangeService(h.orders, &failingItems{FakeChangeItemRepo: h.items, markErr: errInjected}, h.certs, h.alertCfg, h.snapshots, h.refs, nil)
+		h.svc = NewChangeService(h.orders, &failingItems{FakeChangeItemRepo: h.items, markErr: errInjected}, h.certs, h.alertCfg, h.snapshots, h.refs, nil, nil)
 		err := h.svc.Cancel(ctx, id)
 		assert.ErrorIs(t, err, errInjected)
 	})
@@ -574,21 +574,21 @@ func TestChangeService_ErrorPropagation(t *testing.T) {
 	t.Run("Cancel 整单 终态迁移失败", func(t *testing.T) {
 		h := newChangeHarness(t)
 		id := h.seedOrder(t, domain.ChangeStatusDraft, changeTestFP, nil)
-		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, terminalErr: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil)
+		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, terminalErr: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil, nil)
 		err := h.svc.Cancel(ctx, id)
 		assert.ErrorIs(t, err, errInjected)
 	})
 
 	t.Run("CancelByTimeout 配置读取失败", func(t *testing.T) {
 		h := newChangeHarness(t)
-		h.svc = NewChangeService(h.orders, h.items, h.certs, &failingAlertCfg{FakeAlertConfigRepo: h.alertCfg, getErr: errInjected}, h.snapshots, h.refs, nil)
+		h.svc = NewChangeService(h.orders, h.items, h.certs, &failingAlertCfg{FakeAlertConfigRepo: h.alertCfg, getErr: errInjected}, h.snapshots, h.refs, nil, nil)
 		_, err := h.svc.CancelByTimeout(ctx)
 		assert.ErrorIs(t, err, errInjected)
 	})
 
 	t.Run("CancelByTimeout 扫描失败", func(t *testing.T) {
 		h := newChangeHarness(t)
-		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, listPausedErr: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil)
+		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, listPausedErr: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil, nil)
 		_, err := h.svc.CancelByTimeout(ctx)
 		assert.ErrorIs(t, err, errInjected)
 	})
@@ -600,13 +600,13 @@ func TestChangeService_ErrorPropagation(t *testing.T) {
 		id1 := h.seedOrder(t, domain.ChangeStatusExecuting, changeTestFP, batch)
 		id2 := h.seedOrder(t, domain.ChangeStatusExecuting, "bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22", batch)
 		// 终态迁移注入失败：首批单取消失败
-		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, terminalErr: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil)
+		h.svc = NewChangeService(&failingOrders{FakeChangeOrderRepo: h.orders, terminalErr: errInjected}, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil, nil)
 		cancelled, err := h.svc.CancelByTimeout(ctx)
 		assert.ErrorIs(t, err, errInjected, "首批错误上抛")
 		assert.Empty(t, cancelled, "失败单不计入取消清单")
 
 		// 恢复后重试：两单均可取消（含此前失败单）
-		h.svc = NewChangeService(h.orders, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil)
+		h.svc = NewChangeService(h.orders, h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil, nil)
 		cancelled, err = h.svc.CancelByTimeout(ctx)
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{id1, id2}, cancelled)

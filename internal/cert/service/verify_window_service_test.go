@@ -106,7 +106,7 @@ func newVerifyHarness(t *testing.T, srv *sniServer) *verifyHarness {
 	}
 	h.prober = NewProbeService(h.certs, h.probes, h.exempts, h.alertCfg, h.orders, dialer, ProbeOptions{})
 	changes := NewChangeService(h.orders, certtest.NewFakeChangeItemRepo(), h.certs, h.alertCfg,
-		certtest.NewFakeScanSnapshotRepo(), certtest.NewFakeCertReferenceRepo(), nil)
+		certtest.NewFakeScanSnapshotRepo(), certtest.NewFakeCertReferenceRepo(), nil, nil)
 	h.vw = NewVerifyWindowService(
 		h.orders, h.certs, h.exempts, h.alertCfg, h.probes, h.prober,
 		changes, h.recorder, h.publisher,
@@ -638,7 +638,7 @@ func TestVerifyWindow_BatchVerified(t *testing.T) {
 	t.Run("判定通道故障返回 error", func(t *testing.T) {
 		probes := &failingListRecentProbeRepo{FakeProbeResultRepo: certtest.NewFakeProbeResultRepo(), err: errors.New("probe store down")}
 		changes := NewChangeService(h.orders, certtest.NewFakeChangeItemRepo(), h.certs, h.alertCfg,
-			certtest.NewFakeScanSnapshotRepo(), certtest.NewFakeCertReferenceRepo(), nil)
+			certtest.NewFakeScanSnapshotRepo(), certtest.NewFakeCertReferenceRepo(), nil, nil)
 		vw := NewVerifyWindowService(h.orders, h.certs, h.exempts, h.alertCfg, probes, h.prober, changes, nil, nil).(*verifyWindowService)
 		expected := &domain.VerifyExpected{NewCertFingerprint: vwNewFP, Domains: []string{"d1.example.com"}, WindowUntil: h.clock.Add(time.Hour)}
 		orderID := h.seedVerifyingOrder(t, vwOldFP4, vwNewFP, h.clock.Add(time.Hour), expected, nil)
@@ -668,7 +668,7 @@ func TestVerifyWindow_ExecuteEngineIntegration(t *testing.T) {
 		CommonName: "old.example.com", Sans: []string{"b1.example.com", "b2.example.com"},
 		HostingStatus: domain.HostingStatusComplete,
 	}))
-	changes := NewChangeService(h.orders, h.items, h.certs, h.alertCfg, h.snaps, h.refs, nil)
+	changes := NewChangeService(h.orders, h.items, h.certs, h.alertCfg, h.snaps, h.refs, nil, nil)
 	vw := NewVerifyWindowService(h.orders, h.certs, exempts, h.alertCfg, probes, h.proberForTest(t), changes, nil, NewInMemoryAlertPublisher()).(*verifyWindowService)
 	clock := h.now()
 	vw.now = func() time.Time { return clock }
@@ -785,7 +785,7 @@ func TestVerifyWindow_ErrorPathsAreIsolated(t *testing.T) {
 	changes := func() VerifyWindowTransitions {
 		return NewChangeService(certtest.NewFakeChangeOrderRepo(), certtest.NewFakeChangeItemRepo(),
 			certtest.NewFakeCertificateRepo(), certtest.NewFakeAlertConfigRepo(),
-			certtest.NewFakeScanSnapshotRepo(), certtest.NewFakeCertReferenceRepo(), nil)
+			certtest.NewFakeScanSnapshotRepo(), certtest.NewFakeCertReferenceRepo(), nil, nil)
 	}
 
 	t.Run("探测故障上抛但订单仍参与判定", func(t *testing.T) {

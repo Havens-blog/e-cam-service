@@ -98,6 +98,10 @@ const (
 	// 调谐回滚（cert-alb-ingress-managed）；实际替换由同证书的 AlbConfig
 	// CRD 引用 patch_crd 项闭环。
 	reasonManagedListenerFmt = "K8S_MANAGED_RESOURCE: %s 由 AlbConfig CRD 托管，云 API 直接绑定会被调谐回滚；请更新对应 AlbConfig 的证书绑定（同证书的 CRD 引用将自动生成 patch_crd 变更项）"
+	// reasonK8sCloudCertMissing patch_crd 项预校验（任务 5.7 加固）：新证书既无
+	// active 云证书映射、本单也无云上传项 → patch_crd 永远无法解析云证书 ID，
+	// 按不可执行项分区（不生成必败项，首词可机读）。
+	reasonK8sCloudCertMissing = "K8S_CLOUD_CERT_MISSING: 新证书未上传云证书库（无 active 映射且本单无云上传项），patch_crd 无法解析云证书 ID；请先经云引用替换或先上传新证书到云证书库"
 )
 
 // GenerateChangeList 清单生成（tech-design Interface 3）：
@@ -203,7 +207,7 @@ func (s *changeService) GenerateChangeList(ctx context.Context, oldCertFingerpri
 	}
 
 	// ---- 逐项生成（不可执行项分区 + 持久化） ----
-	listItems, changeItems, unchangeable := s.buildChangeItems(ctx, orderID, refs)
+	listItems, changeItems, unchangeable := s.buildChangeItems(ctx, orderID, newCert.Fingerprint, refs)
 	if len(changeItems) > 0 {
 		if _, err := s.items.CreateMulti(ctx, changeItems); err != nil {
 			return ChangeList{}, fmt.Errorf("change: create items: %w", err)
@@ -230,7 +234,42 @@ func (s *changeService) GenerateChangeList(ctx context.Context, oldCertFingerpri
 //     {channel,clusterId,namespace,kind,resourceId}；
 //   - 不可执行项持久化即标 skipped + Error=Reason（不计入执行成功率分母，
 //     5.7 仅执行 pending 项）；ID 预生成以保证清单项与持久化项一一对应。
-func (s *changeService) buildChangeItems(ctx context.Context, orderID string, refs []domain.CertReference) (listItems []ChangeListItem, changeItems []domain.ChangeItem, unchangeable int) {
+func (s *changeService) buildChangeItems(ctx context.Context, orderID string, newCertFingerprint string, refs []domain.CertReference) (listItems []ChangeListItem, changeItems []domain.ChangeItem, unchangeable int) {
+	// 预校验（任务 5.7 加固）：patch_crd 项能否解析云证书 ID 取决于——(a) 本单存在
+	// 会执行上传的云项（同新证书指纹），或 (b) 新证书已有 active 云证书映射。
+	// 二者皆无 → patch_crd 项必败，按不可执行项分区（不生成必败项）。
+	cloudUploadPlanned := false
+	for _, r := range refs {
+		if r.Product == domain.ProductCRD {
+			continue
+		}
+		target := deployer.DeployTarget{
+			Channel:    string(deployer.ChannelTypeCloudAPI),
+			Cloud:      string(r.Cloud),
+			Product:    string(r.Product),
+			AccountKey: r.AccountKey,
+			ResourceID: r.ResourceID,
+		}
+		if r.ManagedBy != "" {
+			continue // 托管监听被跳过，不产生上传
+		}
+		if changeable, _ := s.assessChangeable(ctx, target); changeable {
+			cloudUploadPlanned = true
+			break
+		}
+	}
+	hasActiveMapping := false
+	if s.mappings != nil {
+		if mappings, err := s.mappings.ListByFingerprint(ctx, newCertFingerprint); err == nil {
+			for _, m := range mappings {
+				if m.Status == domain.MappingStatusActive {
+					hasActiveMapping = true
+					break
+				}
+			}
+		}
+	}
+
 	listItems = make([]ChangeListItem, 0, len(refs))
 	changeItems = make([]domain.ChangeItem, 0, len(refs))
 	for _, r := range refs {
@@ -259,6 +298,13 @@ func (s *changeService) buildChangeItems(ctx context.Context, orderID string, re
 		}
 		changeable, reason := s.assessChangeable(ctx, target)
 		if !changeable {
+			unchangeable++
+		}
+		// patch_crd 项云证书 ID 可解析性预校验（任务 5.7 加固）：无云上传源且无
+		// 既有 active 映射 → 必败项按不可执行分区（skipped + 显式原因，不静默放行）。
+		if changeable && action == domain.ActionPatchCRD && !cloudUploadPlanned && !hasActiveMapping {
+			changeable = false
+			reason = reasonK8sCloudCertMissing
 			unchangeable++
 		}
 		// 托管监听（cert-alb-ingress-managed 任务 2）：云通道 bind 会被 CRD 调谐

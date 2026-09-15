@@ -38,6 +38,10 @@ const (
 	CodeNewCertFingerprintOnly = "NEW_CERT_FINGERPRINT_ONLY"
 	// CodeK8sUnreachable K8s 集群不可达（503，任务 3.4 动态客户端工厂/请求期连接失败）。
 	CodeK8sUnreachable = "K8S_UNREACHABLE"
+	// CodeK8sCloudCertUnresolved patch_crd 变更项无法解析新证书云证书 ID
+	//（清单生成期预校验 skipped 的 K8S_CLOUD_CERT_MISSING 语义；执行期等待云
+	// 上传映射就绪超时/映射歧义时 failed 错误码，任务 5.7 加固）。
+	CodeK8sCloudCertUnresolved = "K8S_CLOUD_CERT_UNRESOLVED"
 	// CodeBatchNotConfirmable 续批门控未满足（409，任务 5.7 ConfirmBatch：上一批
 	// 存在失败项或批级验证未达标）。
 	CodeBatchNotConfirmable = "BATCH_NOT_CONFIRMABLE"

@@ -205,7 +205,7 @@ func InitCertModule(
 	})
 	inspectionSvc := service.NewInspectionService(repos.Certificates, repos.AlertConfig, publisher)
 	changeSvc := service.NewChangeService(repos.ChangeOrders, repos.ChangeItems, repos.Certificates,
-		repos.AlertConfig, repos.ScanSnapshots, repos.CertReferences, k8sChannel)
+		repos.AlertConfig, repos.ScanSnapshots, repos.CertReferences, repos.CloudMappings, k8sChannel)
 
 	// 验证窗口（5.10）：recorder=auditBridge（UnmetDomains 存档 7.2 接线
 	// internal/audit，5.11 报告聚合读侧同桥）；changes=ChangeService（终态迁移白名单）。

@@ -40,6 +40,7 @@ const (
 	scriptRateLimit
 	scriptPanic
 	scriptBlock // 阻塞直到 release 关闭（心跳观测用）
+	scriptCloudCertUnresolved // 云证书 ID 未解析（patch_crd 映射未就绪，任务 5.7 加固）
 )
 
 // scriptedChannel 脚本化执行通道：按尝试次序回放行为（脚本耗尽沿用末值），
@@ -100,6 +101,8 @@ func (c *scriptedChannel) Deploy(_ context.Context, _ deployer.Credential, targe
 		return deployer.DeployResult{}, fmt.Errorf("scripted rate limited: %w", cloudx.ErrCloudRateLimited)
 	case scriptPanic:
 		panic("scripted deploy panic")
+	case scriptCloudCertUnresolved:
+		return deployer.DeployResult{}, deployer.ErrCloudCertIDUnresolved
 	case scriptBlock:
 		select { // 进入信号（缓冲 1，无观察者不阻塞）
 		case c.entered <- struct{}{}:
@@ -1455,4 +1458,90 @@ func TestExecuteItem_AuditWriteFailureIsolated(t *testing.T) {
 	got, err := h.items.GetByID(ctx, items[0].ID.Hex())
 	require.NoError(t, err)
 	assert.Equal(t, domain.ItemStatusSuccess, got.Status, "审计失败不得影响项级终态")
+}
+
+// TestAllocateBatches_DependencyOrdering 依赖感知分批（任务 5.7 加固）：
+// upload_and_bind（产出新证书云映射）必须先于 patch_crd（依赖该映射解析）进批。
+// 回归锁定：K8s 项 ResourceRef.Cloud 为空串，字典序 ""<"aliyun" 曾让 patch_crd
+// 反排在上传项前（死锁方向）；batchActionRank 显式按动作排序修正。
+func TestAllocateBatches_DependencyOrdering(t *testing.T) {
+	items := []domain.ChangeItem{
+		{ID: primitive.NewObjectID(), Action: domain.ActionUploadAndBind,
+			ResourceRef: domain.ResourceRef{Channel: domain.ChannelCloudAPI, Cloud: "tencent", Product: "clb", AccountKey: "a", ResourceID: "res-t-1"}},
+		{ID: primitive.NewObjectID(), Action: domain.ActionPatchCRD,
+			ResourceRef: domain.ResourceRef{Channel: domain.ChannelK8sAPI, ClusterID: "c1", Namespace: "ns", Kind: "AlbConfig", ResourceID: "alb-1"}},
+		{ID: primitive.NewObjectID(), Action: domain.ActionUploadAndBind,
+			ResourceRef: domain.ResourceRef{Channel: domain.ChannelCloudAPI, Cloud: "tencent", Product: "clb", AccountKey: "a", ResourceID: "res-t-2"}},
+		{ID: primitive.NewObjectID(), Action: domain.ActionPatchCRD,
+			ResourceRef: domain.ResourceRef{Channel: domain.ChannelK8sAPI, ClusterID: "c1", Namespace: "ns", Kind: "Ingress", ResourceID: "ing-1"}},
+	}
+	// 4 项：effective=min(2, floor(4/2)=2)=2 → 首批 2 项、次批 2 项
+	assignments, bi, err := allocateBatches(items, deployer.BatchConf{Enabled: true, BatchSize: 2, MaxBatchRatio: 0.5})
+	require.NoError(t, err)
+	assert.Equal(t, 2, bi.TotalBatches)
+
+	byActionBatch := map[string]int{} // itemID → batchNo
+	actionOf := map[string]string{}
+	for _, it := range items {
+		actionOf[it.ID.Hex()] = string(it.Action)
+	}
+	for _, a := range assignments {
+		byActionBatch[a.ItemID] = a.BatchNo
+	}
+
+	// 全部 upload 项所在批次号 < 全部 patch 项所在批次号（无 patch 先于其上传源进批）
+	maxUploadBatch, minPatchBatch := 0, 99
+	for id, action := range actionOf {
+		b := byActionBatch[id]
+		if action == string(domain.ActionUploadAndBind) && b > maxUploadBatch {
+			maxUploadBatch = b
+		}
+		if action == string(domain.ActionPatchCRD) && b < minPatchBatch {
+			minPatchBatch = b
+		}
+	}
+	assert.True(t, maxUploadBatch < minPatchBatch,
+		"upload 最大批号 %d 须小于 patch 最小批号 %d", maxUploadBatch, minPatchBatch)
+}
+
+// TestExecuteItem_MappingWaitThenSuccess patch_crd 项云证书映射未就绪（同批云
+// 上传异步未完成）→ 有界等待后成功（映射出现即解析）。
+func TestExecuteItem_MappingWaitThenSuccess(t *testing.T) {
+	ctx := context.Background()
+	h := newExecuteHarness(t, scriptCloudCertUnresolved, scriptCloudCertUnresolved, scriptSuccess)
+	// 最小等待参数：两次轮询后映射就绪（第三次 Deploy 成功）
+	h.svc.k8sMappingPoll.interval = time.Millisecond
+	h.svc.k8sMappingPoll.maxWait = 50 * time.Millisecond
+
+	orderID := h.seedExecutingOrder(t, nil, seedItem{batch: 1, status: domain.ItemStatusPending})
+	items, err := h.items.ListByOrder(ctx, orderID)
+	require.NoError(t, err)
+	itemID := items[0].ID.Hex()
+
+	require.NoError(t, h.svc.ExecuteItem(ctx, orderID, itemID))
+
+	assert.Equal(t, domain.ItemStatusSuccess, statusOf(t, h, itemID))
+	assert.Equal(t, 3, h.channel.attempts(), "两次未解析后第三次成功")
+}
+
+// TestExecuteItem_MappingWaitExhausted patch_crd 项映射等待预算耗尽仍无法解析
+// → 明确失败（K8S_CLOUD_CERT_UNRESOLVED，不静默、不无限等待）。
+func TestExecuteItem_MappingWaitExhausted(t *testing.T) {
+	ctx := context.Background()
+	h := newExecuteHarness(t, scriptCloudCertUnresolved)
+	h.svc.k8sMappingPoll.interval = time.Millisecond
+	h.svc.k8sMappingPoll.maxWait = 5 * time.Millisecond // 预算极短 → 数次轮询后失败
+
+	orderID := h.seedExecutingOrder(t, nil, seedItem{batch: 1, status: domain.ItemStatusPending})
+	items, err := h.items.ListByOrder(ctx, orderID)
+	require.NoError(t, err)
+	itemID := items[0].ID.Hex()
+
+	require.NoError(t, h.svc.ExecuteItem(ctx, orderID, itemID))
+
+	got, err := h.items.GetByID(ctx, itemID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.ItemStatusFailed, got.Status)
+	assert.Contains(t, got.Error, domain.CodeK8sCloudCertUnresolved)
+	assert.Less(t, h.channel.attempts(), 60, "有界等待：不无限重试")
 }

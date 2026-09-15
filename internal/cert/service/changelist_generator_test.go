@@ -46,24 +46,27 @@ func (f *fakeManagementProbe) Probe(_ context.Context, ref domain.ResourceRef) (
 	return true, "", nil
 }
 
-// genHarness 清单生成测试依赖聚合（复用 changeHarness，注入管理权探测）。
+// genHarness 清单生成测试依赖聚合（复用 changeHarness，注入管理权探测与
+// 云证书映射仓储——patch_crd 预校验数据源）。
 type genHarness struct {
 	*changeHarness
-	probe *fakeManagementProbe
+	probe    *fakeManagementProbe
+	mappings *certtest.FakeCloudCertMappingRepo
 }
 
 // newGenHarness 创建清单生成测试聚合；probe 为 nil 时按"探测通道未接入"装配
-// （注意规避 typed-nil 接口非 nil 陷阱）。
+// （注意规避 typed-nil 接口非 nil 陷阱）。mappings 恒装配（生产恒非 nil）；
+// 未显式写入映射即"无 active 映射"基线。
 func newGenHarness(t *testing.T, probe *fakeManagementProbe) *genHarness {
 	t.Helper()
 	base := newChangeHarness(t)
-	g := &genHarness{changeHarness: base, probe: probe}
+	g := &genHarness{changeHarness: base, probe: probe, mappings: certtest.NewFakeCloudCertMappingRepo()}
 	var injected ManagementProbe
 	if probe != nil {
 		injected = probe
 	}
 	base.svc = NewChangeService(base.orders, base.items, base.certs, base.alertCfg,
-		base.snapshots, base.refs, injected)
+		base.snapshots, base.refs, g.mappings, injected)
 	return g
 }
 
@@ -351,7 +354,7 @@ func TestGenerateChangeList_BlockChangeInFlight(t *testing.T) {
 		newCertID, _ := h.seedValid(t)
 		// 预检查放行（无 token 命中）但插入撞 uk_active_mutex → 同码阻断
 		h.svc = NewChangeService(&failGenOrders{FakeChangeOrderRepo: h.orders, createErr: domain.ErrChangeInFlight},
-			h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil)
+			h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil, nil)
 
 		_, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
 		require.Error(t, err)
@@ -643,7 +646,7 @@ func TestGenerateChangeList_ErrorPropagation(t *testing.T) {
 	newSvc := func(h *genHarness, orders domain.ChangeOrderRepository, items domain.ChangeItemRepository,
 		certs domain.CertificateRepository, snaps domain.ScanSnapshotRepository, refs domain.CertReferenceRepository,
 		cfg domain.AlertConfigRepository) {
-		h.svc = NewChangeService(orders, items, certs, cfg, snaps, refs, nil)
+		h.svc = NewChangeService(orders, items, certs, cfg, snaps, refs, nil, nil)
 	}
 
 	t.Run("快照读取失败", func(t *testing.T) {
@@ -759,4 +762,65 @@ func TestBuildChangeItems_ManagedListenerExcluded(t *testing.T) {
 	assert.Equal(t, domain.ActionUploadAndBind, byTarget["www.example.com"])
 	// 同证书 AlbConfig CRD 引用按既有路径出 patch_crd（闭环承接）
 	assert.Equal(t, domain.ActionPatchCRD, byTarget["alb-conf-main"])
+}
+
+// ---------------------------------------------------------------------
+// 任务 5.7 加固：patch_crd 项云证书 ID 可解析性预校验
+// ---------------------------------------------------------------------
+
+// TestBuildChangeItems_K8sCloudCertMissing 新证书既无 active 映射、本单也无云
+// 上传项 → patch_crd 按不可执行项分区（K8S_CLOUD_CERT_MISSING，不生成必败项）。
+func TestBuildChangeItems_K8sCloudCertMissing(t *testing.T) {
+	h := newGenHarness(t, &fakeManagementProbe{}) // 可管理 → 预校验专属分区原因生效
+	crdItem := k8sRef(changeTestFP, "cluster-a", "kube-system", "AlbConfig", "alb-conf-main", "cert-20275346-cn-hangzhou")
+	newCertID, _ := h.seedValid(t, crdItem)
+
+	list, err := h.svc.GenerateChangeList(context.Background(), changeTestFP, newCertID)
+	require.NoError(t, err)
+	require.Len(t, list.Items, 1)
+
+	it := list.Items[0]
+	assert.Equal(t, domain.ActionPatchCRD, it.Action)
+	assert.False(t, it.AutoChangeable, "无云上传源且无映射 → 必败项不可自动变更")
+	assert.True(t, strings.HasPrefix(it.Reason, "K8S_CLOUD_CERT_MISSING"),
+		"原因须含 K8S_CLOUD_CERT_MISSING 可机读标记，got %q", it.Reason)
+}
+
+// TestBuildChangeItems_K8sCloudCertPresent 既有 active 映射即可变更（无云上传项
+// 也成立——证书此前已上传过云证书库）。
+func TestBuildChangeItems_K8sCloudCertPresent(t *testing.T) {
+	h := newGenHarness(t, &fakeManagementProbe{})
+	// 新证书已存在 active 云证书映射（此前上传/导入产物）
+	require.NoError(t, h.mappings.Upsert(context.Background(), &domain.CloudCertMapping{
+		CertFingerprint: newTestFP, Cloud: "aliyun", AccountKey: "acc-a",
+		CloudCertID: "88888888", Status: domain.MappingStatusActive,
+	}))
+	crdItem := k8sRef(changeTestFP, "cluster-a", "kube-system", "AlbConfig", "alb-conf-main", "cert-20275346-cn-hangzhou")
+	newCertID, _ := h.seedValid(t, crdItem)
+
+	list, err := h.svc.GenerateChangeList(context.Background(), changeTestFP, newCertID)
+	require.NoError(t, err)
+	require.Len(t, list.Items, 1)
+	assert.True(t, list.Items[0].AutoChangeable, "有 active 映射 → patch_crd 可变更")
+}
+
+// TestBuildChangeItems_K8sCloudCertViaCloudItem 本单存在云上传项（同新证书指纹）
+// → patch_crd 保持可变更（上传完成后映射就绪，执行期有界等待兜底）。
+func TestBuildChangeItems_K8sCloudCertViaCloudItem(t *testing.T) {
+	h := newGenHarness(t, &fakeManagementProbe{})
+	cdnRef := cloudRef(changeTestFP, domain.CloudAliyun, domain.ProductCDN, "acc-a", "www.example.com", "cert-cdn-1")
+	crdItem := k8sRef(changeTestFP, "cluster-a", "kube-system", "AlbConfig", "alb-conf-main", "cert-20275346-cn-hangzhou")
+	newCertID, _ := h.seedValid(t, cdnRef, crdItem)
+
+	list, err := h.svc.GenerateChangeList(context.Background(), changeTestFP, newCertID)
+	require.NoError(t, err)
+	require.Len(t, list.Items, 2)
+
+	byTarget := map[string]ChangeListItem{}
+	for _, it := range list.Items {
+		byTarget[it.Target.ResourceID] = it
+	}
+	assert.True(t, byTarget["www.example.com"].AutoChangeable)
+	assert.True(t, byTarget["alb-conf-main"].AutoChangeable,
+		"本单有云上传源 → patch_crd 可变更（等待同批上传映射）")
 }
