@@ -681,34 +681,49 @@ func unresolvedK8sFingerprint(cluster, certID string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// resolveNewCertID 新证书指纹 → 待写入 CRD 引用字段的云证书 ID。规则：映射表
-// ListByFingerprint 取 status=active 且去重后唯一；0 条（新证书尚未上传任何
-// 云证书库）或多条互异（多云多账号上传，K8s 引用无云上下文无法消歧）均显式
-// 失败——不猜测写入，防错误证书播撒。
+// resolveNewCertID 新证书指纹 → 待写入 CRD 引用字段的云证书 ID（任务 5.7 加固：
+// 阿里云优先消歧）。K8s CRD（AlbConfig/Ingress/Gateway/HTTPRoute）引用的证书
+// ID 是阿里云 CAS 证书 ID 空间——同一指纹被多云上传（如 aliyun+tencent 各一份）
+// 时优先取阿里云映射；阿里云映射去重后唯一即返回。无阿里云映射（仅其他云）/
+// 多条互异阿里云映射均显式失败——不猜测写入，防错误证书播撒。
 func (c *K8sAPIChannel) resolveNewCertID(ctx context.Context, fingerprint string) (string, error) {
 	mappings, err := c.mappings.ListByFingerprint(ctx, fingerprint)
 	if err != nil {
 		return "", fmt.Errorf("k8s channel: list cloud cert mappings: %w", err)
 	}
-	seen := make(map[string]struct{}, len(mappings))
-	distinct := make([]string, 0, len(mappings))
+	aliyunSeen := make(map[string]struct{}, len(mappings))
+	aliyunDistinct := make([]string, 0, len(mappings))
+	otherClouds := map[string]bool{}
 	for _, m := range mappings {
 		if m.Status != domain.MappingStatusActive {
 			continue
 		}
-		if _, dup := seen[m.CloudCertID]; dup {
+		if m.Cloud != string(domain.CloudAliyun) {
+			otherClouds[m.Cloud] = true
 			continue
 		}
-		seen[m.CloudCertID] = struct{}{}
-		distinct = append(distinct, m.CloudCertID)
+		if _, dup := aliyunSeen[m.CloudCertID]; dup {
+			continue
+		}
+		aliyunSeen[m.CloudCertID] = struct{}{}
+		aliyunDistinct = append(aliyunDistinct, m.CloudCertID)
 	}
-	switch len(distinct) {
+	switch len(aliyunDistinct) {
 	case 1:
-		return distinct[0], nil
+		return aliyunDistinct[0], nil
 	case 0:
+		if len(otherClouds) > 0 {
+			clouds := make([]string, 0, len(otherClouds))
+			for cl := range otherClouds {
+				clouds = append(clouds, cl)
+			}
+			sort.Strings(clouds)
+			return "", fmt.Errorf("%w: fingerprint=%s has no active aliyun cloud cert mapping (only %s); k8s CRD 证书引用必须为阿里云 CAS 证书 ID，请先上传新证书到阿里云证书库",
+				ErrCloudCertIDUnresolved, fingerprint, strings.Join(clouds, ","))
+		}
 		return "", fmt.Errorf("%w: fingerprint=%s has no active cloud cert id mapping (upload to a cloud cert store first)", ErrCloudCertIDUnresolved, fingerprint)
 	default:
-		return "", fmt.Errorf("%w: fingerprint=%s has %d distinct active cloud cert ids; cannot disambiguate for k8s patch", ErrCloudCertIDUnresolved, fingerprint, len(distinct))
+		return "", fmt.Errorf("%w: fingerprint=%s has %d distinct active aliyun cloud cert ids; cannot disambiguate for k8s patch", ErrCloudCertIDUnresolved, fingerprint, len(aliyunDistinct))
 	}
 }
 

@@ -258,11 +258,13 @@ func (s *changeService) buildChangeItems(ctx context.Context, orderID string, ne
 			break
 		}
 	}
+	// 与 K8s 通道 resolveNewCertID 口径一致：patch_crd 使用阿里云 CAS 证书 ID，
+	// 既有映射须为 active 的阿里云映射（仅其他云的上传不能支撑 K8s 引用）。
 	hasActiveMapping := false
 	if s.mappings != nil {
 		if mappings, err := s.mappings.ListByFingerprint(ctx, newCertFingerprint); err == nil {
 			for _, m := range mappings {
-				if m.Status == domain.MappingStatusActive {
+				if m.Status == domain.MappingStatusActive && m.Cloud == string(domain.CloudAliyun) {
 					hasActiveMapping = true
 					break
 				}

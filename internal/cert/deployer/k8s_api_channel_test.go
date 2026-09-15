@@ -522,7 +522,8 @@ func TestK8sChannelDeployCertIDUnresolved(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrCloudCertIDUnresolved)
 
-	// 多条互异映射：K8s 引用无法消歧，不猜测写入
+	// 跨云互异映射（aliyun+tencent 各一份）：任务 5.7 加固——阿里云优先消歧，
+	// Deploy 成功且写入阿里云 CAS 证书 ID（非歧义失败）
 	fx.seedMapping(t, "fp-amb", "cert-aliyun-1")
 	require.NoError(t, fx.maps.Upsert(t.Context(), &domain.CloudCertMapping{
 		CertFingerprint: "fp-amb", Cloud: "tencent", AccountKey: "acc-2",
@@ -530,9 +531,25 @@ func TestK8sChannelDeployCertIDUnresolved(t *testing.T) {
 	}))
 	_, err = fx.channel.Deploy(t.Context(), kubeconfigCreds(),
 		k8sTarget("c1", "prod", "AlbConfig", "gw-1"), "fp-amb")
+	require.NoError(t, err)
+	got, err := fx.prov.byCluster["c1"].Get(t.Context(), testAlbGVR, "prod", "gw-1")
+	require.NoError(t, err)
+	listeners, _, _ := unstructured.NestedSlice(got.Object, "spec", "listeners")
+	certs, _, _ := unstructured.NestedSlice(listeners[0].(map[string]interface{}), "certificates")
+	certID, _, _ := unstructured.NestedString(certs[0].(map[string]interface{}), "certificateId")
+	assert.Equal(t, "cert-aliyun-1", certID, "多云映射优先写入阿里云证书 ID")
+
+	// 多条互异阿里云映射（不同账号各上传一份）：仍无法消歧，不猜测写入
+	fx.seedMapping(t, "fp-amb2", "cert-aliyun-1")
+	require.NoError(t, fx.maps.Upsert(t.Context(), &domain.CloudCertMapping{
+		CertFingerprint: "fp-amb2", Cloud: "aliyun", AccountKey: "acc-2",
+		CloudCertID: "cert-aliyun-2", Status: domain.MappingStatusActive,
+	}))
+	_, err = fx.channel.Deploy(t.Context(), kubeconfigCreds(),
+		k8sTarget("c1", "prod", "AlbConfig", "gw-1"), "fp-amb2")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrCloudCertIDUnresolved)
-	assert.Contains(t, err.Error(), "2", "歧义错误附互异映射数")
+	assert.Contains(t, err.Error(), "distinct active aliyun", "歧义错误附阿里云互异映射数")
 }
 
 func TestK8sChannelDeployUnreachable(t *testing.T) {
@@ -781,4 +798,56 @@ func TestK8sChannelDefaultSignalsApplied(t *testing.T) {
 func unresolvedFingerprintForAssert(cluster, certID string) string {
 	sum := sha256.Sum256([]byte("certscan-unresolved:" + fmt.Sprintf("k8s|%s|%s", cluster, certID)))
 	return hex.EncodeToString(sum[:])
+}
+
+// ---------------------------------------------------------------------
+// 任务 5.7 加固：resolveNewCertID 阿里云优先消歧
+// ---------------------------------------------------------------------
+
+// TestResolveNewCertID_AliyunPreference 同一指纹多云上传（aliyun+tencent 各一份）
+// → 优先取阿里云 CAS 证书 ID（K8s CRD 证书引用为阿里云证书 ID 空间）。
+func TestResolveNewCertID_AliyunPreference(t *testing.T) {
+	fx := newFixture(t, ManagementSignalConfig{}, nil)
+	fx.seedMapping(t, "fp-new", "cert-aliyun-1") // aliyun acc-1
+	// 同一指纹 tencent 也上传一份（跨云替换场景）
+	require.NoError(t, fx.maps.Upsert(t.Context(), &domain.CloudCertMapping{
+		CertFingerprint: "fp-new", Cloud: "tencent", AccountKey: "acc-t",
+		CloudCertID: "cert-tencent-1", Status: domain.MappingStatusActive,
+	}))
+
+	id, err := fx.channel.ResolveCloudCertID(t.Context(), "fp-new")
+	require.NoError(t, err)
+	assert.Equal(t, "cert-aliyun-1", id, "多云映射取阿里云证书 ID")
+}
+
+// TestResolveNewCertID_OnlyOtherCloud 仅有其他云（tencent）映射 → 显式失败且
+// 文案指明缺阿里云映射（引导先上传阿里云证书库）。
+func TestResolveNewCertID_OnlyOtherCloud(t *testing.T) {
+	fx := newFixture(t, ManagementSignalConfig{}, nil)
+	require.NoError(t, fx.maps.Upsert(t.Context(), &domain.CloudCertMapping{
+		CertFingerprint: "fp-new", Cloud: "tencent", AccountKey: "acc-t",
+		CloudCertID: "cert-tencent-1", Status: domain.MappingStatusActive,
+	}))
+
+	_, err := fx.channel.ResolveCloudCertID(t.Context(), "fp-new")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrCloudCertIDUnresolved)
+	assert.Contains(t, err.Error(), "no active aliyun cloud cert mapping")
+	assert.Contains(t, err.Error(), "tencent")
+}
+
+// TestResolveNewCertID_MultipleAliyunAmbiguous 多条互异阿里云映射（不同账号
+// 各上传一份）→ 仍无法消歧显式失败（不猜测写入）。
+func TestResolveNewCertID_MultipleAliyunAmbiguous(t *testing.T) {
+	fx := newFixture(t, ManagementSignalConfig{}, nil)
+	fx.seedMapping(t, "fp-new", "cert-aliyun-1") // acc-1
+	require.NoError(t, fx.maps.Upsert(t.Context(), &domain.CloudCertMapping{
+		CertFingerprint: "fp-new", Cloud: "aliyun", AccountKey: "acc-2",
+		CloudCertID: "cert-aliyun-2", Status: domain.MappingStatusActive,
+	}))
+
+	_, err := fx.channel.ResolveCloudCertID(t.Context(), "fp-new")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrCloudCertIDUnresolved)
+	assert.Contains(t, err.Error(), "distinct active aliyun cloud cert ids")
 }
