@@ -92,3 +92,6 @@ docs/features/*/tasks/process/
 docs/features/*/tasks/index.json.lock
 docs/features/*/testing/results/
 tests/results/
+
+# rapid 属性测试失败快照（自动生成，勿入库）
+testdata/rapid/
