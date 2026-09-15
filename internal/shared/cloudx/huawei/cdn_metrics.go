@@ -71,6 +71,12 @@ func (a *CDNAdapter) GetDomainMetrics(ctx context.Context, domainName, domainID 
 		return nil, err
 	}
 
+	return buildDailyMetrics(domainName, dates, flux, bw, hitRate), nil
+}
+
+// buildDailyMetrics 按日期序列合并三路指标;缺失日保持零值/未知哨兵
+// (hit_rate 缺省 unknownHitRate=-1,不伪造 0%)。
+func buildDailyMetrics(domainName string, dates []string, flux, bw, hitRate map[string]float64) []types.CDNMetric {
 	metrics := make([]types.CDNMetric, 0, len(dates))
 	for _, d := range dates {
 		m := types.CDNMetric{
@@ -89,7 +95,7 @@ func (a *CDNAdapter) GetDomainMetrics(ctx context.Context, domainName, domainID 
 		}
 		metrics = append(metrics, m)
 	}
-	return metrics, nil
+	return metrics
 }
 
 // fetchDomainStats 查询单个 stat_type 的逐日数组,按日期映射聚合。
@@ -149,7 +155,9 @@ func lookupDomainResult(result map[string]interface{}, domainName string) (map[s
 }
 
 // lookupSeries 取 stat_type 对应的逐日数值数组(容忍数字与字符串形态)。
-func lookupSeries(domainData map[string]interface{}, statType string) ([]float64, bool) {
+// 无法解析的值("-"/"null"/厂商无数据哨兵 -1)返回 nil 指针,
+// 表示"该日无数据",由调用方跳过——不得占位为 0(会伪造 0% 命中率)。
+func lookupSeries(domainData map[string]interface{}, statType string) ([]*float64, bool) {
 	raw, ok := domainData[statType]
 	if !ok {
 		return nil, false
@@ -158,26 +166,37 @@ func lookupSeries(domainData map[string]interface{}, statType string) ([]float64
 	if !ok {
 		return nil, false
 	}
-	series := make([]float64, 0, len(arr))
+	series := make([]*float64, 0, len(arr))
 	for _, item := range arr {
 		switch v := item.(type) {
 		case float64:
-			series = append(series, v)
+			if v == noDataSentinel {
+				series = append(series, nil)
+				continue
+			}
+			val := v
+			series = append(series, &val)
 		case string:
-			if parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
-				series = append(series, parsed)
+			trimmed := strings.TrimSpace(v)
+			if parsed, err := strconv.ParseFloat(trimmed, 64); err == nil && parsed != noDataSentinel {
+				val := parsed
+				series = append(series, &val)
 			} else {
-				series = append(series, 0) // 无数据占位("-"/"null")
+				series = append(series, nil) // 无数据("-"/"null"/"-1")
 			}
 		default:
-			series = append(series, 0)
+			series = append(series, nil)
 		}
 	}
 	return series, true
 }
 
+// noDataSentinel 华为云无数据哨兵值(文档约定返回 "-"、"-1" 或 null)
+const noDataSentinel = -1.0
+
 // aggregateDailySeries 逐日数组(interval=86400,自 startDate 零点起)→ 按日聚合。
-func aggregateDailySeries(series []float64, startDate string, mode aggregateMode) map[string]float64 {
+// nil 元素为无数据日,跳过不写入(命中率的未知语义由缺省 -1 表达)。
+func aggregateDailySeries(series []*float64, startDate string, mode aggregateMode) map[string]float64 {
 	result := make(map[string]float64, len(series))
 	loc := metricCSTZone
 	start, err := time.ParseInLocation("2006-01-02", startDate, loc)
@@ -185,16 +204,19 @@ func aggregateDailySeries(series []float64, startDate string, mode aggregateMode
 		return result
 	}
 	for i, v := range series {
+		if v == nil {
+			continue // 无数据日:不落聚合结果,保持调用方缺省(如 HitRate=-1)
+		}
 		date := start.AddDate(0, 0, i).Format("2006-01-02")
 		switch mode {
 		case aggregateModeSum:
-			result[date] += v
+			result[date] += *v
 		case aggregateModeMax:
-			if v > result[date] {
-				result[date] = v
+			if *v > result[date] {
+				result[date] = *v
 			}
 		case aggregateModeHit:
-			result[date] = normalizeHitRateValue(v)
+			result[date] = normalizeHitRateValue(*v)
 		}
 	}
 	return result
