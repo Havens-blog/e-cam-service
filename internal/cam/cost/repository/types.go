@@ -64,6 +64,23 @@ type UnifiedBillFilter struct {
 	Limit       int64
 }
 
+// CDNBillQuerier CDN 账单聚合查询接口(CDN 经营视图专用)。
+// 与 BillDAO.AggregateByField 的区别:CDN 账单约 64% 金额 service_type=other,
+// 无法用 service_type 等值过滤,必须按 service_type_name 正则圈定。
+type CDNBillQuerier interface {
+	// AggregateByServiceTypeName 按 service_type_name 正则圈定 CDN 账单后按字段聚合金额
+	AggregateByServiceTypeName(ctx context.Context, tenantID int64, field, startDate, endDate string) ([]AggregateResult, error)
+	// AggregateCDNMonthly 按「月份 × service_type_name」聚合 CDN 账单金额（amount_cny）
+	AggregateCDNMonthly(ctx context.Context, tenantID int64, startDate, endDate string) ([]CDNMonthlyRow, error)
+}
+
+// CDNMonthlyRow CDN 月度聚合原始行（月份 × service_type_name 粒度）
+type CDNMonthlyRow struct {
+	Month           string  `bson:"month" json:"month"`
+	ServiceTypeName string  `bson:"service_type_name" json:"service_type_name"`
+	AmountCNY       float64 `bson:"amount_cny" json:"amount_cny"`
+}
+
 // AggregateResult 聚合结果
 type AggregateResult struct {
 	Key       string  `bson:"_id" json:"key"`

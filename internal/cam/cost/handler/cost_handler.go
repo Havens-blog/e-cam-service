@@ -12,6 +12,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/optimizer"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	camservice "github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/pkg/ginx"
@@ -24,6 +25,7 @@ type CostHandler struct {
 	costSvc      *analysis.CostService
 	anomalySvc   *anomaly.AnomalyService
 	optimizerSvc *optimizer.OptimizerService
+	cdnCostSvc   *camservice.CDNCostService
 }
 
 // NewCostHandler 创建成本分析处理器
@@ -31,11 +33,13 @@ func NewCostHandler(
 	costSvc *analysis.CostService,
 	anomalySvc *anomaly.AnomalyService,
 	optimizerSvc *optimizer.OptimizerService,
+	cdnCostSvc *camservice.CDNCostService,
 ) *CostHandler {
 	return &CostHandler{
 		costSvc:      costSvc,
 		anomalySvc:   anomalySvc,
 		optimizerSvc: optimizerSvc,
+		cdnCostSvc:   cdnCostSvc,
 	}
 }
 
@@ -48,6 +52,7 @@ func (h *CostHandler) PrivateRoutes(server *gin.Engine) {
 	// `if filter.TenantID != 0` 会丢弃租户谓词，返回全部租户的成本数据。
 	g.Use(middleware.RequireTenant(elog.DefaultLogger))
 	g.GET("/cost/summary", h.GetCostSummary)
+	g.GET("/cost/cdn", h.GetCDNCost)
 	g.GET("/cost/trend", h.GetCostTrend)
 	g.GET("/cost/distribution", h.GetCostDistribution)
 	g.GET("/cost/comparison", h.GetYoYComparison)

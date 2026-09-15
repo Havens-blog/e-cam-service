@@ -21,6 +21,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree"
 	"github.com/Havens-blog/e-cam-service/internal/cam/tag"
 	"github.com/Havens-blog/e-cam-service/internal/cam/template"
@@ -176,6 +177,7 @@ func initCostModule(module *Module, db *mongox.Mongo, redisClient redis.Cmdable,
 
 	// 初始化 DAO 层
 	billDAO := costdao.NewBillDAO(db)
+	cdnBillDAO := costdao.NewCDNBillDAO(db)
 	collectLogDAO := costdao.NewCollectLogDAO(db)
 	budgetDAO := costdao.NewBudgetDAO(db)
 	allocationDAO := costdao.NewAllocationDAO(db)
@@ -231,8 +233,11 @@ func initCostModule(module *Module, db *mongox.Mongo, redisClient redis.Cmdable,
 	// 初始化优化建议服务
 	optimizerSvc := optimizer.NewOptimizerService(optimizerDAO, billDAO, logger)
 
+	// 初始化 CDN 经营成本服务（多云 CDN 经营视图一期）
+	cdnCostSvc := service.NewCDNCostService(cdnBillDAO, logger)
+
 	// 初始化 HTTP 处理器
-	module.CostHdl = costhandler.NewCostHandler(costSvc, anomalySvc, optimizerSvc)
+	module.CostHdl = costhandler.NewCostHandler(costSvc, anomalySvc, optimizerSvc, cdnCostSvc)
 	module.BudgetHdl = costhandler.NewBudgetHandler(budgetSvc)
 	module.AllocationHdl = costhandler.NewAllocationHandler(allocationSvc)
 	module.CollectorHdl = costhandler.NewCollectorHandler(collectorSvc, module.TaskSvc)
