@@ -5,6 +5,7 @@ package logquery
 
 import (
 	"context"
+	"slices"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 )
@@ -15,20 +16,50 @@ type AggregateBucket struct {
 	Count     int64 `json:"count"`
 }
 
-// TopNItem 聚合 TopN 条目(域名/规则等按类型维度;由 provider 归并后取前 10)。
+// TopNItem 聚合 TopN 条目(域名/规则/状态码等按维度;由 provider 归并后取前 10)。
+// Count = 该分组条目数(跨源按名求和);Value = 指标值(count 指标时 = Count,
+// avg/p99/sum 等数值指标时承载数值;跨源按 count 加权均值归并,避免非可加
+// 指标直接求和失真)。
 type TopNItem struct {
-	Name  string `json:"name"`
-	Count int64  `json:"count"`
+	Name  string  `json:"name"`
+	Count int64   `json:"count"`
+	Value float64 `json:"value,omitempty"`
+}
+
+// AggregateMetrics 支持的聚合指标(前端下拉;能力按 kind/provider 校验,
+// 不支持的源/指标显式标注)。count 全 kind 可用,其余按字段列存在性。
+var AggregateMetrics = []string{"count", "sum_bytes", "avg_latency", "p99_latency"}
+
+// IsValidAggregateMetric 校验指标(空 = count)。
+func IsValidAggregateMetric(m string) bool {
+	if m == "" {
+		return true
+	}
+	return slices.Contains(AggregateMetrics, m)
+}
+
+// MetricIsWeighted avg/p99 等非可加指标:跨源归并需按 count 加权均值;
+// count/sum_bytes 可加直接求和。
+func MetricIsWeighted(m string) bool {
+	switch m {
+	case "", "count", "sum_bytes":
+		return false
+	default:
+		return true
+	}
 }
 
 // AggregateParams 聚合参数。BucketSec 由服务层按窗口统一计算并随请求下发,
 // 保证联邦内所有源分桶对齐(合并 = 逐桶求和)。
 type AggregateParams struct {
-	StartTime int64    // Unix 毫秒 UTC(含)
-	EndTime   int64    // Unix 毫秒 UTC(含)
-	Query     string   // 原生检索式透传(与 Search 同语义)
-	BucketSec int64    // 分桶秒数(PickBucketSec 预计算)
-	Resources []string // 可选:限定资源(域名/LB ID)
+	StartTime int64         // Unix 毫秒 UTC(含)
+	EndTime   int64         // Unix 毫秒 UTC(含)
+	Query     string        // 原生检索式透传(与 Search 同语义)
+	BucketSec int64         // 分桶秒数(PickBucketSec 预计算)
+	Resources []string      // 可选:限定资源(域名/LB ID)
+	Filters   []FieldFilter // 字段筛选(能下推的源编译进 SQL,不能下推的源显式标注)
+	Dimension string        // 分组维度(/types 字段 key;空=kind 默认 TopN 维度)
+	Metric    string        // count / sum_bytes / avg_latency / p99_latency(空=count)
 }
 
 // AggregateResult 单源聚合结果。Total = 分桶求和(省一次 count 扫描)。
@@ -36,6 +67,10 @@ type AggregateResult struct {
 	Total   int64
 	Buckets []AggregateBucket
 	TopN    []TopNItem
+	// TopNSkipReason 维度/指标不可下推时的说明(趋势/总数不受影响,仍有效)。
+	TopNSkipReason string
+	// SkipFilterReason 字段筛选不可下推时设置(该源整源跳过,否则计数失真)。
+	SkipFilterReason string
 }
 
 // Aggregator 可选能力接口:窗口内真实聚合。未实现的 provider(S3 文件类、

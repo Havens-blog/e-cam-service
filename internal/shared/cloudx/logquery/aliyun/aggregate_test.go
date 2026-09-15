@@ -87,13 +87,52 @@ func TestBuildAggregateBucketSQL(t *testing.T) {
 	}
 }
 
-// TestBuildAggregateTopNSQL TopN SQL:维度表达式与降序 limit。
+// TestBuildAggregateTopNSQL TopN SQL:维度/指标表达式与降序 limit。
 func TestBuildAggregateTopNSQL(t *testing.T) {
-	got := buildAggregateTopNSQL("*", "domain", 10)
-	for _, want := range []string{"select domain as k", "count(1) as c", "group by k", "order by c desc", "limit 10"} {
+	got := buildAggregateTopNSQL("*", "domain", "count(1)", 10)
+	for _, want := range []string{"select domain as k", "count(1) as n", "group by k", "order by v desc", "limit 10"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("topn sql %q missing %q", got, want)
 		}
+	}
+}
+
+// TestFilterSearchPart 检索段编译:eq 数值不引号/文本引号、prefix 通配、
+// neq 反衬、不可下推字段返回 false。
+func TestFilterSearchPart(t *testing.T) {
+	cases := []struct {
+		kind   mapperKind
+		filter logquery.FieldFilter
+		want   string
+		ok     bool
+	}{
+		{kindDCDN, logquery.FieldFilter{Field: "status", Op: "eq", Value: "404"}, "(return_code: 404)", true},
+		{kindDCDN, logquery.FieldFilter{Field: "host", Op: "eq", Value: "www.jlc.com"}, `(domain: "www.jlc.com")`, true},
+		{kindDCDN, logquery.FieldFilter{Field: "host", Op: "prefix", Value: "static"}, `(domain: "static*")`, true},
+		{kindDCDN, logquery.FieldFilter{Field: "host", Op: "neq", Value: "a.com"}, `(not domain: "a.com")`, true},
+		{kindCDNOffline, logquery.FieldFilter{Field: "host", Op: "eq", Value: "x"}, "(regexp_extract(RequestURL, '^(?:https?://)?([^/?]+)', 1): \"x\")", true},
+		{kindDCDN, logquery.FieldFilter{Field: "cache_hit", Op: "eq", Value: "hit"}, "", false}, // 跨字段归一,不可下推
+	}
+	for _, c := range cases {
+		got, ok := filterSearchPart(c.kind, []logquery.FieldFilter{c.filter})
+		if ok != c.ok || got != c.want {
+			t.Errorf("filterSearchPart(%v, %+v) = %q, ok=%v; want %q, %v", c.kind, c.filter, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+// TestMetricSQLExpr 指标编译:count 全 kind,avg/p99 仅带 latency 列的 kind。
+func TestMetricSQLExpr(t *testing.T) {
+	for _, kind := range []mapperKind{kindDCDN, kindCDNOffline, kindAkamaiCDN, kindALB} {
+		if _, ok := metricSQLExpr(kind, "p99_latency"); !ok {
+			t.Errorf("metric p99_latency should be supported for %v", kind)
+		}
+	}
+	if _, ok := metricSQLExpr(kindWAF3, "avg_latency"); ok {
+		t.Errorf("kindWAF3 has no latency column, avg_latency should be unsupported")
+	}
+	if _, ok := metricSQLExpr(kindDCDN, "sum_bytes"); !ok {
+		t.Errorf("sum_bytes should be supported for dcdn")
 	}
 }
 

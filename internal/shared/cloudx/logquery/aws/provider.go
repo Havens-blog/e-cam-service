@@ -292,7 +292,12 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 
 	var entries []logquery.LogEntry
 	for i := range targets {
-		entries = append(entries, results[i]...)
+		for _, e := range results[i] {
+			// 字段筛选:映射后统一字段语义过滤(与阿里/华为一致)
+			if logquery.EntryMatches(e, params.Filters) {
+				entries = append(entries, e)
+			}
+		}
 	}
 	// limit 为每日志源(ACL/域名)上限(ADR D4);归并后全局 1000 硬顶,
 	// 不做 provider 级总截断(防热点域名吃掉全部配额,长尾域名被挤出局)

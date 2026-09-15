@@ -20,12 +20,20 @@ func aggregateTopNExpr(kind mapperKind) string {
 }
 
 // buildAggregateBucketSQL 分桶 SQL:__time 为毫秒,t = 桶起点毫秒。
-func buildAggregateBucketSQL(bucketSec int64) string {
+// 可带检索段前缀(字段筛选下推),空则全量。
+func buildAggregateBucketSQL(searchPart string, bucketSec int64) string {
+	if searchPart == "" {
+		searchPart = "*"
+	}
 	bucketMs := bucketSec * 1000
-	return fmt.Sprintf("* | select __time - __time %% %d as t, count(1) as c group by t order by t limit 200", bucketMs)
+	return fmt.Sprintf("%s | select __time - __time %% %d as t, count(1) as c group by t order by t limit 200", searchPart, bucketMs)
 }
 
-// buildAggregateTopNSQL TopN SQL(ELB host)。
-func buildAggregateTopNSQL(expr string, limit int) string {
-	return fmt.Sprintf("* | select %s as k, count(1) as c group by k order by c desc limit %d", expr, limit)
+// buildAggregateTopNSQL TopN SQL(ELB host):k = 维度,n = 条数,v = 指标值。
+func buildAggregateTopNSQL(searchPart, expr string, limit int) string {
+	if searchPart == "" {
+		searchPart = "*"
+	}
+	return fmt.Sprintf("%s | select %s as k, count(1) as n, count(1) as v group by k order by v desc limit %d",
+		searchPart, expr, limit)
 }

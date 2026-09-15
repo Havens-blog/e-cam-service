@@ -296,7 +296,10 @@ func (p *provider) fetchStreamLogs(ctx context.Context, groupID string, kind map
 				Source:      defaultRegion + "/" + stream.LogStreamName,
 			}
 			if e := mapContent(kind, meta, content); e != nil {
-				entries = append(entries, e)
+				// 字段筛选:映射后统一字段语义过滤(与阿里/火山一致)
+				if logquery.EntryMatches(e, params.Filters) {
+					entries = append(entries, e)
+				}
 			}
 		}
 		last := (*logs)[len(*logs)-1].LineNum
@@ -376,6 +379,19 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 		}
 	}
 
+	// 字段筛选:可下推的 kind 预编译检索段,其余显式失败(整源不计,防空数)
+	filterParts := make(map[mapperKind]string, len(targets))
+	for _, tgt := range targets {
+		if _, ok := filterParts[tgt.kind]; ok {
+			continue
+		}
+		part, ok := filterWhere(tgt.kind, params.Filters)
+		if !ok {
+			return nil, fmt.Errorf("字段筛选无法下推: %s", tgt.kind)
+		}
+		filterParts[tgt.kind] = part
+	}
+
 	results := make([]*logquery.AggregateResult, len(targets))
 	sem := make(chan struct{}, 8)
 	var wg sync.WaitGroup
@@ -383,9 +399,13 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// 字段筛选不可下推的 kind:跳过(provider 级整体报错误,防空数)
+			if _, ok := filterParts[tgt.kind]; !ok {
+				return
+			}
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			results[i] = p.aggregateStream(ids[tgt.group.group], tgt.kind, tgt.stream, params)
+			results[i] = p.aggregateStream(ids[tgt.group.group], tgt.kind, tgt.stream, params, filterParts[tgt.kind])
 		}()
 	}
 	wg.Wait()
@@ -398,6 +418,9 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 		merged.Total += r.Total
 		merged.Buckets = append(merged.Buckets, r.Buckets...)
 		merged.TopN = append(merged.TopN, r.TopN...)
+		if r.TopNSkipReason != "" && merged.TopNSkipReason == "" {
+			merged.TopNSkipReason = r.TopNSkipReason
+		}
 	}
 	sort.Slice(merged.Buckets, func(i, j int) bool {
 		return merged.Buckets[i].Timestamp < merged.Buckets[j].Timestamp
@@ -409,10 +432,10 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 		}
 		merged.TopN = merged.TopN[:0]
 		for name, c := range counts {
-			merged.TopN = append(merged.TopN, logquery.TopNItem{Name: name, Count: c})
+			merged.TopN = append(merged.TopN, logquery.TopNItem{Name: name, Count: c, Value: float64(c)})
 		}
 		sort.Slice(merged.TopN, func(i, j int) bool {
-			return merged.TopN[i].Count > merged.TopN[j].Count
+			return merged.TopN[i].Value > merged.TopN[j].Value
 		})
 	}
 	const providerTopN = 10
@@ -424,7 +447,7 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 
 // aggregateStream 单流两条 SQL:分桶 + TopN(无维度的流跳过 TopN)。
 // analysisLogs 行为 map[string]any;t 已是毫秒(LTS __time 量纲)。
-func (p *provider) aggregateStream(groupID string, kind mapperKind, stream ltsmodel.ListLogStreamsResponseBody1LogStreams, params logquery.AggregateParams) *logquery.AggregateResult {
+func (p *provider) aggregateStream(groupID string, kind mapperKind, stream ltsmodel.ListLogStreamsResponseBody1LogStreams, params logquery.AggregateParams, filterPart string) *logquery.AggregateResult {
 	result := &logquery.AggregateResult{}
 	runSQL := func(sql string, lines int32) ([]map[string]any, error) {
 		body := &ltsmodel.QueryLtsLogParams{
@@ -454,7 +477,7 @@ func (p *provider) aggregateStream(groupID string, kind mapperKind, stream ltsmo
 		return rows, nil
 	}
 
-	bucketRows, err := runSQL(buildAggregateBucketSQL(params.BucketSec), 200)
+	bucketRows, err := runSQL(buildAggregateBucketSQL(filterPart, params.BucketSec), 200)
 	if err != nil {
 		p.logger.Warn("[logquery-huawei] aggregate bucket sql failed",
 			elog.String("stream", stream.LogStreamName), elog.FieldErr(err))
@@ -469,21 +492,37 @@ func (p *provider) aggregateStream(groupID string, kind mapperKind, stream ltsmo
 		result.Buckets = append(result.Buckets, logquery.AggregateBucket{Timestamp: ms, Count: c})
 		result.Total += c
 	}
-	if expr := aggregateTopNExpr(kind); expr != "" {
-		topnRows, err := runSQL(buildAggregateTopNSQL(expr, 10), 10)
-		if err != nil {
-			p.logger.Warn("[logquery-huawei] aggregate topn sql failed",
-				elog.String("stream", stream.LogStreamName), elog.FieldErr(err))
-		} else {
-			for _, row := range topnRows {
-				k, ok := row["k"].(string)
-				c, ok2 := jsonInt64(row["c"])
-				if !ok || k == "" || !ok2 {
-					continue
-				}
-				result.TopN = append(result.TopN, logquery.TopNItem{Name: k, Count: c})
-			}
+	// TopN 维度:自定义 dimension 优先,缺省回退 kind 默认维度(现行为兼容)
+	dim := aggregateTopNExpr(kind)
+	if params.Dimension != "" {
+		expr, ok := dimensionExpr(kind, params.Dimension)
+		if !ok {
+			result.TopNSkipReason = "维度 " + params.Dimension + " 该源不支持"
+			return result
 		}
+		dim = expr
+	}
+	if dim == "" {
+		return result // 无维度流(WAF 攻击/访问流)跳过 TopN
+	}
+	if _, ok := metricSQLExpr(kind, params.Metric); !ok {
+		result.TopNSkipReason = "指标 " + params.Metric + " 该源不支持"
+		return result
+	}
+	// 指标仅 count(LTS 未验证 avg/分位):v 恒等于 n(见 buildAggregateTopNSQL)
+	topnRows, err := runSQL(buildAggregateTopNSQL(filterPart, dim, 10), 10)
+	if err != nil {
+		p.logger.Warn("[logquery-huawei] aggregate topn sql failed",
+			elog.String("stream", stream.LogStreamName), elog.FieldErr(err))
+		return result
+	}
+	for _, row := range topnRows {
+		k, ok := row["k"].(string)
+		c, ok2 := jsonInt64(row["n"])
+		if !ok || k == "" || !ok2 {
+			continue
+		}
+		result.TopN = append(result.TopN, logquery.TopNItem{Name: k, Count: c, Value: float64(c)})
 	}
 	return result
 }

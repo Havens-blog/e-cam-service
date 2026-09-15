@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -269,7 +270,7 @@ func (p *provider) activeDomains(ctx context.Context, src slsSource) []string {
 	client := p.clientFor(src.region)
 	now := time.Now().UnixMilli()
 	searchPart := buildAggregateSearchPart(src.kind, "", nil, src.logstore, src.project)
-	sql := buildAggregateTopNSQL(searchPart, expr, 100)
+	sql := buildAggregateTopNSQL(searchPart, expr, "count(1)", 100)
 	resp, err := client.GetLogsV2(src.project, src.logstore, &sls.GetLogRequest{
 		From:  (now - 30*86400_000) / 1000,
 		To:    now / 1000,
@@ -394,7 +395,10 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 		}
 		for _, raw := range results[i] {
 			if e := mapEntry(tgt.src.kind, meta, raw); e != nil {
-				entries = append(entries, e)
+				// 字段筛选:映射后统一字段语义过滤(采样量级逐条,跨源一致)
+				if logquery.EntryMatches(e, params.Filters) {
+					entries = append(entries, e)
+				}
 			}
 		}
 	}
@@ -459,6 +463,23 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 		}
 	}
 
+	// ---- 预编译 kind → 筛选检索段:字段不可下推的 kind 整源跳过 ----
+	// catalog 内同 类型(logType) 多 kind(CDN: DCDN/Akamai/转存),缺哪个
+	// kind 记入 skipKinds,整源不参与聚合(否则未过滤的计数失真)。
+	filterParts := make(map[mapperKind]string, len(targets))
+	var skipFilter []string
+	for _, tgt := range targets {
+		if _, ok := filterParts[tgt.src.kind]; ok {
+			continue
+		}
+		part, ok := filterSearchPart(tgt.src.kind, params.Filters)
+		if !ok {
+			skipFilter = append(skipFilter, string(tgt.src.kind))
+			continue
+		}
+		filterParts[tgt.src.kind] = part
+	}
+
 	// ---- logstore 级并发聚合(单源失败隔离) ----
 	results := make([]*logquery.AggregateResult, len(targets))
 	sem := make(chan struct{}, 8)
@@ -467,14 +488,24 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// 字段筛选不可下推的 kind:跳过(provider 级整体报错误,防空数)
+			if _, ok := filterParts[tgt.src.kind]; !ok {
+				return
+			}
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			results[i] = p.aggregateStore(ctx, tgt.src, tgt.logstore, params)
+			results[i] = p.aggregateStore(ctx, tgt.src, tgt.logstore, params, filterParts[tgt.src.kind])
 		}()
 	}
 	wg.Wait()
 
 	merged := &logquery.AggregateResult{}
+	// 指标可加性:count/sum_bytes 按值求和;avg/p99 非可加,跨源按
+	// count 加权均值归并(单源分组只承载自身,避免直接求和失真)。
+	weighted := metricIsWeighted(params.Metric)
+	if len(skipFilter) > 0 {
+		merged.SkipFilterReason = "字段筛选无法下推: " + strings.Join(skipFilter, ",")
+	}
 	for _, r := range results {
 		if r == nil {
 			continue
@@ -482,37 +513,58 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 		merged.Total += r.Total
 		merged.Buckets = append(merged.Buckets, r.Buckets...)
 		merged.TopN = append(merged.TopN, r.TopN...)
+		if r.TopNSkipReason != "" && merged.TopNSkipReason == "" {
+			merged.TopNSkipReason = r.TopNSkipReason
+		}
 	}
 	sort.Slice(merged.Buckets, func(i, j int) bool {
 		return merged.Buckets[i].Timestamp < merged.Buckets[j].Timestamp
 	})
-	// 跨 logstore 的 TopN 归并(同名求和,取前 10)
-	if len(merged.TopN) > 1 {
-		counts := make(map[string]int64, len(merged.TopN))
+	// 跨 logstore 的 TopN 归并(同名聚合,取前 10)
+	if len(merged.TopN) > 0 {
+		type acc struct{ count int64; value float64 }
+		groups := make(map[string]acc, len(merged.TopN))
 		for _, t := range merged.TopN {
-			counts[t.Name] += t.Count
+			g := groups[t.Name]
+			g.count += t.Count
+			if weighted {
+				g.value += t.Value * float64(t.Count) // 加权和(归并后除回)
+			} else {
+				g.value += t.Value // 可加指标(count/sum_bytes)直接求和
+			}
+			groups[t.Name] = g
 		}
 		merged.TopN = merged.TopN[:0]
-		for name, c := range counts {
-			merged.TopN = append(merged.TopN, logquery.TopNItem{Name: name, Count: c})
+		for name, g := range groups {
+			v := g.value
+			if weighted && g.count > 0 {
+				v = g.value / float64(g.count)
+			}
+			merged.TopN = append(merged.TopN, logquery.TopNItem{Name: name, Count: g.count, Value: v})
 		}
 		sort.Slice(merged.TopN, func(i, j int) bool {
-			return merged.TopN[i].Count > merged.TopN[j].Count
+			return merged.TopN[i].Value > merged.TopN[j].Value
 		})
 	}
 	const providerTopN = 10
 	if len(merged.TopN) > providerTopN {
 		merged.TopN = merged.TopN[:providerTopN]
 	}
+	if merged.SkipFilterReason != "" {
+		return nil, fmt.Errorf("%s", merged.SkipFilterReason)
+	}
 	return merged, nil
 }
 
-// aggregateStore 单 logstore 两条 SQL:分桶 + TopN(无维度的源跳过 TopN)。
-// 失败返回 nil(隔离,不阻塞其他 logstore)。
-func (p *provider) aggregateStore(ctx context.Context, src slsSource, logstore string, params logquery.AggregateParams) *logquery.AggregateResult {
+// aggregateStore 单 logstore 两条 SQL:分桶 + TopN(自定义维度/指标;无维度
+// 的源跳过 TopN)。失败返回 nil(隔离,不阻塞其他 logstore)。
+func (p *provider) aggregateStore(ctx context.Context, src slsSource, logstore string, params logquery.AggregateParams, filterPart string) *logquery.AggregateResult {
 	client := p.clientFor(src.region)
 	// 整源选择(Resources 含本 logstore/project)时不加域名过滤
 	searchPart := buildAggregateSearchPart(src.kind, params.Query, params.Resources, logstore, src.project)
+	if filterPart != "" {
+		searchPart = appendSearchPart(searchPart, filterPart)
+	}
 	from := params.StartTime / 1000
 	to := params.EndTime / 1000
 
@@ -539,21 +591,42 @@ func (p *provider) aggregateStore(ctx context.Context, src slsSource, logstore s
 		result.Total += logquery.Int(row["c"])
 	}
 
-	// TopN:无维度的源(waf3 访问流)跳过
-	if expr := aggregateTopNExpr(src.kind); expr != "" {
-		topnSQL := buildAggregateTopNSQL(searchPart, expr, 10)
-		resp, err := client.GetLogsV2(src.project, logstore, &sls.GetLogRequest{
-			From: from, To: to, Query: topnSQL, Lines: 10,
-		})
-		if err != nil {
-			p.logger.Warn("[logquery-aliyun] aggregate topn sql failed",
-				elog.String("project", src.project), elog.String("logstore", logstore), elog.FieldErr(err))
-		} else {
-			for _, row := range resp.Logs {
-				if k := row["k"]; k != "" {
-					result.TopN = append(result.TopN, logquery.TopNItem{Name: k, Count: logquery.Int(row["c"])})
-				}
+	// TopN 维度:自定义 dimension 优先,缺省回退 kind 默认维度(现行为兼容)
+	dim := aggregateTopNExpr(src.kind)
+	if params.Dimension != "" {
+		expr, ok := dimensionExpr(src.kind, params.Dimension)
+		if !ok {
+			result.TopNSkipReason = "维度 " + params.Dimension + " 该源不支持"
+			return result
+		}
+		dim = expr
+	}
+	if dim == "" {
+		return result // 无维度源(Akamai WAF3 访问流等)跳过 TopN
+	}
+	mExpr, ok := metricSQLExpr(src.kind, params.Metric)
+	if !ok {
+		result.TopNSkipReason = "指标 " + params.Metric + " 该源不支持"
+		return result
+	}
+	topnSQL := buildAggregateTopNSQL(searchPart, dim, mExpr, 10)
+	resp, err = client.GetLogsV2(src.project, logstore, &sls.GetLogRequest{
+		From: from, To: to, Query: topnSQL, Lines: 10,
+	})
+	if err != nil {
+		p.logger.Warn("[logquery-aliyun] aggregate topn sql failed",
+			elog.String("project", src.project), elog.String("logstore", logstore), elog.FieldErr(err))
+		return result
+	}
+	for _, row := range resp.Logs {
+		if k := row["k"]; k != "" {
+			item := logquery.TopNItem{Name: k, Count: logquery.Int(row["n"])}
+			if metricIsCount(params.Metric) {
+				item.Value = float64(item.Count)
+			} else if v, err2 := strconv.ParseFloat(row["v"], 64); err2 == nil {
+				item.Value = v
 			}
+			result.TopN = append(result.TopN, item)
 		}
 	}
 	return result

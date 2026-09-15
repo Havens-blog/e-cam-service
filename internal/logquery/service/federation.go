@@ -37,6 +37,7 @@ type SearchRequest struct {
 	Clouds     []domain.CloudProvider // 可选,限定云
 	AccountIDs []int64                // 可选,限定云账号
 	Resources  []string               // 可选,限定资源(域名/LB ID)
+	Filters    []logquery.FieldFilter // 可选,结构化字段筛选(AND 叠加)
 	Limit      int                    // 每日志源上限(默认 100,硬顶 500;ADR D4)
 }
 
@@ -69,6 +70,9 @@ type AggregateRequest struct {
 	Clouds     []domain.CloudProvider
 	AccountIDs []int64
 	Resources  []string
+	Filters    []logquery.FieldFilter // 可选,字段筛选(可下推源生效,否则显式标注)
+	Dimension  string                 // 分组维度(/types 字段 key;空=kind 默认)
+	Metric     string                 // count / sum_bytes / avg_latency / p99_latency
 }
 
 // AggregateSourceOutcome 单源聚合状态(不支持聚合的源显式标注,不静默缺失)。
@@ -81,13 +85,15 @@ type AggregateSourceOutcome struct {
 	DurationMs  int64                `json:"duration_ms"`
 }
 
-// AggregateResponse 联邦聚合响应(跨源归并:分桶求和、TopN 求和取前 10)。
+// AggregateResponse 联邦聚合响应(跨源归并:分桶求和、TopN 归并取前 10)。
 type AggregateResponse struct {
 	LogType string                        `json:"log_type"`
 	Total   int64                         `json:"total"`   // 窗口精确总数(全源求和)
 	Buckets []logquery.AggregateBucket    `json:"buckets"` // 时间分桶(真实分布)
-	TopN    []logquery.TopNItem           `json:"topn"`    // TopN(域名/规则按类型)
+	TopN    []logquery.TopNItem           `json:"topn"`    // TopN(自定义维度/指标)
 	Sources []AggregateSourceOutcome      `json:"sources"`
+	// TopNSkip 部分源维度/指标不可下推的说明(趋势/总数仍有效,仅 TopN 缺失)。
+	TopNSkip string `json:"topn_skip,omitempty"`
 }
 
 // Aggregate 窗口内真实聚合入口(plan.md §8):分桶下推各云引擎,百万级行
@@ -99,6 +105,17 @@ func (s *FederationService) Aggregate(ctx context.Context, tenantID int64, req A
 	if req.EndTime <= req.StartTime {
 		return nil, fmt.Errorf("invalid time window: end %d <= start %d", req.EndTime, req.StartTime)
 	}
+	for _, f := range req.Filters {
+		if !logquery.IsValidFieldFilterOp(f.Op) {
+			return nil, fmt.Errorf("invalid filter op: %s", f.Op)
+		}
+		if f.Field == "" || f.Value == "" {
+			return nil, fmt.Errorf("incomplete field filter: %+v", f)
+		}
+	}
+	if !logquery.IsValidAggregateMetric(req.Metric) {
+		return nil, fmt.Errorf("invalid aggregate metric: %s", req.Metric)
+	}
 	bucketSec := logquery.PickBucketSec(req.StartTime, req.EndTime)
 	accounts, err := s.activeAccounts(ctx, tenantID, req.Clouds, req.AccountIDs)
 	if err != nil {
@@ -107,11 +124,20 @@ func (s *FederationService) Aggregate(ctx context.Context, tenantID int64, req A
 	ctx, cancel := context.WithTimeout(ctx, FederationTimeout)
 	defer cancel()
 
+	// topnAcc 跨源同组聚合:count 求和;value 按可加指标求和 / 非可加加权,
+	// 与 provider 内同类归并语义一致(见 aliyun provider.go 注释)。
+	type topnAcc struct {
+		count int64
+		value float64
+		seen  bool
+	}
 	var (
-		mu       sync.Mutex
-		buckets  = make(map[int64]int64)
-		topn     = make(map[string]int64)
-		outcomes []AggregateSourceOutcome
+		mu            sync.Mutex
+		buckets       = make(map[int64]int64)
+		topn          = make(map[string]topnAcc)
+		outcomes      []AggregateSourceOutcome
+		topNSkipMu    sync.Mutex
+		topNSkipFirst string
 	)
 	g, gctx := errgroup.WithContext(ctx)
 	for i := range accounts {
@@ -138,6 +164,9 @@ func (s *FederationService) Aggregate(ctx context.Context, tenantID int64, req A
 					Query:     req.Query,
 					BucketSec: bucketSec,
 					Resources: req.Resources,
+					Filters:   req.Filters,
+					Dimension: req.Dimension,
+					Metric:    req.Metric,
 				})
 			} else if err == nil {
 				err = errAggregateUnsupported
@@ -162,7 +191,24 @@ func (s *FederationService) Aggregate(ctx context.Context, tenantID int64, req A
 					buckets[b.Timestamp] += b.Count
 				}
 				for _, t := range result.TopN {
-					topn[t.Name] += t.Count
+					g := topn[t.Name]
+					if !g.seen {
+						g.seen = true
+					}
+					g.count += t.Count
+					if logquery.MetricIsWeighted(req.Metric) {
+						g.value += t.Value * float64(t.Count) // 加权和
+					} else {
+						g.value += t.Value // 可加指标直接求和
+					}
+					topn[t.Name] = g
+				}
+				if result.TopNSkipReason != "" {
+					topNSkipMu.Lock()
+					if topNSkipFirst == "" {
+						topNSkipFirst = result.TopNSkipReason
+					}
+					topNSkipMu.Unlock()
 				}
 			}
 			mu.Unlock()
@@ -182,12 +228,18 @@ func (s *FederationService) Aggregate(ctx context.Context, tenantID int64, req A
 	sort.Slice(resp.Buckets, func(i, j int) bool {
 		return resp.Buckets[i].Timestamp < resp.Buckets[j].Timestamp
 	})
-	for name, c := range topn {
-		resp.TopN = append(resp.TopN, logquery.TopNItem{Name: name, Count: c})
+	weighted := logquery.MetricIsWeighted(req.Metric)
+	for name, g := range topn {
+		item := logquery.TopNItem{Name: name, Count: g.count, Value: g.value}
+		if weighted && g.count > 0 {
+			item.Value = g.value / float64(g.count) // 加权均值还原
+		}
+		resp.TopN = append(resp.TopN, item)
 	}
 	sort.Slice(resp.TopN, func(i, j int) bool {
-		return resp.TopN[i].Count > resp.TopN[j].Count
+		return resp.TopN[i].Value > resp.TopN[j].Value
 	})
+	resp.TopNSkip = topNSkipFirst
 	const federatedTopN = 10
 	if len(resp.TopN) > federatedTopN {
 		resp.TopN = resp.TopN[:federatedTopN]
@@ -225,6 +277,14 @@ func (s *FederationService) Search(ctx context.Context, tenantID int64, req Sear
 	}
 	if req.EndTime <= req.StartTime {
 		return nil, fmt.Errorf("invalid time window: end %d <= start %d", req.EndTime, req.StartTime)
+	}
+	for _, f := range req.Filters {
+		if !logquery.IsValidFieldFilterOp(f.Op) {
+			return nil, fmt.Errorf("invalid filter op: %s", f.Op)
+		}
+		if f.Field == "" || f.Value == "" {
+			return nil, fmt.Errorf("incomplete field filter: %+v", f)
+		}
 	}
 	perSource := req.Limit
 	if perSource <= 0 {
@@ -274,6 +334,7 @@ func (s *FederationService) Search(ctx context.Context, tenantID int64, req Sear
 					Query:     req.Query,
 					Limit:     perSource,
 					Resources: req.Resources,
+					Filters:   req.Filters,
 				})
 			}
 			oc := SourceOutcome{

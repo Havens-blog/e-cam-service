@@ -27,12 +27,13 @@ type LogSource struct {
 
 // SearchParams 联邦查询参数(单账号单云;service 层解析账号后逐源下发)。
 type SearchParams struct {
-	StartTime int64    `json:"start_time"` // Unix 毫秒 UTC(含)
-	EndTime   int64    `json:"end_time"`   // Unix 毫秒 UTC(含)
-	Query     string   `json:"query"`      // 原生检索式透传(各云语法由 provider 翻译;空=全量)
-	Limit     int      `json:"limit"`      // 单源上限(ADR D4:窗口内每源上限+截断标记)
-	Regions   []string `json:"regions"`    // 可选:限定区域
-	Resources []string `json:"resources"`  // 可选:限定资源(域名/LB ID/分发 ID)
+	StartTime int64         `json:"start_time"` // Unix 毫秒 UTC(含)
+	EndTime   int64         `json:"end_time"`   // Unix 毫秒 UTC(含)
+	Query     string        `json:"query"`      // 原生检索式透传(各云语法由 provider 翻译;空=全量)
+	Limit     int           `json:"limit"`      // 单源上限(ADR D4:窗口内每源上限+截断标记)
+	Regions   []string      `json:"regions"`    // 可选:限定区域
+	Resources []string      `json:"resources"`  // 可选:限定资源(域名/LB ID/分发 ID)
+	Filters   []FieldFilter `json:"filters"`    // 字段筛选(映射后统一字段过滤,AND 叠加)
 }
 
 // LogProvider 日志源适配器接口(照 cloudx/billing 模式:每云每类型注册,

@@ -146,7 +146,7 @@ func TestLiveAggregateDebug(t *testing.T) {
 			continue
 		}
 		now := time.Now().UnixMilli()
-		sql := buildAggregateBucketSQL(900)
+		sql := buildAggregateBucketSQL("", 900)
 		t.Logf("sql=%q window=[%d,%d]", sql, now-24*3600_000, now)
 		body := &ltsmodel.QueryLtsLogParams{
 			StartTime:       strconv.FormatInt(now-24*3600_000, 10),
@@ -212,7 +212,7 @@ func TestLiveAggregateStreamDirect(t *testing.T) {
 		now := time.Now().UnixMilli()
 		res := hp.aggregateStream(ids["hwyun-waf-logs"], kind, s, logquery.AggregateParams{
 			StartTime: now - 24*3600_000, EndTime: now, BucketSec: 900,
-		})
+		}, "")
 		t.Logf("direct: total=%d buckets=%d topn=%d", res.Total, len(res.Buckets), len(res.TopN))
 	}
 }

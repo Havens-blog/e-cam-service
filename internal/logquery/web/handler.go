@@ -151,14 +151,15 @@ func (h *LogQueryHandler) Sources(c *gin.Context) {
 
 // searchRequest POST /search 请求体。
 type searchRequest struct {
-	LogType    string   `json:"log_type" binding:"required"`
-	StartTime  int64    `json:"start_time" binding:"required"`
-	EndTime    int64    `json:"end_time" binding:"required"`
-	Query      string   `json:"query"`
-	Clouds     []string `json:"clouds"`
-	AccountIDs []int64  `json:"account_ids"`
-	Resources  []string `json:"resources"`
-	Limit      int      `json:"limit"`
+	LogType    string                   `json:"log_type" binding:"required"`
+	StartTime  int64                    `json:"start_time" binding:"required"`
+	EndTime    int64                    `json:"end_time" binding:"required"`
+	Query      string                   `json:"query"`
+	Clouds     []string                 `json:"clouds"`
+	AccountIDs []int64                  `json:"account_ids"`
+	Resources  []string                 `json:"resources"`
+	Filters    []logquery.FieldFilter   `json:"filters"` // 结构化字段筛选(AND 叠加)
+	Limit      int                      `json:"limit"`
 }
 
 // Search POST /search 联邦查询。
@@ -180,6 +181,7 @@ func (h *LogQueryHandler) Search(c *gin.Context) {
 		Clouds:     toProviders(req.Clouds),
 		AccountIDs: req.AccountIDs,
 		Resources:  req.Resources,
+		Filters:    req.Filters,
 		Limit:      req.Limit,
 	})
 	if err != nil {
@@ -194,13 +196,16 @@ func (h *LogQueryHandler) Search(c *gin.Context) {
 
 // aggregateRequest POST /aggregate 请求体(与 searchRequest 对齐,无 limit)。
 type aggregateRequest struct {
-	LogType    string   `json:"log_type" binding:"required"`
-	StartTime  int64    `json:"start_time" binding:"required"`
-	EndTime    int64    `json:"end_time" binding:"required"`
-	Query      string   `json:"query"`
-	Clouds     []string `json:"clouds"`
-	AccountIDs []int64  `json:"account_ids"`
-	Resources  []string `json:"resources"`
+	LogType    string                 `json:"log_type" binding:"required"`
+	StartTime  int64                  `json:"start_time" binding:"required"`
+	EndTime    int64                  `json:"end_time" binding:"required"`
+	Query      string                 `json:"query"`
+	Clouds     []string               `json:"clouds"`
+	AccountIDs []int64                `json:"account_ids"`
+	Resources  []string               `json:"resources"`
+	Filters    []logquery.FieldFilter `json:"filters"` // 字段筛选(可下推源生效)
+	Dimension  string                 `json:"dimension"` // 分组维度(/types 字段 key)
+	Metric     string                 `json:"metric"`    // count/sum_bytes/avg_latency/p99_latency
 }
 
 // Aggregate POST /aggregate 窗口内真实聚合(趋势/总数/TopN 下推云引擎,
@@ -223,6 +228,9 @@ func (h *LogQueryHandler) Aggregate(c *gin.Context) {
 		Clouds:     toProviders(req.Clouds),
 		AccountIDs: req.AccountIDs,
 		Resources:  req.Resources,
+		Filters:    req.Filters,
+		Dimension:  req.Dimension,
+		Metric:     req.Metric,
 	})
 	if err != nil {
 		writeError(c, http.StatusBadRequest, err.Error())

@@ -85,6 +85,21 @@ func buildAggregateSearchPart(kind mapperKind, userQuery string, resources []str
 	return strings.Join(parts, " and ")
 }
 
+// appendSearchPart 拼接两段检索式(空段跳过;无段时为全量)。
+func appendSearchPart(a, b string) string {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	switch {
+	case a == "" && b == "":
+		return ""
+	case a == "":
+		return b
+	case b == "":
+		return a
+	default:
+		return a + " and " + b
+	}
+}
+
 // buildAggregateBucketSQL 分桶 SQL:t = 桶起点(Unix 秒),c = 桶内精确条数。
 // Total 由分桶求和得出,不再单独跑 count(省一次全窗扫描)。
 func buildAggregateBucketSQL(searchPart string, bucketSec int64) string {
@@ -95,11 +110,12 @@ func buildAggregateBucketSQL(searchPart string, bucketSec int64) string {
 		searchPart, bucketSec)
 }
 
-// buildAggregateTopNSQL TopN SQL:k = 分组维度,c = 条数(降序取前 limit)。
-func buildAggregateTopNSQL(searchPart, expr string, limit int) string {
+// buildAggregateTopNSQL TopN SQL:k = 分组维度表达式,n = 组内条数,
+// v = 指标值(计数时 = n)。按 v 降序取前 limit(计数/字节/均值/分位同秩)。
+func buildAggregateTopNSQL(searchPart, dimExpr, metric string, limit int) string {
 	if searchPart == "" {
 		searchPart = "*"
 	}
-	return fmt.Sprintf("%s | select %s as k, count(1) as c group by k order by c desc limit %d",
-		searchPart, expr, limit)
+	return fmt.Sprintf("%s | select %s as k, count(1) as n, %s as v group by k order by v desc limit %d",
+		searchPart, dimExpr, metric, limit)
 }
