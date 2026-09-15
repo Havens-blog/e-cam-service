@@ -604,6 +604,16 @@ func (p *provider) aggregateStore(ctx context.Context, src slsSource, logstore s
 	if dim == "" {
 		return result // 无维度源(Akamai WAF3 访问流等)跳过 TopN
 	}
+	// 透传自定义维度:先校验列已建分析索引(未索引的列 Group By 报 400),
+	// 给出可用字段清单而非盲试报错。索引探测失败时降级放行。
+	if col, ok := passthroughColumn(src.kind, params.Dimension); ok {
+		if keys := p.storeIndexKeys(src.region, src.project, logstore); len(keys) > 0 {
+			if hint := indexHint(col, keys); hint != "" {
+				result.TopNSkipReason = hint
+				return result
+			}
+		}
+	}
 	mExpr, ok := metricSQLExpr(src.kind, params.Metric)
 	if !ok {
 		result.TopNSkipReason = "指标 " + params.Metric + " 该源不支持"
