@@ -623,6 +623,17 @@ type CDNSettingsQuerier interface {
 	GetDomainSettings(ctx context.Context, domainName, domainID string) (*types.CDNDomainSettings, error)
 }
 
+// CDNMetricQuerier 可选能力:按域名查询 CDN 单日带宽/流量/命中率指标。
+// 指标不随同步落库,由定时任务 cdn:collect_metrics 按日采集;CDNAdapter
+// 实现方可按需实现本接口(探测不到可用监控 API 的厂商不实现,采集跳过)。
+type CDNMetricQuerier interface {
+	// GetDomainMetrics 查询 [startDate, endDate](含两端,YYYY-MM-DD)内
+	// 该域名的逐日指标;命中率为当日均值/末端值,厂商未提供时为 -1。
+	// domainName 为加速域名(多数厂商的检索键);domainID 为域名/分发 ID
+	// (AWS CloudFront 仅认 ID)。两者至少传一。
+	GetDomainMetrics(ctx context.Context, domainName, domainID string, startDate, endDate string) ([]types.CDNMetric, error)
+}
+
 // ============================================================================
 // WAFAdapter - WAF Web应用防火墙适配器接口
 // ============================================================================

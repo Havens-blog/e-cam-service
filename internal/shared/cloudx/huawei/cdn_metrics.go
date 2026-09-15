@@ -1,0 +1,264 @@
+package huawei
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/global"
+	cdnv1 "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cdn/v1"
+	cdnv1model "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cdn/v1/model"
+	cdnv1region "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cdn/v1/region"
+)
+
+// unknownHitRate 命中率未知哨兵值
+const unknownHitRate = -1.0
+
+// createV1Client 创建 CDN v1 客户端(统计接口 ShowDomainStats 仅 v1 提供,
+// 域名管理走 v2)。CDN 是全局服务,使用全局凭证 + cn-north-1 region。
+func (a *CDNAdapter) createV1Client() (*cdnv1.CdnClient, error) {
+	auth, err := global.NewCredentialsBuilder().
+		WithAk(a.accessKeyID).
+		WithSk(a.accessKeySecret).
+		SafeBuild()
+	if err != nil {
+		return nil, fmt.Errorf("创建华为云凭证失败: %w", err)
+	}
+
+	client, err := cdnv1.CdnClientBuilder().
+		WithRegion(cdnv1region.CN_NORTH_1).
+		WithCredential(auth).
+		SafeBuild()
+	if err != nil {
+		return nil, fmt.Errorf("创建华为云CDN客户端失败: %w", err)
+	}
+
+	return cdnv1.NewCdnClient(client), nil
+}
+
+// GetDomainMetrics 查询 [startDate, endDate](含两端)内域名的逐日指标。
+// 走 v1 ShowDomainStats(action=detail, interval=86400, group_by=domain),
+// 单次仅支持一个 stat_type,分 3 次调用:flux(流量,字节)、bw(带宽,bps)、
+// hit_flux_rate(流量命中率,百分制)。返回 result 为
+// {域名: {stat_type: [逐日数组]}} 的裸 JSON(SDK 未强建模),手工解析。
+func (a *CDNAdapter) GetDomainMetrics(ctx context.Context, domainName, domainID string, startDate, endDate string) ([]types.CDNMetric, error) {
+	if domainName == "" {
+		return nil, fmt.Errorf("华为云CDN指标查询需要域名")
+	}
+	dates, err := metricDateRange(startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := a.createV1Client()
+	if err != nil {
+		return nil, err
+	}
+
+	flux, err := a.fetchDomainStats(client, domainName, "flux", dates, aggregateModeSum)
+	if err != nil {
+		return nil, err
+	}
+	bw, err := a.fetchDomainStats(client, domainName, "bw", dates, aggregateModeMax)
+	if err != nil {
+		return nil, err
+	}
+	hitRate, err := a.fetchDomainStats(client, domainName, "hit_flux_rate", dates, aggregateModeHit)
+	if err != nil {
+		return nil, err
+	}
+
+	metrics := make([]types.CDNMetric, 0, len(dates))
+	for _, d := range dates {
+		m := types.CDNMetric{
+			Domain:  domainName,
+			Date:    d,
+			HitRate: unknownHitRate,
+		}
+		if v, ok := flux[d]; ok {
+			m.Bytes = int64(v)
+		}
+		if v, ok := bw[d]; ok {
+			m.Bandwidth = int64(v)
+		}
+		if v, ok := hitRate[d]; ok {
+			m.HitRate = v
+		}
+		metrics = append(metrics, m)
+	}
+	return metrics, nil
+}
+
+// fetchDomainStats 查询单个 stat_type 的逐日数组,按日期映射聚合。
+func (a *CDNAdapter) fetchDomainStats(
+	client *cdnv1.CdnClient,
+	domainName, statType string,
+	dates []string,
+	mode aggregateMode,
+) (map[string]float64, error) {
+	startMs := dayStartUnixMilli(dates[0])
+	request := &cdnv1model.ShowDomainStatsRequest{
+		Action:     "detail",
+		StartTime:  startMs,
+		EndTime:    startMs + int64(len(dates))*86400*1000, // 左闭右开,86400 需对齐零点
+		DomainName: domainName,
+		StatType:   statType,
+		Interval:   int64Ptr(86400),
+		GroupBy:    strPtr("domain"),
+	}
+
+	response, err := client.ShowDomainStats(request)
+	if err != nil {
+		return nil, fmt.Errorf("查询CDN统计 %s 失败: %w", statType, err)
+	}
+	if response == nil || response.Result == nil {
+		return nil, nil
+	}
+	// result[域名][stat_type] → []float64(逐日,与 interval=86400 对齐)
+	domainData, ok := lookupDomainResult(response.Result, domainName)
+	if !ok {
+		return nil, nil
+	}
+	series, ok := lookupSeries(domainData, statType)
+	if !ok {
+		return nil, nil
+	}
+	return aggregateDailySeries(series, dates[0], mode), nil
+}
+
+// lookupDomainResult 在 result 中按域名取值(大小写不敏感兜底)。
+func lookupDomainResult(result map[string]interface{}, domainName string) (map[string]interface{}, bool) {
+	if v, ok := result[domainName]; ok {
+		if m, ok := v.(map[string]interface{}); ok {
+			return m, true
+		}
+	}
+	lower := strings.ToLower(domainName)
+	for k, v := range result {
+		if strings.ToLower(k) != lower {
+			continue
+		}
+		if m, ok := v.(map[string]interface{}); ok {
+			return m, true
+		}
+	}
+	return nil, false
+}
+
+// lookupSeries 取 stat_type 对应的逐日数值数组(容忍数字与字符串形态)。
+func lookupSeries(domainData map[string]interface{}, statType string) ([]float64, bool) {
+	raw, ok := domainData[statType]
+	if !ok {
+		return nil, false
+	}
+	arr, ok := raw.([]interface{})
+	if !ok {
+		return nil, false
+	}
+	series := make([]float64, 0, len(arr))
+	for _, item := range arr {
+		switch v := item.(type) {
+		case float64:
+			series = append(series, v)
+		case string:
+			if parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+				series = append(series, parsed)
+			} else {
+				series = append(series, 0) // 无数据占位("-"/"null")
+			}
+		default:
+			series = append(series, 0)
+		}
+	}
+	return series, true
+}
+
+// aggregateDailySeries 逐日数组(interval=86400,自 startDate 零点起)→ 按日聚合。
+func aggregateDailySeries(series []float64, startDate string, mode aggregateMode) map[string]float64 {
+	result := make(map[string]float64, len(series))
+	loc := metricCSTZone
+	start, err := time.ParseInLocation("2006-01-02", startDate, loc)
+	if err != nil {
+		return result
+	}
+	for i, v := range series {
+		date := start.AddDate(0, 0, i).Format("2006-01-02")
+		switch mode {
+		case aggregateModeSum:
+			result[date] += v
+		case aggregateModeMax:
+			if v > result[date] {
+				result[date] = v
+			}
+		case aggregateModeHit:
+			result[date] = normalizeHitRateValue(v)
+		}
+	}
+	return result
+}
+
+// normalizeHitRateValue 命中率归一:百分制(>1)除以 100,夹紧到 [0,1]。
+func normalizeHitRateValue(v float64) float64 {
+	if v > 1 {
+		v = v / 100
+	}
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+// ==================== 聚合模式与辅助 ====================
+
+type aggregateMode int
+
+const (
+	aggregateModeSum aggregateMode = iota
+	aggregateModeMax
+	aggregateModeHit
+)
+
+// metricCSTZone CDN 指标按运营时区(Asia/Shanghai)取日,勿改用服务器本地时区
+var metricCSTZone = time.FixedZone("CST", 8*3600)
+
+// metricDateRange 解析 [startDate, endDate](含两端)为日期切片(YYYY-MM-DD)。
+func metricDateRange(startDate, endDate string) ([]string, error) {
+	start, err := time.ParseInLocation("2006-01-02", startDate, metricCSTZone)
+	if err != nil {
+		return nil, fmt.Errorf("解析 startDate 失败: %w", err)
+	}
+	end, err := time.ParseInLocation("2006-01-02", endDate, metricCSTZone)
+	if err != nil {
+		return nil, fmt.Errorf("解析 endDate 失败: %w", err)
+	}
+	if end.Before(start) {
+		return nil, fmt.Errorf("startDate %s 晚于 endDate %s", startDate, endDate)
+	}
+	const maxRangeDays = 31 // interval=86400 单次最长 31 天
+	dates := make([]string, 0, int(end.Sub(start)/24/time.Hour)+1)
+	for t := start; !t.After(end); t = t.AddDate(0, 0, 1) {
+		if len(dates) >= maxRangeDays {
+			return nil, fmt.Errorf("指标查询区间超过 %d 天", maxRangeDays)
+		}
+		dates = append(dates, t.Format("2006-01-02"))
+	}
+	return dates, nil
+}
+
+// dayStartUnixMilli 运营时区当日零点的毫秒时间戳
+func dayStartUnixMilli(date string) int64 {
+	t, err := time.ParseInLocation("2006-01-02", date, metricCSTZone)
+	if err != nil {
+		return 0
+	}
+	return t.Unix() * 1000
+}
+
+func int64Ptr(v int64) *int64 { return &v }
+func strPtr(v string) *string { return &v }

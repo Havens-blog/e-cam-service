@@ -88,6 +88,17 @@ type CDNDomainSettings struct {
 	Groups []CDNConfigGroup `json:"groups"`
 }
 
+// CDNMetric CDN 单日指标(统一格式,由各厂商 GetDomainMetrics 归一化产出)
+type CDNMetric struct {
+	Domain    string  `json:"domain" bson:"domain"`
+	Date      string  `json:"date" bson:"date"`           // YYYY-MM-DD(Asia/Shanghai 运营时区)
+	Bytes     int64   `json:"bytes" bson:"bytes"`         // 当日流量(字节)
+	Bandwidth int64   `json:"bandwidth" bson:"bandwidth"` // 当日带宽峰值(bps)
+	HitRate   float64 `json:"hit_rate" bson:"hit_rate"`   // 命中率 0-1;-1=未知
+	AccountID int64   `json:"account_id" bson:"account_id"`
+	Provider  string  `json:"provider" bson:"provider"`
+}
+
 // CDNCacheRule CDN 缓存规则(统一格式,由各厂商 GetCacheConfig 归一化产出)
 type CDNCacheRule struct {
 	Path     string `json:"path"`               // 匹配内容: 全站为 *;文件后缀如 jpg,png;目录/精确路径如 /foo/bar

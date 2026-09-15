@@ -7,6 +7,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/normalizer"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
 	camrepository "github.com/Havens-blog/e-cam-service/internal/cam/repository"
+	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
@@ -49,6 +50,11 @@ func InitModule(
 	// 注册 CAM 模块的任务执行器
 	syncAssetsExecutor := executor.NewSyncAssetsExecutor(accountRepo, instanceRepo, adapterFactory, taskRepo, logger)
 	taskQueue.RegisterExecutor(syncAssetsExecutor)
+
+	// 注册 CDN 指标采集执行器(每日带宽/流量/命中率指标采集)
+	metricDAO := dao.NewCDNMetricDAO(db)
+	taskQueue.RegisterExecutor(executor.NewSyncCDNMetricsExecutor(accountRepo, metricDAO, taskRepo, logger))
+	logger.Info("CDN指标采集执行器已注册")
 
 	// 启动任务队列
 	taskQueue.Start()
