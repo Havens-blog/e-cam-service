@@ -22,8 +22,9 @@ import (
 const (
 	// DefaultPerSourceLimit 单源默认拉取上限。
 	DefaultPerSourceLimit = 100
-	// MaxPerSourceLimit 单源上限硬顶(防大窗口拖垮联邦)。
-	MaxPerSourceLimit = 500
+	// MaxPerSourceLimit 单源上限硬顶(防大窗口拖垮联邦;CDN 混装源按域名
+	// 均分该配额,拉取总量受控)。
+	MaxPerSourceLimit = 2000
 	// FederationTimeout 整个联邦查询超时;超时返回已完成部分+标记。
 	FederationTimeout = 30 * time.Second
 )
@@ -368,7 +369,7 @@ func (s *FederationService) Search(ctx context.Context, tenantID int64, req Sear
 		return entries[i].GetTimestamp() > entries[j].GetTimestamp()
 	})
 	// 联邦级硬顶 1000:多账号多源归并后防响应过大(每源上限由 provider 侧执行)
-	const federatedCap = 1000
+	const federatedCap = 3000
 	if len(entries) > federatedCap {
 		entries = entries[:federatedCap]
 		truncate = true

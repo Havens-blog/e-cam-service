@@ -153,7 +153,7 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 		return nil, fmt.Errorf("huawei logquery: invalid time window")
 	}
 	limit := params.Limit
-	if limit <= 0 || limit > 1000 {
+	if limit <= 0 || limit > 3000 {
 		limit = 100
 	}
 	ids, err := p.groupIDs(ctx)
@@ -238,7 +238,7 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 	})
 	// limit 为每日志流上限(ADR D4);归并后全局 1000 硬顶,不做 provider 级
 	// 总截断(防热点流吃掉全部配额)
-	const providerCap = 1000
+	const providerCap = 3000
 	if len(entries) > providerCap {
 		entries = entries[:providerCap]
 	}

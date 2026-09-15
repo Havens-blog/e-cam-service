@@ -206,7 +206,7 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 		return nil, fmt.Errorf("aws logquery: invalid time window")
 	}
 	limit := params.Limit
-	if limit <= 0 || limit > 1000 {
+	if limit <= 0 || limit > 3000 {
 		limit = 100
 	}
 	resourceFilter := map[string]bool{}
@@ -304,7 +304,7 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 	sort.SliceStable(entries, func(i, j int) bool {
 		return entries[i].GetTimestamp() > entries[j].GetTimestamp()
 	})
-	const providerCap = 1000
+	const providerCap = 3000
 	if len(entries) > providerCap {
 		entries = entries[:providerCap]
 	}
