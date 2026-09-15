@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -9,6 +10,10 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
 	"github.com/gotomicro/ego/core/elog"
 )
+
+// ErrInvalidStartMonth start_month 不是合法的 YYYY-MM 格式(客户端参数错误,
+// handler 据此返回 400)
+var ErrInvalidStartMonth = errors.New("invalid start_month")
 
 const (
 	// defaultCDNMonths start_month/months 缺省时的回看月数
@@ -165,7 +170,7 @@ func (s *CDNCostService) buildByAccount(ctx context.Context, tenantID int64, sta
 func shiftMonth(month string, offset int) (string, error) {
 	t, err := time.Parse("2006-01", month)
 	if err != nil {
-		return "", fmt.Errorf("invalid start_month %q: %w", month, err)
+		return "", fmt.Errorf("%w: %q", ErrInvalidStartMonth, month)
 	}
 	return t.AddDate(0, offset, 0).Format("2006-01"), nil
 }

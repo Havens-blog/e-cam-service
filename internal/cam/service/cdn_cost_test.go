@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
@@ -116,9 +117,12 @@ func TestCDNCostService_GetCDNCost_InvalidMonth(t *testing.T) {
 	// Act
 	_, err := svc.GetCDNCost(context.Background(), 7, "2026/09", 6, 0)
 
-	// Assert
+	// Assert: 必须是可判别的参数错误(handler 据此返回 400)
 	if err == nil {
 		t.Fatal("非法月份格式应返回错误")
+	}
+	if !errors.Is(err, ErrInvalidStartMonth) {
+		t.Fatalf("err = %v, want errors.Is(err, ErrInvalidStartMonth)", err)
 	}
 }
 
