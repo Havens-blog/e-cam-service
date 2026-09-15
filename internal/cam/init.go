@@ -233,8 +233,9 @@ func initCostModule(module *Module, db *mongox.Mongo, redisClient redis.Cmdable,
 	// 初始化优化建议服务
 	optimizerSvc := optimizer.NewOptimizerService(optimizerDAO, billDAO, logger)
 
-	// 初始化 CDN 经营成本服务（多云 CDN 经营视图一期）
-	cdnCostSvc := service.NewCDNCostService(cdnBillDAO, logger)
+	// 初始化 CDN 经营成本服务（多云 CDN 经营视图;二期域名分摊消费 ecam_cdn_metric）
+	cdnMetricDAO := dao.NewCDNMetricDAO(db)
+	cdnCostSvc := service.NewCDNCostService(cdnBillDAO, cdnMetricDAO, logger)
 
 	// 初始化 HTTP 处理器
 	module.CostHdl = costhandler.NewCostHandler(costSvc, anomalySvc, optimizerSvc, cdnCostSvc)

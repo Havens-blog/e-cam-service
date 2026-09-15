@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -20,6 +21,10 @@ const (
 	defaultCDNMonths = 6
 	// maxCDNMonths months 上限,防止恶意大范围聚合
 	maxCDNMonths = 24
+	// domainCostMetricDays 域名分摊的流量回看天数
+	domainCostMetricDays = 30
+	// domainCostTopLimit 域名分摊单账号取的 Top 域名数上限
+	domainCostTopLimit = 100
 )
 
 // CDNMonthCost CDN 月度成本（cdn/p_cdn 与 dcdn 分列）
@@ -53,15 +58,17 @@ type CDNCostView struct {
 }
 
 // CDNCostService 多云 CDN 经营成本服务。
-// 一期: monthly / by_account 为真实聚合;domain_cost 为空数组（is_estimate:false）。
+// monthly / by_account 为账单真实聚合;domain_cost 二期起由
+// ecam_cdn_metric 近 30 天流量占比分摊账号月成本得出(is_estimate:true)。
 type CDNCostService struct {
-	bills  repository.CDNBillQuerier
-	logger *elog.Component
+	bills   repository.CDNBillQuerier
+	metrics CDNMetricReader
+	logger  *elog.Component
 }
 
 // NewCDNCostService 创建 CDN 经营成本服务
-func NewCDNCostService(bills repository.CDNBillQuerier, logger *elog.Component) *CDNCostService {
-	return &CDNCostService{bills: bills, logger: logger}
+func NewCDNCostService(bills repository.CDNBillQuerier, metrics CDNMetricReader, logger *elog.Component) *CDNCostService {
+	return &CDNCostService{bills: bills, metrics: metrics, logger: logger}
 }
 
 // GetCDNCost 查询 CDN 经营成本。
@@ -86,11 +93,16 @@ func (s *CDNCostService) GetCDNCost(ctx context.Context, tenantID int64, startMo
 	startDate := firstMonth + "-01"
 	endDate := endMonth + "-31"
 
-	monthly, err := s.buildMonthly(ctx, tenantID, startDate, endDate, firstMonth, endMonth)
+	monthlyRows, err := s.bills.AggregateCDNMonthly(ctx, tenantID, startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("aggregate cdn monthly: %w", err)
+	}
+	monthly := s.buildMonthly(monthlyRows, firstMonth, endMonth)
+	byAccount, err := s.buildByAccount(ctx, tenantID, startDate, endDate, accountID)
 	if err != nil {
 		return nil, err
 	}
-	byAccount, err := s.buildByAccount(ctx, tenantID, startDate, endDate, accountID)
+	domainCost, err := s.buildDomainCost(ctx, tenantID, latestBillMonth(monthlyRows), accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -98,12 +110,12 @@ func (s *CDNCostService) GetCDNCost(ctx context.Context, tenantID int64, startMo
 	return &CDNCostView{
 		Monthly:    monthly,
 		ByAccount:  byAccount,
-		DomainCost: []CDNDomainCost{},
+		DomainCost: domainCost,
 	}, nil
 }
 
 // buildMonthly 月度序列补零后按 service_type_name 分类填充
-func (s *CDNCostService) buildMonthly(ctx context.Context, tenantID int64, startDate, endDate, firstMonth, endMonth string) ([]CDNMonthCost, error) {
+func (s *CDNCostService) buildMonthly(rows []repository.CDNMonthlyRow, firstMonth, endMonth string) []CDNMonthCost {
 	months := monthRange(firstMonth, endMonth)
 	monthly := make([]CDNMonthCost, len(months))
 	index := make(map[string]int, len(months))
@@ -112,10 +124,6 @@ func (s *CDNCostService) buildMonthly(ctx context.Context, tenantID int64, start
 		index[m] = i
 	}
 
-	rows, err := s.bills.AggregateCDNMonthly(ctx, tenantID, startDate, endDate)
-	if err != nil {
-		return nil, fmt.Errorf("aggregate cdn monthly: %w", err)
-	}
 	for _, r := range rows {
 		i, ok := index[r.Month]
 		if !ok {
@@ -128,7 +136,7 @@ func (s *CDNCostService) buildMonthly(ctx context.Context, tenantID int64, start
 			monthly[i].CDNAmount += r.AmountCNY
 		}
 	}
-	return monthly, nil
+	return monthly
 }
 
 // buildByAccount 按账号聚合;accountID>0 时仅保留该账号,share 按全量总额
@@ -164,6 +172,72 @@ func (s *CDNCostService) buildByAccount(ctx context.Context, tenantID int64, sta
 		}
 	}
 	return filtered, nil
+}
+
+// buildDomainCost 域名成本分摊(二期):
+// 各域名近 30 天字节 ÷ 该账号近 30 天总字节 × 该账号最新有账单月份的月成本。
+// accountID > 0 时仅分摊该账号。指标表无数据(账号字节合计为 0)的账号跳过;
+// 无任何分摊结果时返回空数组。
+func (s *CDNCostService) buildDomainCost(ctx context.Context, tenantID int64, latestMonth string, accountID int64) ([]CDNDomainCost, error) {
+	out := make([]CDNDomainCost, 0)
+	if latestMonth == "" || s.metrics == nil {
+		return out, nil
+	}
+
+	// 最新有账单月份的账号成本(billing_date 为 YYYY-MM-DD,end 取 "-31" 覆盖整月)
+	startDate := latestMonth + "-01"
+	endDate := latestMonth + "-31"
+	rows, err := s.bills.AggregateByServiceTypeName(ctx, tenantID, "account_id", startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("aggregate cdn by account (domain cost): %w", err)
+	}
+
+	for _, r := range rows {
+		rowAccountID, convErr := strconv.ParseInt(r.Key, 10, 64)
+		if convErr != nil || r.AmountCNY <= 0 {
+			continue
+		}
+		if accountID > 0 && rowAccountID != accountID {
+			continue
+		}
+		topRows, err := s.metrics.TopByBytes(ctx, domainCostMetricDays, domainCostTopLimit, rowAccountID)
+		if err != nil {
+			return nil, fmt.Errorf("top cdn metrics (domain cost): %w", err)
+		}
+		var totalBytes int64
+		for _, tr := range topRows {
+			totalBytes += tr.Bytes
+		}
+		if totalBytes <= 0 {
+			continue
+		}
+		for _, tr := range topRows {
+			if tr.Bytes <= 0 {
+				continue
+			}
+			out = append(out, CDNDomainCost{
+				Domain:     tr.Domain,
+				AmountEst:  r.AmountCNY * float64(tr.Bytes) / float64(totalBytes),
+				Bytes:      uint64(tr.Bytes),
+				IsEstimate: true,
+			})
+		}
+	}
+
+	sort.Slice(out, func(i, j int) bool { return out[i].AmountEst > out[j].AmountEst })
+	return out, nil
+}
+
+// latestBillMonth 从月度聚合行中取最新有账单的月份(YYYY-MM 字典序即可比较);
+// 无账单返回空串
+func latestBillMonth(rows []repository.CDNMonthlyRow) string {
+	latest := ""
+	for _, r := range rows {
+		if r.AmountCNY != 0 && r.Month > latest {
+			latest = r.Month
+		}
+	}
+	return latest
 }
 
 // shiftMonth 月份平移: "2026-09" + (-3) → "2026-06"

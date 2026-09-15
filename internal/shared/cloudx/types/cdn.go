@@ -99,6 +99,14 @@ type CDNMetric struct {
 	Provider  string  `json:"provider" bson:"provider"`
 }
 
+// CDNMetricTopRow Top 域名流量聚合行(近 N 天字节求和,由 DAO TopByBytes 产出)
+type CDNMetricTopRow struct {
+	Domain string `json:"domain" bson:"_id"` // 域名(聚合 _id)
+	Bytes  int64  `json:"bytes" bson:"bytes"`
+	Days   int    `json:"days" bson:"-"`      // 回看天数(查询入参回填)
+	Count  int    `json:"count" bson:"count"` // 命中的单日指标条数
+}
+
 // CDNCacheRule CDN 缓存规则(统一格式,由各厂商 GetCacheConfig 归一化产出)
 type CDNCacheRule struct {
 	Path     string `json:"path"`               // 匹配内容: 全站为 *;文件后缀如 jpg,png;目录/精确路径如 /foo/bar

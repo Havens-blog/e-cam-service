@@ -132,7 +132,7 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	handler := web.NewHandler(serviceService, cloudAccountService, modelService)
 	instanceHandler := web.NewInstanceHandler(instanceService)
 	databaseHandler := web.NewDatabaseHandler(instanceService)
-	cdnQueryService := service.NewCDNQueryService(cloudAccountRepository, cloudxAdapterFactory, component)
+	cdnQueryService := service.NewCDNQueryService(cloudAccountRepository, cloudxAdapterFactory, dao.NewCDNMetricDAO(db), component)
 	assetHandler := web.NewAssetHandler(instanceService, dao.NewStatsSnapshotDAO(db), cdnQueryService)
 
 	camModule := &Module{
