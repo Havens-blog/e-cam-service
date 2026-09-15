@@ -121,6 +121,30 @@ func TestFilterSearchPart(t *testing.T) {
 	}
 }
 
+// TestDimensionExprPassthrough 维度三级解析:归一化映射优先、合法标识符透传
+// (按任意云上原始列聚合,如 real_client_ip)、非法字符(SQL 注入面)拒绝。
+func TestDimensionExprPassthrough(t *testing.T) {
+	cases := []struct {
+		kind mapperKind
+		dim  string
+		want string
+		ok   bool
+	}{
+		{kindWAF3, "client_ip", "real_client_ip", true},  // 归一化映射优先
+		{kindWAF3, "real_client_ip", "real_client_ip", true}, // 原始列透传
+		{kindDCDN, "user_agent", "user_agent", true},     // 任意列名
+		{kindDCDN, "status; drop table", "", false},      // 注入面
+		{kindDCDN, "host | select", "", false},
+		{kindDCDN, "", "", true}, // 缺省回退语义
+	}
+	for _, c := range cases {
+		got, ok := dimensionExpr(c.kind, c.dim)
+		if got != c.want || ok != c.ok {
+			t.Errorf("dimensionExpr(%v, %q) = %q, ok=%v; want %q, %v", c.kind, c.dim, got, ok, c.want, c.ok)
+		}
+	}
+}
+
 // TestMetricSQLExpr 指标编译:count 全 kind,avg/p99 仅带 latency 列的 kind。
 func TestMetricSQLExpr(t *testing.T) {
 	for _, kind := range []mapperKind{kindDCDN, kindCDNOffline, kindAkamaiCDN, kindALB} {

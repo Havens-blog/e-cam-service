@@ -125,14 +125,58 @@ func numericLiteral(s string) bool {
 	return true
 }
 
-// dimensionExpr 分组维度编译(候选 = 列映射;kind 默认维度为空语义,
-// 由上游在 Dimension 缺省时回退 aggregateTopNExpr)。
+// dimensionExpr 分组维度编译。三级:
+//  1. 归一化字段优先(dimColumnExpr,如 waf3 client_ip → real_client_ip);
+//  2. 否则合法标识符**原样透传**为 SLS 列(group by 任意原始字段,
+//     例:real_client_ip / user_agent —— 用户可直接按云上原始列聚合);
+//  3. 含非法字符(空格/分号/管道等,防 SQL 注入)返回 false → 显式跳过。
+//
+// SLS 分析 SQL 对索引字段可直接 select+group by;列名不存在时查询报错,
+// 由调用方转为 TopNSkipReason 可见提示,不静默。
 func dimensionExpr(kind mapperKind, dim string) (string, bool) {
 	if dim == "" {
 		return "", true
 	}
-	expr, ok := dimColumnExpr[kind][dim]
-	return expr, ok
+	if expr, ok := dimColumnExpr[kind][dim]; ok {
+		return expr, true
+	}
+	if identifierLike(dim) {
+		return dim, true
+	}
+	return "", false
+}
+
+// briefErr 截取错误摘要(防长错误串进 TopNSkipReason 撑爆 UI)。
+func briefErr(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := err.Error()
+	if len(s) > 80 {
+		return s[:80] + "…"
+	}
+	return s
+}
+
+// identifierLike 合法 SLS/SQL 标识符(字母数字下划线点;不以数字开头,
+// 不落任何分隔符/引号)。
+func identifierLike(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, c := range s {
+		switch {
+		case c == '_' || c == '.':
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
+		case c >= '0' && c <= '9':
+			if i == 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // metricSQLExpr 聚合指标编译;不支持的 (kind, metric) 返回 false。

@@ -614,8 +614,13 @@ func (p *provider) aggregateStore(ctx context.Context, src slsSource, logstore s
 		From: from, To: to, Query: topnSQL, Lines: 10,
 	})
 	if err != nil {
+		// 常见于自定义列名不存在或非索引列:显式标注(趋势/总数不受影响),
+		// 不静默报错也不给 0 条误导
 		p.logger.Warn("[logquery-aliyun] aggregate topn sql failed",
 			elog.String("project", src.project), elog.String("logstore", logstore), elog.FieldErr(err))
+		if params.Dimension != "" && result.TopNSkipReason == "" {
+			result.TopNSkipReason = "维度 " + params.Dimension + " 查询失败(列不存在或非索引):" + briefErr(err)
+		}
 		return result
 	}
 	for _, row := range resp.Logs {
