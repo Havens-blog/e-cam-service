@@ -3,6 +3,7 @@ package tencent
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -202,7 +203,7 @@ func (a *CFSAdapter) ListInstancesWithFilter(ctx context.Context, region string,
 
 			// 应用额外过滤条件
 			if filter != nil {
-				if len(filter.Status) > 0 && !containsString(filter.Status, instance.Status) {
+				if len(filter.Status) > 0 && !slices.Contains(filter.Status, instance.Status) {
 					continue
 				}
 				if filter.FileSystemType != "" && instance.FileSystemType != filter.FileSystemType {
@@ -303,15 +304,6 @@ func (a *CFSAdapter) convertStatus(status string) string {
 		return s
 	}
 	return status
-}
-
-func containsString(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
-	}
-	return false
 }
 
 // parseInt64 安全转换字符串到 int64

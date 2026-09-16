@@ -3,6 +3,7 @@ package aliyun
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
@@ -172,7 +173,7 @@ func (a *NASAdapter) ListInstancesWithFilter(ctx context.Context, region string,
 				if filter.ProtocolType != "" && instance.ProtocolType != filter.ProtocolType {
 					continue
 				}
-				if len(filter.Status) > 0 && !containsString(filter.Status, instance.Status) {
+				if len(filter.Status) > 0 && !slices.Contains(filter.Status, instance.Status) {
 					continue
 				}
 			}
@@ -274,13 +275,4 @@ func (a *NASAdapter) convertToNASInstance(fs *nas.DescribeFileSystemsResponseBod
 	}
 
 	return instance
-}
-
-func containsString(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
-	}
-	return false
 }

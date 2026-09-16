@@ -3,6 +3,7 @@ package volcano
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
@@ -172,7 +173,7 @@ func (a *TOSAdapter) ListBucketsWithFilter(ctx context.Context, region string, f
 		}
 
 		// 按bucket名称列表过滤
-		if len(filter.BucketNames) > 0 && !containsString(filter.BucketNames, bucket.BucketName) {
+		if len(filter.BucketNames) > 0 && !slices.Contains(filter.BucketNames, bucket.BucketName) {
 			continue
 		}
 
@@ -250,14 +251,4 @@ func (a *TOSAdapter) convertGrantsToACL(grants []tos.GrantV2) string {
 // hasPrefix 检查字符串是否有指定前缀
 func hasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
-}
-
-// containsString 检查切片是否包含指定字符串
-func containsString(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
-	}
-	return false
 }

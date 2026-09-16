@@ -3,6 +3,7 @@ package huawei
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
@@ -145,7 +146,7 @@ func (a *CSSAdapter) ListInstancesWithFilter(ctx context.Context, regionID strin
 
 	var filtered []types.ElasticsearchInstance
 	for _, inst := range instances {
-		if len(filter.Status) > 0 && !containsString(filter.Status, inst.Status) {
+		if len(filter.Status) > 0 && !slices.Contains(filter.Status, inst.Status) {
 			continue
 		}
 		if filter.InstanceName != "" && inst.InstanceName != filter.InstanceName {

@@ -3,6 +3,7 @@ package aliyun
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
@@ -138,7 +139,7 @@ func (a *KafkaAdapter) ListInstancesWithFilter(ctx context.Context, region strin
 	var filtered []types.KafkaInstance
 	for _, inst := range instances {
 		// 按状态过滤
-		if len(filter.Status) > 0 && !containsString(filter.Status, inst.Status) {
+		if len(filter.Status) > 0 && !slices.Contains(filter.Status, inst.Status) {
 			continue
 		}
 		// 按名称过滤

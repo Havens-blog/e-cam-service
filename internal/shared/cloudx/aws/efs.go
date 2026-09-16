@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
@@ -197,7 +198,7 @@ func (a *EFSAdapter) ListInstancesWithFilter(ctx context.Context, region string,
 	var filtered []types.NASInstance
 	for _, inst := range instances {
 		// 按状态过滤
-		if len(filter.Status) > 0 && !containsString(filter.Status, inst.Status) {
+		if len(filter.Status) > 0 && !slices.Contains(filter.Status, inst.Status) {
 			continue
 		}
 		// 按文件系统类型过滤
@@ -275,13 +276,4 @@ func (a *EFSAdapter) convertStatus(status string) string {
 		return s
 	}
 	return status
-}
-
-func containsString(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
-	}
-	return false
 }

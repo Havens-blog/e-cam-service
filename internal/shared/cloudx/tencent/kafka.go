@@ -3,6 +3,7 @@ package tencent
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/gotomicro/ego/core/elog"
@@ -142,7 +143,7 @@ func (a *KafkaAdapter) ListInstancesWithFilter(ctx context.Context, region strin
 
 	var filtered []types.KafkaInstance
 	for _, inst := range instances {
-		if len(filter.Status) > 0 && !containsString(filter.Status, inst.Status) {
+		if len(filter.Status) > 0 && !slices.Contains(filter.Status, inst.Status) {
 			continue
 		}
 		if filter.InstanceName != "" && inst.InstanceName != filter.InstanceName {

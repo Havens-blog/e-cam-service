@@ -3,6 +3,7 @@ package volcano
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/gotomicro/ego/core/elog"
@@ -144,7 +145,7 @@ func (a *ElasticsearchAdapter) ListInstancesWithFilter(ctx context.Context, regi
 
 	var filtered []types.ElasticsearchInstance
 	for _, inst := range instances {
-		if len(filter.Status) > 0 && !containsString(filter.Status, inst.Status) {
+		if len(filter.Status) > 0 && !slices.Contains(filter.Status, inst.Status) {
 			continue
 		}
 		if filter.InstanceName != "" && inst.InstanceName != filter.InstanceName {

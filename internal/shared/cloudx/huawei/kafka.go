@@ -3,6 +3,7 @@ package huawei
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -145,7 +146,7 @@ func (a *KafkaAdapter) ListInstancesWithFilter(ctx context.Context, regionID str
 
 	var filtered []types.KafkaInstance
 	for _, inst := range instances {
-		if len(filter.Status) > 0 && !containsString(filter.Status, inst.Status) {
+		if len(filter.Status) > 0 && !slices.Contains(filter.Status, inst.Status) {
 			continue
 		}
 		if filter.InstanceName != "" && inst.InstanceName != filter.InstanceName {
