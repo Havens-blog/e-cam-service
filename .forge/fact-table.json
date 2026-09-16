@@ -269,6 +269,276 @@
       "value": "Preview 取 status=done 中 startedAt 最新快照（LatestDone）；SnapshotStatus 取不限状态最近快照（Latest）；两者均无命中时分别返回 ErrNoSnapshot(409 NO_SNAPSHOT) 与 200 hasSnapshot=false",
       "confidence": "inferred",
       "updated_at": "2026-08-25T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_PORT_CLOUDDEPLOYER",
+      "source": "static",
+      "subject": "每云每产品部署器端口五方法",
+      "kind": "signature",
+      "value": "UploadCert/BindResource/ListReferences/GetCert/CleanupOrphan (internal/cert/deployer/channel.go:302-314)；CloudCertInfo{Exists,NotAfter,Fingerprint} (channel.go:245-249)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_DEPLOY_TWO_PHASE",
+      "source": "static",
+      "subject": "两段式编排顺序与失败补偿",
+      "kind": "side_effect",
+      "value": "Deploy: 读旧引用→取材料→UploadCert→映射 Upsert active→BindResource；绑定失败 compensateBindFailure：映射 active→orphan + best-effort CleanupOrphan，未完成保留 OrphanCandidate=true (internal/cert/deployer/cloud_api_channel.go:139-214,221-239)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_MAPPING_STATUS_ENUM",
+      "source": "static",
+      "subject": "映射状态枚举仅两态",
+      "kind": "precondition",
+      "value": "active|orphan (internal/cert/domain/cloud_cert_mapping.go:13-18)；orphan→已清理以 DeleteByID 删除承载，非第三状态 (repository/cloud_cert_mapping.go:108-124)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_MAPPING_UK_UPSERT",
+      "source": "static",
+      "subject": "映射唯一索引与 Upsert 幂等语义",
+      "kind": "precondition",
+      "value": "uk_fp_cloud_account(certFingerprint+cloud+accountKey) 唯一索引 (internal/cert/repository/indexes.go:75-78)；Upsert 同键 $set 覆盖、status 空默认 active、uploadedAt 空默认 now (repository/cloud_cert_mapping.go:28-43)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_MAPPING_WRITE_BEFORE_BIND",
+      "source": "static",
+      "subject": "映射先于绑定写入且无 ID 形态校验",
+      "kind": "side_effect",
+      "value": "映射 active 在 BindResource 之前写入（两段式去重与崩溃恢复锚点）(internal/cert/deployer/cloud_api_channel.go:186-196)；Upsert 不做 cloudCertID 形态校验，显式失败在回读/绑定路径（空 ID ErrInvalidTarget :283-285,302-304）",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_CLEANUP_IDEMPOTENT_NOTFOUND",
+      "source": "static",
+      "subject": "各云孤儿删除幂等成功语义",
+      "kind": "output_format",
+      "value": "已不存在→幂等成功：华为 SCM isCertDiscoveryNotFound→nil (internal/shared/cloudx/huawei/cert.go:529-534)；AWS Describe/Delete NotFound→nil 且仅 imported 类型可删 (aws/cert.go:436-456)；Azure errAzureNotFound（含软删除态 404）→nil，不执行 purge (azure/cert.go:525-526,549-556)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_AWS_UPLOAD_REGION_PIN",
+      "source": "static",
+      "subject": "CloudFront 上传地域硬约束",
+      "kind": "signature",
+      "value": "certCloudFrontUploadRegion=us-east-1：CDN 产品上传恒 us-east-1，不依赖账户默认区域 (internal/shared/cloudx/aws/cert.go:76,135-138)；绑定校验证书 ARN 地域必须 us-east-1 (cert.go:250-252)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_AWS_UPLOAD_RETURN",
+      "source": "static",
+      "subject": "AWS 上传返回与 IAM-hosted 拒绝",
+      "kind": "output_format",
+      "value": "ACM ImportCertificate 返回证书 ARN (internal/shared/cloudx/aws/cert.go:150-175)；非 ARN ID（IAM-hosted）显式拒绝绑定 not an acm arn (cert.go:247-249)；证书链拆分：首块入 Certificate 其余入 CertificateChain (cert.go:182-207)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_AWS_ELB_LISTENER_BIND",
+      "source": "static",
+      "subject": "AWS ALB/NLB 共用监听证书 API",
+      "kind": "output_format",
+      "value": "alb 与 nlb 均走 ELBv2 AddListenerCertificates（ELBv2 无独立 NLB 证书接口），分支显式 case ALB,NLB；DescribeListenerCertificates 幂等预检、IsDefault 不设（默认证书位次不变）(internal/shared/cloudx/aws/cert.go:61-68,220-221,354-371)；监听器 ARN 与证书 ARN 地域不一致显式拒绝 (cert.go:342-346)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_AZURE_UPLOAD_KV",
+      "source": "static",
+      "subject": "Azure KV 上传与 vault 目标解析",
+      "kind": "output_format",
+      "value": "KV 证书导入 REST PUT {vaultURI}/certificates/{name}（PEM 路径、base64 bundle）返回版本化 secret ID https://{vault}.vault.azure.net/secrets/{name}/{version} (internal/shared/cloudx/azure/cert.go:768-794,249-253)；vault 目标优先级：显式 URI > 显式 Name > env URI(AZURE_KEY_VAULT_URI) > env Name(AZURE_KEY_VAULT_NAME)，全空显式报错 key vault target required (cert.go:123-126,182-196,225-228)；装配层未传 Option（module.go:130），env 为生产路径",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_AZURE_BIND_KV_REFERENCE",
+      "source": "static",
+      "subject": "Azure 两产品 KV 引用绑定",
+      "kind": "output_format",
+      "value": "cdn(FrontDoor)：normalizeKvCertID→解析→按名字找 ARM 资源→证书源=AzureKeyVault 的自定义 HTTPS Enabling 补丁，已等于目标幂等跳过 (internal/shared/cloudx/azure/cert.go:473-513)；alb(AppGateway)：定位监听器 SSL 证书→inline data 形态显式拒绝→PUT sslCertificates/{name} 写 keyVaultSecretId (cert.go:367-389)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_HUAWEI_UPLOAD_SCM",
+      "source": "static",
+      "subject": "华为 SCM 上传统一 CDN 口径",
+      "kind": "signature",
+      "value": "SCM ImportCertificate（DuplicateCheck=false）返回 UUID 证书 ID 全局无地域 (internal/shared/cloudx/huawei/cert.go:132-150)；上传统一以 CDN 产品口径 (internal/cert/deployer/huawei_deployer.go:121-124)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_HUAWEI_BIND_BRANCHES",
+      "source": "static",
+      "subject": "华为四产品绑定分支",
+      "kind": "output_format",
+      "value": "cdn=UpdateDomainMultiCertificates(HttpsSwitch=1,CertificateType=2,ScmCertificateId+CertName)；waf=ListHost 精确匹配+UpdateHost；alb/nlb=ShowListener 跨域定位（404 下一区域）+协议校验 HTTPS/TERMINATED_HTTPS/TLS+UpdateListener DefaultTlsContainerRef 切换且 SNI 列表保留 (internal/shared/cloudx/huawei/cert.go:164-221,227-265,310-361)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_HUAWEI_GETCERT_SHA256",
+      "source": "static",
+      "subject": "华为 GetCert 指纹复核 fail-safe",
+      "kind": "output_format",
+      "value": "ShowCertificate 指纹为 SHA-1 → ExportCertificate 复核覆写 SHA-256；导出失败仅告警保留 SHA-1 并按无法复核 fail-safe 处理（回滚阻断、不误判有效）(internal/shared/cloudx/huawei/cert.go:435-508)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_CHANGEABLE_CLOUD_ALWAYS_TRUE",
+      "source": "static",
+      "subject": "云通道恒可执行且 ERR_DISCOVERY_ONLY 分区移除",
+      "kind": "precondition",
+      "value": "assessChangeable 对 cloud_api 通道无条件返回可执行 (internal/cert/service/changelist_generator.go:336-358)；discoveryOnlyClouds/reasonDiscoveryOnly 已删，ERR_DISCOVERY_ONLY 分区不再产生 (changelist_generator.go:336-339)；9 组合断言见 TestGenerateChangeList_MulticloudExecutable (changelist_generator_test.go:483)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_K8S_SKIP_REASONS",
+      "source": "static",
+      "subject": "K8s 不可执行条目原因前缀",
+      "kind": "error_code",
+      "value": "条目级 Reason（非 HTTP 错误码）：K8S_MANAGEMENT_UNPROBED / K8S_MANAGEMENT_PROBE_FAILED / K8S_MANAGEMENT_SIGNAL / K8S_MANAGED_RESOURCE / K8S_CLOUD_CERT_MISSING；skipped 条目持久化 Status=skipped 且不入成功率分母 (internal/cert/service/changelist_generator.go:83-96,320-323)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_CHANGE_ROUTES",
+      "source": "static",
+      "subject": "变更单路由与角色矩阵",
+      "kind": "signature",
+      "value": "POST /api/v1/certs/changes（生成）、:id/confirm、:id/execute、:id/confirm-batch、:id/cancel、:id/progress、:id/rollback 均 RequireRoles(ops_engineer)；GET /changes、:id、:id/audit 为 ops_engineer/ops_supervisor/auditor (internal/cert/web/change_handler.go:65-76)；孤儿清理与映射无 HTTP 端点（调度器/事件驱动）",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_AUTH_401_403",
+      "source": "static",
+      "subject": "401 与 403 分层语义",
+      "kind": "error_code",
+      "value": "未认证 401：全局 EcmdbAuthMiddlewareWithConfig 原始 gin.H code=401 认证失败文案（非 cert Envelope）(internal/shared/middleware/ecmdb_auth.go:40-58)；已认证角色不符 403：cert Envelope error.code=FORBIDDEN (internal/cert/web/authz.go:89-105)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_ROLLBACK_PRECHECK",
+      "source": "static",
+      "subject": "回滚预检三判定整单阻断",
+      "kind": "error_code",
+      "value": "oldCloudCertID 空→无效；InspectCloudCert：Exists=false（云侧已删）/NotAfter 过期/指纹与变更单不符→任一命中整单 409 ROLLBACK_TARGET_INVALID，无状态变更，审计 rollback_target_invalid；基础设施错误 fail-close (internal/cert/service/rollback_service.go:311-358)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_ROLLBACK_SCOPE",
+      "source": "static",
+      "subject": "回滚范围准入规则",
+      "kind": "precondition",
+      "value": "itemIds 必填非空→400 INVALID_REQUEST (internal/cert/web/change_handler.go:101-104)；范围仅准入 status=success 条目，无可回滚→ErrRollbackScopeInvalid→400 (internal/cert/service/rollback_service.go:276-301)；入口校验：executing 需至少 1 失败条目且 0 在途，其余态 InvalidTransitionError→409 CHANGE_STATE_CONFLICT (rollback_service.go:246-270)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_ROLLBACK_PROTECT",
+      "source": "static",
+      "subject": "回滚后旧证书保护期",
+      "kind": "side_effect",
+      "value": "convergeForRollback 置 protectUntil=now+RollbackProtectDays（默认 7 天）(internal/cert/service/rollback_service.go:369-393)；清理消费 protectUntil>now → Action=skip_keep 且 Success=true 不删除 (internal/cert/service/orphan_cleanup_service.go:300-316)；回滚成功对新证书映射 markNewCertOrphan active→orphan (rollback_service.go:483-502)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_CLEANUP_GATES",
+      "source": "static",
+      "subject": "孤儿清理消费三门禁",
+      "kind": "precondition",
+      "value": "cleanupOne：重读映射须仍 orphan（已复活→跳过）/在途变更单占用（old mutex 或 new cert→跳过）/保护期→skip_keep；成功→mappings.DeleteByID+结果 Action=cleanup Success=true (internal/cert/service/orphan_cleanup_service.go:275-375)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_SWEEP_ISOLATION",
+      "source": "static",
+      "subject": "清扫失败隔离与告警去重",
+      "kind": "side_effect",
+      "value": "单条失败不中断清扫，首个错误聚合 (internal/cert/service/orphan_cleanup_service.go:176-186,207-215)；失败记 Success=false+映射保留 orphan 重试；告警按去重键 (orderID, cloudCertId, action, success) 仅新失败告警 (orphan_cleanup_service.go:329-357)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_VERIFY_STREAK",
+      "source": "static",
+      "subject": "验证窗口达成判定与到期收敛",
+      "kind": "output_format",
+      "value": "达成=每域最近连续 VerifyConfirmProbes（默认 2）轮 onlineFingerprint==expected.NewCertFingerprint；窗口 VerifyWindowHours 默认 24h、间隔 10min (internal/cert/service/verify_window_service.go:247-351)；到期未达成：最终批→partial_completed+持久化 UnmetDomains，非最终批→executing+paused (verify_window_service.go:540-673)；通配符无 override 记 skipped 不阻断",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_PROBE_CLASSIFICATION",
+      "source": "static",
+      "subject": "拨测指纹六分类",
+      "kind": "output_format",
+      "value": "consistent（命中台账任一属主证书）/change_linked_diff（在途验证单域且线上指纹=期望新指纹）/diff/exempt/unreachable/wildcard_skipped (internal/cert/service/probe_service.go:304-348,373-391; internal/cert/domain/probe_result.go:14-25)；拨测 443 端口只读 TLS 握手（InsecureSkipVerify、MinVersion TLS1.2、单域 5s 超时、并发 16）(probe_service.go:22-29,61-93)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_EXEC_TIMEOUT_RECOVERY",
+      "source": "static",
+      "subject": "心跳超时恢复与重跑语义",
+      "kind": "side_effect",
+      "value": "running 且 heartbeatAt+ItemHeartbeatTimeoutMinutes(默认30)<now → failed(EXEC_TIMEOUT)+告警，恢复任务 cert:executing-timeout 每 5min (internal/cert/service/execute_service.go:954-1004,137; internal/cert/scheduler/jobs.go:72)；重跑重新两段式上传新副本——每次尝试（含重试）生成新上传名称不复用旧名 (internal/cert/deployer/huawei_deployer.go:142-164 等 C7)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_RATE_LIMITED_ITEM",
+      "source": "static",
+      "subject": "限流条目状态与有界重试",
+      "kind": "output_format",
+      "value": "errors.Is(err, cloudx.ErrCloudRateLimited)→MarkRateLimited+boundedRetry（默认 MaxAttempts=5、退避 1s/2s/4s/8s、MaxTotalWait=15s）(internal/cert/service/execute_service.go:682-691; internal/cert/deployer/deployer_common.go:31-63, aliyun_deployer.go:87-127)；证书名冲突即时重试无退避（UploadCert 场景）",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_CREDS_CLOUD_PIN",
+      "source": "static",
+      "subject": "凭据云域绑定与内存清零",
+      "kind": "precondition",
+      "value": "cloudAccountFor 拒绝 creds.Cloud 与部署器云不一致 (internal/cert/deployer/deployer_common.go:85-98)；Credential.Secret 仅内存使用，Channel 各入口 defer creds.Zeroize（Discover/Deploy/Rollback/CleanupOrphanCert/InspectCloudCert）(internal/cert/deployer/channel.go:91,140,247,279,298)；Deploy 内 defer domain.Zeroize(&keyPEM) (cloud_api_channel.go:173-177)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_ITEM_ERROR_PERSIST",
+      "source": "static",
+      "subject": "条目失败原因持久化格式",
+      "kind": "error_code",
+      "value": "item.error = EXEC_FAILED: <err>（适配层错误为静态文案+产品上下文，不含私钥/凭证片段）；panic→EXEC_PANIC (internal/cert/service/execute_service.go:716-718,629-635)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "MC_BATCH_CONFIRM_GATES",
+      "source": "static",
+      "subject": "分批续跑门禁",
+      "kind": "error_code",
+      "value": "ConfirmBatch 要求 executing+paused 或 verifying、非最后批、上一批全部 success-or-skipped、BatchVerified；任一不满足→409 BATCH_NOT_CONFIRMABLE (internal/cert/service/execute_service.go:896-946)；executing+paused 状态重复 execute→409 BATCH_NOT_CONFIRMABLE (execute_service.go:558-561)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-16T00:00:00Z"
     }
   ]
 }

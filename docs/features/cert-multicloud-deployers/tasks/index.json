@@ -79,7 +79,7 @@
       "dependencies": [
         "T-test-gen-journeys"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "gen-contracts.md",
       "record": "records/gen-contracts.md",
       "type": "test.gen-contracts"
@@ -109,12 +109,13 @@
       "dependencies": [
         "T-test-gen-contracts"
       ],
-      "status": "pending",
+      "status": "suspended",
       "file": "gen-test-scripts.md",
       "record": "records/gen-test-scripts.md",
       "surface-key": ".",
       "surface-type": "api",
-      "type": "test.gen-scripts"
+      "type": "test.gen-scripts",
+      "blockedReason": "log-query-optimization 会话挂起 cert 残留"
     },
     "quick-drift-detection": {
       "id": "T-quick-doc-drift",
@@ -124,10 +125,11 @@
       "dependencies": [
         "T-test-run"
       ],
-      "status": "pending",
+      "status": "suspended",
       "file": "quick-drift-detection.md",
       "record": "records/quick-drift-detection.md",
-      "type": "doc.drift"
+      "type": "doc.drift",
+      "blockedReason": "log-query-optimization 会话挂起 cert 残留"
     },
     "run-test": {
       "id": "T-test-run",
@@ -137,12 +139,13 @@
       "dependencies": [
         "T-test-gen-scripts"
       ],
-      "status": "pending",
+      "status": "suspended",
       "file": "run-test.md",
       "record": "records/run-test.md",
       "surface-key": ".",
       "surface-type": "api",
-      "type": "test.run"
+      "type": "test.run",
+      "blockedReason": "log-query-optimization 会话挂起 cert 残留"
     },
     "validate-code": {
       "id": "T-validate-code",
@@ -152,10 +155,11 @@
       "dependencies": [
         "T-test-run"
       ],
-      "status": "pending",
+      "status": "suspended",
       "file": "validate-code.md",
       "record": "records/validate-code.md",
-      "type": "validation.code"
+      "type": "validation.code",
+      "blockedReason": "log-query-optimization 会话挂起 cert 残留"
     }
   },
   "statusEnum": [
