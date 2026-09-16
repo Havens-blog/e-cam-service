@@ -186,8 +186,14 @@ func checkSANStructure(leaf *x509.Certificate) error {
 	return nil
 }
 
-// checkChain 证书链完整性校验：leaf 自签即完整；否则证书束内须有自签根作信任锚，
-// 且 leaf 经中间链可构建通过验证的路径（缺中间链/缺根 → CERT_CHAIN_INCOMPLETE）。
+// checkChain 证书链完整性校验：leaf 自签即完整；否则依次尝试——
+//  1. 束内自签根作信任锚 + 中间链构建验证；
+//  2. 束内无自签根时，回退为系统信任库验证（leaf + 束内中间链对
+//     x509.SystemCertPool 构建路径）——云证书库（如阿里云 CAS/DNSPod 签发）
+//     普遍只存 leaf+中间（根在客户端信任库，与 TLS 客户端实际行为一致），
+//     束内缺根 ≠ 链不完整；
+//  3. 私有 CA 证书（根不在系统信任库）无束内根时依旧 CERT_CHAIN_INCOMPLETE
+//     （私有根必须随链提供）。
 func checkChain(certs []*x509.Certificate) error {
 	leaf := certs[0]
 	if isSelfSigned(leaf) {
@@ -204,18 +210,37 @@ func checkChain(certs []*x509.Certificate) error {
 			intermediates.AddCert(c)
 		}
 	}
-	if !hasAnchor {
-		return fmt.Errorf("%w: %d certificate(s) provided without self-signed root anchor", ErrChainIncomplete, len(certs))
-	}
 	// 有效期已单独显式校验；链构建取 leaf 有效期中点作验证时钟，避免过期干扰链缺失判定
 	currentTime := leaf.NotBefore.Add(leaf.NotAfter.Sub(leaf.NotBefore) / 2)
-	if _, err := leaf.Verify(x509.VerifyOptions{
-		Roots:         roots,
+	verify := func(opts x509.VerifyOptions) error {
+		_, err := leaf.Verify(opts)
+		return err
+	}
+	if hasAnchor {
+		if err := verify(x509.VerifyOptions{
+			Roots:         roots,
+			Intermediates: intermediates,
+			CurrentTime:   currentTime,
+			KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+		}); err != nil {
+			return fmt.Errorf("%w: chain does not verify: %v", ErrChainIncomplete, err)
+		}
+		return nil
+	}
+	// 束内无自签根：回退系统信任库（公共 CA 根的客户端语义）。
+	// SystemCertPool 在无系统根的环境（部分容器/沙箱）可为空/失败——此时无法
+	// 证明公共根联属，按缺锚处理（私有 CA 同口径）。
+	systemRoots, err := x509.SystemCertPool()
+	if err != nil || systemRoots == nil {
+		return fmt.Errorf("%w: %d certificate(s) provided without self-signed root anchor and no system roots available", ErrChainIncomplete, len(certs))
+	}
+	if err := verify(x509.VerifyOptions{
+		Roots:         systemRoots,
 		Intermediates: intermediates,
 		CurrentTime:   currentTime,
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 	}); err != nil {
-		return fmt.Errorf("%w: chain does not verify: %v", ErrChainIncomplete, err)
+		return fmt.Errorf("%w: %d certificate(s) without self-signed root anchor do not verify against system trust: %v", ErrChainIncomplete, len(certs), err)
 	}
 	return nil
 }

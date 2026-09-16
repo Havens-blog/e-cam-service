@@ -323,6 +323,14 @@ func TestParseCertAndKey(t *testing.T) {
 			wantErr: CodeCertChainIncomplete,
 		},
 		{
+			// 系统信任回退（云证书库缺根链）：私有测试 CA 根不在系统信任库，
+			// 无束内锚仍须 CERT_CHAIN_INCOMPLETE——私有 CA 必须随链提供根。
+			name:    "private CA chain without self-signed root is still rejected",
+			certPEM: concatPEM(fx.leafEC.pem, fx.inter.pem),
+			keyPEM:  nil,
+			wantErr: CodeCertChainIncomplete,
+		},
+		{
 			name:    "expired certificate is rejected",
 			certPEM: fx.chain(fx.expired),
 			keyPEM:  nil,
