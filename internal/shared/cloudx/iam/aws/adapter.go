@@ -8,6 +8,7 @@ import (
 
 	awscommon "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/aws"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/retry"
+	cloudxtypes "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -473,6 +474,17 @@ func (a *Adapter) retryWithBackoff(ctx context.Context, operation func() error) 
 
 func init() {
 	cloudxiam.RegisterIAMAdapter(domain.CloudProviderAWS, func(logger *elog.Component) (cloudxiam.CloudIAMAdapter, error) {
-		return NewAdapterWrapper(NewAdapter(logger)), nil
+		ad := NewAdapter(logger)
+		return cloudxiam.NewAdapterWrapper(ad, func(ctx context.Context, account *domain.CloudAccount, req *cloudxtypes.CreateUserRequest) (*domain.CloudUser, error) {
+			params := &CreateUserParams{
+				Username: req.Username,
+				Path:     "/",
+				Tags: map[string]string{
+					"DisplayName": req.DisplayName,
+					"Email":       req.Email,
+				},
+			}
+			return ad.CreateUser(ctx, account, params)
+		}), nil
 	})
 }

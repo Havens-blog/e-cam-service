@@ -9,6 +9,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/retry"
 	tencentcommon "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/tencent"
+	cloudxtypes "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
 	cam "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cam/v20190116"
@@ -461,6 +462,14 @@ func (a *Adapter) retryWithBackoff(ctx context.Context, operation func() error) 
 
 func init() {
 	cloudxiam.RegisterIAMAdapter(domain.CloudProviderTencent, func(logger *elog.Component) (cloudxiam.CloudIAMAdapter, error) {
-		return NewAdapterWrapper(NewAdapter(logger)), nil
+		ad := NewAdapter(logger)
+		return cloudxiam.NewAdapterWrapper(ad, func(ctx context.Context, account *domain.CloudAccount, req *cloudxtypes.CreateUserRequest) (*domain.CloudUser, error) {
+			params := &CreateUserParams{
+				Username:    req.Username,
+				DisplayName: req.DisplayName,
+				Email:       req.Email,
+			}
+			return ad.CreateUser(ctx, account, params)
+		}), nil
 	})
 }

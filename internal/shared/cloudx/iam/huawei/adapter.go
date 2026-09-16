@@ -8,6 +8,7 @@ import (
 
 	huaweicommon "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/huawei"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/retry"
+	cloudxtypes "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -34,10 +35,8 @@ func (a *Adapter) ValidateCredentials(ctx context.Context, account *domain.Cloud
 
 	// TODO: 实例例现华为云凭证验�?
 	// 需要调用华为云 IAM API 验证 AK/SK
-	a.logger.Warn("huawei cloud credentials validation not fully implemented yet",
-		elog.String("account_id", fmt.Sprintf("%d", account.ID)))
-
-	return nil
+	// TODO: 实现华为云 IAM 凭证校验 API
+	return fmt.Errorf("huawei cloud credential validation not implemented yet")
 }
 
 // ListUsers 获取 IAM 用户组列表
@@ -153,6 +152,14 @@ func (a *Adapter) retryWithBackoff(ctx context.Context, operation func() error) 
 
 func init() {
 	cloudxiam.RegisterIAMAdapter(domain.CloudProviderHuawei, func(logger *elog.Component) (cloudxiam.CloudIAMAdapter, error) {
-		return NewAdapterWrapper(NewAdapter(logger)), nil
+		ad := NewAdapter(logger)
+		return cloudxiam.NewAdapterWrapper(ad, func(ctx context.Context, account *domain.CloudAccount, req *cloudxtypes.CreateUserRequest) (*domain.CloudUser, error) {
+			params := &CreateUserParams{
+				Username:    req.Username,
+				DisplayName: req.DisplayName,
+				Email:       req.Email,
+			}
+			return ad.CreateUser(ctx, account, params)
+		}), nil
 	})
 }

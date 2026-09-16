@@ -8,6 +8,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/retry"
 	volcanocommon "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/volcano"
+	cloudxtypes "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -34,10 +35,8 @@ func (a *Adapter) ValidateCredentials(ctx context.Context, account *domain.Cloud
 
 	// TODO: 实例例现火山云凭证验�?
 	// 需要调用火山云 IAM API 验证 AK/SK
-	a.logger.Warn("volcano cloud credentials validation not fully implemented yet",
-		elog.String("account_id", fmt.Sprintf("%d", account.ID)))
-
-	return nil
+	// TODO: 实现火山云 IAM 凭证校验 API
+	return fmt.Errorf("volcano cloud credential validation not implemented yet")
 }
 
 // ListUsers 获取 IAM 用户组列表
@@ -149,7 +148,15 @@ func (a *Adapter) retryWithBackoff(ctx context.Context, operation func() error) 
 func init() {
 	// 与 cloudx/billing 资产注册表保持一致：volcano 与 volcengine 为同一厂商的别名
 	creator := func(logger *elog.Component) (cloudxiam.CloudIAMAdapter, error) {
-		return NewAdapterWrapper(NewAdapter(logger)), nil
+		ad := NewAdapter(logger)
+		return cloudxiam.NewAdapterWrapper(ad, func(ctx context.Context, account *domain.CloudAccount, req *cloudxtypes.CreateUserRequest) (*domain.CloudUser, error) {
+			params := &CreateUserParams{
+				Username:    req.Username,
+				DisplayName: req.DisplayName,
+				Email:       req.Email,
+			}
+			return ad.CreateUser(ctx, account, params)
+		}), nil
 	}
 	cloudxiam.RegisterIAMAdapter(domain.CloudProviderVolcano, creator)
 	cloudxiam.RegisterIAMAdapter(domain.CloudProviderVolcengine, creator)
