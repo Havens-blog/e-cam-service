@@ -16,7 +16,7 @@ import (
 )
 
 // ---------------------------------------------------------------------
-// 测试依赖（5.2 清单生成：���存假实现 + 管理权探测 fake）
+// 测试依赖（5.2 清单生成：内存假实现 + 管理权探测 fake）
 // ---------------------------------------------------------------------
 
 // newTestFP 新证书测试指纹（与 changeTestFP 同口径 64 位 hex）。
@@ -412,7 +412,8 @@ func TestGenerateChangeList_BlockSanInsufficient(t *testing.T) {
 // ---------------------------------------------------------------------
 
 // TestGenerateChangeList_NonExecutablePartition（AC-3）
-// discovery-only 云（huawei/aws/azure）→ AutoChangeable=false+ERR_DISCOVERY_ONLY；
+// 三云（huawei/aws/azure）部署器已注册（cert-multicloud-deployers 任务 4：
+// discoveryOnlyClouds 名单移除）→ 云引用全部可执行，不再产生 ERR_DISCOVERY_ONLY；
 // K8s 三信号判定经 managementProbe 注入（5.6 实现）：不可管理项 false+原因；
 // 不可执行项持久化即标 skipped（不计入执行成功率分母），可执行项 pending。
 func TestGenerateChangeList_NonExecutablePartition(t *testing.T) {
@@ -439,14 +440,12 @@ func TestGenerateChangeList_NonExecutablePartition(t *testing.T) {
 		byResource[li.Target.ResourceID] = li
 	}
 
-	// discovery-only 三云：不可执行 + ERR_DISCOVERY_ONLY 原因
-	for _, res := range []string{"res-hw-1", "res-aws-1", "res-az-1"} {
+	// 三云部署器已注册：云引用与 aliyun 同为可执行（不再 ERR_DISCOVERY_ONLY）
+	for _, res := range []string{"res-hw-1", "res-aws-1", "res-az-1", "res-aliyun-1"} {
 		li := byResource[res]
-		assert.False(t, li.AutoChangeable, "%s 首期无部署器", res)
-		assert.Contains(t, li.Reason, "ERR_DISCOVERY_ONLY")
+		assert.True(t, li.AutoChangeable, "%s 部署器已注册，可自动变更", res)
+		assert.NotContains(t, li.Reason, "ERR_DISCOVERY_ONLY")
 	}
-	// 部署器云：可执行
-	assert.True(t, byResource["res-aliyun-1"].AutoChangeable)
 	assert.Empty(t, byResource["res-aliyun-1"].Reason)
 	// K8s：探测可管理 → 可执行；命中 GitOps 信号 → 不可执行+信号原因
 	assert.True(t, byResource["gw-1"].AutoChangeable)
@@ -468,12 +467,53 @@ func TestGenerateChangeList_NonExecutablePartition(t *testing.T) {
 			assert.NotEmpty(t, it.Error, "不可执行项持久化原因（不静默放行）")
 		}
 	}
-	assert.Equal(t, 2, pending, "可执行项（aliyun+gw-1）计入分母")
-	assert.Equal(t, 4, skipped, "不可执行项（三云+gw-2）标 skipped")
+	assert.Equal(t, 5, pending, "可执行项（三云+aliyun+gw-1）计入分母")
+	assert.Equal(t, 1, skipped, "不可执行项（gw-2 管理权信号）标 skipped")
 
 	// 分区汇总声明（Hard Rule：显式声明原因与出路）
-	assert.True(t, hasWarning(list.Warnings, "不可执行项 4 项"), "分区汇总入 Warnings")
+	assert.True(t, hasWarning(list.Warnings, "不可执行项 1 项"), "分区汇总入 Warnings")
 	assert.True(t, hasWarning(list.Warnings, "VM Nginx"))
+}
+
+// TestGenerateChangeList_MulticloudExecutable（cert-multicloud-deployers 任务 4）
+// 三云九个 cloud×product 组合（华为 cdn/waf/alb/nlb、AWS cdn/alb/nlb、
+// Azure cdn/alb，与部署器注册产品集/扫描面一致）的云引用生成变更清单时
+// 全部 AutoChangeable=true，无 ERR_DISCOVERY_ONLY 原因；discoveryOnlyClouds
+// 名单移除后无引用落入不可执行分区（全部 pending、无分区汇总声明）。
+func TestGenerateChangeList_MulticloudExecutable(t *testing.T) {
+	ctx := context.Background()
+	h := newGenHarness(t, &fakeManagementProbe{})
+	newCertID, _ := h.seedValid(t,
+		cloudRef(changeTestFP, domain.CloudHuawei, domain.ProductCDN, "ak-hw", "hw-cdn-1", "cc-hw-1"),
+		cloudRef(changeTestFP, domain.CloudHuawei, domain.ProductWAF, "ak-hw", "hw-waf-1", "cc-hw-2"),
+		cloudRef(changeTestFP, domain.CloudHuawei, domain.ProductALB, "ak-hw", "hw-alb-1/lsn-1", "cc-hw-3"),
+		cloudRef(changeTestFP, domain.CloudHuawei, domain.ProductNLB, "ak-hw", "hw-nlb-1/lsn-1", "cc-hw-4"),
+		cloudRef(changeTestFP, domain.CloudAWS, domain.ProductCDN, "ak-aws", "aws-cdn-1", "cc-aws-1"),
+		cloudRef(changeTestFP, domain.CloudAWS, domain.ProductALB, "ak-aws", "aws-alb-1/lsn-1", "cc-aws-2"),
+		cloudRef(changeTestFP, domain.CloudAWS, domain.ProductNLB, "ak-aws", "aws-nlb-1/lsn-1", "cc-aws-3"),
+		cloudRef(changeTestFP, domain.CloudAzure, domain.ProductCDN, "ak-az", "az-cdn-1", "cc-az-1"),
+		cloudRef(changeTestFP, domain.CloudAzure, domain.ProductALB, "ak-az", "az-alb-1", "cc-az-2"),
+	)
+
+	list, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+	require.NoError(t, err)
+	require.Len(t, list.Items, 9)
+
+	for _, li := range list.Items {
+		assert.True(t, li.AutoChangeable, "%s/%s 引用应可执行（三云部署器已注册）",
+			li.Target.Cloud, li.Target.Product)
+		assert.NotContains(t, li.Reason, "ERR_DISCOVERY_ONLY")
+		assert.Empty(t, li.Reason, "可执行项不带原因")
+	}
+
+	// 名单移除后：无引用落入不可执行分区（持久化全部 pending）
+	items, err := h.items.ListByOrder(ctx, list.OrderID)
+	require.NoError(t, err)
+	require.Len(t, items, 9)
+	for _, it := range items {
+		assert.Equal(t, domain.ItemStatusPending, it.Status, "全部引用均为可执行项")
+	}
+	assert.False(t, hasWarning(list.Warnings, "不可执行项"), "无引用落入不可执行分区，不出分区汇总")
 }
 
 // TestGenerateChangeList_K8sProbeUnavailable（AC-3）

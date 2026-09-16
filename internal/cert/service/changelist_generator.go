@@ -36,8 +36,8 @@ type ChangeListItem struct {
 	ItemID         string                // 变更项 ID（持久化 ChangeItem._id，报告/回滚关联）
 	Target         deployer.DeployTarget // 目标资源定位；持久化完整写入 ChangeItem.resourceRef（按 action 分支必填）
 	Action         domain.ChangeAction   // "upload_and_bind" | "patch_crd"
-	AutoChangeable bool                  // false=不可自动变更（discovery-only 云首期无部署器 / K8s 管理权受限）
-	Reason         string                // AutoChangeable=false 时的判定依据（信号类型+具体键 / ERR_DISCOVERY_ONLY）
+	AutoChangeable bool                  // false=不可自动变更（K8s 管理权受限/托管资源/云证书缺失）
+	Reason         string                // AutoChangeable=false 时的判定依据（信号类型+具体键）
 }
 
 // SanCheckResult SAN 预检结果（基准 = 变更清单目标域名集合，PRD 评估遗留项 #4）。
@@ -62,15 +62,6 @@ type ManagementProbe interface {
 // AutoChangeable 判定由该通道三信号探测回填（编译期绑定，防签名漂移）。
 var _ ManagementProbe = (*deployer.K8sAPIChannel)(nil)
 
-// discoveryOnlyClouds 首期无部署器的 discovery-only 云（PRD Out of Scope：华为云/
-// AWS/Azure 部署器二期；引用纳入台账与覆盖率分母，进入清单时为不可执行项，
-// cloudx.ErrDiscoveryOnly 同语义，清单生成期按云名单静态判定）。
-var discoveryOnlyClouds = map[domain.Cloud]struct{}{
-	domain.CloudHuawei: {},
-	domain.CloudAWS:    {},
-	domain.CloudAzure:  {},
-}
-
 // 清单 Warnings 固定文案（盲区声明；仅静态描述与安全参数，不含凭证/私钥片段）。
 const (
 	// warningNginxBoundary 覆盖边界声明（PRD In Scope：视图与变更清单显式声明
@@ -78,8 +69,9 @@ const (
 	warningNginxBoundary = "覆盖边界：本清单不含 VM Nginx 配置级引用（首期盲区，仅 TLS 探测监控；更换依赖二期堡垒机/Agent 通道）"
 	// warningK8sUnprobed 管理权探测通道未接入声明（5.6 落地前 K8s 项按不可执行分区）。
 	warningK8sUnprobed = "K8s 项管理权未探测：探测通道未接入（5.6），K8s 引用按不可执行项分区，接入后自动判定"
-	// warningPartitionFmt 不可执行项分区汇总（Hard Rule：不静默放行，显式声明原因与出路）。
-	warningPartitionFmt = "不可执行项 %d 项（首期无部署器/K8s 管理权受限），不计入执行成功率分母：请走二期部署器、GitOps/控制器管理链路或手工更换"
+	// warningPartitionFmt 不可执行项分区汇总（Hard Rule：不静默放行，显式声明原因与出路；
+	// cert-multicloud-deployers 任务 4 后唯一不可执行来源回归为 K8s 管理权/托管资源）。
+	warningPartitionFmt = "不可执行项 %d 项（K8s 管理权受限/托管资源），不计入执行成功率分母：请走 GitOps/控制器管理链路或手工更换"
 	// warningBlindSpotFmt 扫描通道失败盲区（该范围引用可能缺失，"未发现引用"≠"无引用"）。
 	warningBlindSpotFmt = "盲区：%s/%s（%s）扫描通道失败（%s），该范围引用可能缺失"
 	// warningDenominatorFmt coverageMeta total=-1 分母不可用（asset 盘点缺失；K8s crd 恒 -1）。
@@ -89,7 +81,6 @@ const (
 // 不可执行原因文案（Reason 首词为可机读标记，对齐 tech-design Interface 2 与
 // K8s 管理权判定规则集的信号口径）。
 const (
-	reasonDiscoveryOnly       = "ERR_DISCOVERY_ONLY: %s 首期无部署器（discovery-only 云），待二期部署器开放，请手工更换"
 	reasonK8sUnprobed         = "K8S_MANAGEMENT_UNPROBED: 管理权探测通道未接入（5.6），暂不可自动变更"
 	reasonK8sProbeFailedFmt   = "K8S_MANAGEMENT_PROBE_FAILED: %s"
 	reasonK8sNotManageableFmt = "K8S_MANAGEMENT_SIGNAL: %s"
@@ -120,9 +111,9 @@ const (
 //  4. SAN_INSUFFICIENT —— 新证书 SAN ⊉ 目标域名集合（基准 = 旧证书 SAN，即清单项
 //     所服务域名的并集；防通配符/多 SAN 证书更换"静默丢域名"漏换）。
 //
-// 不可执行项分区（Hard Rule：不静默放行）：discovery-only 云与 K8s 管理权受限项
+// 不可执行项分区（Hard Rule：不静默放行）：K8s 管理权受限/托管资源项
 // AutoChangeable=false + Reason，持久化即标 skipped（不计入执行成功率分母，
-// 5.7 仅执行 pending 项）；盲区声明（覆盖边界/通道失败盲区/分母不可用）写��� Warnings。
+// 5.7 仅执行 pending 项）；盲区声明（覆盖边界/通道失败盲区/分母不可用）写入 Warnings。
 func (s *changeService) GenerateChangeList(ctx context.Context, oldCertFingerprint, newCertID string) (ChangeList, error) {
 	// ---- 前置校验 1：扫描新鲜度（含"无成功快照"阻断） ----
 	snap, err := s.snapshots.LatestDone(ctx)
@@ -343,16 +334,14 @@ func (s *changeService) buildChangeItems(ctx context.Context, orderID string, ne
 }
 
 // assessChangeable 单项可自动变更判定：
-//   - 云通道：discovery-only 云（huawei/aws/azure）false + ERR_DISCOVERY_ONLY
-//     （首期无部署器，PRD Out of Scope 三云部署器二期）；
+//   - 云通道：五云部署器（aliyun/tencent/huawei/aws/azure）已全量注册
+//     （cert-multicloud-deployers 任务 1~4），恒可执行——discoveryOnlyClouds
+//     名单已随三云部署器落地移除，ERR_DISCOVERY_ONLY 分区不再产生；
 //   - K8s 通道：ManagementProbe 三信号判定（5.6 实现）；探测通道未注入或探测
 //     失败（如集群不可达）按不可执行项分区——单点不可用不阻塞清单生成
 //     （PRD"单点失败不阻塞其他目标"），且不静默放行（Reason 显式声明）。
 func (s *changeService) assessChangeable(ctx context.Context, target deployer.DeployTarget) (bool, string) {
 	if target.Channel == string(deployer.ChannelTypeCloudAPI) {
-		if _, discoveryOnly := discoveryOnlyClouds[domain.Cloud(target.Cloud)]; discoveryOnly {
-			return false, fmt.Sprintf(reasonDiscoveryOnly, target.Cloud)
-		}
 		return true, ""
 	}
 	if s.probe == nil {

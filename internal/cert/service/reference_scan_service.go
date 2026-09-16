@@ -486,7 +486,7 @@ func (s *referenceScanService) runScan(ctx context.Context, sc scanContext) (Sca
 // discoverK8sRegistration 单登记项发现：列出集群内该 apiGroup+kind 全部实例，
 // 按 certFieldPath 读取证书引用字段（每值一引用，含 clusterId/namespace/kind）。
 // AlbConfig 登记额外提取 spec.config.instanceId 返回托管实例映射
-//（instanceId → "cluster/ns/name"），供云侧 ALB/NLB 引用标注托管来源；
+// （instanceId → "cluster/ns/name"），供云侧 ALB/NLB 引用标注托管来源；
 // 非 AlbConfig 登记恒返回 nil。instanceId 缺省（自动建实例形态）不入映射。
 func (s *referenceScanService) discoverK8sRegistration(
 	ctx context.Context,
@@ -916,8 +916,10 @@ func NewTencentScanAdapter(a *tencent.CertAdapter) CloudScanAdapter {
 	}
 }
 
-// NewHuaweiScanAdapter 华为云扫描适配（3.3 discovery-only 只读面）。
-func NewHuaweiScanAdapter(a *huawei.CertDiscoveryAdapter) CloudScanAdapter {
+// NewHuaweiScanAdapter 华为云扫描适配（完整 CertAdapter 只读面；cert-multicloud-
+// deployers 任务 4 起与部署器共享实例——aliyun 模式，GetCert 走完整适配
+// SHA-256 对齐口径，只读方法自内嵌 CertDiscoveryAdapter 提升）。
+func NewHuaweiScanAdapter(a *huawei.CertAdapter) CloudScanAdapter {
 	return cloudScanAdapter{
 		cloud:    domain.CloudHuawei,
 		products: []domain.Product{domain.ProductCDN, domain.ProductWAF, domain.ProductALB, domain.ProductNLB},
@@ -935,8 +937,9 @@ func NewHuaweiScanAdapter(a *huawei.CertDiscoveryAdapter) CloudScanAdapter {
 	}
 }
 
-// NewAwsScanAdapter AWS 扫描适配（3.3 discovery-only 只读面）。
-func NewAwsScanAdapter(a *aws.CertDiscoveryAdapter) CloudScanAdapter {
+// NewAwsScanAdapter AWS 扫描适配（完整 CertAdapter 只读面，与部署器共享实例——
+// aliyun 模式，只读方法自内嵌 CertDiscoveryAdapter 提升）。
+func NewAwsScanAdapter(a *aws.CertAdapter) CloudScanAdapter {
 	return cloudScanAdapter{
 		cloud:    domain.CloudAWS,
 		products: []domain.Product{domain.ProductCDN, domain.ProductALB, domain.ProductNLB},
@@ -954,8 +957,9 @@ func NewAwsScanAdapter(a *aws.CertDiscoveryAdapter) CloudScanAdapter {
 	}
 }
 
-// NewAzureScanAdapter Azure 扫描适配（3.3 discovery-only 只读面）。
-func NewAzureScanAdapter(a *azure.CertDiscoveryAdapter) CloudScanAdapter {
+// NewAzureScanAdapter Azure 扫描适配（完整 CertAdapter 只读面，与部署器共享实例——
+// aliyun 模式，只读方法自内嵌 CertDiscoveryAdapter 提升）。
+func NewAzureScanAdapter(a *azure.CertAdapter) CloudScanAdapter {
 	return cloudScanAdapter{
 		cloud:    domain.CloudAzure,
 		products: []domain.Product{domain.ProductCDN, domain.ProductALB},

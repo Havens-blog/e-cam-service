@@ -23,9 +23,9 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
 	"github.com/Havens-blog/e-cam-service/internal/cert/web"
 	aliyuncert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aliyun"
-	awsdiscover "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
-	azurediscover "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/azure"
-	huaweidiscover "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
+	awscert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
+	azurecert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/azure"
+	huaweicert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
 	tencentcert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/tencent"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
@@ -120,7 +120,14 @@ func InitCertModule(
 	// internal/audit 落地（单集合仅追加；索引失败仅告警不阻断启动）----
 	auditBridge := newChangeAuditBridge(db, logger)
 
-	// ---- 执行通道（5.3 CloudAPI + 5.6 K8s；首期可部署双云注册） ----
+	// ---- 执行通道（5.3 CloudAPI + 5.6 K8s；五云部署器注册——aliyun/tencent
+	// 既有 + huawei/aws/azure（cert-multicloud-deployers 任务 1~4）） ----
+	// 三云完整 CertAdapter 与扫描适配共享实例（aliyun 模式：发现只读面与两段式
+	// 部署同源；huawei GetCert 走完整适配 SHA-256 对齐口径）。各云部署器 Stop()
+	// 透传导配层限流器停止（无限流协程时 no-op），随注册实例天然携带。
+	huaweiAdapter := huaweicert.NewCertAdapter(logger)
+	awsAdapter := awscert.NewCertAdapter(logger)
+	azureAdapter := azurecert.NewCertAdapter(logger)
 	cloudChannel := deployer.NewCloudAPIChannel(
 		repos.CloudMappings,
 		deployer.NewLedgerMaterialSource(repos.Certificates, crypto),
@@ -140,6 +147,27 @@ func InitCertModule(
 		string(domain.ProductCDN), string(domain.ProductWAF), string(domain.ProductCLB),
 	); err != nil {
 		return nil, fmt.Errorf("cert: register tencent deployer: %w", err)
+	}
+	if err := cloudChannel.RegisterDeployer(
+		string(domain.CloudHuawei),
+		deployer.NewHuaweiDeployer(huaweiAdapter, repos.CloudMappings),
+		string(domain.ProductCDN), string(domain.ProductWAF), string(domain.ProductALB), string(domain.ProductNLB),
+	); err != nil {
+		return nil, fmt.Errorf("cert: register huawei deployer: %w", err)
+	}
+	if err := cloudChannel.RegisterDeployer(
+		string(domain.CloudAWS),
+		deployer.NewAwsDeployer(awsAdapter, repos.CloudMappings),
+		string(domain.ProductCDN), string(domain.ProductALB), string(domain.ProductNLB),
+	); err != nil {
+		return nil, fmt.Errorf("cert: register aws deployer: %w", err)
+	}
+	if err := cloudChannel.RegisterDeployer(
+		string(domain.CloudAzure),
+		deployer.NewAzureDeployer(azureAdapter, repos.CloudMappings),
+		string(domain.ProductCDN), string(domain.ProductALB),
+	); err != nil {
+		return nil, fmt.Errorf("cert: register azure deployer: %w", err)
 	}
 
 	k8sFactory := k8s.NewFactory(repos.K8sCredentials, crypto)
@@ -164,9 +192,9 @@ func InitCertModule(
 		[]service.CloudScanAdapter{
 			service.NewAliyunScanAdapter(aliyuncert.NewCertAdapter(logger)),
 			service.NewTencentScanAdapter(tencentcert.NewCertAdapter(logger)),
-			service.NewHuaweiScanAdapter(huaweidiscover.NewCertDiscoveryAdapter(logger)),
-			service.NewAwsScanAdapter(awsdiscover.NewCertDiscoveryAdapter(logger)),
-			service.NewAzureScanAdapter(azurediscover.NewCertDiscoveryAdapter(logger)),
+			service.NewHuaweiScanAdapter(huaweiAdapter),
+			service.NewAwsScanAdapter(awsAdapter),
+			service.NewAzureScanAdapter(azureAdapter),
 		},
 		service.NewAccountScanSource(accounts),
 		service.NewK8sScanGateway(k8sFactory),
@@ -192,16 +220,16 @@ func InitCertModule(
 		[]service.DiscoveryCertAdapter{
 			service.NewAliyunDiscoveryCertAdapter(aliyuncert.NewCertAdapter(logger)),
 			service.NewTencentDiscoveryCertAdapter(tencentcert.NewCertAdapter(logger)),
-			service.NewHuaweiDiscoveryCertAdapter(huaweidiscover.NewCertDiscoveryAdapter(logger)),
-			service.NewAwsDiscoveryCertAdapter(awsdiscover.NewCertDiscoveryAdapter(logger)),
-			service.NewAzureDiscoveryCertAdapter(azurediscover.NewCertDiscoveryAdapter(logger)),
+			service.NewHuaweiDiscoveryCertAdapter(huaweicert.NewCertDiscoveryAdapter(logger)),
+			service.NewAwsDiscoveryCertAdapter(awscert.NewCertDiscoveryAdapter(logger)),
+			service.NewAzureDiscoveryCertAdapter(azurecert.NewCertDiscoveryAdapter(logger)),
 		},
 		service.NewAccountScanSource(accounts),
 	)
 	probeSvc := service.NewProbeService(repos.Certificates, repos.ProbeResults, repos.Exemptions, repos.AlertConfig, repos.ChangeOrders, nil, service.ProbeOptions{
 		DNS:       dnsSource,
-		Refs:      repos.CertReferences,   // Phase 3 expected 侧：引用扫描解析的资源绑定指纹
-		Snapshots: repos.ScanSnapshots,    // 配合 Refs 取 latest done 快照建引用索引
+		Refs:      repos.CertReferences, // Phase 3 expected 侧：引用扫描解析的资源绑定指纹
+		Snapshots: repos.ScanSnapshots,  // 配合 Refs 取 latest done 快照建引用索引
 	})
 	inspectionSvc := service.NewInspectionService(repos.Certificates, repos.AlertConfig, publisher)
 	changeSvc := service.NewChangeService(repos.ChangeOrders, repos.ChangeItems, repos.Certificates,
