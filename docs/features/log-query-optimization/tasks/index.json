@@ -122,7 +122,7 @@
       "dependencies": [
         "T-test-gen-contracts"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "gen-test-scripts.md",
       "record": "records/gen-test-scripts.md",
       "surface-key": ".",
