@@ -2,6 +2,7 @@ package web
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
+	shareddomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
 )
 
 // ==================== 响应结构体 ====================
@@ -90,51 +91,7 @@ func (h *AssetHandler) toUnifiedAssetVO(inst domain.Instance) UnifiedAssetVO {
 }
 
 // extractAssetType 从 model_uid 提取资产类型
+// extractAssetType 从 model_uid 提取资产类型（注册表收敛：domain.ExtractAssetType）。
 func extractAssetType(modelUID string) string {
-	// cloud_vm -> ecs, cloud_rds -> rds, etc.
-	switch modelUID {
-	case "cloud_vm":
-		return "ecs"
-	case "cloud_disk":
-		return "disk"
-	case "cloud_snapshot":
-		return "snapshot"
-	case "cloud_security_group":
-		return "security_group"
-	case "cloud_rds":
-		return "rds"
-	case "cloud_redis":
-		return "redis"
-	case "cloud_mongodb":
-		return "mongodb"
-	case "cloud_vpc":
-		return "vpc"
-	case "cloud_eip":
-		return "eip"
-	case "cloud_lb", "cloud_slb", "cloud_alb", "cloud_nlb":
-		return "lb"
-	case "cloud_cdn":
-		return "cdn"
-	case "cloud_waf":
-		return "waf"
-	case "cloud_image":
-		return "image"
-	case "cloud_nas":
-		return "nas"
-	case "cloud_oss":
-		return "oss"
-	case "cloud_kafka":
-		return "kafka"
-	case "cloud_elasticsearch":
-		return "elasticsearch"
-	case "cloud_vswitch", "cloud_subnet":
-		return "vswitch"
-	}
-	// aliyun_ecs -> ecs, aws_rds -> rds, etc.
-	for _, suffix := range []string{"_ecs", "_disk", "_snapshot", "_security_group", "_rds", "_redis", "_mongodb", "_vpc", "_eip", "_eni", "_vswitch", "_subnet", "_lb", "_slb", "_alb", "_nlb", "_cdn", "_waf", "_image", "_nas", "_oss", "_kafka", "_elasticsearch"} {
-		if len(modelUID) > len(suffix) && modelUID[len(modelUID)-len(suffix):] == suffix {
-			return suffix[1:] // 去掉前缀下划线
-		}
-	}
-	return modelUID
+	return shareddomain.ExtractAssetType(modelUID)
 }

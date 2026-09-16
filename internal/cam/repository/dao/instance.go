@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -252,112 +253,10 @@ func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 	query := bson.M{}
 
 	if filter.ModelUID != "" {
-		// 支持通用资产类型查询
-		// 同时匹配通用模型 (cloud_vm) 和云厂商模型 (*_ecs)
-		switch filter.ModelUID {
-		case "cloud_vm", "ecs":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_vm"},
-				{"model_uid": bson.M{"$regex": "_ecs$"}},
-			}
-		case "cloud_rds", "rds":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_rds"},
-				{"model_uid": bson.M{"$regex": "_rds$"}},
-			}
-		case "cloud_redis", "redis":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_redis"},
-				{"model_uid": bson.M{"$regex": "_redis$"}},
-			}
-		case "cloud_mongodb", "mongodb":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_mongodb"},
-				{"model_uid": bson.M{"$regex": "_mongodb$"}},
-			}
-		case "cloud_vpc", "vpc":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_vpc"},
-				{"model_uid": bson.M{"$regex": "_vpc$"}},
-			}
-		case "cloud_eip", "eip":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_eip"},
-				{"model_uid": bson.M{"$regex": "_eip$"}},
-			}
-		case "cloud_nas", "nas":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_nas"},
-				{"model_uid": bson.M{"$regex": "_nas$"}},
-			}
-		case "cloud_oss", "oss":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_oss"},
-				{"model_uid": bson.M{"$regex": "_oss$"}},
-			}
-		case "cloud_kafka", "kafka":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_kafka"},
-				{"model_uid": bson.M{"$regex": "_kafka$"}},
-			}
-		case "cloud_elasticsearch", "elasticsearch":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_elasticsearch"},
-				{"model_uid": bson.M{"$regex": "_elasticsearch$"}},
-			}
-		case "cloud_disk", "disk":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_disk"},
-				{"model_uid": bson.M{"$regex": "_disk$"}},
-			}
-		case "cloud_snapshot", "snapshot":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_snapshot"},
-				{"model_uid": bson.M{"$regex": "_snapshot$"}},
-			}
-		case "cloud_security_group", "security_group", "security-group":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_security_group"},
-				{"model_uid": bson.M{"$regex": "_security_group$"}},
-			}
-		case "cloud_lb", "lb", "slb":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_lb"},
-				{"model_uid": bson.M{"$regex": "_lb$"}},
-				{"model_uid": bson.M{"$regex": "_slb$"}},
-				{"model_uid": bson.M{"$regex": "_alb$"}},
-				{"model_uid": bson.M{"$regex": "_nlb$"}},
-				{"model_uid": bson.M{"$regex": "_elb$"}},
-				{"model_uid": bson.M{"$regex": "_clb$"}},
-			}
-		case "cloud_subnet", "subnet", "vswitch":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_subnet"},
-				{"model_uid": "cloud_vswitch"},
-				{"model_uid": bson.M{"$regex": "_subnet$"}},
-				{"model_uid": bson.M{"$regex": "_vswitch$"}},
-			}
-		case "cloud_cdn", "cdn":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_cdn"},
-				{"model_uid": bson.M{"$regex": "_cdn$"}},
-			}
-		case "cloud_waf", "waf":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_waf"},
-				{"model_uid": bson.M{"$regex": "_waf$"}},
-			}
-		case "cloud_eni", "eni":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_eni"},
-				{"model_uid": bson.M{"$regex": "_eni$"}},
-			}
-		case "cloud_image", "image":
-			query["$or"] = []bson.M{
-				{"model_uid": "cloud_image"},
-				{"model_uid": bson.M{"$regex": "_image$"}},
-			}
-		default:
+		// 支持通用资产类型查询（注册表收敛：domain.ModelUIDPatternFor）
+		if pat, ok := domain.ModelUIDPatternFor(filter.ModelUID); ok {
+			query["$or"] = modelUIDOrPatterns(pat)
+		} else {
 			query["model_uid"] = filter.ModelUID
 		}
 	}
@@ -552,6 +451,18 @@ func (d *instanceDAO) Search(ctx context.Context, filter SearchFilter) ([]Instan
 }
 
 // buildSearchQuery 构建搜索查询条件
+// modelUIDOrPatterns 资源类型匹配模式 → bson $or 条件（通用 model_uid 精确匹配 + 厂商后缀正则）。
+func modelUIDOrPatterns(pat domain.ModelUIDPattern) []bson.M {
+	ors := make([]bson.M, 0, len(pat.Generics)+len(pat.Suffixes))
+	for _, g := range pat.Generics {
+		ors = append(ors, bson.M{"model_uid": g})
+	}
+	for _, s := range pat.Suffixes {
+		ors = append(ors, bson.M{"model_uid": bson.M{"$regex": "_" + s + "$"}})
+	}
+	return ors
+}
+
 func (d *instanceDAO) buildSearchQuery(filter SearchFilter) bson.M {
 	query := bson.M{}
 
@@ -566,78 +477,9 @@ func (d *instanceDAO) buildSearchQuery(filter SearchFilter) bson.M {
 		// 同时匹配通用模型 (cloud_vm) 和云厂商模型 (*_ecs)
 		var typePatterns []bson.M
 		for _, assetType := range filter.AssetTypes {
-			switch assetType {
-			case "ecs", "cloud_vm":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_vm"},
-					bson.M{"model_uid": bson.M{"$regex": "_ecs$"}})
-			case "rds", "cloud_rds":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_rds"},
-					bson.M{"model_uid": bson.M{"$regex": "_rds$"}})
-			case "redis", "cloud_redis":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_redis"},
-					bson.M{"model_uid": bson.M{"$regex": "_redis$"}})
-			case "mongodb", "cloud_mongodb":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_mongodb"},
-					bson.M{"model_uid": bson.M{"$regex": "_mongodb$"}})
-			case "vpc", "cloud_vpc":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_vpc"},
-					bson.M{"model_uid": bson.M{"$regex": "_vpc$"}})
-			case "eip", "cloud_eip":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_eip"},
-					bson.M{"model_uid": bson.M{"$regex": "_eip$"}})
-			case "nas", "cloud_nas":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_nas"},
-					bson.M{"model_uid": bson.M{"$regex": "_nas$"}})
-			case "oss", "cloud_oss":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_oss"},
-					bson.M{"model_uid": bson.M{"$regex": "_oss$"}})
-			case "kafka", "cloud_kafka":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_kafka"},
-					bson.M{"model_uid": bson.M{"$regex": "_kafka$"}})
-			case "elasticsearch", "cloud_elasticsearch":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_elasticsearch"},
-					bson.M{"model_uid": bson.M{"$regex": "_elasticsearch$"}})
-			case "disk", "cloud_disk":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_disk"},
-					bson.M{"model_uid": bson.M{"$regex": "_disk$"}})
-			case "snapshot", "cloud_snapshot":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_snapshot"},
-					bson.M{"model_uid": bson.M{"$regex": "_snapshot$"}})
-			case "security_group", "security-group", "cloud_security_group":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_security_group"},
-					bson.M{"model_uid": bson.M{"$regex": "_security_group$"}})
-			case "lb", "slb", "cloud_lb":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_lb"},
-					bson.M{"model_uid": bson.M{"$regex": "_lb$"}},
-					bson.M{"model_uid": bson.M{"$regex": "_slb$"}},
-					bson.M{"model_uid": bson.M{"$regex": "_alb$"}},
-					bson.M{"model_uid": bson.M{"$regex": "_nlb$"}},
-					bson.M{"model_uid": bson.M{"$regex": "_elb$"}},
-					bson.M{"model_uid": bson.M{"$regex": "_clb$"}})
-			case "subnet", "vswitch", "cloud_subnet":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_subnet"},
-					bson.M{"model_uid": "cloud_vswitch"},
-					bson.M{"model_uid": bson.M{"$regex": "_subnet$"}},
-					bson.M{"model_uid": bson.M{"$regex": "_vswitch$"}})
-			case "image", "cloud_image":
-				typePatterns = append(typePatterns,
-					bson.M{"model_uid": "cloud_image"},
-					bson.M{"model_uid": bson.M{"$regex": "_image$"}})
+			// 注册表收敛（含 cdn/waf/eni，修复与 buildQuery 的清单漂移）
+			if pat, ok := domain.ModelUIDPatternFor(assetType); ok {
+				typePatterns = append(typePatterns, modelUIDOrPatterns(pat)...)
 			}
 		}
 		if len(typePatterns) > 0 {
