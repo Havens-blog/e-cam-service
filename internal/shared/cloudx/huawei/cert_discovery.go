@@ -90,13 +90,15 @@ type CloudCertRef struct {
 }
 
 // CloudCertInfo GetCert 返回的云侧证书在库状态（只读）。
-// 华为云 PEM 通道不支持（GetCert 一律返回 ErrCertPEMUnsupported 降级标记，
-// 不填充任何字段）；SCM 指纹为 SHA-1 口径与台账 SHA256 不一致，原本就无法
-// 通过上层 ^[0-9a-f]{64}$ 对齐校验。
+// 发现适配（discovery-only）口径：GetCert 一律返回 ErrCertPEMUnsupported 降级
+// 标记、不填充任何字段（SCM ShowCertificate 无 PEM 导出字段，原生指纹为 SHA-1
+// 口径，无法通过上层 ^[0-9a-f]{64}$ 对齐校验）；完整部署适配（cert.go
+// CertAdapter，任务 1）口径：字段为真实在库状态，Fingerprint 优先导出材料解析
+// 的 SHA-256 对齐口径（导出失败降级 SHA-1，上层按无法复核处理）。
 type CloudCertInfo struct {
-	Exists      bool      // 保留字段：PEM 通道不支持口径下恒为 false
-	NotAfter    time.Time // 保留字段：PEM 通道不支持口径下恒为零值
-	Fingerprint string    // 保留字段：PEM 通道不支持口径下恒为空
+	Exists      bool      // 在库存在性（发现适配口径恒 false；部署适配填真实值）
+	NotAfter    time.Time // 有效期截止（发现适配口径恒为零值；部署适配填真实值）
+	Fingerprint string    // 指纹（发现适配口径恒为空；部署适配填 SHA-256/SHA-1 归一化值）
 }
 
 // cdnCertAPI CDN SDK 窄接口（只读：域名 HTTPS 证书信息）
