@@ -30,7 +30,7 @@
       "title": "图表栅格/明细区布局自适应(不等宽挤压、表头吸顶)",
       "priority": "P2",
       "estimatedTime": "1h",
-      "status": "pending",
+      "status": "completed",
       "file": "3-chart-grid-responsive.md",
       "record": "records/3-chart-grid-responsive.md",
       "type": "coding.enhancement",
@@ -63,7 +63,7 @@
       "title": "TopN 分组图点击下钻:点击项自动加字段筛选重查",
       "priority": "P1",
       "estimatedTime": "1.5h",
-      "status": "pending",
+      "status": "completed",
       "file": "6-topn-drilldown.md",
       "record": "records/6-topn-drilldown.md",
       "type": "coding.feature",
@@ -77,7 +77,7 @@
       "dependencies": [
         "6"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "clean-code.md",
       "record": "records/clean-code.md",
       "type": "code-quality.simplify"
@@ -90,7 +90,7 @@
       "dependencies": [
         "T-test-gen-journeys"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "gen-contracts.md",
       "record": "records/gen-contracts.md",
       "type": "test.gen-contracts"

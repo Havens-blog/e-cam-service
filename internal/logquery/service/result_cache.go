@@ -12,6 +12,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 
@@ -139,6 +140,20 @@ func (c *resultCache) forceStale(key string) {
 	c.mu.Unlock()
 }
 
+// cachedCall Search/Aggregate 共用的缓存包装:同参命中直返(宽限期内供旧并
+// 后台刷新),缺失同步 compute;返回缓存本体的浅拷贝(缓存本体只读,调用方
+// 可安全写入按次标注 Cached/CacheStale,不影响并发读者)。
+func cachedCall[T any](ctx context.Context, c *resultCache, kind string, tenantID int64, req any, compute func(context.Context) (*T, error)) (*T, bool, bool, error) {
+	v, cached, stale, err := c.get(ctx, cacheKey(kind, tenantID, req), func(cctx context.Context) (any, error) {
+		return compute(cctx)
+	})
+	if err != nil {
+		return nil, false, false, err
+	}
+	out := *v.(*T)
+	return &out, cached, stale, nil
+}
+
 // cacheKey 请求维度缓存键(端点 + 租户 + 全部请求参数;json 序列化字段序
 // 确定性保证同参同键)。
 func cacheKey(kind string, tenantID int64, req any) string {
@@ -151,10 +166,8 @@ func cacheKey(kind string, tenantID int64, req any) string {
 
 // keyPrefix 日志用键前缀(截 JSON 首段,不整串倾倒)。
 func keyPrefix(key string) string {
-	for i := 0; i < len(key); i++ {
-		if key[i] == ':' {
-			return key[:i]
-		}
+	if i := strings.IndexByte(key, ':'); i >= 0 {
+		return key[:i]
 	}
 	return key
 }

@@ -126,20 +126,19 @@ func (s *FederationService) Aggregate(ctx context.Context, tenantID int64, req A
 		return nil, fmt.Errorf("invalid aggregate metric: %s", req.Metric)
 	}
 	start := time.Now()
-	v, cached, stale, err := s.cache.get(ctx, cacheKey("aggregate", tenantID, req), func(cctx context.Context) (any, error) {
+	resp, cached, stale, err := cachedCall(ctx, s.cache, "aggregate", tenantID, req, func(cctx context.Context) (*AggregateResponse, error) {
 		return s.aggregateUncached(cctx, tenantID, req)
 	})
 	if err != nil {
 		return nil, err
 	}
-	resp := *v.(*AggregateResponse) // 浅拷贝:缓存本体只读,标注按次写入
 	resp.Cached, resp.CacheStale = cached, stale
 	s.logger.Info("[logquery] aggregate done",
 		elog.String("log_type", string(req.LogType)),
 		elog.String("cache_hit", strconv.FormatBool(cached)),
 		elog.String("cache_stale", strconv.FormatBool(stale)),
 		elog.Int64("duration_ms", time.Since(start).Milliseconds()))
-	return &resp, nil
+	return resp, nil
 }
 
 // aggregateUncached 真实联邦聚合(无缓存路径)。
@@ -316,20 +315,19 @@ func (s *FederationService) Search(ctx context.Context, tenantID int64, req Sear
 		}
 	}
 	start := time.Now()
-	v, cached, stale, err := s.cache.get(ctx, cacheKey("search", tenantID, req), func(cctx context.Context) (any, error) {
+	resp, cached, stale, err := cachedCall(ctx, s.cache, "search", tenantID, req, func(cctx context.Context) (*SearchResponse, error) {
 		return s.searchUncached(cctx, tenantID, req)
 	})
 	if err != nil {
 		return nil, err
 	}
-	resp := *v.(*SearchResponse) // 浅拷贝:缓存本体只读,标注按次写入
 	resp.Cached, resp.CacheStale = cached, stale
 	s.logger.Info("[logquery] search done",
 		elog.String("log_type", string(req.LogType)),
 		elog.String("cache_hit", strconv.FormatBool(cached)),
 		elog.String("cache_stale", strconv.FormatBool(stale)),
 		elog.Int64("duration_ms", time.Since(start).Milliseconds()))
-	return &resp, nil
+	return resp, nil
 }
 
 // searchUncached 真实联邦查询(无缓存路径)。
