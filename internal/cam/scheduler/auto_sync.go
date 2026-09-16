@@ -26,6 +26,9 @@ type AutoSyncScheduler struct {
 	mu            sync.Mutex
 	syncing       map[int64]bool // 正在同步的账号ID，防止重复提交
 	syncingMu     sync.Mutex
+	// lastMetricsCollectDate 最近一次提交每日 CDN 指标采集的日期(Asia/Shanghai
+	// YYYY-MM-DD)。用于幂等触发,详见 auto_sync_metrics.go。
+	lastMetricsCollectDate string
 }
 
 // NewAutoSyncScheduler 创建自动同步调度器
@@ -103,6 +106,9 @@ func (s *AutoSyncScheduler) run() {
 func (s *AutoSyncScheduler) checkAndSync() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// 每日 CDN 指标采集(与账号自动同步解耦,详见 auto_sync_metrics.go)
+	s.checkMetricsCollection()
 
 	// 获取所有启用自动同步的活跃账号
 	accounts, err := s.getAutoSyncAccounts(ctx)
