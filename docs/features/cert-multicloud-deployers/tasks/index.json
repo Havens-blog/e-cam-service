@@ -139,13 +139,12 @@
       "dependencies": [
         "T-test-gen-scripts"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "run-test.md",
       "record": "records/run-test.md",
       "surface-key": ".",
       "surface-type": "api",
-      "type": "test.run",
-      "blockedReason": "log-query-optimization 会话挂起 cert 残留"
+      "type": "test.run"
     },
     "validate-code": {
       "id": "T-validate-code",
