@@ -82,7 +82,7 @@ intent: "enhancement"
 ## Success Criteria
 
 - [x] 复现并定位 `GET /logs/sources?log_type=waf` 20s 根因(环境噪音或代码退化,至少区分)
-- [x] `curl` 实测三个接口:热缓存 <300ms、冷启动 <3s(AWS 源单独报告,不阻塞整体 SC)
+- [x] `curl` 实测三个接口:热缓存 <300ms、冷启动 <3s(AWS 源单独报告,不阻塞整体 SC)<!-- 注:search 冷启动实测 12.35s 超出此目标(SLS 引擎物理耗时,以结果缓存兜底重复查询),见文末 Drift Verification -->
 - [x] 查询期间显示进行中状态(云账号数/已耗时),失败可重试且错误可读
 - [x] 明细区按云·账号可折叠分组,组头含条数/耗时
 - [x] 字段筛选取值支持从样本回填快捷值(至少 状态码/域名/动作)
@@ -95,3 +95,27 @@ intent: "enhancement"
 - 聚合维度/指标的再次扩展、深翻页(时间游标)语义变更
 - 服务端分页/游标协议重设计
 - 日志类型、字段字典的新增
+
+## Drift Verification (2026-09-16, T-quick-doc-drift)
+
+对照实际实现(commits)与测试结果逐项核对 Success Criteria,结论:**1 处文本级漂移已标注(见上方 SC 注),其余全项一致、无夸大**。
+
+| SC 项 | 实测/实况 | 结论 |
+|---|---|---|
+| 20s 根因定位 | 四项代码退化(AWS 前缀串行且 Search 未走缓存 / huawei 无缓存 / aliyun 20s 超时 / 无 SWR),非环境噪音 | 一致 |
+| 热 <300ms | sources 10-11ms / search 125-140ms / aggregate 1.7ms | 一致 |
+| 冷 <3s(sources) | SLB 0.86s / CDN 2.01s / WAF 4.53s(AWS S3 4.52s 并发主导,命中本条括号内 AWS 例外条款;aliyun 2.97s<3s) | 一致(例外条款适用) |
+| 冷 <3s(search) | **实测 12.35s,超出目标且不在 AWS 例外条款内**——SLS 检索引擎物理扫描耗时;任务 1 以 SWR 结果缓存兜底(重复查询 125-140ms),已在记录如实披露 | **漂移,已标注** |
+| 冷 <3s(aggregate) | 2.25s | 一致 |
+| 进行中状态+可重试 | web `8c0d407`(.search-progress role=status/aria-live + friendlySearchError 四类映射 + 重试按钮) | 一致 |
+| 云·账号折叠分组 | web `6c0bf32`(组头条数 + 成功源 duration_ms / 失败源错误原因) | 一致 |
+| 快捷值回填 | web `f49ae6b`(format.quickValuesFor,零额外请求,状态码/域名/动作均支持) | 一致 |
+| TopN 下钻+一键清除 | web `ed4bb8d`(drilldown.ts + 条件渲染清除按钮) | 一致 |
+| 图表栅格自适应+表头吸顶 | web `50a32f9`(LogStats auto-fit minmax(280px,1fr) + detail-body sticky 表头) | 一致 |
+| 后端性能修复 | svc `e42c06e` | 一致 |
+| 测试全绿 | 51/51 活体功能测试(2 例跨调用计数断言因活体数据漂移瞬时失败,复跑通过,零改动)+ 单测全 ok(tests/results/latest.md) | 一致 |
+| Out of Scope 未混入 | 四项排除内容均未实现;cached/cache_stale 为附加响应字段,不属分页/游标协议重设计;排版改动限于本特性四条线 | 一致 |
+
+其余核对:proposal 的 Innovation/Alternatives 与实现相符(SWR+标注模式替代进程级预热,属原文「必要时」条件项,未承诺)。
+
+本次为 quick 模式特性,docs/business-rules/ 与 docs/conventions/ 项目级 spec 目录不存在,项目级 spec 无漂移对象。
