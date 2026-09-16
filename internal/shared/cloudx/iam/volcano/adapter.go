@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/ratelimit"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/retry"
 	volcanocommon "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/volcano"
 	cloudxtypes "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
@@ -16,14 +17,14 @@ import (
 // Adapter 火山�?IAM 适配器�?
 type Adapter struct {
 	logger      *elog.Component
-	rateLimiter *volcanocommon.RateLimiter
+	rateLimiter *ratelimit.RateLimiter
 }
 
 // NewAdapter 创建火山�?IAM 适配器器实例例�?
 func NewAdapter(logger *elog.Component) *Adapter {
 	return &Adapter{
 		logger:      logger,
-		rateLimiter: volcanocommon.NewRateLimiter(15), // 15 QPS
+		rateLimiter: ratelimit.NewRateLimiter(15), // 15 QPS
 	}
 }
 

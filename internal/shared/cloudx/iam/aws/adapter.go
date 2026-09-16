@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	awscommon "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/aws"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/ratelimit"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/retry"
 	cloudxtypes "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
@@ -19,14 +20,14 @@ import (
 // Adapter AWS IAM 适配器�?
 type Adapter struct {
 	logger      *elog.Component
-	rateLimiter *awscommon.RateLimiter
+	rateLimiter *ratelimit.RateLimiter
 }
 
 // NewAdapter 创建 AWS IAM 适配器器实例例�?
 func NewAdapter(logger *elog.Component) *Adapter {
 	return &Adapter{
 		logger:      logger,
-		rateLimiter: awscommon.NewRateLimiter(10), // 10 QPS
+		rateLimiter: ratelimit.NewRateLimiter(10), // 10 QPS
 	}
 }
 

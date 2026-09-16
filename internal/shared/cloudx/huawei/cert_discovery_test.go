@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	cloudxhuawei "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/huawei"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/ratelimit"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/sdkerr"
@@ -23,7 +23,7 @@ import (
 func newTestCertDiscoveryAdapter(t *testing.T) *CertDiscoveryAdapter {
 	t.Helper()
 	adapter := NewCertDiscoveryAdapter(elog.DefaultLogger)
-	adapter.rateLimiter = cloudxhuawei.NewRateLimiter(5000)
+	adapter.rateLimiter = ratelimit.NewRateLimiter(5000)
 	adapter.listPageSize = 2
 	return adapter
 }

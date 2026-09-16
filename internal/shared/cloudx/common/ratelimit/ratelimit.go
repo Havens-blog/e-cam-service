@@ -1,4 +1,4 @@
-package tencent
+package ratelimit
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// RateLimiter 腾讯云 API 限流器
+// RateLimiter 云厂商 API 限流器
 type RateLimiter struct {
 	limiter *rate.Limiter
 }
@@ -19,12 +19,12 @@ func NewRateLimiter(qps int) *RateLimiter {
 	}
 }
 
-// Wait 等待直到可以发送请求
+// Wait 等待限流器允许请求
 func (r *RateLimiter) Wait(ctx context.Context) error {
 	return r.limiter.Wait(ctx)
 }
 
-// Allow 检查是否允许发送请求（不等待）
+// Allow 检查是否允许请求（不阻塞）
 func (r *RateLimiter) Allow() bool {
 	return r.limiter.Allow()
 }

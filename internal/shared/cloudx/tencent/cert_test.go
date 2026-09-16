@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	cloudxtencent "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/tencent"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/ratelimit"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/assert"
@@ -32,7 +32,7 @@ import (
 func newTestCertAdapter(t *testing.T) *CertAdapter {
 	t.Helper()
 	adapter := NewCertAdapter(elog.DefaultLogger)
-	adapter.rateLimiter = cloudxtencent.NewRateLimiter(5000)
+	adapter.rateLimiter = ratelimit.NewRateLimiter(5000)
 	return adapter
 }
 

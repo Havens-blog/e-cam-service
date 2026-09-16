@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	cloudxtencent "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/tencent"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/ratelimit"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
 	tencentcdn "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cdn/v20180606"
@@ -148,7 +148,7 @@ type clbCertAPI interface {
 // 不在适配层新建凭证存储；SDK 客户端工厂字段可被测试注入 fake。
 type CertAdapter struct {
 	logger       *elog.Component
-	rateLimiter  *cloudxtencent.RateLimiter
+	rateLimiter  *ratelimit.RateLimiter
 	listPageSize int // ListReferences 分页大小（默认 certDefaultPageSize，测试可缩小以覆盖翻页分支）
 
 	deletePollInterval time.Duration // 孤儿删除异步任务轮询间隔（默认 certDeletePollInterval，测试可注入）
@@ -170,7 +170,7 @@ func NewCertAdapter(logger *elog.Component) *CertAdapter {
 	}
 	return &CertAdapter{
 		logger:       logger,
-		rateLimiter:  cloudxtencent.NewRateLimiter(20),
+		rateLimiter:  ratelimit.NewRateLimiter(20),
 		listPageSize: certDefaultPageSize,
 		newSSLCaller: func(creds *domain.CloudAccount) (sslCertCaller, error) {
 			return newSSLRPCInvoker(creds)

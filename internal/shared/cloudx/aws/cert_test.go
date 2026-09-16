@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	cloudxaws "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/aws"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/ratelimit"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/acm"
@@ -29,7 +29,7 @@ import (
 func newTestCertAdapter(t *testing.T) *CertAdapter {
 	t.Helper()
 	adapter := NewCertAdapter(elog.DefaultLogger)
-	adapter.rateLimiter = cloudxaws.NewRateLimiter(5000)
+	adapter.rateLimiter = ratelimit.NewRateLimiter(5000)
 	return adapter
 }
 

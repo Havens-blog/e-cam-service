@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/ratelimit"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/retry"
 	tencentcommon "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/tencent"
 	cloudxtypes "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
@@ -19,14 +20,14 @@ import (
 // Adapter 腾讯�?CAM 适配器�?
 type Adapter struct {
 	logger      *elog.Component
-	rateLimiter *tencentcommon.RateLimiter
+	rateLimiter *ratelimit.RateLimiter
 }
 
 // NewAdapter 创建腾讯�?CAM 适配器器实例例�?
 func NewAdapter(logger *elog.Component) *Adapter {
 	return &Adapter{
 		logger:      logger,
-		rateLimiter: tencentcommon.NewRateLimiter(15), // 15 QPS
+		rateLimiter: ratelimit.NewRateLimiter(15), // 15 QPS
 	}
 }
 

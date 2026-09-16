@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	aliyuncommon "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/aliyun"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/ratelimit"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/retry"
 	cloudxtypes "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
@@ -17,14 +18,14 @@ import (
 // Adapter 阿里云IAM适配器
 type Adapter struct {
 	logger      *elog.Component
-	rateLimiter *aliyuncommon.RateLimiter
+	rateLimiter *ratelimit.RateLimiter
 }
 
 // NewAdapter 创建阿里云IAM适配器实例例
 func NewAdapter(logger *elog.Component) *Adapter {
 	return &Adapter{
 		logger:      logger,
-		rateLimiter: aliyuncommon.NewRateLimiter(20), // 20 QPS
+		rateLimiter: ratelimit.NewRateLimiter(20), // 20 QPS
 	}
 }
 

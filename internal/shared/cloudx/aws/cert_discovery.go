@@ -13,6 +13,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
 	cloudxaws "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/aws"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/ratelimit"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -115,7 +116,7 @@ type acmCertAPI interface {
 // 与既有 AWS 适配器同风格），逐调用传入；SDK 客户端工厂字段可被测试注入 fake。
 type CertDiscoveryAdapter struct {
 	logger       *elog.Component
-	rateLimiter  *cloudxaws.RateLimiter
+	rateLimiter  *ratelimit.RateLimiter
 	listPageSize int32 // ListReferences 分页大小（默认 certDiscoveryPageSize，测试可缩小以覆盖翻页分支）
 
 	newCloudFrontClient func(ctx context.Context, creds *domain.CloudAccount) (cloudFrontCertAPI, error)
@@ -134,7 +135,7 @@ func NewCertDiscoveryAdapter(logger *elog.Component) *CertDiscoveryAdapter {
 	}
 	return &CertDiscoveryAdapter{
 		logger:       logger,
-		rateLimiter:  cloudxaws.NewRateLimiter(20),
+		rateLimiter:  ratelimit.NewRateLimiter(20),
 		listPageSize: certDiscoveryPageSize,
 		newCloudFrontClient: func(ctx context.Context, creds *domain.CloudAccount) (cloudFrontCertAPI, error) {
 			return newCertDiscoveryCloudFrontClient(ctx, creds)

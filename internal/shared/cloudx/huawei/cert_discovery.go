@@ -9,6 +9,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
 	cloudxhuawei "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/huawei"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/common/ratelimit"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/basic"
@@ -127,7 +128,7 @@ type scmCertAPI interface {
 // 逐调用传入，不在适配层新建凭证存储；SDK 客户端工厂字段可被测试注入 fake。
 type CertDiscoveryAdapter struct {
 	logger       *elog.Component
-	rateLimiter  *cloudxhuawei.RateLimiter
+	rateLimiter  *ratelimit.RateLimiter
 	listPageSize int32 // ListReferences 分页大小（默认 certDiscoveryPageSize，测试可缩小以覆盖翻页分支）
 
 	newCdnClient func(creds *domain.CloudAccount) (cdnCertAPI, error)
@@ -147,7 +148,7 @@ func NewCertDiscoveryAdapter(logger *elog.Component) *CertDiscoveryAdapter {
 	}
 	return &CertDiscoveryAdapter{
 		logger:       logger,
-		rateLimiter:  cloudxhuawei.NewRateLimiter(20),
+		rateLimiter:  ratelimit.NewRateLimiter(20),
 		listPageSize: certDiscoveryPageSize,
 		newCdnClient: func(creds *domain.CloudAccount) (cdnCertAPI, error) {
 			return newCertDiscoveryCDNClient(creds)
