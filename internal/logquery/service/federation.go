@@ -93,11 +93,11 @@ type AggregateSourceOutcome struct {
 
 // AggregateResponse 联邦聚合响应(跨源归并:分桶求和、TopN 归并取前 10)。
 type AggregateResponse struct {
-	LogType string                        `json:"log_type"`
-	Total   int64                         `json:"total"`   // 窗口精确总数(全源求和)
-	Buckets []logquery.AggregateBucket    `json:"buckets"` // 时间分桶(真实分布)
-	TopN    []logquery.TopNItem           `json:"topn"`    // TopN(自定义维度/指标)
-	Sources []AggregateSourceOutcome      `json:"sources"`
+	LogType string                     `json:"log_type"`
+	Total   int64                      `json:"total"`   // 窗口精确总数(全源求和)
+	Buckets []logquery.AggregateBucket `json:"buckets"` // 时间分桶(真实分布)
+	TopN    []logquery.TopNItem        `json:"topn"`    // TopN(自定义维度/指标)
+	Sources []AggregateSourceOutcome   `json:"sources"`
 	// TopNSkip 部分源维度/指标不可下推的说明(趋势/总数仍有效,仅 TopN 缺失)。
 	TopNSkip string `json:"topn_skip,omitempty"`
 	// Cached/CacheStale 结果缓存标注(语义同 SearchResponse)。
