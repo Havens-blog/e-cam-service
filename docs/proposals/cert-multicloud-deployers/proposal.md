@@ -52,7 +52,7 @@ e-cam 证书替换对 5 朵云中 3 朵（华为云/AWS/Azure）只能「发现�
 
 ### Constraints & Dependencies
 
-- 三云 SDK：`huaweicloud-sdk-go-v3`（已在 go.mod v0.1.213）、AWS SDK v2、Azure SDK（需新增依赖）。
+- 三云 SDK：`huaweicloud-sdk-go-v3`（已在 go.mod v0.1.213）、AWS SDK v2、Azure SDK（需新增依赖）。<!-- 注:实现改为 net/http 直调 REST（internal/shared/cloudx/azure/cert.go 头注"真实 REST 写客户端，无 Azure SDK 依赖"），未新增 Azure SDK 依赖；AWS SDK v2 已入 go.mod（service/acm、service/cloudfront），见文末 Drift Verification -->
 - 三云账号凭证复用既有 `CloudAccount` 体系（AK/SK / 凭据）。
 - CloudFront 证书地域硬约束 us-east-1；Azure KV 需预先存在 Key Vault 实例。
 - 活体验证需真实三云账号（验收阶段提供）。
@@ -129,12 +129,35 @@ e-cam 证书替换对 5 朵云中 3 朵（华为云/AWS/Azure）只能「发现�
 
 ## Success Criteria
 
-- [ ] 三云产品引用在变更清单中为可执行项（`AutoChangeable=true`），不再 `ERR_DISCOVERY_ONLY`。
-- [ ] 三云部署器五方法对 9 个 cloud×product 组合（华为 4 + AWS 3 + Azure 2）均有单元测试覆盖（fake 云 SDK），deployer 包测试全绿。
-- [ ] 三云 `UploadCert` 生成的云证书 ID 正确写入 `CloudCertMapping`（形态按云：SCM ID / ACM ARN / KV 引用）。
-- [ ] 变更执行失败路径复用既有补偿：`CleanupOrphan` 幂等 + 映射 `active→orphan` 入清理队列。
-- [ ] 验证窗口对三云目标域名复用 `ProbeDomains` 判定线上指纹 = 新证书（云无关闭环，无需新验证机制）。
-- [ ] 回滚路径：`GetCert` 校验旧云证书有效后 `BindResource` 恢复旧 ID（每云单元测试覆盖）。
+- [x] 三云产品引用在变更清单中为可执行项（`AutoChangeable=true`），不再 `ERR_DISCOVERY_ONLY`。
+- [x] 三云部署器五方法对 9 个 cloud×product 组合（华为 4 + AWS 3 + Azure 2）均有单元测试覆盖（fake 云 SDK），deployer 包测试全绿。
+- [x] 三云 `UploadCert` 生成的云证书 ID 正确写入 `CloudCertMapping`（形态按云：SCM ID / ACM ARN / KV 引用）。
+- [x] 变更执行失败路径复用既有补偿：`CleanupOrphan` 幂等 + 映射 `active→orphan` 入清理队列。
+- [x] 验证窗口对三云目标域名复用 `ProbeDomains` 判定线上指纹 = 新证书（云无关闭环，无需新验证机制）。
+- [x] 回滚路径：`GetCert` 校验旧云证书有效后 `BindResource` 恢复旧 ID（每云单元测试覆盖）。
+
+## Drift Verification (2026-09-16, T-quick-doc-drift)
+
+对照实际实现（commits）与测试结果逐项核对 Success Criteria，结论：**6 项 SC 全部满足；1 处约束行文本级漂移已标注（见上方 Constraints 注），其余全项一致**。
+
+| 核对项 | 实测/实况 | 结论 |
+|---|---|---|
+| SC1 清单可执行 | svc `dfc4624`：`changelist_generator.go` `assessChangeable` 云通道恒可执行（338 行注释：discoveryOnlyClouds 随三云落地移除，ERR_DISCOVERY_ONLY 分区不再产生）；测试 `TestGenerateChangeList_ThreeCloudReferencesExecutable` / `TestGenerateChangeList_AllNineCombosExecutable` PASS | 一致 |
+| SC2 五方法 9 组合覆盖 + deployer 包全绿 | `internal/cert/deployer/{huawei,aws,azure}_deployer_test.go` 在库；`go test ./internal/cert/deployer/...` ok（1.811s，本次复跑确认）；journey 级 matrix 18 用例（三云 9 组合逐项）全 PASS | 一致 |
+| SC3 云证书 ID 写映射 | `TestExecuteMappingWrittenActivePerCloudForm` / `TestAllCombos_MappingConsistentAfterExecution` PASS；Azure KV 引用形态（KV secret ID 含版本）见 `internal/shared/cloudx/azure/cert.go` 头注口径 | 一致 |
+| SC4 失败补偿 | `TestCompensation_DoubleInvocationIdempotent` / `TestCompensation_OrphanTransitionEnqueuesCleanup` / `TestCleanupQueue_*` 全 PASS | 一致 |
+| SC5 验证窗口复用 | `verify_window_service.go:391` 复用 `ProbeDomains`（按域名云无关）；`TestVerifyWindow_ConsecutiveProbesConfirmCompletion` / `TestVerifyWindow_ProbeMismatchNotPassedAndExpiryFinalization` PASS | 一致 |
+| SC6 回滚 GetCert 校验 | `rollback_service.go:21` GetCert 三判定（云侧已删除/已过期/指纹被替换）；`TestRollbackPrecheck_PassesForValidOldCert` / `TestRebind_RestoresOldCloudCertReference` / `TestAwsCloudFront_RebindIdempotentTerminalState` PASS | 一致 |
+| Constraints：三云 SDK | 华为 `huaweicloud-sdk-go-v3` v0.1.213（原文一致）；AWS SDK v2 已入 go.mod（`service/acm` v1.38.0、`service/cloudfront` v1.60.2）；**Azure 未新增 SDK**——实现为 net/http 直调 REST（证书库 KV、2024-02-01 api-version），适配层单点归一，属原文「需新增依赖」的文本级漂移 | **漂移，已标注** |
+| 装配（module.go） | 5 个 `RegisterDeployer`（aliyun/tencent + 新增 huawei 4 产品、aws 3 产品、azure 2 产品），产品集与 proposal 完全对应 | 一致 |
+| CloudFront us-east-1 | `TestAwsCloudFront_UploadPinnedToUseast1` / `TestAwsCloudFront_DefaultRegionIndependent` PASS | 一致 |
+| NFR 安全 | `deployer/channel.go` `Credential.Zeroize`（幂等、nil 安全、禁序列化）；云错误细节经 `wrapCertCloudErr` 归一为哨兵错误不进响应；三云部署器独立文件 + 独立 fake 测试（`tests/multicloudtest` 活体服务桩） | 一致 |
+| Out of Scope 未混入 | K8s 托管检测未扩展（仍 probe 通道判定）；无自动签发/续期；活体验证未做（fake SDK，真实账号验收另做）；无云内账户级消歧（`TestCrossCloudMixingRejected` 反向验证 ID 空间互斥） | 一致 |
+| 测试全绿 | 67/67 活体 API 功能测试（bind-failure-compensation 14 / multicloud-cert-replacement 21 / rollback-restore-old-cert 14 / three-cloud-product-matrix 18，tests/latest.md，commit `6c33529`） | 一致 |
+
+其余发现（非 spec 文件，登记待后续任务处理）：`internal/cert/service/rollback_service.go:60` 注释「discovery-only 三云无成功项场景天然不触达」为本特性落地前（commit `4df46cf`）的旧口径——三云现已注册部署器，其 success 项会触达 `InspectCloudCert` 回滚校验，该注释已过时；留待 T-validate-code（代码注释归属代码任务）修正，不在本 doc 任务内改动 .go 文件。
+
+本次为 quick 模式特性，docs/business-rules/ 与 docs/conventions/ 项目级 spec 目录不存在，项目级 spec 无漂移对象。
 
 ## Next Steps
 
