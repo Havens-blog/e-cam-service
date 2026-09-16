@@ -639,6 +639,9 @@ func newKVRESTClient(a *CertDiscoveryAdapter, creds *domain.CloudAccount) (azure
 type kvRESTClient struct {
 	token      azureTokenProvider
 	httpClient *http.Client
+	// vaultURI 数据面基址（完整适配 cert.go 写路径——证书导入/删除——所需；
+	// secret 读取路径按传入 secretID 全 URL 走，本字段不参与）
+	vaultURI string
 }
 
 // getSecret 读取指定 secretID 的最新（或固定版本）值（404 → 不存在哨兵）。

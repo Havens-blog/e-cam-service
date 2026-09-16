@@ -32,7 +32,7 @@
       "title": "Azure 部署器：Key Vault 证书库 + CDN(Front Door)/ALB(App Gateway) 两产品绑定",
       "priority": "P0",
       "estimatedTime": "3h",
-      "status": "pending",
+      "status": "completed",
       "file": "3-azure-deployer.md",
       "record": "records/3-azure-deployer.md",
       "surface-type": "api",
