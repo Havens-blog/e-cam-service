@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -59,6 +60,10 @@ type SearchResponse struct {
 	Truncated bool                `json:"truncated"` // 任一源触顶或联邦超时
 	Entries   []logquery.LogEntry `json:"entries"`   // 时间倒序
 	Sources   []SourceOutcome     `json:"sources"`   // per-source 状态
+	// Cached/CacheStale 结果缓存标注:同参重复请求在新鲜窗(60s)内直返;
+	// CacheStale=宽限窗内供旧结果、后台刷新中(前端可提示"数据刷新中")。
+	Cached     bool `json:"cached"`
+	CacheStale bool `json:"cache_stale"`
 }
 
 // AggregateRequest 联邦聚合请求(字段与 SearchRequest 对齐,无 limit——
@@ -95,6 +100,9 @@ type AggregateResponse struct {
 	Sources []AggregateSourceOutcome      `json:"sources"`
 	// TopNSkip 部分源维度/指标不可下推的说明(趋势/总数仍有效,仅 TopN 缺失)。
 	TopNSkip string `json:"topn_skip,omitempty"`
+	// Cached/CacheStale 结果缓存标注(语义同 SearchResponse)。
+	Cached     bool `json:"cached"`
+	CacheStale bool `json:"cache_stale"`
 }
 
 // Aggregate 窗口内真实聚合入口(plan.md §8):分桶下推各云引擎,百万级行
@@ -117,6 +125,25 @@ func (s *FederationService) Aggregate(ctx context.Context, tenantID int64, req A
 	if !logquery.IsValidAggregateMetric(req.Metric) {
 		return nil, fmt.Errorf("invalid aggregate metric: %s", req.Metric)
 	}
+	start := time.Now()
+	v, cached, stale, err := s.cache.get(ctx, cacheKey("aggregate", tenantID, req), func(cctx context.Context) (any, error) {
+		return s.aggregateUncached(cctx, tenantID, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp := *v.(*AggregateResponse) // 浅拷贝:缓存本体只读,标注按次写入
+	resp.Cached, resp.CacheStale = cached, stale
+	s.logger.Info("[logquery] aggregate done",
+		elog.String("log_type", string(req.LogType)),
+		elog.String("cache_hit", strconv.FormatBool(cached)),
+		elog.String("cache_stale", strconv.FormatBool(stale)),
+		elog.Int64("duration_ms", time.Since(start).Milliseconds()))
+	return &resp, nil
+}
+
+// aggregateUncached 真实联邦聚合(无缓存路径)。
+func (s *FederationService) aggregateUncached(ctx context.Context, tenantID int64, req AggregateRequest) (*AggregateResponse, error) {
 	bucketSec := logquery.PickBucketSec(req.StartTime, req.EndTime)
 	accounts, err := s.activeAccounts(ctx, tenantID, req.Clouds, req.AccountIDs)
 	if err != nil {
@@ -182,7 +209,7 @@ func (s *FederationService) Aggregate(ctx context.Context, tenantID int64, req A
 				if gctx.Err() == nil { // 联邦级超时不计入单源失败
 					oc.Error = err.Error()
 				}
-			} else {
+			} else if result != nil { // provider 返回 (nil,nil) 不崩(隔离)
 				oc.Total = result.Total
 			}
 			mu.Lock()
@@ -261,6 +288,7 @@ type AccountSource interface {
 type FederationService struct {
 	accounts AccountSource
 	logger   *elog.Component
+	cache    *resultCache
 }
 
 // NewFederationService 创建联邦查询服务。
@@ -268,10 +296,10 @@ func NewFederationService(accounts AccountSource, logger *elog.Component) *Feder
 	if logger == nil {
 		logger = elog.DefaultLogger
 	}
-	return &FederationService{accounts: accounts, logger: logger}
+	return &FederationService{accounts: accounts, logger: logger, cache: newResultCache()}
 }
 
-// Search 联邦查询入口。
+// Search 联邦查询入口(结果缓存:同参重复请求命中缓存,不再扇出各云)。
 func (s *FederationService) Search(ctx context.Context, tenantID int64, req SearchRequest) (*SearchResponse, error) {
 	if !logquery.IsValidLogType(req.LogType) {
 		return nil, fmt.Errorf("invalid log type: %s", req.LogType)
@@ -287,6 +315,25 @@ func (s *FederationService) Search(ctx context.Context, tenantID int64, req Sear
 			return nil, fmt.Errorf("incomplete field filter: %+v", f)
 		}
 	}
+	start := time.Now()
+	v, cached, stale, err := s.cache.get(ctx, cacheKey("search", tenantID, req), func(cctx context.Context) (any, error) {
+		return s.searchUncached(cctx, tenantID, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp := *v.(*SearchResponse) // 浅拷贝:缓存本体只读,标注按次写入
+	resp.Cached, resp.CacheStale = cached, stale
+	s.logger.Info("[logquery] search done",
+		elog.String("log_type", string(req.LogType)),
+		elog.String("cache_hit", strconv.FormatBool(cached)),
+		elog.String("cache_stale", strconv.FormatBool(stale)),
+		elog.Int64("duration_ms", time.Since(start).Milliseconds()))
+	return &resp, nil
+}
+
+// searchUncached 真实联邦查询(无缓存路径)。
+func (s *FederationService) searchUncached(ctx context.Context, tenantID int64, req SearchRequest) (*SearchResponse, error) {
 	perSource := req.Limit
 	if perSource <= 0 {
 		perSource = DefaultPerSourceLimit
@@ -383,11 +430,13 @@ func (s *FederationService) Search(ctx context.Context, tenantID int64, req Sear
 	}, nil
 }
 
-// ListSources 日志源清单(按云账号 fan-out,含 Enabled 状态)。
+// ListSources 日志源清单(按云账号 fan-out,含 Enabled 状态;逐 provider
+// 阶段耗时与源数落日志,可测回归)。
 func (s *FederationService) ListSources(ctx context.Context, tenantID int64, logType logquery.LogType, clouds []domain.CloudProvider, accountIDs []int64) ([]logquery.LogSource, error) {
 	if !logquery.IsValidLogType(logType) {
 		return nil, fmt.Errorf("invalid log type: %s", logType)
 	}
+	totalStart := time.Now()
 	accounts, err := s.activeAccounts(ctx, tenantID, clouds, accountIDs)
 	if err != nil {
 		return nil, err
@@ -406,6 +455,7 @@ func (s *FederationService) ListSources(ctx context.Context, tenantID int64, log
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			start := time.Now()
 			p, err := creator(&acc)
 			if err != nil {
 				s.logger.Warn("[logquery] create provider failed",
@@ -417,15 +467,27 @@ func (s *FederationService) ListSources(ctx context.Context, tenantID int64, log
 			if err != nil {
 				s.logger.Warn("[logquery] list sources failed",
 					elog.String("cloud", string(acc.Provider)),
-					elog.Int64("account", acc.ID), elog.FieldErr(err))
+					elog.Int64("account", acc.ID),
+					elog.Int64("duration_ms", time.Since(start).Milliseconds()),
+					elog.FieldErr(err))
 				return
 			}
+			s.logger.Info("[logquery] list sources provider done",
+				elog.String("cloud", string(acc.Provider)),
+				elog.Int64("account", acc.ID),
+				elog.Int("count", len(sources)),
+				elog.Int64("duration_ms", time.Since(start).Milliseconds()))
 			mu.Lock()
 			out = append(out, sources...)
 			mu.Unlock()
 		}()
 	}
 	wg.Wait()
+	s.logger.Info("[logquery] list sources done",
+		elog.String("log_type", string(logType)),
+		elog.Int("accounts", len(accounts)),
+		elog.Int("count", len(out)),
+		elog.Int64("duration_ms", time.Since(totalStart).Milliseconds()))
 	return out, nil
 }
 

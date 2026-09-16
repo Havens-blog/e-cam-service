@@ -101,10 +101,21 @@ func (p *provider) groupIDs(ctx context.Context) (map[string]string, error) {
 	return out, nil
 }
 
-// ListLogSources 枚举该账号该类型日志源(LTS 流,按 classify 过滤)。
+// ListLogSources 枚举该账号该类型日志源(LTS 流,按 classify 过滤;清单走
+// 10 分钟进程级缓存——流清单分钟级稳定,每次 sources 都 ListLogStreams ×2
+// 组曾是 huawei sources ~300ms 的固定开销)。
 func (p *provider) ListLogSources(ctx context.Context, account *domain.CloudAccount) ([]logquery.LogSource, error) {
+	key := fmt.Sprintf("%d/%s", account.ID, p.logType)
+	sources, _, err := sourceEnumCache.get(key, func() ([]logquery.LogSource, error) {
+		return p.listSourcesUncached(ctx)
+	})
+	return sources, err
+}
+
+// listSourcesUncached 真实枚举(groupIDs 提前暴露凭证/网络问题,而非静默空清单)。
+func (p *provider) listSourcesUncached(ctx context.Context) ([]logquery.LogSource, error) {
 	if _, err := p.groupIDs(ctx); err != nil {
-		return nil, err // 提前暴露凭证/网络问题,而非静默空清单
+		return nil, err
 	}
 	var out []logquery.LogSource
 	for _, src := range catalog {

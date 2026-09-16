@@ -26,21 +26,21 @@ func newDomainCache() *domainCache {
 	return &domainCache{entries: make(map[string]domainCacheEntry)}
 }
 
-// get 命中返回缓存副本;过期/缺失调用 fetch 回填。
-func (c *domainCache) get(key string, fetch func() []string) []string {
+// get 命中返回缓存副本(hit=true);过期/缺失调用 fetch 回填(hit=false)。
+func (c *domainCache) get(key string, fetch func() []string) ([]string, bool) {
 	c.mu.RLock()
 	e, ok := c.entries[key]
 	c.mu.RUnlock()
 	if ok && time.Now().Before(e.expires) {
 		out := make([]string, len(e.domains))
 		copy(out, e.domains)
-		return out
+		return out, true
 	}
 	domains := fetch()
 	if len(domains) > 0 {
 		c.set(key, domains)
 	}
-	return domains
+	return domains, false
 }
 
 // set 写入(TTL 重置;空结果不缓存——源数据未就绪时不长期锁死)。

@@ -20,7 +20,7 @@ var indexKeysCache = newDomainCache()
 // "透传放行,报错再显式 TopNSkipReason",不阻塞主流程。
 func (p *provider) storeIndexKeys(region, project, logstore string) []string {
 	key := region + "/" + project + "/" + logstore
-	keys := indexKeysCache.get(key, func() []string {
+	keys, _ := indexKeysCache.get(key, func() []string {
 		idx, err := p.clientFor(region).GetIndex(project, logstore)
 		if err != nil {
 			p.logger.Debug("[logquery-aliyun] get store index failed",

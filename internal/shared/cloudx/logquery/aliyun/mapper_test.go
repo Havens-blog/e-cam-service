@@ -347,7 +347,7 @@ func TestSplitByDomain(t *testing.T) {
 	}
 }
 
-// TestDomainCacheTTL 域名枚举缓存:命中返回缓存副本、过期重取、缓存 nil 不存。
+// TestDomainCacheTTL 域名枚举缓存:命中返回缓存副本+命中标记、过期重取、缓存 nil 不存。
 func TestDomainCacheTTL(t *testing.T) {
 	c := newDomainCache()
 	calls := 0
@@ -355,27 +355,28 @@ func TestDomainCacheTTL(t *testing.T) {
 		calls++
 		return []string{"a.com", "b.com"}
 	}
-	got := c.get("k1", fetch)
-	if len(got) != 2 || calls != 1 {
-		t.Fatalf("first get = %v calls=%d", got, calls)
+	got, hit := c.get("k1", fetch)
+	if hit || len(got) != 2 || calls != 1 {
+		t.Fatalf("first get = %v hit=%v calls=%d", got, hit, calls)
 	}
-	got = c.get("k1", fetch) // TTL 内命中
-	if calls != 1 {
-		t.Errorf("second get should hit cache, calls=%d", calls)
+	got, hit = c.get("k1", fetch) // TTL 内命中
+	if !hit || calls != 1 {
+		t.Errorf("second get should hit cache, hit=%v calls=%d", hit, calls)
 	}
 	// 过期
 	c.expire("k1")
-	_ = c.get("k1", fetch)
-	if calls != 2 {
-		t.Errorf("expired entry should refetch, calls=%d", calls)
+	got, hit = c.get("k1", fetch)
+	if hit || calls != 2 {
+		t.Errorf("expired entry should refetch, hit=%v calls=%d", hit, calls)
 	}
 	// 空 result 不缓存(源数据未就绪时不长期锁死)
 	c.set("k2", nil)
 	if calls2 := 0; calls2 != 0 {
 		t.Error("unreachable")
 	}
-	if got := c.get("k2", func() []string { return []string{"x.com"} }); len(got) != 1 {
-		t.Errorf("nil cached should fall back to fetch, got %v", got)
+	got, hit = c.get("k2", func() []string { return []string{"x.com"} })
+	if hit || len(got) != 1 {
+		t.Errorf("nil cached should fall back to fetch, hit=%v got=%v", hit, got)
 	}
 }
 // 字段集完全相同 = 同一条日志)。曾用 CDN 字段名做键,WAF 行字段名不同

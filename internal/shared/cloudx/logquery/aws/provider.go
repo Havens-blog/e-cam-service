@@ -139,49 +139,78 @@ func (p *provider) sourcesOf() []aSource {
 }
 
 // ListLogSources 枚举日志源:WAF=逐 ACL 前缀下钻;CDN=桶根一级目录(域名)。
-// 前缀发现带 10 分钟缓存(根前缀 list 实测 7s、单层 RTT 230ms,目录结构
-// 变化极慢;sources 每次切 Tab 重拉,无缓存时 WAF sources 5.7s 全耗在此)。
+// 前缀发现带 10 分钟缓存(SWR 宽限期内供旧清单+后台刷新),各 catalog 源
+// **并发**枚举(此前串行:2 WAF 桶 4 级钻取 + CDN 根 list 叠加曾是冷启动
+// sources ~15s 的主因),并输出逐源阶段耗时(可测回归)。
 func (p *provider) ListLogSources(ctx context.Context, account *domain.CloudAccount) ([]logquery.LogSource, error) {
+	srcs := p.sourcesOf()
+	slots := make([][]logquery.LogSource, len(srcs))
+	var wg sync.WaitGroup
+	for i := range srcs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			start := time.Now()
+			src := srcs[i]
+			out, hit := p.listOneSource(ctx, src)
+			p.logger.Info("[logquery-aws] list sources stage done",
+				elog.String("bucket", src.bucket),
+				elog.String("kind", src.kind),
+				elog.Int("count", len(out)),
+				elog.String("cache", hit.String()),
+				elog.Int64("duration_ms", time.Since(start).Milliseconds()))
+			slots[i] = out
+		}()
+	}
+	wg.Wait()
 	var out []logquery.LogSource
-	for _, src := range p.sourcesOf() {
-		client, err := p.clientFor(src.bucket, src.region)
-		if err != nil {
-			p.logger.Warn("[logquery-aws] s3 client failed", elog.FieldErr(err))
-			continue
-		}
-		switch src.kind {
-		case "waf-json":
-			// AWSLogs/<acct>/WAFLogs/cloudfront/<acl>/ -> 深钻 4 级取 ACL
-			key := src.bucket + "/" + src.prefix + "/waf4"
-			aclPrefixes, err := awsPrefixCache.get(key, func() ([]string, error) {
-				return walkPrefixes(ctx, client, src.bucket, src.prefix, 4)
-			})
-			if err != nil {
-				p.logger.Warn("[logquery-aws] walk waf prefixes failed",
-					elog.String("bucket", src.bucket), elog.FieldErr(err))
-				continue
-			}
-			for _, pref := range aclPrefixes {
-				acl := pathBase(strings.TrimSuffix(pref, "/"))
-				out = append(out, p.toSource(src, acl, acl, true))
-			}
-		case "cloudfront-tsv":
-			key := src.bucket + "/cloudfront1"
-			domainPrefixes, err := awsPrefixCache.get(key, func() ([]string, error) {
-				return listCommonPrefixes(ctx, client, src.bucket, "")
-			})
-			if err != nil {
-				p.logger.Warn("[logquery-aws] list domains failed",
-					elog.String("bucket", src.bucket), elog.FieldErr(err))
-				continue
-			}
-			for _, pref := range domainPrefixes {
-				d := strings.TrimSuffix(pref, "/")
-				out = append(out, p.toSource(src, d, d, true))
-			}
-		}
+	for _, s := range slots {
+		out = append(out, s...)
 	}
 	return out, nil
+}
+
+// listOneSource 单 catalog 源枚举(前缀发现走 SWR 缓存;失败隔离返回 nil)。
+func (p *provider) listOneSource(ctx context.Context, src aSource) (out []logquery.LogSource, hit cacheHit) {
+	client, err := p.clientFor(src.bucket, src.region)
+	if err != nil {
+		p.logger.Warn("[logquery-aws] s3 client failed", elog.FieldErr(err))
+		return nil, cacheMiss
+	}
+	switch src.kind {
+	case "waf-json":
+		// AWSLogs/<acct>/WAFLogs/cloudfront/<acl>/ -> 深钻 4 级取 ACL
+		key := src.bucket + "/" + src.prefix + "/waf4"
+		aclPrefixes, h, err := awsPrefixCache.get(ctx, key, func(cctx context.Context) ([]string, error) {
+			return walkPrefixes(cctx, client, src.bucket, src.prefix, 4)
+		})
+		hit = h
+		if err != nil {
+			p.logger.Warn("[logquery-aws] walk waf prefixes failed",
+				elog.String("bucket", src.bucket), elog.FieldErr(err))
+			return nil, hit
+		}
+		for _, pref := range aclPrefixes {
+			acl := pathBase(strings.TrimSuffix(pref, "/"))
+			out = append(out, p.toSource(src, acl, acl, true))
+		}
+	case "cloudfront-tsv":
+		key := src.bucket + "/cloudfront1"
+		domainPrefixes, h, err := awsPrefixCache.get(ctx, key, func(cctx context.Context) ([]string, error) {
+			return listCommonPrefixes(cctx, client, src.bucket, "")
+		})
+		hit = h
+		if err != nil {
+			p.logger.Warn("[logquery-aws] list domains failed",
+				elog.String("bucket", src.bucket), elog.FieldErr(err))
+			return nil, hit
+		}
+		for _, pref := range domainPrefixes {
+			d := strings.TrimSuffix(pref, "/")
+			out = append(out, p.toSource(src, d, d, true))
+		}
+	}
+	return out, hit
 }
 
 // toSource catalog+资源 -> LogSource。
@@ -234,7 +263,12 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 			if err != nil {
 				continue
 			}
-			prefixes, err := walkPrefixes(ctx, client, src.bucket, src.prefix, 4)
+			// 前缀发现与 ListLogSources 共用同一 SWR 缓存(此前 Search 每请求
+			// 裸钻 4 级 ×2 桶,热查询也要 12s+ ——退化主因)
+			key := src.bucket + "/" + src.prefix + "/waf4"
+			prefixes, _, err := awsPrefixCache.get(ctx, key, func(cctx context.Context) ([]string, error) {
+				return walkPrefixes(cctx, client, src.bucket, src.prefix, 4)
+			})
 			if err != nil {
 				p.logger.Warn("[logquery-aws] walk waf prefixes failed",
 					elog.String("bucket", src.bucket), elog.FieldErr(err))
@@ -252,7 +286,10 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 			if err != nil {
 				continue
 			}
-			prefixes, err := listCommonPrefixes(ctx, client, src.bucket, "")
+			key := src.bucket + "/cloudfront1"
+			prefixes, _, err := awsPrefixCache.get(ctx, key, func(cctx context.Context) ([]string, error) {
+				return listCommonPrefixes(cctx, client, src.bucket, "")
+			})
 			if err != nil {
 				p.logger.Warn("[logquery-aws] list domains failed",
 					elog.String("bucket", src.bucket), elog.FieldErr(err))

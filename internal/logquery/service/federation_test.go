@@ -374,10 +374,10 @@ func (p *capturingAggregator) Aggregate(_ context.Context, _ *domain.CloudAccoun
 func TestSearchFederatedCap(t *testing.T) {
 	now := time.Now().UnixMilli()
 	var entries []logquery.LogEntry
-	for i := range 1500 {
+	for i := range 3500 {
 		entries = append(entries, &testEntry{ts: now - int64(i)})
 	}
-	mustRegister(t, entries, nil)
+	mustRegister(t, entries[:600], nil)
 	svc := NewFederationService(&fakeAccountSource{accounts: []domain.CloudAccount{
 		testAccount(1, testCloud),
 	}}, nil)
@@ -392,10 +392,10 @@ func TestSearchFederatedCap(t *testing.T) {
 	if resp.Truncated {
 		t.Error("600 entries below federated cap should not be truncated")
 	}
-	if resp.Total > 1000 {
+	if resp.Total > 3000 {
 		t.Errorf("total = %d exceeds federated cap", resp.Total)
 	}
-	// 1500 条 > 联邦硬顶:ignoreLimit 桩模拟多源归并总量超限
+	// 3500 条 > 联邦硬顶 3000:ignoreLimit 桩模拟多源归并总量超限
 	logquery.RegisterProvider(testCloud, logquery.LogTypeWAF, func(*domain.CloudAccount) (logquery.LogProvider, error) {
 		return &fakeProvider{cloud: testCloud, logType: logquery.LogTypeWAF, entries: entries, ignoreLimit: true}, nil
 	})
@@ -407,9 +407,9 @@ func TestSearchFederatedCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !resp2.Truncated {
-		t.Error("1500 entries should be truncated at federated cap")
+		t.Error("3500 entries should be truncated at federated cap")
 	}
-	if resp2.Total != 1000 {
-		t.Errorf("total = %d, want 1000", resp2.Total)
+	if resp2.Total != 3000 {
+		t.Errorf("total = %d, want 3000", resp2.Total)
 	}
 }

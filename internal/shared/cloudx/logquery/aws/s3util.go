@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/gotomicro/ego/core/elog"
 )
 
 // s3Object S3 对象清单条目。
@@ -195,47 +196,164 @@ func strPtr(s string) *string { return &s }
 // 要扫满页才吐 CommonPrefixes,实测 AWSLogs/ 首层 7s、单层 RTT 230ms;
 // 目录结构变化极慢,缓存 10 分钟内零 API 调用(sources 每次切 Tab 重拉,
 // 无缓存时 WAF sources 5.7s 全耗在此)。
+// 过期不阻塞:宽限期内先返回旧清单+后台刷新(SWR,proposal 实现注记 3),
+// 刷新失败退避 30s 防故障期每请求重试。
 // ---------------------------------------------------------------------
 
-// prefixCacheTTL 前缀发现缓存时长。
+// prefixCacheTTL 前缀发现缓存新鲜时长。
 const prefixCacheTTL = 10 * time.Minute
 
-type prefixCacheEntry struct {
-	prefixes []string
-	expires  time.Time
+// prefixStaleGrace 新鲜期过后仍供旧清单的宽限时长(期间后台刷新)。
+const prefixStaleGrace = 10 * time.Minute
+
+// prefixRefreshBackoff 后台刷新失败后的重试退避。
+const prefixRefreshBackoff = 30 * time.Second
+
+// prefixFetchTimeout 前缀列举(含后台刷新)单次超时。
+const prefixFetchTimeout = 30 * time.Second
+
+// cacheHit 缓存命中形态(日志埋点用)。
+type cacheHit int
+
+const (
+	cacheMiss  cacheHit = iota // 未命中,同步回填
+	cacheFresh                 // 新鲜期内直接命中
+	cacheStale                 // 宽限期内供旧清单,后台刷新中
+)
+
+func (h cacheHit) String() string {
+	switch h {
+	case cacheFresh:
+		return "fresh"
+	case cacheStale:
+		return "stale"
+	}
+	return "miss"
 }
 
-// prefixCache 进程内 TTL 缓存(键 = bucket + root + depth)。
+type prefixCacheEntry struct {
+	prefixes     []string
+	freshUntil   time.Time
+	expires      time.Time // 超过则同步重取(stale 宽限上限)
+	backoffUntil time.Time // 后台刷新失败退避(退避期不重试,续供旧值)
+}
+
+// prefixCache 进程内 SWR 缓存(键 = bucket + root + depth)。
 type prefixCache struct {
-	mu      sync.RWMutex
-	entries map[string]prefixCacheEntry
+	mu       sync.RWMutex
+	entries  map[string]prefixCacheEntry
+	inflight map[string]bool // 后台刷新单飞
 }
 
 // awsPrefixCache 进程级共享实例。
 var awsPrefixCache = newPrefixCache()
 
 func newPrefixCache() *prefixCache {
-	return &prefixCache{entries: make(map[string]prefixCacheEntry)}
+	return &prefixCache{
+		entries:  make(map[string]prefixCacheEntry),
+		inflight: make(map[string]bool),
+	}
 }
 
-// get 命中返回缓存副本;过期/缺失调用 fetch 回填;失败/空结果不缓存。
-func (c *prefixCache) get(key string, fetch func() ([]string, error)) ([]string, error) {
+// get 命中返回缓存副本;新鲜期外宽限内返回旧清单并触发后台刷新(单飞);
+// 完全过期/缺失同步回填。fetch 失败不覆盖旧清单。
+func (c *prefixCache) get(ctx context.Context, key string, fetch func(context.Context) ([]string, error)) ([]string, cacheHit, error) {
 	c.mu.RLock()
 	e, ok := c.entries[key]
 	c.mu.RUnlock()
-	if ok && time.Now().Before(e.expires) {
-		out := make([]string, len(e.prefixes))
-		copy(out, e.prefixes)
-		return out, nil
+	if ok {
+		now := time.Now()
+		if now.Before(e.freshUntil) {
+			return copyPrefixes(e.prefixes), cacheFresh, nil
+		}
+		if now.Before(e.expires) {
+			if now.After(e.backoffUntil) {
+				c.refreshAsync(key, fetch)
+			}
+			return copyPrefixes(e.prefixes), cacheStale, nil
+		}
 	}
-	prefixes, err := fetch()
-	if err != nil || len(prefixes) == 0 {
-		return prefixes, err
+	prefixes, err := fetch(ctx)
+	if err != nil {
+		return nil, cacheMiss, err
 	}
-	cp := make([]string, len(prefixes))
-	copy(cp, prefixes)
+	c.store(key, prefixes)
+	return prefixes, cacheMiss, nil
+}
+
+// refreshAsync 后台刷新(单飞;成功换新,失败退避续供旧清单)。
+func (c *prefixCache) refreshAsync(key string, fetch func(context.Context) ([]string, error)) {
 	c.mu.Lock()
-	c.entries[key] = prefixCacheEntry{prefixes: cp, expires: time.Now().Add(prefixCacheTTL)}
+	if c.inflight[key] {
+		c.mu.Unlock()
+		return
+	}
+	c.inflight[key] = true
 	c.mu.Unlock()
-	return prefixes, nil
+	go func() {
+		defer func() {
+			c.mu.Lock()
+			delete(c.inflight, key)
+			c.mu.Unlock()
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), prefixFetchTimeout)
+		defer cancel()
+		prefixes, err := fetch(ctx)
+		if err != nil {
+			elog.Warn("[logquery-aws] prefix cache background refresh failed",
+				elog.String("key", key), elog.FieldErr(err))
+			c.mu.Lock()
+			if e, ok := c.entries[key]; ok {
+				e.backoffUntil = time.Now().Add(prefixRefreshBackoff) // 退避:续供旧清单
+				c.entries[key] = e
+			}
+			c.mu.Unlock()
+			return
+		}
+		if len(prefixes) > 0 {
+			c.store(key, prefixes)
+		}
+	}()
+}
+
+// store 写入(空结果不缓存——目录被清空时允许重探)。
+func (c *prefixCache) store(key string, prefixes []string) {
+	if len(prefixes) == 0 {
+		return
+	}
+	now := time.Now()
+	c.mu.Lock()
+	c.entries[key] = prefixCacheEntry{
+		prefixes:   copyPrefixes(prefixes),
+		freshUntil: now.Add(prefixCacheTTL),
+		expires:    now.Add(prefixCacheTTL + prefixStaleGrace),
+	}
+	c.mu.Unlock()
+}
+
+func copyPrefixes(in []string) []string {
+	out := make([]string, len(in))
+	copy(out, in)
+	return out
+}
+
+// forceStale 测试用:条目转入宽限期(保数据,新鲜窗归零)。
+func (c *prefixCache) forceStale(key string) {
+	c.mu.Lock()
+	if e, ok := c.entries[key]; ok {
+		e.freshUntil = time.Now().Add(-time.Second)
+		c.entries[key] = e
+	}
+	c.mu.Unlock()
+}
+
+// forceExpire 测试用:条目转入完全过期(下次同步重取)。
+func (c *prefixCache) forceExpire(key string) {
+	c.mu.Lock()
+	if e, ok := c.entries[key]; ok {
+		e.freshUntil = time.Now().Add(-time.Second)
+		e.expires = time.Now().Add(-time.Second)
+		c.entries[key] = e
+	}
+	c.mu.Unlock()
 }
