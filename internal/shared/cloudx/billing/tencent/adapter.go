@@ -99,35 +99,35 @@ func parseBillDetails(response *tcbilling.DescribeBillDetailResponse, billingCyc
 	items := make([]billing.RawBillItem, 0, len(response.Response.DetailSet))
 	for _, detail := range response.Response.DetailSet {
 		rawData := map[string]interface{}{
-			"BusinessCode":     strVal(detail.BusinessCode),
-			"BusinessCodeName": strVal(detail.BusinessCodeName),
-			"ProductCode":      strVal(detail.ProductCode),
-			"ProductCodeName":  strVal(detail.ProductCodeName),
-			"ActionType":       strVal(detail.ActionType),
-			"ActionTypeName":   strVal(detail.ActionTypeName),
-			"RegionId":         strVal(detail.RegionId),
-			"RegionName":       strVal(detail.RegionName),
-			"ZoneName":         strVal(detail.ZoneName),
-			"ResourceId":       strVal(detail.ResourceId),
-			"ResourceName":     strVal(detail.ResourceName),
-			"PayModeName":      strVal(detail.PayModeName),
-			"ProjectName":      strVal(detail.ProjectName),
-			"OrderId":          strVal(detail.OrderId),
-			"BillId":           strVal(detail.BillId),
-			"PayTime":          strVal(detail.PayTime),
-			"FeeBeginTime":     strVal(detail.FeeBeginTime),
-			"FeeEndTime":       strVal(detail.FeeEndTime),
-			"PayerUin":         strVal(detail.PayerUin),
-			"OwnerUin":         strVal(detail.OwnerUin),
-			"OperateUin":       strVal(detail.OperateUin),
-			"BillDay":          strVal(detail.BillDay),
-			"BillMonth":        strVal(detail.BillMonth),
+			"BusinessCode":     billing.DerefStr(detail.BusinessCode),
+			"BusinessCodeName": billing.DerefStr(detail.BusinessCodeName),
+			"ProductCode":      billing.DerefStr(detail.ProductCode),
+			"ProductCodeName":  billing.DerefStr(detail.ProductCodeName),
+			"ActionType":       billing.DerefStr(detail.ActionType),
+			"ActionTypeName":   billing.DerefStr(detail.ActionTypeName),
+			"RegionId":         billing.DerefStr(detail.RegionId),
+			"RegionName":       billing.DerefStr(detail.RegionName),
+			"ZoneName":         billing.DerefStr(detail.ZoneName),
+			"ResourceId":       billing.DerefStr(detail.ResourceId),
+			"ResourceName":     billing.DerefStr(detail.ResourceName),
+			"PayModeName":      billing.DerefStr(detail.PayModeName),
+			"ProjectName":      billing.DerefStr(detail.ProjectName),
+			"OrderId":          billing.DerefStr(detail.OrderId),
+			"BillId":           billing.DerefStr(detail.BillId),
+			"PayTime":          billing.DerefStr(detail.PayTime),
+			"FeeBeginTime":     billing.DerefStr(detail.FeeBeginTime),
+			"FeeEndTime":       billing.DerefStr(detail.FeeEndTime),
+			"PayerUin":         billing.DerefStr(detail.PayerUin),
+			"OwnerUin":         billing.DerefStr(detail.OwnerUin),
+			"OperateUin":       billing.DerefStr(detail.OperateUin),
+			"BillDay":          billing.DerefStr(detail.BillDay),
+			"BillMonth":        billing.DerefStr(detail.BillMonth),
 		}
 		amount := 0.0
 		if detail.ComponentSet != nil {
 			for _, comp := range detail.ComponentSet {
 				if comp.RealCost != nil {
-					amount += parseFloat(strVal(comp.RealCost))
+					amount += parseFloat(billing.DerefStr(comp.RealCost))
 				}
 			}
 		}
@@ -140,11 +140,11 @@ func parseBillDetails(response *tcbilling.DescribeBillDetailResponse, billingCyc
 				}
 			}
 		}
-		if project := strVal(detail.ProjectName); project != "" {
+		if project := billing.DerefStr(detail.ProjectName); project != "" {
 			tags["project"] = project
 		}
 		chargeType := "postpaid"
-		if payMode := strVal(detail.PayModeName); payMode != "" {
+		if payMode := billing.DerefStr(detail.PayModeName); payMode != "" {
 			if strings.Contains(payMode, "包年包月") || strings.Contains(payMode, "prePay") {
 				chargeType = "prepaid"
 			}
@@ -153,10 +153,10 @@ func parseBillDetails(response *tcbilling.DescribeBillDetailResponse, billingCyc
 		items = append(items, billing.RawBillItem{
 			Provider:     domain.CloudProviderTencent,
 			RawData:      rawData,
-			ServiceType:  strVal(detail.BusinessCode),
-			ResourceID:   strVal(detail.ResourceId),
-			ResourceName: strVal(detail.ResourceName),
-			Region:       strVal(detail.RegionId),
+			ServiceType:  billing.DerefStr(detail.BusinessCode),
+			ResourceID:   billing.DerefStr(detail.ResourceId),
+			ResourceName: billing.DerefStr(detail.ResourceName),
+			Region:       billing.DerefStr(detail.RegionId),
 			Amount:       amount,
 			Currency:     "CNY",
 			BillingCycle: billingCycle,
@@ -200,13 +200,6 @@ func isRetryable(err error) bool {
 		return true
 	}
 	return false
-}
-
-func strVal(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }
 
 func parseFloat(s string) float64 {

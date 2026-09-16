@@ -132,52 +132,52 @@ func parseBillDetailItems(output *volcbilling.ListBillDetailOutput, billingCycle
 	items := make([]billing.RawBillItem, 0, len(output.List))
 	for _, item := range output.List {
 		rawData := map[string]interface{}{
-			"BillDetailId":       strVal(item.BillDetailId),
-			"BillID":             strVal(item.BillID),
-			"BillPeriod":         strVal(item.BillPeriod),
-			"Product":            strVal(item.Product),
-			"ProductZh":          strVal(item.ProductZh),
-			"InstanceNo":         strVal(item.InstanceNo),
-			"InstanceName":       strVal(item.InstanceName),
-			"Region":             strVal(item.Region),
-			"RegionCode":         strVal(item.RegionCode),
-			"BillingMode":        strVal(item.BillingMode),
-			"ExpenseBeginTime":   strVal(item.ExpenseBeginTime),
-			"ExpenseEndTime":     strVal(item.ExpenseEndTime),
-			"PayableAmount":      strVal(item.PayableAmount),
-			"PaidAmount":         strVal(item.PaidAmount),
-			"OriginalBillAmount": strVal(item.OriginalBillAmount),
-			"DiscountBillAmount": strVal(item.DiscountBillAmount),
-			"CouponAmount":       strVal(item.CouponAmount),
-			"Currency":           strVal(item.Currency),
-			"Project":            strVal(item.Project),
-			"Tag":                strVal(item.Tag),
-			"OwnerID":            strVal(item.OwnerID),
-			"SellingMode":        strVal(item.SellingMode),
-			"SubjectName":        strVal(item.SubjectName),
+			"BillDetailId":       billing.DerefStr(item.BillDetailId),
+			"BillID":             billing.DerefStr(item.BillID),
+			"BillPeriod":         billing.DerefStr(item.BillPeriod),
+			"Product":            billing.DerefStr(item.Product),
+			"ProductZh":          billing.DerefStr(item.ProductZh),
+			"InstanceNo":         billing.DerefStr(item.InstanceNo),
+			"InstanceName":       billing.DerefStr(item.InstanceName),
+			"Region":             billing.DerefStr(item.Region),
+			"RegionCode":         billing.DerefStr(item.RegionCode),
+			"BillingMode":        billing.DerefStr(item.BillingMode),
+			"ExpenseBeginTime":   billing.DerefStr(item.ExpenseBeginTime),
+			"ExpenseEndTime":     billing.DerefStr(item.ExpenseEndTime),
+			"PayableAmount":      billing.DerefStr(item.PayableAmount),
+			"PaidAmount":         billing.DerefStr(item.PaidAmount),
+			"OriginalBillAmount": billing.DerefStr(item.OriginalBillAmount),
+			"DiscountBillAmount": billing.DerefStr(item.DiscountBillAmount),
+			"CouponAmount":       billing.DerefStr(item.CouponAmount),
+			"Currency":           billing.DerefStr(item.Currency),
+			"Project":            billing.DerefStr(item.Project),
+			"Tag":                billing.DerefStr(item.Tag),
+			"OwnerID":            billing.DerefStr(item.OwnerID),
+			"SellingMode":        billing.DerefStr(item.SellingMode),
+			"SubjectName":        billing.DerefStr(item.SubjectName),
 		}
 
-		amount := parseFloat(strVal(item.PayableAmount))
+		amount := parseFloat(billing.DerefStr(item.PayableAmount))
 
-		region := strVal(item.Region)
+		region := billing.DerefStr(item.Region)
 		if region == "" {
-			region = strVal(item.RegionCode)
+			region = billing.DerefStr(item.RegionCode)
 		}
 
 		tags := make(map[string]string)
-		if project := strVal(item.Project); project != "" {
+		if project := billing.DerefStr(item.Project); project != "" {
 			tags["project"] = project
 		}
-		if tag := strVal(item.Tag); tag != "" {
+		if tag := billing.DerefStr(item.Tag); tag != "" {
 			tags["raw_tag"] = tag
 		}
 
 		items = append(items, billing.RawBillItem{
 			Provider:     domain.CloudProviderVolcano,
 			RawData:      rawData,
-			ServiceType:  strVal(item.Product),
-			ResourceID:   strVal(item.InstanceNo),
-			ResourceName: strVal(item.InstanceName),
+			ServiceType:  billing.DerefStr(item.Product),
+			ResourceID:   billing.DerefStr(item.InstanceNo),
+			ResourceName: billing.DerefStr(item.InstanceName),
 			Region:       region,
 			Amount:       amount,
 			Currency:     "CNY",
@@ -267,14 +267,6 @@ func isRetryable(err error) bool {
 	}
 
 	return false
-}
-
-// strVal 安全获取字符串指针的值
-func strVal(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }
 
 // parseFloat 安全解析浮点数字符串

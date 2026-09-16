@@ -165,24 +165,24 @@ func parseBillRecords(response *model.ListCustomerselfResourceRecordDetailsRespo
 
 	for _, record := range records {
 		rawData := map[string]interface{}{
-			"Cycle":                 strVal(record.Cycle),
-			"BillDate":              strVal(record.BillDate),
+			"Cycle":                 billing.DerefStr(record.Cycle),
+			"BillDate":              billing.DerefStr(record.BillDate),
 			"BillType":              int32Val(record.BillType),
-			"CustomerId":            strVal(record.CustomerId),
-			"Region":                strVal(record.Region),
-			"RegionName":            strVal(record.RegionName),
-			"CloudServiceType":      strVal(record.CloudServiceType),
-			"ResourceTypeCode":      strVal(record.ResourceTypeCode),
-			"CloudServiceTypeName":  strVal(record.CloudServiceTypeName),
-			"ResourceTypeName":      strVal(record.ResourceTypeName),
-			"ResInstanceId":         strVal(record.ResInstanceId),
-			"ResourceName":          strVal(record.ResourceName),
-			"ResourceTag":           strVal(record.ResourceTag),
-			"SkuCode":               strVal(record.SkuCode),
-			"EnterpriseProjectId":   strVal(record.EnterpriseProjectId),
-			"EnterpriseProjectName": strVal(record.EnterpriseProjectName),
+			"CustomerId":            billing.DerefStr(record.CustomerId),
+			"Region":                billing.DerefStr(record.Region),
+			"RegionName":            billing.DerefStr(record.RegionName),
+			"CloudServiceType":      billing.DerefStr(record.CloudServiceType),
+			"ResourceTypeCode":      billing.DerefStr(record.ResourceTypeCode),
+			"CloudServiceTypeName":  billing.DerefStr(record.CloudServiceTypeName),
+			"ResourceTypeName":      billing.DerefStr(record.ResourceTypeName),
+			"ResInstanceId":         billing.DerefStr(record.ResInstanceId),
+			"ResourceName":          billing.DerefStr(record.ResourceName),
+			"ResourceTag":           billing.DerefStr(record.ResourceTag),
+			"SkuCode":               billing.DerefStr(record.SkuCode),
+			"EnterpriseProjectId":   billing.DerefStr(record.EnterpriseProjectId),
+			"EnterpriseProjectName": billing.DerefStr(record.EnterpriseProjectName),
 			"ChargeMode":            int32Val(record.ChargeMode),
-			"TradeId":               strVal(record.TradeId),
+			"TradeId":               billing.DerefStr(record.TradeId),
 		}
 
 		// 解析消费金额
@@ -199,13 +199,13 @@ func parseBillRecords(response *model.ListCustomerselfResourceRecordDetailsRespo
 		rawData["ConsumeAmount"] = amount
 
 		tags := make(map[string]string)
-		if tag := strVal(record.ResourceTag); tag != "" {
+		if tag := billing.DerefStr(record.ResourceTag); tag != "" {
 			tags["raw_tag"] = tag
 		}
-		if epId := strVal(record.EnterpriseProjectId); epId != "" {
+		if epId := billing.DerefStr(record.EnterpriseProjectId); epId != "" {
 			tags["enterprise_project_id"] = epId
 		}
-		if epName := strVal(record.EnterpriseProjectName); epName != "" {
+		if epName := billing.DerefStr(record.EnterpriseProjectName); epName != "" {
 			tags["enterprise_project_name"] = epName
 		}
 
@@ -226,10 +226,10 @@ func parseBillRecords(response *model.ListCustomerselfResourceRecordDetailsRespo
 		items = append(items, billing.RawBillItem{
 			Provider:     domain.CloudProviderHuawei,
 			RawData:      rawData,
-			ServiceType:  strVal(record.CloudServiceType),
-			ResourceID:   strVal(record.ResInstanceId),
-			ResourceName: strVal(record.ResourceName),
-			Region:       strVal(record.Region),
+			ServiceType:  billing.DerefStr(record.CloudServiceType),
+			ResourceID:   billing.DerefStr(record.ResInstanceId),
+			ResourceName: billing.DerefStr(record.ResourceName),
+			Region:       billing.DerefStr(record.Region),
 			Amount:       amount,
 			Currency:     "CNY",
 			BillingCycle: billingCycle,
@@ -300,14 +300,6 @@ func isRetryable(err error) bool {
 	}
 
 	return false
-}
-
-// strVal 安全获取字符串指针的值
-func strVal(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }
 
 // int32Val 安全获取 int32 指针的值
