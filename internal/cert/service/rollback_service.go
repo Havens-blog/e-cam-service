@@ -57,8 +57,10 @@ type ChangeRollbackService interface {
 
 // RollbackTargetSource 回滚目标有效性校验端口（GetCert 只读三判定数据源）：
 // 生产实现 *deployer.CloudAPIChannel（InspectCloudCert 经 5.4/5.5 注册的
-// per 云部署器路由，GetCert 走 3.1/3.2 适配）。discovery-only 三云无成功项
-// 场景天然不触达（不可执行项不会 success）。
+// per 云部署器路由，GetCert 走 3.1/3.2 适配）。五云部署器已全量注册
+// （cert-multicloud-deployers 任务 1~4），华为/AWS/Azure 成功项回滚同样
+// 经此路由触达（历史 discovery-only 不触达口径已随 discoveryOnlyClouds
+// 名单移除失效，见任务 4 装配回归）。
 type RollbackTargetSource interface {
 	// InspectCloudCert 查询 cloudCertID 在 cloud 证书库的在库状态。
 	InspectCloudCert(ctx context.Context, creds deployer.Credential, cloud, cloudCertID string) (deployer.CloudCertInfo, error)

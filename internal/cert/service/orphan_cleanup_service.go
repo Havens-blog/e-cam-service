@@ -37,7 +37,7 @@ import (
 // OrphanCleanupResult 孤儿云证书清理单项结果（tech-design Service-Level Types，
 // ChangeReport.OrphanCleanup 元素；逐项成功/失败，PRD Story 3/5 AC）。
 type OrphanCleanupResult struct {
-	Cloud       string    // 清理动作所属云（aliyun|tencent）
+	Cloud       string    // 清理动作所属云（aliyun|tencent|huawei|aws|azure）
 	CloudCertID string    // 被清理的云侧证书 ID
 	Action      string    // cleanup=执行清理 | skip_keep=暂留（保护期内）
 	Success     bool      // 清理成败；false 触发运维处置告警
@@ -67,7 +67,9 @@ type OrphanCleanupRecorder interface {
 
 // OrphanCleaner 孤儿清理执行端口：per 云 CloudDeployer.CleanupOrphan 路由
 // （生产实现 *deployer.CloudAPIChannel.CleanupOrphanCert，5.4/5.5 组装的
-// 部署器经注册表路由；discovery-only 三云无孤儿映射，天然不触达）。
+// 部署器经注册表路由）。五云部署器已全量注册（cert-multicloud-deployers
+// 任务 1~4），华为/AWS/Azure 绑定失败补偿与回滚清理同样经此触达（历史
+// discovery-only 无孤儿映射口径已随 discoveryOnlyClouds 名单移除失效）。
 type OrphanCleaner interface {
 	// CleanupOrphanCert 清理 cloud 证书库中的 cloudCertID（对已删除证书幂等成功）。
 	CleanupOrphanCert(ctx context.Context, creds deployer.Credential, cloud, cloudCertID string) error

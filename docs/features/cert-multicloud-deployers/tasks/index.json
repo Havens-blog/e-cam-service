@@ -154,11 +154,10 @@
       "dependencies": [
         "T-test-run"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "validate-code.md",
       "record": "records/validate-code.md",
-      "type": "validation.code",
-      "blockedReason": "log-query-optimization 会话挂起 cert 残留"
+      "type": "validation.code"
     }
   },
   "statusEnum": [
