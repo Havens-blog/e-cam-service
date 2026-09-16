@@ -179,7 +179,8 @@ func NewReferenceScanService(
 // StartScan
 // ---------------------------------------------------------------------
 
-// StartScan 全量引用扫描编排（同步至终态）：
+// StartScan 全量引用扫描编排（同步至终态；调度器调用）：beginScan + runScan
+// 串行——
 //  1. 防重：已有 running 快照 → domain.ErrScanInProgress（409）；
 //  2. 账号/范围收集：active 账号的云×产品 + enabled CRD 登记（无账号云不入
 //     范围——引用三态按 coverageMeta 范围判定，空扫不可声明"已扫描"）；
@@ -188,7 +189,6 @@ func NewReferenceScanService(
 //  5. 写引用（certFingerprint 解析 + snapshotId/scannedAt 写通）；
 //  6. 收敛：coverageMeta（covered=去重资源数）+ 终态（done / failed）。
 //
-// StartScan 全量引用扫描编排（同步至终态；调度器调用）：beginScan + runScan 串行。
 // HTTP 立即扫描走 StartScanAsync（beginScan 同步建 running 快照 + 后台 runScan），
 // 避免真实账号发现+GetCert 指纹解析耗时超过 HTTP/axios 30s 超时。
 func (s *referenceScanService) StartScan(ctx context.Context) (ScanResult, error) {

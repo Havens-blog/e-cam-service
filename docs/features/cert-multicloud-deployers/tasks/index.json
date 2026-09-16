@@ -65,10 +65,11 @@
       "dependencies": [
         "4"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "clean-code.md",
       "record": "records/clean-code.md",
-      "type": "code-quality.simplify"
+      "type": "code-quality.simplify",
+      "blockedReason": "不属于 log-query-optimization,勿恢复"
     },
     "gen-contracts": {
       "id": "T-test-gen-contracts",

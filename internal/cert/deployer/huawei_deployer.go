@@ -24,16 +24,12 @@ package deployer
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
 	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
 )
@@ -101,48 +97,15 @@ func WithHuaweiRetryPolicy(p RetryPolicy) HuaweiOption {
 	return func(d *HuaweiDeployer) { d.retry = p.normalized() }
 }
 
-// withRetry 有界重试主干（RetryPolicy/固定退避序列与 5.4/5.5 共用）：
+// withRetry 有界重试主干（实现收敛于 boundedRetry 单点，与 5.4/5.5 同口径）：
 //   - ErrCloudRateLimited → 按固定序列退避后重试（计入总时长上限）；
 //   - 上传名冲突（保守启发式，B2 同口径）→ 不退避立即换名重试（仅 UploadCert
 //     语境出现；SCM name 非唯一键、DuplicateCheck=false 下常态休眠）；
-//   - 其余错误立即返回；
-//   - 次数或总时长耗尽 → 包装末次错误返回（哨兵语义经 %w 保留，供 5.7 映射
-//     rate_limited 状态与 5.8 rollbackErrCode 判定）。
+//   - 次数或总时长耗尽 → 包装末次错误返回（哨兵语义经 %w 保留，供 5.7/5.8 判定）。
 //
 // 业务级成败状态归 5.7 引擎（Hard Rule：本层无状态机判断）。
 func (d *HuaweiDeployer) withRetry(ctx context.Context, fn func(attempt int) error) error {
-	policy := d.retry
-	waited := time.Duration(0)
-	attempts := 0
-	for {
-		attempts++
-		err := fn(attempts)
-		if err == nil {
-			return nil
-		}
-		rateLimited := errors.Is(err, cloudx.ErrCloudRateLimited)
-		nameConflict := !rateLimited && isCertNameConflictErr(err)
-		if !rateLimited && !nameConflict {
-			return err
-		}
-		if attempts >= policy.MaxAttempts {
-			return fmt.Errorf("retries exhausted after %d attempts (total backoff %s): %w", attempts, waited, err)
-		}
-		if rateLimited {
-			idx := attempts - 1
-			if idx >= len(policy.Backoffs) {
-				idx = len(policy.Backoffs) - 1
-			}
-			backoff := policy.Backoffs[idx]
-			if waited+backoff > policy.MaxTotalWait {
-				return fmt.Errorf("retries exhausted by total backoff cap %s after %d attempts: %w", policy.MaxTotalWait, attempts, err)
-			}
-			waited += backoff
-			if serr := d.sleep(ctx, backoff); serr != nil {
-				return fmt.Errorf("backoff interrupted: %w", serr)
-			}
-		}
-	}
+	return boundedRetry(ctx, d.retry, d.sleep, fn)
 }
 
 // ---------------------------------------------------------------------
@@ -160,19 +123,12 @@ const (
 	huaweiUploadProduct = huawei.CertProductCDN
 )
 
-// generateUploadName 生成 SCM 上传名 ecam-{指纹前8}-{unix秒}-{随机后缀}：
-//   - 指纹前缀与 5.4/5.5 共用口径（证书叶 DER SHA256 前 8 hex，解析失败回退
-//     整段 PEM SHA256）；
-//   - unix 秒 + 随机后缀保证逐次唯一（C7：重试不复用可能已成功的名称；
-//     DuplicateCheck=false 下内容重复亦为独立副本）；
-//   - 防御性截断至 63 字符。
+// generateUploadName 生成 SCM 上传名 ecam-{指纹前8}-{unix秒}-{随机后缀}（C7
+// 公式实现收敛于 formatUploadName 单点）：指纹前缀与 5.4/5.5 共用口径；unix 秒
+// + 随机后缀保证逐次唯一（重试不复用可能已成功的名称；DuplicateCheck=false
+// 下内容重复亦为独立副本）。
 func (d *HuaweiDeployer) generateUploadName(certPEM string) string {
-	name := fmt.Sprintf("%s-%s-%d-%s",
-		huaweiUploadNamePrefix, certNameFingerprintPrefix(certPEM), d.now().Unix(), d.randHex(4))
-	if len(name) > huaweiUploadNameMaxLen {
-		name = name[:huaweiUploadNameMaxLen]
-	}
-	return name
+	return formatUploadName(huaweiUploadNamePrefix, huaweiUploadNameMaxLen, certPEM, d.now, d.randHex)
 }
 
 // ---------------------------------------------------------------------
@@ -272,10 +228,6 @@ func (d *HuaweiDeployer) ListReferences(ctx context.Context, creds Credential, p
 	return out, nil
 }
 
-// huaweiFingerprintPattern 台账指纹对齐口径 ^[0-9a-f]{64}$（同 3.5/5.4/5.5；
-// SCM 原生 SHA-1 指纹（40hex）/空值等非对齐口径一律视为无法复核）。
-var huaweiFingerprintPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
-
 // resolveFingerprint 引用指纹解析（逐次发现去重缓存）。
 func (d *HuaweiDeployer) resolveFingerprint(
 	ctx context.Context, acct *sharedomain.CloudAccount, r huawei.CloudCertRef, cache map[string]string,
@@ -304,12 +256,11 @@ func (d *HuaweiDeployer) resolveUncachedFingerprint(
 		var e error
 		info, e = d.adapter.GetCert(ctx, acct, r.ReferencedCloudCertID)
 		return e
-	}); err == nil && info.Exists && huaweiFingerprintPattern.MatchString(info.Fingerprint) {
+	}); err == nil && info.Exists && certFingerprint64Pattern.MatchString(info.Fingerprint) {
 		return info.Fingerprint
 	}
 	// 确定性占位指纹（与 3.5 service.resolveUncached 同公式，两路径结果可对账）。
-	sum := sha256.Sum256([]byte("certscan-unresolved:" + cacheKey))
-	return hex.EncodeToString(sum[:])
+	return unresolvedPlaceholderFingerprint(cacheKey)
 }
 
 // GetCert 查询云侧证书在库状态（回滚目标有效性校验依据，只读；适配层已将
@@ -351,19 +302,8 @@ func (d *HuaweiDeployer) CleanupOrphan(ctx context.Context, creds Credential, cl
 	return nil
 }
 
-// account Credential → 适配 *CloudAccount 转换（逐调用临时对象，仅内存；
-// Secret 明文经 string 副本供 SDK 构参，禁入日志/错误信息）。
+// account Credential → 适配 *CloudAccount 转换（实现收敛于 cloudAccountFor
+// 单点；Secret 明文经 string 副本供 SDK 构参，禁入日志/错误信息）。
 func (d *HuaweiDeployer) account(creds Credential) (*sharedomain.CloudAccount, error) {
-	if err := creds.Validate(); err != nil {
-		return nil, err
-	}
-	if creds.Cloud != string(domain.CloudHuawei) {
-		return nil, fmt.Errorf("huawei deployer: credential cloud %q is not huawei", creds.Cloud)
-	}
-	return &sharedomain.CloudAccount{
-		Name:            creds.AccountKey,
-		Provider:        sharedomain.CloudProviderHuawei,
-		AccessKeyID:     creds.AccessKey,
-		AccessKeySecret: string(creds.Secret),
-	}, nil
+	return cloudAccountFor(creds, domain.CloudHuawei, sharedomain.CloudProviderHuawei)
 }
