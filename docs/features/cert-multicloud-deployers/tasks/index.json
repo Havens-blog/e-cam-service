@@ -20,7 +20,7 @@
       "title": "AWS 部署器：ACM 证书库 + CloudFront/ALB/NLB 三产品绑定",
       "priority": "P0",
       "estimatedTime": "3h",
-      "status": "pending",
+      "status": "completed",
       "file": "2-aws-deployer.md",
       "record": "records/2-aws-deployer.md",
       "surface-type": "api",
