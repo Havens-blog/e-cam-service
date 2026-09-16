@@ -1,0 +1,188 @@
+{
+  "feature": "log-query-optimization",
+  "proposal": "docs/proposals/log-query-optimization/proposal.md",
+  "created": "2026-09-16",
+  "tasks": {
+    "1-measure-and-fix-sources-latency": {
+      "id": "1",
+      "title": "定位并修复 sources/search/aggregate 接口延迟(sources 实测 20s)",
+      "priority": "P0",
+      "estimatedTime": "2h",
+      "status": "pending",
+      "file": "1-measure-and-fix-sources-latency.md",
+      "record": "records/1-measure-and-fix-sources-latency.md",
+      "type": "coding.enhancement",
+      "complexity": "medium"
+    },
+    "2-loading-state-and-retry": {
+      "id": "2",
+      "title": "查询进行中状态 + 失败可重试(消除 20s 白屏无回馈)",
+      "priority": "P1",
+      "estimatedTime": "1h",
+      "status": "pending",
+      "file": "2-loading-state-and-retry.md",
+      "record": "records/2-loading-state-and-retry.md",
+      "type": "coding.enhancement",
+      "complexity": "low"
+    },
+    "3-chart-grid-responsive": {
+      "id": "3",
+      "title": "图表栅格/明细区布局自适应(不等宽挤压、表头吸顶)",
+      "priority": "P2",
+      "estimatedTime": "1h",
+      "status": "pending",
+      "file": "3-chart-grid-responsive.md",
+      "record": "records/3-chart-grid-responsive.md",
+      "type": "coding.enhancement",
+      "complexity": "low"
+    },
+    "4-filter-quick-values": {
+      "id": "4",
+      "title": "字段筛选快捷值回填(从已返回样本点选常见值)",
+      "priority": "P1",
+      "estimatedTime": "1.5h",
+      "status": "pending",
+      "file": "4-filter-quick-values.md",
+      "record": "records/4-filter-quick-values.md",
+      "type": "coding.feature",
+      "complexity": "medium"
+    },
+    "5-source-group-fold": {
+      "id": "5",
+      "title": "明细区按云·账号折叠分组展示(组头含条数/耗时)",
+      "priority": "P1",
+      "estimatedTime": "2h",
+      "status": "pending",
+      "file": "5-source-group-fold.md",
+      "record": "records/5-source-group-fold.md",
+      "type": "coding.feature",
+      "complexity": "medium"
+    },
+    "6-topn-drilldown": {
+      "id": "6",
+      "title": "TopN 分组图点击下钻:点击项自动加字段筛选重查",
+      "priority": "P1",
+      "estimatedTime": "1.5h",
+      "status": "pending",
+      "file": "6-topn-drilldown.md",
+      "record": "records/6-topn-drilldown.md",
+      "type": "coding.feature",
+      "complexity": "medium"
+    },
+    "clean-code": {
+      "id": "T-clean-code",
+      "title": "Simplify and Clean Code",
+      "priority": "P2",
+      "estimatedTime": "20min",
+      "dependencies": [
+        "6"
+      ],
+      "status": "pending",
+      "file": "clean-code.md",
+      "record": "records/clean-code.md",
+      "type": "code-quality.simplify"
+    },
+    "gen-contracts": {
+      "id": "T-test-gen-contracts",
+      "title": "Generate Test Contracts",
+      "priority": "P1",
+      "estimatedTime": "30-45min",
+      "dependencies": [
+        "T-test-gen-journeys"
+      ],
+      "status": "pending",
+      "file": "gen-contracts.md",
+      "record": "records/gen-contracts.md",
+      "type": "test.gen-contracts"
+    },
+    "gen-journeys": {
+      "id": "T-test-gen-journeys",
+      "title": "Generate Test Journeys",
+      "priority": "P1",
+      "estimatedTime": "20-30min",
+      "dependencies": [
+        "T-clean-code",
+        "6",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "status": "pending",
+      "file": "gen-journeys.md",
+      "record": "records/gen-journeys.md",
+      "type": "test.gen-journeys"
+    },
+    "gen-test-scripts": {
+      "id": "T-test-gen-scripts",
+      "title": "Generate API Functional Test Scripts",
+      "priority": "P1",
+      "estimatedTime": "1-2h",
+      "dependencies": [
+        "T-test-gen-contracts"
+      ],
+      "status": "pending",
+      "file": "gen-test-scripts.md",
+      "record": "records/gen-test-scripts.md",
+      "surface-key": ".",
+      "surface-type": "api",
+      "type": "test.gen-scripts"
+    },
+    "quick-drift-detection": {
+      "id": "T-quick-doc-drift",
+      "title": "Detect Spec Drift",
+      "priority": "P2",
+      "estimatedTime": "15min",
+      "dependencies": [
+        "T-test-run"
+      ],
+      "status": "pending",
+      "file": "quick-drift-detection.md",
+      "record": "records/quick-drift-detection.md",
+      "type": "doc.drift"
+    },
+    "run-test": {
+      "id": "T-test-run",
+      "title": "Run API Functional Test",
+      "priority": "P1",
+      "estimatedTime": "30min-1h",
+      "dependencies": [
+        "T-test-gen-scripts"
+      ],
+      "status": "pending",
+      "file": "run-test.md",
+      "record": "records/run-test.md",
+      "surface-key": ".",
+      "surface-type": "api",
+      "type": "test.run"
+    },
+    "validate-code": {
+      "id": "T-validate-code",
+      "title": "Validate Code Quality",
+      "priority": "P2",
+      "estimatedTime": "15min",
+      "dependencies": [
+        "T-test-run"
+      ],
+      "status": "pending",
+      "file": "validate-code.md",
+      "record": "records/validate-code.md",
+      "type": "validation.code"
+    }
+  },
+  "statusEnum": [
+    "pending",
+    "in_progress",
+    "completed",
+    "blocked",
+    "suspended",
+    "skipped",
+    "rejected"
+  ],
+  "priorityEnum": [
+    "P0",
+    "P1",
+    "P2"
+  ]
+}
