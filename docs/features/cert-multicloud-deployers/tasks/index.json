@@ -1,0 +1,174 @@
+{
+  "feature": "cert-multicloud-deployers",
+  "proposal": "docs/proposals/cert-multicloud-deployers/proposal.md",
+  "created": "2026-09-16",
+  "tasks": {
+    "1-huawei-deployer": {
+      "id": "1",
+      "title": "华为云部署器：SCM 证书库 + CDN/WAF/ALB/NLB 四产品绑定",
+      "priority": "P0",
+      "estimatedTime": "3h",
+      "status": "pending",
+      "file": "1-huawei-deployer.md",
+      "record": "records/1-huawei-deployer.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "high"
+    },
+    "2-aws-deployer": {
+      "id": "2",
+      "title": "AWS 部署器：ACM 证书库 + CloudFront/ALB/NLB 三产品绑定",
+      "priority": "P0",
+      "estimatedTime": "3h",
+      "status": "pending",
+      "file": "2-aws-deployer.md",
+      "record": "records/2-aws-deployer.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "high"
+    },
+    "3-azure-deployer": {
+      "id": "3",
+      "title": "Azure 部署器：Key Vault 证书库 + CDN(Front Door)/ALB(App Gateway) 两产品绑定",
+      "priority": "P0",
+      "estimatedTime": "3h",
+      "status": "pending",
+      "file": "3-azure-deployer.md",
+      "record": "records/3-azure-deployer.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "high"
+    },
+    "4-assembly-regression": {
+      "id": "4",
+      "title": "模块装配：三云 RegisterDeployer + discoveryOnlyClouds 移除 + 清单可执行回归",
+      "priority": "P0",
+      "estimatedTime": "1.5h",
+      "dependencies": [
+        "1",
+        "2",
+        "3"
+      ],
+      "status": "pending",
+      "file": "4-assembly-regression.md",
+      "record": "records/4-assembly-regression.md",
+      "breaking": true,
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "medium"
+    },
+    "clean-code": {
+      "id": "T-clean-code",
+      "title": "Simplify and Clean Code",
+      "priority": "P2",
+      "estimatedTime": "20min",
+      "dependencies": [
+        "4"
+      ],
+      "status": "pending",
+      "file": "clean-code.md",
+      "record": "records/clean-code.md",
+      "type": "code-quality.simplify"
+    },
+    "gen-contracts": {
+      "id": "T-test-gen-contracts",
+      "title": "Generate Test Contracts",
+      "priority": "P1",
+      "estimatedTime": "30-45min",
+      "dependencies": [
+        "T-test-gen-journeys"
+      ],
+      "status": "pending",
+      "file": "gen-contracts.md",
+      "record": "records/gen-contracts.md",
+      "type": "test.gen-contracts"
+    },
+    "gen-journeys": {
+      "id": "T-test-gen-journeys",
+      "title": "Generate Test Journeys",
+      "priority": "P1",
+      "estimatedTime": "20-30min",
+      "dependencies": [
+        "T-clean-code",
+        "2",
+        "3",
+        "4",
+        "1"
+      ],
+      "status": "pending",
+      "file": "gen-journeys.md",
+      "record": "records/gen-journeys.md",
+      "type": "test.gen-journeys"
+    },
+    "gen-test-scripts": {
+      "id": "T-test-gen-scripts",
+      "title": "Generate API Functional Test Scripts",
+      "priority": "P1",
+      "estimatedTime": "1-2h",
+      "dependencies": [
+        "T-test-gen-contracts"
+      ],
+      "status": "pending",
+      "file": "gen-test-scripts.md",
+      "record": "records/gen-test-scripts.md",
+      "surface-key": ".",
+      "surface-type": "api",
+      "type": "test.gen-scripts"
+    },
+    "quick-drift-detection": {
+      "id": "T-quick-doc-drift",
+      "title": "Detect Spec Drift",
+      "priority": "P2",
+      "estimatedTime": "15min",
+      "dependencies": [
+        "T-test-run"
+      ],
+      "status": "pending",
+      "file": "quick-drift-detection.md",
+      "record": "records/quick-drift-detection.md",
+      "type": "doc.drift"
+    },
+    "run-test": {
+      "id": "T-test-run",
+      "title": "Run API Functional Test",
+      "priority": "P1",
+      "estimatedTime": "30min-1h",
+      "dependencies": [
+        "T-test-gen-scripts"
+      ],
+      "status": "pending",
+      "file": "run-test.md",
+      "record": "records/run-test.md",
+      "surface-key": ".",
+      "surface-type": "api",
+      "type": "test.run"
+    },
+    "validate-code": {
+      "id": "T-validate-code",
+      "title": "Validate Code Quality",
+      "priority": "P2",
+      "estimatedTime": "15min",
+      "dependencies": [
+        "T-test-run"
+      ],
+      "status": "pending",
+      "file": "validate-code.md",
+      "record": "records/validate-code.md",
+      "type": "validation.code"
+    }
+  },
+  "statusEnum": [
+    "pending",
+    "in_progress",
+    "completed",
+    "blocked",
+    "suspended",
+    "skipped",
+    "rejected"
+  ],
+  "priorityEnum": [
+    "P0",
+    "P1",
+    "P2"
+  ]
+}
