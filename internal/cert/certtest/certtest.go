@@ -435,6 +435,20 @@ func (f *FakeCertificateRepo) SetProtectUntil(_ context.Context, fingerprint str
 	return nil
 }
 
+// ForceProtectUntil 直接覆写保护期（测试注入点：SetProtectUntil 保持生产
+// "只延长不缩短"语义，本方法供测试模拟保护期拨到过去/将来的任意状态）。
+func (f *FakeCertificateRepo) ForceProtectUntil(_ context.Context, fingerprint string, until time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c, ok := f.byFP[fingerprint]
+	if !ok {
+		return nil
+	}
+	u := until
+	c.ProtectUntil = &u
+	return nil
+}
+
 // FakeBatchSessionRepo 批量导入会话内存假实现。
 type FakeBatchSessionRepo struct {
 	mu       sync.Mutex

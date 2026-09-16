@@ -109,7 +109,7 @@
       "dependencies": [
         "T-test-gen-contracts"
       ],
-      "status": "suspended",
+      "status": "completed",
       "file": "gen-test-scripts.md",
       "record": "records/gen-test-scripts.md",
       "surface-key": ".",
@@ -125,7 +125,7 @@
       "dependencies": [
         "T-test-run"
       ],
-      "status": "suspended",
+      "status": "pending",
       "file": "quick-drift-detection.md",
       "record": "records/quick-drift-detection.md",
       "type": "doc.drift",
@@ -139,7 +139,7 @@
       "dependencies": [
         "T-test-gen-scripts"
       ],
-      "status": "suspended",
+      "status": "pending",
       "file": "run-test.md",
       "record": "records/run-test.md",
       "surface-key": ".",
@@ -155,7 +155,7 @@
       "dependencies": [
         "T-test-run"
       ],
-      "status": "suspended",
+      "status": "pending",
       "file": "validate-code.md",
       "record": "records/validate-code.md",
       "type": "validation.code",
