@@ -277,6 +277,84 @@ func (s *FederationService) aggregateUncached(ctx context.Context, tenantID int6
 // errAggregateUnsupported provider 未实现聚合能力(显式标注用)。
 var errAggregateUnsupported = fmt.Errorf("aggregate not supported for this provider")
 
+// AggregatableFields 该类型可聚合字段并集(跨活跃账号/云合并,供 /types
+// 分组聚合维度白名单 —— 前端维度下拉只展示真正能聚合的字段)。探测失败
+// (权限/未建索引/无账号)返回空切片:前端回退全量字段字典,不劣化现行为。
+func (s *FederationService) AggregatableFields(ctx context.Context, tenantID int64, logType logquery.LogType, clouds []domain.CloudProvider, accountIDs []int64) ([]string, error) {
+	if !logquery.IsValidLogType(logType) {
+		return nil, fmt.Errorf("invalid log type: %s", logType)
+	}
+	req := aggregatableRequest{LogType: logType, Clouds: clouds, AccountIDs: accountIDs}
+	resp, _, _, err := cachedCall(ctx, s.cache, "aggregatable", tenantID, req, func(cctx context.Context) (*[]string, error) {
+		out, err := s.aggregatableUncached(cctx, tenantID, logType, clouds, accountIDs)
+		if err != nil {
+			return nil, err
+		}
+		return &out, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return *resp, nil
+}
+
+// aggregatableRequest 可聚合字段探测的缓存键载荷(同参同键)。
+type aggregatableRequest struct {
+	LogType    logquery.LogType       `json:"log_type"`
+	Clouds     []domain.CloudProvider `json:"clouds"`
+	AccountIDs []int64                `json:"account_ids"`
+}
+
+// aggregatableUncached 真实并集探测(无缓存路径)。provider 内索引探测带
+// 进程级缓存(30min),首次冷调用后 TTL 内零 API 调用。
+func (s *FederationService) aggregatableUncached(ctx context.Context, tenantID int64, logType logquery.LogType, clouds []domain.CloudProvider, accountIDs []int64) ([]string, error) {
+	accounts, err := s.activeAccounts(ctx, tenantID, clouds, accountIDs)
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[string]bool)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for i := range accounts {
+		acc := accounts[i]
+		creator, err := logquery.GetProvider(acc.Provider, logType)
+		if err != nil {
+			continue // 未注册云(如腾讯预留)跳过
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			p, err := creator(&acc)
+			if err != nil {
+				return
+			}
+			ag, ok := p.(logquery.AggregatableLister)
+			if !ok {
+				return
+			}
+			fields, err := ag.AggregatableFields(ctx, &acc)
+			if err != nil || len(fields) == 0 {
+				return
+			}
+			mu.Lock()
+			for _, f := range fields {
+				set[f] = true
+			}
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	if len(set) == 0 {
+		return []string{}, nil
+	}
+	out := make([]string, 0, len(set))
+	for k := range set {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 // AccountSource 云账号源(仓储窄接口:联邦层只需按过滤条件列账号;
 // accountrepo.CloudAccountRepository 结构性满足,凭证解密在仓储读取路径完成)。
 type AccountSource interface {

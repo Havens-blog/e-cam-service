@@ -11,30 +11,65 @@ import (
 )
 
 // dimColumnExpr 归一化维度/筛选项 → SLS 列表达式(key 为 /types 字段字典键)。
-// 表达式可为函数(如 CDN 离线转存的 host 从 RequestURL 提取)。
+// 约束:只能是**单一列**(可作 `col: value` 检索下推,也能 select/group by)。
+// 多列拼接(如 DCDN referer)或需运算的字段(latency 秒→ms)不收在此表,
+// 见 dimGroupExpr(仅分组维度)。字段语义照 mapper.go 同源(勿漂移)。
 var dimColumnExpr = map[mapperKind]map[string]string{
 	kindDCDN: {
 		"host": "domain", "status": "return_code", "method": "method",
 		"client_ip": "client_ip", "uri": "uri",
+		// /types 字典键是 url(WAF 才是 uri);缺失时 url 落到透传列 → group by url
+		// 对 DCDN/ALB 报"列不存在",聚合"不支持"。补齐别名让 URL 维度/筛选可下推。
+		"url": "uri",
+		"bytes_sent": "response_size", "latency_ms": "request_time",
+		"user_agent": "user_agent", "edge_node": "via_info", "request_id": "uuid",
 	},
 	kindCDNOffline: {
 		"host": "regexp_extract(RequestURL, '^(?:https?://)?([^/?]+)', 1)",
 		"status": "HTTPStatus", "method": "HTTPMethod", "client_ip": "RemoteIP",
+		"url": "RequestURL", "bytes_sent": "ResponseSize", "latency_ms": "RequestTime",
+		"user_agent": "UserAgent", "referer": "Referer",
 	},
 	kindAkamaiCDN: {
 		"host": "reqHost", "status": "statusCode", "method": "reqMethod",
-		"client_ip": "cliIP",
+		"client_ip": "cliIP", "bytes_sent": "bytes", "latency_ms": "turnAroundTimeMSec",
+		"user_agent": "UA", "edge_node": "cp", "request_id": "reqId", "referer": "referer",
 	},
 	kindWAF3: {
 		"host": "host", "status": "status", "method": "request_method",
 		"uri": "request_uri", "client_ip": "real_client_ip",
+		"user_agent": "http_user_agent", "geo": "region",
 	},
 	kindAkamaiWAF: {
-		"host": "dhost", "rule_name": "name",
+		"host": "dhost", "rule_name": "name", "rule_id": "cs1",
 	},
 	kindALB: {
 		"host": "http_host", "status": "status", "method": "request_method",
 		"uri": "request_uri", "client_ip": "client_ip", "upstream_status": "upstream_status",
+		"url": "request_uri", "bytes_sent": "body_bytes_sent", "tls_protocol": "ssl_protocol",
+	},
+}
+
+// dimGroupExpr 仅分组维度表达式(不可作检索下推列,聚合 TopN 专用):
+// 字段语义对齐 mapper 的量纲换算(ALB request_time 为秒 → ×1000 得 ms,
+// 与 secondsToMs 同源)。收录归一化后无法单列下推的字段(如 CDN cache_hit
+// 需从 hit_info 归一)——分组直接按原始列,筛选取值仍走明细逐条归一。
+var dimGroupExpr = map[mapperKind]map[string]string{
+	kindALB: {
+		"latency_ms":           "request_time * 1000",
+		"upstream_latency_ms":  "upstream_response_time * 1000",
+	},
+	kindDCDN: {
+		"cache_hit": "hit_info",
+	},
+	kindAkamaiCDN: {
+		"cache_hit": "cacheStatus",
+	},
+	kindCDNOffline: {
+		"cache_hit": "HitInfo",
+	},
+	kindAkamaiWAF: {
+		"action": "act", "severity": "severity",
 	},
 }
 
@@ -125,11 +160,12 @@ func numericLiteral(s string) bool {
 	return true
 }
 
-// dimensionExpr 分组维度编译。三级:
+// dimensionExpr 分组维度编译。四级:
 //  1. 归一化字段优先(dimColumnExpr,如 waf3 client_ip → real_client_ip);
-//  2. 否则合法标识符**原样透传**为 SLS 列(group by 任意原始字段,
+//  2. 维度专用表达式(dimGroupExpr,如 ALB latency_ms → request_time*1000);
+//  3. 否则合法标识符**原样透传**为 SLS 列(group by 任意原始字段,
 //     例:real_client_ip / user_agent —— 用户可直接按云上原始列聚合);
-//  3. 含非法字符(空格/分号/管道等,防 SQL 注入)返回 false → 显式跳过。
+//  4. 含非法字符(空格/分号/管道等,防 SQL 注入)返回 false → 显式跳过。
 //
 // SLS 分析 SQL 对索引字段可直接 select+group by;列名不存在时查询报错,
 // 由调用方转为 TopNSkipReason 可见提示,不静默。
@@ -138,6 +174,9 @@ func dimensionExpr(kind mapperKind, dim string) (string, bool) {
 		return "", true
 	}
 	if expr, ok := dimColumnExpr[kind][dim]; ok {
+		return expr, true
+	}
+	if expr, ok := dimGroupExpr[kind][dim]; ok {
 		return expr, true
 	}
 	if identifierLike(dim) {

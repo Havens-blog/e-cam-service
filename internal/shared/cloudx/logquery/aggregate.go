@@ -79,6 +79,13 @@ type Aggregator interface {
 	Aggregate(ctx context.Context, account *domain.CloudAccount, params AggregateParams) (*AggregateResult, error)
 }
 
+// AggregatableLister 可选能力接口:返回该类型已建分析索引(可聚合)的字段
+// 清单。分组聚合维度下拉按此白名单展示 —— 前端不再盲选全量字段字典里未开
+// 索引的字段(盲选只会撞 TopNSkipReason)。未实现的 provider 由联邦层跳过。
+type AggregatableLister interface {
+	AggregatableFields(ctx context.Context, account *domain.CloudAccount) ([]string, error)
+}
+
 // aggregateBucketSteps 分桶候选步长(窗口内 ≤100 桶取最小步长)。
 var aggregateBucketSteps = []int64{60, 300, 900, 3600, 21600, 86400}
 

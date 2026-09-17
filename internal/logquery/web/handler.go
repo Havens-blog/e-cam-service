@@ -6,8 +6,11 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/logquery/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
@@ -34,6 +37,9 @@ type typeMeta struct {
 	Fields []FieldDef       `json:"fields"`
 	// WindowHints 前端时间范围约束(与后端一致:CDN 类 7 天,实时类 24h 起步)。
 	MaxWindowDays int `json:"max_window_days"`
+	// Aggregatable 该类型可聚合字段清单(分组聚合维度白名单;空=探测失败/
+	// 无账号,前端回退全量字段字典)。由运行时索引探测填充,非静态字典。
+	Aggregatable []string `json:"aggregatable,omitempty"`
 }
 
 // fixedFields 所有类型共有固定列。
@@ -122,9 +128,44 @@ func (h *LogQueryHandler) RegisterRoutes(g *gin.RouterGroup) {
 	g.POST("/aggregate", h.Aggregate)
 }
 
-// Types GET /types 字段字典。
+// Types GET /types 字段字典(逐类型并发探测可聚合字段填充白名单)。
+// 探测带进程级索引缓存(30min)+ 服务层 SWR(60s 新鲜/10min 宽限),冷调用后
+// 零 API 开销;探测带 6s 硬时限,超时留空 —— 前端回退全量字典,不阻塞类型
+// 页加载(白名单是增强,不是可用性前提)。
 func (h *LogQueryHandler) Types(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": logTypes})
+	tenantID, ok := tenantID(c)
+	if !ok {
+		return
+	}
+	out := make([]typeMeta, len(logTypes))
+	copy(out, logTypes)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 6*time.Second)
+	defer cancel()
+	type result struct{ fields []string }
+	var wg sync.WaitGroup
+	for i := range out {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ch := make(chan result, 1)
+			go func() {
+				fields, err := h.svc.AggregatableFields(ctx, tenantID, out[i].Type, nil, nil)
+				if err != nil || len(fields) == 0 {
+					ch <- result{}
+					return
+				}
+				ch <- result{fields: fields}
+			}()
+			select {
+			case r := <-ch:
+				out[i].Aggregatable = r.fields
+			case <-ctx.Done():
+				// 超时:留空,前端回退全量字典;不阻塞整页类型返回
+			}
+		}()
+	}
+	wg.Wait()
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": out})
 }
 
 // Sources GET /sources?log_type=cdn&clouds=aliyun,aws 日志源清单。
