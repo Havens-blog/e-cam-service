@@ -151,3 +151,30 @@ SDK 已就绪（certificateservice 两方法 + 链下载）、账号体系已按
 
 - Proceed to `/quick-tasks` 生成任务（quick 模式，无 PRD）并执行。
 - 火山证书替换（deployer UploadCert/BindResource）作为后续 feature 单独 proposal。
+
+## Drift Verification (2026-09-17, T-quick-doc-drift)
+
+对照实际实现（commits 3c65d91→5a217c3）与测试结果（testing/latest.md，82/81/0/1）逐项核对本 proposal 声明，结论：**proposal 全项一致、无夸大；唯一漂移在本 feature 文件边界外的代码注释（ioc/jobs.go），如实登记、不越界修复**。
+
+| 声明 | 实况锚点 | 结论 |
+|---|---|---|
+| 调度点 `cert:cert-import` spec=`0 1 * * *`（与 scan 02:00 错峰）、CAS 防重守卫 | scheduler/jobs.go:57,70；ErrSyncRunning 让位跳过（jobs.go:189-191）+ cert_sync_service.go:252 atomic CAS；Sync 未装配 nil 容忍降级 | 一致 |
+| 手动端点 POST /api/v1/certs/discovery/sync | discovery_handler.go:57 RequireRoles(RoleOpsEngineer)；409 `CERT_SYNC_IN_PROGRESS`（:234,:279-281 errors.Is(ErrSyncRunning)）；200 一次性摘要 CertSyncRunVO，sessionId 非空复用既有 GET /discovery/import/:sessionId 轮询 | 一致 |
+| 冲突策略：双 Create 竞态幂等（ErrDuplicateFingerprint 记 success） | cert_sync_service.go:418（「管线 ErrDuplicateFingerprint 幂等归 success」）+ discovery_import_service.go:310 | 一致 |
+| mapping 唯一键 certFingerprint+cloud+accountKey（非 cloudCertID）、旧映射留痕、FindByCloudCertID 按 uploadedAt 降序取最新 | domain/cloud_cert_mapping.go:21（uk_fp_cloud_account）+ repository/cloud_cert_mapping.go:61,73（Sort uploadedAt -1，注释「换证后映射刷新」）；同步层 Drifted 计数（cert_sync_service.go:445） | 一致 |
+| 增量判定层跳过已映射指纹=无导入/无台账写；火山 List 无指纹字段→适配器内逐实例 Get（任务 3 实现注记） | cert_sync_service.go（Skipped/Backfilled/Drifted/Imported）；volcano/cert.go:121-124,173-176,272（CertificateGetInstanceList 无指纹→逐实例 Get，指纹取链 sha256 解析）——注记与代码形态一致 | 一致 |
+| revoked/非 issued 实例不入账 | volcano/cert.go:53-56,259-261 ErrCertFiltered（List/Get 两阶段过滤） | 一致 |
+| 手动入口 6 云 × active 账号枚举；单云失败隔离、会话终态 partial_failed | module.go:218,230 六云装配；cert_sync_service.go:281 ActiveByCloud、:319-320 PartialFailed；Failures 白名单静态错误码（:174） | 一致 |
+| 只读纪律：同步执行路径不调任何云写方法 | cert_sync_service.go:25-26（构造性保证）+ CertLibraryLister 单只读方法端口（:79-81） | 一致 |
+| 依赖：SDK v1.2.9 / 644b067 已落 main / CloudProviderVolcano / ActiveByCloud 复用 / List 分页与既有适配器对齐 | go.mod:76；644b067 在 main（accept public-CA chain without bundled self-signed root）；volcano/adapter.go:17,150；volcano 与 aliyun certDefaultPageSize 均 50 | 一致 |
+
+### 登记的越界漂移（未修复，留后续同域任务）
+
+`ioc/jobs.go` 两处注释写「cert 域 9 类任务」，权威计数为 **10 类定时任务（9 个调度点）**（module.go:42、scheduler/jobs.go:3/8/140/160、ioc/cert.go:60 三处一致为 10/9）：
+
+- `ioc/jobs.go:14`「cert 域 9 类任务」——T-clean-code 已知遗留，越界未改
+- `ioc/jobs.go:111`「cert 域 9 类定时任务」——本次核对新增发现（同一漂移第二处）
+
+该文件不在本 feature 任何提交（3c65d91…c732d1e）的 diff 内，按边界纪律不改。
+
+本次为 quick 模式特性，docs/business-rules/ 与 docs/conventions/ 项目级 spec 目录不存在，项目级 spec 无漂移对象。
