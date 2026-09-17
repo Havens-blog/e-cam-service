@@ -61,6 +61,7 @@ require (
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cfs v1.3.38
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ckafka v1.3.16
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/clb v1.1.55
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cls v1.3.54
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.82
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.3.30
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/dnspod v1.3.64
