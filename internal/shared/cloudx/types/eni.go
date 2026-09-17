@@ -81,118 +81,80 @@ const (
 	ENIStatusUnknown   = "unknown"   // 未知
 )
 
+// eniAliyunENIStatusMap 阿里云原始网卡状态 → 标准化状态（大小写敏感）
+var eniAliyunENIStatusMap = map[string]string{
+	"Available": ENIStatusAvailable,
+	"InUse":     ENIStatusInUse,
+	"Attaching": ENIStatusAttaching,
+	"Detaching": ENIStatusDetaching,
+	"Creating":  ENIStatusCreating,
+	"Deleting":  ENIStatusDeleting,
+}
+
+// eniAWSENIStatusMap AWS 原始网卡状态 → 标准化状态（大小写敏感）
+var eniAWSENIStatusMap = map[string]string{
+	"available":  ENIStatusAvailable,
+	"in-use":     ENIStatusInUse,
+	"attaching":  ENIStatusAttaching,
+	"detaching":  ENIStatusDetaching,
+	"associated": ENIStatusInUse,
+}
+
+// eniHuaweiENIStatusMap 华为云原始网卡状态 → 标准化状态（大小写敏感）
+var eniHuaweiENIStatusMap = map[string]string{
+	"ACTIVE": ENIStatusInUse,
+	"BUILD":  ENIStatusCreating,
+	"DOWN":   ENIStatusAvailable,
+	"ERROR":  ENIStatusError,
+}
+
+// eniTencentENIStatusMap 腾讯云原始网卡状态 → 标准化状态（大小写敏感）
+// 注意："BINDbindingd " 为带尾空格的历史怪例，必须原样保留
+var eniTencentENIStatusMap = map[string]string{
+	"AVAILABLE":     ENIStatusAvailable,
+	"BINDbindingd":  ENIStatusAttaching,
+	"BINDbindingd ": ENIStatusAttaching,
+	"BINDUNBINDING": ENIStatusDetaching,
+	"BINDBOUND":     ENIStatusInUse,
+	"BINDUNBOUND":   ENIStatusAvailable,
+	"BINDDELETING":  ENIStatusDeleting,
+	// 腾讯云 Pending 状态
+	"PENDING":  ENIStatusCreating,
+	"DELETING": ENIStatusDeleting,
+}
+
+// eniVolcanoENIStatusMap 火山引擎原始网卡状态 → 标准化状态（大小写敏感）
+var eniVolcanoENIStatusMap = map[string]string{
+	"Available": ENIStatusAvailable,
+	"InUse":     ENIStatusInUse,
+	"Attaching": ENIStatusAttaching,
+	"Detaching": ENIStatusDetaching,
+	"Creating":  ENIStatusCreating,
+	"Deleting":  ENIStatusDeleting,
+}
+
+// eniStatusMaps provider → 原始状态串 → 标准化状态
+// volcano 与 volcengine 两个 key 路由同一映射
+var eniStatusMaps = map[string]map[string]string{
+	"aliyun":     eniAliyunENIStatusMap,
+	"aws":        eniAWSENIStatusMap,
+	"huawei":     eniHuaweiENIStatusMap,
+	"tencent":    eniTencentENIStatusMap,
+	"volcano":    eniVolcanoENIStatusMap,
+	"volcengine": eniVolcanoENIStatusMap,
+}
+
 // NormalizeENIStatus 标准化弹性网卡状态
+// 大小写敏感（匹配厂商原始状态串），未命中或未知 provider 返回原值
 func NormalizeENIStatus(provider, status string) string {
 	if status == "" {
 		return ENIStatusUnknown
 	}
 
-	switch provider {
-	case "aliyun":
-		return normalizeAliyunENIStatus(status)
-	case "aws":
-		return normalizeAWSENIStatus(status)
-	case "huawei":
-		return normalizeHuaweiENIStatus(status)
-	case "tencent":
-		return normalizeTencentENIStatus(status)
-	case "volcano", "volcengine":
-		return normalizeVolcanoENIStatus(status)
-	default:
-		return status
+	if m, ok := eniStatusMaps[provider]; ok {
+		if normalized, ok := m[status]; ok {
+			return normalized
+		}
 	}
-}
-
-func normalizeAliyunENIStatus(status string) string {
-	switch status {
-	case "Available":
-		return ENIStatusAvailable
-	case "InUse":
-		return ENIStatusInUse
-	case "Attaching":
-		return ENIStatusAttaching
-	case "Detaching":
-		return ENIStatusDetaching
-	case "Creating":
-		return ENIStatusCreating
-	case "Deleting":
-		return ENIStatusDeleting
-	default:
-		return status
-	}
-}
-
-func normalizeAWSENIStatus(status string) string {
-	switch status {
-	case "available":
-		return ENIStatusAvailable
-	case "in-use":
-		return ENIStatusInUse
-	case "attaching":
-		return ENIStatusAttaching
-	case "detaching":
-		return ENIStatusDetaching
-	case "associated":
-		return ENIStatusInUse
-	default:
-		return status
-	}
-}
-
-func normalizeHuaweiENIStatus(status string) string {
-	switch status {
-	case "ACTIVE":
-		return ENIStatusInUse
-	case "BUILD":
-		return ENIStatusCreating
-	case "DOWN":
-		return ENIStatusAvailable
-	case "ERROR":
-		return ENIStatusError
-	default:
-		return status
-	}
-}
-
-func normalizeTencentENIStatus(status string) string {
-	switch status {
-	case "AVAILABLE":
-		return ENIStatusAvailable
-	case "BINDbindingd", "BINDbindingd ":
-		return ENIStatusAttaching
-	case "BINDUNBINDING":
-		return ENIStatusDetaching
-	case "BINDBOUND":
-		return ENIStatusInUse
-	case "BINDUNBOUND":
-		return ENIStatusAvailable
-	case "BINDDELETING":
-		return ENIStatusDeleting
-	// 腾讯云 Pending 状态
-	case "PENDING":
-		return ENIStatusCreating
-	case "DELETING":
-		return ENIStatusDeleting
-	default:
-		return status
-	}
-}
-
-func normalizeVolcanoENIStatus(status string) string {
-	switch status {
-	case "Available":
-		return ENIStatusAvailable
-	case "InUse":
-		return ENIStatusInUse
-	case "Attaching":
-		return ENIStatusAttaching
-	case "Detaching":
-		return ENIStatusDetaching
-	case "Creating":
-		return ENIStatusCreating
-	case "Deleting":
-		return ENIStatusDeleting
-	default:
-		return status
-	}
+	return status
 }
