@@ -42,8 +42,11 @@ func (a *CDNAdapter) createV1Client() (*cdnv1.CdnClient, error) {
 // GetDomainMetrics 查询 [startDate, endDate](含两端)内域名的逐日指标。
 // 走 v1 ShowDomainStats(action=detail, interval=86400, group_by=domain),
 // 单次仅支持一个 stat_type,分 3 次调用:flux(流量,字节)、bw(带宽,bps)、
-// hit_flux_rate(流量命中率,百分制)。返回 result 为
-// {域名: {stat_type: [逐日数组]}} 的裸 JSON(SDK 未强建模),手工解析。
+// hit_flux(命中流量,字节)。命中率无直接字段,由 hit_flux/flux 计算。
+// 返回 result 为 {域名: {stat_type: [逐日数组]}} 的裸 JSON(SDK 未强建模),手工解析。
+//
+// 注意:华为 stat_type 合法值为 flux/bw/hit_flux 等,**无 hit_flux_rate**
+// (那是腾讯云的字段名;误用会报 CDN.0001 item name is incorrect)。
 func (a *CDNAdapter) GetDomainMetrics(ctx context.Context, domainName, domainID string, startDate, endDate string) ([]types.CDNMetric, error) {
 	if domainName == "" {
 		return nil, fmt.Errorf("华为云CDN指标查询需要域名")
@@ -66,17 +69,17 @@ func (a *CDNAdapter) GetDomainMetrics(ctx context.Context, domainName, domainID 
 	if err != nil {
 		return nil, err
 	}
-	hitRate, err := a.fetchDomainStats(client, domainName, "hit_flux_rate", dates, aggregateModeHit)
+	hitFlux, err := a.fetchDomainStats(client, domainName, "hit_flux", dates, aggregateModeSum)
 	if err != nil {
 		return nil, err
 	}
 
-	return buildDailyMetrics(domainName, dates, flux, bw, hitRate), nil
+	return buildDailyMetrics(domainName, dates, flux, bw, hitFlux), nil
 }
 
-// buildDailyMetrics 按日期序列合并三路指标;缺失日保持零值/未知哨兵
-// (hit_rate 缺省 unknownHitRate=-1,不伪造 0%)。
-func buildDailyMetrics(domainName string, dates []string, flux, bw, hitRate map[string]float64) []types.CDNMetric {
+// buildDailyMetrics 按日期序列合并三路指标;缺失日保持零值/未知哨兵。
+// 命中率 = 命中流量/总流量(flux>0 时),否则保持 -1(未知,不伪造 0%)。
+func buildDailyMetrics(domainName string, dates []string, flux, bw, hitFlux map[string]float64) []types.CDNMetric {
 	metrics := make([]types.CDNMetric, 0, len(dates))
 	for _, d := range dates {
 		m := types.CDNMetric{
@@ -90,8 +93,14 @@ func buildDailyMetrics(domainName string, dates []string, flux, bw, hitRate map[
 		if v, ok := bw[d]; ok {
 			m.Bandwidth = int64(v)
 		}
-		if v, ok := hitRate[d]; ok {
-			m.HitRate = v
+		if v, ok := hitFlux[d]; ok {
+			if total := flux[d]; total > 0 {
+				m.HitRate = v / total
+				if m.HitRate > 1 {
+					m.HitRate = 1
+				}
+			}
+			// total==0 时命中率无意义,保持 -1
 		}
 		metrics = append(metrics, m)
 	}
@@ -215,25 +224,9 @@ func aggregateDailySeries(series []*float64, startDate string, mode aggregateMod
 			if *v > result[date] {
 				result[date] = *v
 			}
-		case aggregateModeHit:
-			result[date] = normalizeHitRateValue(*v)
 		}
 	}
 	return result
-}
-
-// normalizeHitRateValue 命中率归一:百分制(>1)除以 100,夹紧到 [0,1]。
-func normalizeHitRateValue(v float64) float64 {
-	if v > 1 {
-		v = v / 100
-	}
-	if v < 0 {
-		return 0
-	}
-	if v > 1 {
-		return 1
-	}
-	return v
 }
 
 // ==================== 聚合模式与辅助 ====================
@@ -243,7 +236,6 @@ type aggregateMode int
 const (
 	aggregateModeSum aggregateMode = iota
 	aggregateModeMax
-	aggregateModeHit
 )
 
 // metricCSTZone CDN 指标按运营时区(Asia/Shanghai)取日,勿改用服务器本地时区

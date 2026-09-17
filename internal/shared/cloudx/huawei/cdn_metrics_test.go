@@ -73,73 +73,67 @@ func TestLookupDomainResultCaseInsensitive(t *testing.T) {
 	}
 }
 
-func TestAggregateDailySeriesMaxAndHit(t *testing.T) {
+func TestAggregateDailySeriesMax(t *testing.T) {
 	series := []*float64{f64(500), f64(3000), f64(250)}
 	maxed := aggregateDailySeries(series, "2026-09-14", aggregateModeMax)
 	if maxed["2026-09-16"] != 250 {
 		t.Fatalf("max = %v", maxed)
 	}
-	// 命中率百分制归一
-	hit := aggregateDailySeries([]*float64{f64(97.35), f64(100), f64(0.9)}, "2026-09-14", aggregateModeHit)
-	if diff := hit["2026-09-14"] - 0.9735; diff < -1e-9 || diff > 1e-9 {
-		t.Fatalf("hit = %v", hit["2026-09-14"])
+	// 无数据日(nil)跳过
+	gapped := aggregateDailySeries([]*float64{nil, f64(98)}, "2026-09-14", aggregateModeMax)
+	if _, ok := gapped["2026-09-14"]; ok {
+		t.Fatalf("no-data day must be absent, got %v", gapped["2026-09-14"])
 	}
-	if hit["2026-09-15"] != 1 {
-		t.Fatalf("hit = %v", hit["2026-09-15"])
+	if gapped["2026-09-15"] != 98 {
+		t.Fatalf("max = %v", gapped["2026-09-15"])
 	}
-	// 无数据日(nil)跳过,不得产出 0
-	hitGap := aggregateDailySeries([]*float64{nil, f64(98)}, "2026-09-14", aggregateModeHit)
-	if _, ok := hitGap["2026-09-14"]; ok {
-		t.Fatalf("no-data hit day must be absent, got %v", hitGap["2026-09-14"])
+}
+
+// 命中率 = hit_flux / flux;flux 缺失/为 0 时保持 -1(未知),不伪造
+func TestBuildDailyMetricsHitFluxRatio(t *testing.T) {
+	flux := map[string]float64{
+		"2026-09-14": 1000,
+		"2026-09-15": 500,
+		"2026-09-16": 0, // 无流量日
 	}
-	if hitGap["2026-09-15"] != 0.98 {
-		t.Fatalf("hit = %v", hitGap["2026-09-15"])
+	hitFlux := map[string]float64{
+		"2026-09-14": 973,
+		"2026-09-15": 500, // 命中率 100%
+		"2026-09-16": 0,
+	}
+
+	metrics := buildDailyMetrics("www.example.com", []string{"2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17"}, flux, map[string]float64{}, hitFlux)
+	if len(metrics) != 4 {
+		t.Fatalf("len = %d", len(metrics))
+	}
+	if metrics[0].HitRate < 0.9729 || metrics[0].HitRate > 0.9731 {
+		t.Fatalf("09-14 hit = %v, want 0.973", metrics[0].HitRate)
+	}
+	if metrics[1].HitRate != 1 {
+		t.Fatalf("09-15 hit = %v, want 1", metrics[1].HitRate)
+	}
+	// flux==0 日与无数据缺失日(09-17)都必须保持 -1
+	if metrics[2].HitRate != unknownHitRate || metrics[3].HitRate != unknownHitRate {
+		t.Fatalf("no-data hit = %v, %v; want -1", metrics[2].HitRate, metrics[3].HitRate)
 	}
 }
 
 // 回归:响应含 "-" / -1 / null 无数据日时,产出的 CDNMetric.HitRate
-// 必须保持未知哨兵 -1,不得被归一伪造为 0%
+// 必须保持未知哨兵 -1,不得被伪造为 0%(hit_flux 无数据 + flux 有值)
 func TestBuildDailyMetricsNoDataDaysKeepUnknownHitRate(t *testing.T) {
-	hitSeries, ok := lookupSeries(map[string]interface{}{
-		"hit_flux_rate": []interface{}{"-", -1.0, nil, "97.35"},
-	}, "hit_flux_rate")
-	if !ok {
-		t.Fatal("lookupSeries failed")
-	}
-	hitRate := aggregateDailySeries(hitSeries, "2026-09-14", aggregateModeHit)
-
 	metrics := buildDailyMetrics(
 		"www.example.com",
-		[]string{"2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17"},
-		map[string]float64{}, // flux 全无
-		map[string]float64{}, // bw 全无
-		hitRate,
+		[]string{"2026-09-14", "2026-09-15"},
+		map[string]float64{"2026-09-14": 1000}, // flux 有值但有 hit_flux 缺失
+		map[string]float64{},
+		map[string]float64{"2026-09-15": 800},
 	)
-	if len(metrics) != 4 {
-		t.Fatalf("metrics len = %d", len(metrics))
+	if metrics[0].HitRate != unknownHitRate {
+		t.Fatalf("09-14 hit_flux 缺失应保持 -1, got %v", metrics[0].HitRate)
 	}
-	for i, d := range []string{"2026-09-14", "2026-09-15", "2026-09-16"} {
-		if metrics[i].Date != d {
-			t.Fatalf("date = %s, want %s", metrics[i].Date, d)
-		}
-		if metrics[i].HitRate != unknownHitRate {
-			t.Fatalf("%s HitRate = %v, want %v (unknown)", d, metrics[i].HitRate, unknownHitRate)
-		}
-	}
-	if metrics[3].HitRate < 0.9734 || metrics[3].HitRate > 0.9736 {
-		t.Fatalf("2026-09-17 HitRate = %v, want 0.9735", metrics[3].HitRate)
-	}
-}
-
-func TestNormalizeHitRateValueHuawei(t *testing.T) {
-	if v := normalizeHitRateValue(97.35); v < 0.9734 || v > 0.9736 {
-		t.Fatalf("hit = %v", v)
-	}
-	if v := normalizeHitRateValue(0.9); v != 0.9 {
-		t.Fatalf("hit = %v", v)
-	}
-	if v := normalizeHitRateValue(0); v != 0 {
-		t.Fatalf("hit = %v", v)
+	// 09-15:有 hit_flux 但 flux 缺失 → 命中率无意义,保持 -1
+	if metrics[1].HitRate != unknownHitRate {
+		t.Fatalf("09-15 flux 缺失命中率应保持 -1, got %v", metrics[1].HitRate)
 	}
 }
 
