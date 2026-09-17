@@ -41,24 +41,44 @@ type cdnMetricDAO struct {
 	db *mongox.Mongo
 }
 
-// NewCDNMetricDAO 创建 CDN 指标 DAO,并确保 (domain, date) 唯一索引
+// NewCDNMetricDAO 创建 CDN 指标 DAO,并确保 (account_id, domain, date) 唯一索引。
+//
+// 注意:唯一键必须含 account_id——同一域名可由多家 CDN 账号共同加速(多活 CDN),
+// (domain, date) 作为唯一键会让后写的账号覆盖先写账号的行,导致按流量占比的
+// 成本归因丢失一方数据。历史部署曾用 (domain, date),此处创建新索引后删除旧索引
+// (旧数据中已被覆盖的行无法恢复,重采补回)。
 func NewCDNMetricDAO(db *mongox.Mongo) CDNMetricDAO {
 	d := &cdnMetricDAO{db: db}
-	_, _ = db.Collection(CDNMetricCollection).Indexes().CreateOne(
-		context.Background(), mongo.IndexModel{
-			Keys: bson.D{
-				{Key: "domain", Value: 1},
-				{Key: "date", Value: 1},
-			},
-			Options: options.Index().SetUnique(true),
-		})
+	col := db.Collection(CDNMetricCollection)
+
+	// 1. 创建 (account_id, domain, date) 唯一索引
+	_, _ = col.Indexes().CreateOne(context.Background(), mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "account_id", Value: 1},
+			{Key: "domain", Value: 1},
+			{Key: "date", Value: 1},
+		},
+		Options: options.Index().SetUnique(true),
+	})
+
+	// 2. 清理历史 (domain, date) 唯一索引(若存在),避免其与多账号数据冲突
+	//    保留旧索引会导致同一域名跨账号写第二行时违反唯一约束。
+	//    DropOne 对不存在的索引名返回 nil error,安全无副作用。
+	if _, err := col.Indexes().DropOne(context.Background(), "domain_1_date_1"); err != nil {
+		// 索引删除失败(仅在建索引忙时可能)不阻塞启动;留待运维处理,
+		// 否则多账号写同域名时会报唯一键冲突,错误信息可见于采集任务日志
+		_ = err
+	}
 	return d
 }
 
 func (d *cdnMetricDAO) UpsertMetric(ctx context.Context, m types.CDNMetric) error {
+	// 以 (account_id, domain, date) 为键:同一域名可由多家 CDN 账号共同加速,
+	// 各账号同日数据独立保留(多活 CDN),互不覆盖。
 	filter := bson.M{
-		"domain": m.Domain,
-		"date":   m.Date,
+		"account_id": m.AccountID,
+		"domain":     m.Domain,
+		"date":       m.Date,
 	}
 	update := bson.M{
 		"$set": bson.M{

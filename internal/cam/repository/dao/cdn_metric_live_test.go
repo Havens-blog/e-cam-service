@@ -62,6 +62,77 @@ func TestCDNMetricLive(t *testing.T) {
 	}
 }
 
+// 回归:同一域名由多家 CDN 账号共同加速(多活 CDN),(account_id, domain, date)
+// 才是唯一键——不同账号写同域名同日,必须各保留一行,不得互相覆盖。
+// 旧实现唯一键为 (domain, date),后写的账号会顶掉先写账号的行,导致
+// 成本归因(按流量占比)与流量统计丢失一方数据。
+func TestCDNMetricPerAccountLive(t *testing.T) {
+	dsn := os.Getenv("MONGO_DSN")
+	if dsn == "" {
+		t.Skip("set MONGO_DSN to run live check")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(dsn))
+	if err != nil {
+		t.Fatal(err)
+	}
+	coll := client.Database("ecam").Collection(CDNMetricCollection)
+	defer func() {
+		_, _ = coll.DeleteMany(context.Background(), map[string]any{
+			"domain": map[string]any{"$regex": `^test-shared-`},
+		})
+	}()
+	d := NewCDNMetricDAO(mongox.NewMongo(client, "ecam"))
+
+	// 同一域名 test-shared-cdn.example.com,同一天,三个不同账号(阿里/腾讯/火山)各写一笔
+	domain, date := "test-shared-cdn.example.com", "2026-09-14"
+	seeds := []types.CDNMetric{
+		{Domain: domain, Date: date, Bytes: 1000, Bandwidth: 10, HitRate: 0.9, AccountID: 1, Provider: "aliyun"},
+		{Domain: domain, Date: date, Bytes: 2000, Bandwidth: 20, HitRate: 0.8, AccountID: 4, Provider: "tencent"},
+		{Domain: domain, Date: date, Bytes: 3000, Bandwidth: 30, HitRate: 0.7, AccountID: 5, Provider: "volcengine"},
+	}
+	for _, m := range seeds {
+		if err := d.UpsertMetric(ctx, m); err != nil {
+			t.Fatalf("upsert acct %d: %v", m.AccountID, err)
+		}
+	}
+
+	// 三行都必须保留,各账号值正确
+	cnt, _ := coll.CountDocuments(ctx, map[string]any{"domain": domain, "date": date})
+	if cnt != 3 {
+		t.Fatalf("shared domain rows = %d, want 3 (跨账号互相覆盖 bug)", cnt)
+	}
+	for _, seed := range seeds {
+		var got types.CDNMetric
+		filter := map[string]any{"domain": domain, "date": date, "account_id": seed.AccountID}
+		if err := coll.FindOne(ctx, filter).Decode(&got); err != nil {
+			t.Fatalf("decode acct%d: %v", seed.AccountID, err)
+		}
+		if got.Bytes != seed.Bytes || got.Provider != seed.Provider {
+			t.Fatalf("acct%d metric = %+v, want bytes %d (跨账号覆盖丢失)", seed.AccountID, got, seed.Bytes)
+		}
+	}
+
+	// 账号内同日重采仍应幂等覆盖(同一账号同域名同日只留一条)
+	update := seeds[1]
+	update.Bytes = 2500
+	if err := d.UpsertMetric(ctx, update); err != nil {
+		t.Fatalf("re-upsert acct4: %v", err)
+	}
+	cnt, _ = coll.CountDocuments(ctx, map[string]any{"domain": domain, "date": date})
+	if cnt != 3 {
+		t.Fatalf("after re-upsert rows = %d, want 3", cnt)
+	}
+	var got types.CDNMetric
+	if err := coll.FindOne(ctx, map[string]any{"domain": domain, "date": date, "account_id": 4}).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Bytes != 2500 {
+		t.Fatalf("acct4 re-upsert bytes = %d, want 2500", got.Bytes)
+	}
+}
+
 // ListByDomain / TopByBytes 活体验证(MONGO_DSN 门控;测试数据带 test-query- 前缀域名,
 // 结束后清理,勿动真实数据)
 func TestCDNMetricQueryLive(t *testing.T) {
@@ -132,16 +203,26 @@ func TestCDNMetricQueryLive(t *testing.T) {
 		t.Fatalf("ListByDomain(days=2) len = %d, want 2", len(items))
 	}
 
-	// TopByBytes 聚合:b(800) > c(9999 按账号 889 才见)> a(700);全量下 c 第一
-	top, err := d.TopByBytes(ctx, 7, 10, 0)
+	// TopByBytes 聚合(账号 889 视角,语料仅测试域 c,不受真实数据干扰):
+	// c(9999) 应稳居该账号第一
+	top, err := d.TopByBytes(ctx, 7, 10, 889)
 	if err != nil {
 		t.Fatalf("TopByBytes: %v", err)
 	}
-	if len(top) < 3 {
-		t.Fatalf("TopByBytes len = %d, want >= 3", len(top))
+	if len(top) < 1 {
+		t.Fatalf("TopByBytes(889) len = %d, want >= 1", len(top))
 	}
 	if top[0].Domain != "test-query-c.example.com" || top[0].Bytes != 9999 {
-		t.Fatalf("TopByBytes[0] = %+v, want c/9999", top[0])
+		t.Fatalf("TopByBytes(889)[0] = %+v, want c/9999", top[0])
+	}
+	// 账号 888 视角聚合:语料仅 a(100+200+400=700 / 3 天)与 b(800),无真实数据干扰。
+	// 同时验证 a 的 3 天求和与 count,以及 b > a 的排序
+	top, err = d.TopByBytes(ctx, 7, 10, 888)
+	if err != nil {
+		t.Fatalf("TopByBytes(888): %v", err)
+	}
+	if len(top) != 2 || top[0].Domain != "test-query-b.example.com" || top[0].Bytes != 800 {
+		t.Fatalf("TopByBytes(888) = %+v, want [b/800 a/700]", top)
 	}
 	var aRow *types.CDNMetricTopRow
 	for i := range top {
@@ -154,15 +235,6 @@ func TestCDNMetricQueryLive(t *testing.T) {
 	}
 	if aRow.Days != 7 {
 		t.Fatalf("top row days = %d, want 7", aRow.Days)
-	}
-
-	// TopByBytes 账号隔离:888 看不到 c
-	top, err = d.TopByBytes(ctx, 7, 10, 888)
-	if err != nil {
-		t.Fatalf("TopByBytes(888): %v", err)
-	}
-	if len(top) != 2 || top[0].Domain != "test-query-b.example.com" || top[0].Bytes != 800 {
-		t.Fatalf("TopByBytes(888) = %+v, want [b/800 a/700]", top)
 	}
 
 	// limit 生效
