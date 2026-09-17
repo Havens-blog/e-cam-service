@@ -1,7 +1,7 @@
 ---
 feature: "cert-volcano-import-sync"
 created: "2026-09-17"
-status: tasks
+status: completed
 mode: quick
 ---
 
