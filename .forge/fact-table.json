@@ -140,7 +140,7 @@
       "source": "static",
       "subject": "导入请求校验错误 (internal/cert/web/discovery_handler.go:156-175)",
       "kind": "error_code",
-      "value": "非法 JSON 体 → 400 INVALID_REQUEST \"invalid request body\"；items 空 → 400 INVALID_REQUEST \"items is required\"；条目缺三元组字段 �� 400 INVALID_REQUEST \"items entry requires cloud, accountKey and cloudCertId\"",
+      "value": "非法 JSON 体 → 400 INVALID_REQUEST \"invalid request body\"；items 空 → 400 INVALID_REQUEST \"items is required\"；条目缺三元组字段 →→ 400 INVALID_REQUEST \"items entry requires cloud, accountKey and cloudCertId\"",
       "confidence": "inferred",
       "updated_at": "2026-08-25T00:00:00Z"
     },
@@ -539,6 +539,276 @@
       "value": "ConfirmBatch 要求 executing+paused 或 verifying、非最后批、上一批全部 success-or-skipped、BatchVerified；任一不满足→409 BATCH_NOT_CONFIRMABLE (internal/cert/service/execute_service.go:896-946)；executing+paused 状态重复 execute→409 BATCH_NOT_CONFIRMABLE (execute_service.go:558-561)",
       "confidence": "inferred",
       "updated_at": "2026-09-16T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_ENDPOINT",
+      "source": "static",
+      "subject": "手动同步端点 (internal/cert/web/discovery_handler.go:57)",
+      "kind": "signature",
+      "value": "POST /api/v1/certs/discovery/sync",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_ROLE_GUARD",
+      "source": "static",
+      "subject": "手动同步端点角色白名单 (internal/cert/web/discovery_handler.go:57)",
+      "kind": "precondition",
+      "value": "RequireRoles(RoleOpsEngineer)，其他角色 403、未认证 401 先于角色判定",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_CONFLICT_409",
+      "source": "static",
+      "subject": "手动同步防重冲突码 (internal/cert/web/discovery_handler.go:234,279-281)",
+      "kind": "error_code",
+      "value": "同步已在跑(errors.Is ErrSyncRunning) -> 409 CERT_SYNC_IN_PROGRESS 'cert sync already running'，非 500 不排队",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_NOT_WIRED_500",
+      "source": "static",
+      "subject": "同步依赖未装配防御 (internal/cert/web/discovery_handler.go:272-275)",
+      "kind": "error_code",
+      "value": "handler sync 依赖为 nil -> 500 INTERNAL_ERROR 'cert sync service not wired'",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_RUN_VO_FIELDS",
+      "source": "static",
+      "subject": "手动同步 200 摘要字段 (internal/cert/web/discovery_handler.go:249-264)",
+      "kind": "output_format",
+      "value": "sessionId(omitempty)/status(completed|partial_failed)/startedAt/finishedAt/cloudsScanned/accountsScanned/listed/skipped/backfilled/drifted/imported/importSucceeded/importFailed/failures[]",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_FAILURE_VO_FIELDS",
+      "source": "static",
+      "subject": "同步失败摘要字段 (internal/cert/web/discovery_handler.go:238-243)",
+      "kind": "output_format",
+      "value": "cloud/accountKey/cloudCertId omitempty + reason 必填(静态错误码+固定文案)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_ONE_SHOT_200",
+      "source": "static",
+      "subject": "同步响应一次性终态语义 (internal/cert/web/discovery_handler.go:266-286; internal/cert/service/cert_sync_service.go:157,301-316)",
+      "kind": "output_format",
+      "value": "200 一次性终态摘要(无轮询端点)；零新条目亦 200；SessionID 仅在本轮产生导入会话时非空",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_CAS_GUARD",
+      "source": "static",
+      "subject": "同步轮 CAS 防重守卫 (internal/cert/service/cert_sync_service.go:251-255)",
+      "kind": "signature",
+      "value": "atomic.Bool CompareAndSwap(false,true)；二次触发返回 ErrSyncRunning；defer 释放(与终态无关)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_OPERATORS",
+      "source": "static",
+      "subject": "同步会话 operator 来源标识 (internal/cert/service/cert_sync_service.go:45-48,236-243)",
+      "kind": "signature",
+      "value": "SyncCertificates->scheduler；SyncCertificatesManual->manual；经导入会话 Operator 字段承载",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_STATIC_REASONS",
+      "source": "static",
+      "subject": "同步轮失败静态文案 (internal/cert/service/cert_sync_service.go:51-58)",
+      "kind": "output_format",
+      "value": "ACCOUNT_LOAD_FAILED: 云账号读取失败 | CERT_LIST_FAILED: 云证书库列举失败 | INTERNAL_ERROR: 增量判定失败 | INTERNAL_ERROR: 映射补建失败 | SESSION_TIMEOUT: 同步整体超时，剩余条目可重跑 | INTERNAL_ERROR: 导入会话创建失败",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_STATUS_RULE",
+      "source": "static",
+      "subject": "同步轮终态判定 (internal/cert/service/cert_sync_service.go:319-323)",
+      "kind": "output_format",
+      "value": "ImportFailed>0 或 Failures 非空 -> partial_failed；否则 completed",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_JUDGE_FOUR_STATES",
+      "source": "static",
+      "subject": "单实例增量判定四态 (internal/cert/service/cert_sync_service.go:412-448)",
+      "kind": "signature",
+      "value": "指纹不在台账->导入条目；指纹在台账+映射完整同指纹->Skipped；指纹在台账+映射缺失->Upsert 补建 Backfilled；同 cloudCertID 换指纹->Upsert 刷新 Drifted(旧行留痕)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_CLOUD_ORDER",
+      "source": "static",
+      "subject": "证书可达云固定遍历顺序 (internal/cert/service/cert_sync_service.go:62-69)",
+      "kind": "precondition",
+      "value": "aliyun,tencent,huawei,aws,azure,volcano",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_LISTER_GAP_SKIP",
+      "source": "static",
+      "subject": "无列举端口云静默跳过 (internal/cert/service/cert_sync_service.go:274-279; internal/cert/module.go:239-242)",
+      "kind": "signature",
+      "value": "lister==nil 的云跳过不报错(能力缺口非故障)；生产装配当前仅火山注册列举端口；CloudsScanned 只计列举端口就绪且账号读取成功的云",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_LIST_PARTIAL_TOLERANCE",
+      "source": "static",
+      "subject": "列举失败部分结果容错 (internal/cert/service/cert_sync_service.go:337-352)",
+      "kind": "signature",
+      "value": "列举错误时返回已获取部分+错误；失败记因后已获取部分仍进入判定(条目幂等可重跑收敛)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_IMPORT_SYNC_FACE",
+      "source": "static",
+      "subject": "导入管线同步执行面 (internal/cert/service/discovery_import_service.go:131-143)",
+      "kind": "signature",
+      "value": "ImportFromDiscoverySync：会话创建与逐条处理语义与异步版一致，区别仅不另起 goroutine——返回即终态会话",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_JUDGE_PANIC_ISOLATION",
+      "source": "static",
+      "subject": "单实例判定 panic 兜底 (internal/cert/service/cert_sync_service.go:378-386)",
+      "kind": "side_effect",
+      "value": "judgeInstance recover 后记 INTERNAL_ERROR 静态文案，panic 值不进失败记录，其余实例继续",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_EMPTY_FINGERPRINT_DEGRADED",
+      "source": "static",
+      "subject": "指纹为空降级判定 (internal/cert/service/cert_sync_service.go:399-410)",
+      "kind": "signature",
+      "value": "列举层无法复核指纹(SHA-1 口径等)：已映射即收敛跳过；无映射转导入(管线解析真实指纹后补建映射)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "IMPORT_SESSION_PERSIST_FIRST",
+      "source": "static",
+      "subject": "导入会话先持久化 (internal/cert/service/discovery_import_service.go:145-157)",
+      "kind": "precondition",
+      "value": "createSession 先落库 pending 会话再处理；len(items)==0 返回 ErrEmptyDiscoveryImport 不建会话",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "IMPORT_ITEM_RESULT_ENUM",
+      "source": "static",
+      "subject": "发现导入条目结果枚举 (internal/cert/domain/discovery_session.go:24-26)",
+      "kind": "output_format",
+      "value": "pending | success | failed(failed 时 errorReason=错误码+静态文案，success 时 mappedCertId 指向台账证书)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "IMPORT_STATUS_ENUM",
+      "source": "static",
+      "subject": "发现导入会话状态枚举 (internal/cert/domain/discovery_session.go:14-16)",
+      "kind": "output_format",
+      "value": "running | completed | partial_failed",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "MAPPING_UNIQUE_KEY",
+      "source": "static",
+      "subject": "云证书映射唯一键与 Upsert (internal/cert/service/cert_sync_service.go:30-32,435-443)",
+      "kind": "signature",
+      "value": "唯一键=certFingerprint+cloud+accountKey(uk_fp_cloud_account)；Upsert 命中即写入不产生第二行",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "MAPPING_REVERSE_LATEST",
+      "source": "static",
+      "subject": "映射反查取最新语义 (internal/cert/service/cert_sync_service.go:30-32)",
+      "kind": "signature",
+      "value": "FindByCloudCertID 按 uploadedAt 降序取最新；同 cloudCertID 旧指纹映射行不删(漂移留痕)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_FILTER_TWO_PHASE",
+      "source": "static",
+      "subject": "火山实例两阶段过滤 (internal/shared/cloudx/volcano/cert.go:53-55,259-261)",
+      "kind": "precondition",
+      "value": "List/Get 两阶段过滤 IsCertificateRevoked=true 或 Status 非 Issued 的实例(ErrCertFiltered)，不进入返回集/不供导入",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_LIST_DEFENSE",
+      "source": "static",
+      "subject": "火山列举防御性剔除 (internal/cert/service/cert_sync_service.go:119-131)",
+      "kind": "signature",
+      "value": "空 cloudCertID 或空指纹的实例不进判定集",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "JOB_CERT_IMPORT_SPEC",
+      "source": "static",
+      "subject": "cert-import 调度点 (internal/cert/scheduler/jobs.go:57,70,179-195)",
+      "kind": "signature",
+      "value": "JobCertImport=cert:cert-import cron 0 1 * * *；Sync 未装配->warn 空转跳过不 panic；ErrSyncRunning->预期让位静默跳过",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_TIMEOUT",
+      "source": "static",
+      "subject": "同步整体限时语义 (internal/cert/service/cert_sync_service.go:56,248-259,270-272)",
+      "kind": "output_format",
+      "value": "整体限时脱离调用方 ctx(定时轮无请求生命周期，请求中断不回滚已导入)；到期剩余云/条目记 SESSION_TIMEOUT 静态失败因后收敛返回不悬挂",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "SESSION_POLL_ENDPOINT",
+      "source": "static",
+      "subject": "导入会话进度轮询端点 (internal/cert/web/discovery_handler.go:48,219-226)",
+      "kind": "signature",
+      "value": "GET /api/v1/certs/discovery/import/:sessionId；终态 completed/partial_failed 由 status/finishedAt 可判",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_ACCOUNT_SOURCE",
+      "source": "static",
+      "subject": "逐云 active 账号枚举源 (internal/cert/service/reference_scan_service.go:88-89; internal/cert/service/cert_sync_service.go:281)",
+      "kind": "signature",
+      "value": "ActiveByCloud(ctx, cloud) 按云返回 active 账号列表，逐 (cloud,account) 构成独立处理单元",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "CERT_SYNC_CREDENTIAL_LOG_BAN",
+      "source": "static",
+      "subject": "云侧错误细节只进日志 (internal/cert/service/cert_sync_service.go:283-286,340-345)",
+      "kind": "side_effect",
+      "value": "云账号读取/列举失败细节仅 slog.Error 日志；摘要/响应仅静态 reason",
+      "confidence": "inferred",
+      "updated_at": "2026-09-17T00:00:00Z"
     }
   ]
 }

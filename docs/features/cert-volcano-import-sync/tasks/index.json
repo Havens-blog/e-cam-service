@@ -96,7 +96,7 @@
       "dependencies": [
         "T-test-gen-journeys"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "file": "gen-contracts.md",
       "record": "records/gen-contracts.md",
       "type": "test.gen-contracts"
