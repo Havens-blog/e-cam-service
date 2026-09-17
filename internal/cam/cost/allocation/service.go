@@ -129,37 +129,42 @@ func (s *AllocationService) AllocateCosts(ctx context.Context, tenantID int64, p
 	defaultPolicy, err := s.allocationDAO.GetDefaultPolicy(ctx, tenantID)
 	hasDefaultPolicy := err == nil && defaultPolicy.TargetID != ""
 
-	// 4. Get all bills for the period
+	// 4. Paginated traversal of all bills for the period (bounded memory, one page at a time)
 	startDate := period + "-01"
 	endDate := s.periodEndDate(period)
-	bills, err := s.billDAO.ListUnifiedBills(ctx, repository.UnifiedBillFilter{
+	billFilter := repository.UnifiedBillFilter{
 		TenantID:  tenantID,
 		StartDate: startDate,
 		EndDate:   endDate,
-	})
-	if err != nil {
-		return fmt.Errorf("list bills: %w", err)
 	}
 
 	var allocations []costdomain.CostAllocation
 	now := time.Now().UnixMilli()
+	billCount := 0
 
-	for _, bill := range bills {
-		matched := false
+	err = repository.PaginateUnifiedBills(ctx, s.billDAO, billFilter, 0, func(bills []costdomain.UnifiedBill) error {
+		for _, bill := range bills {
+			matched := false
 
-		for _, rule := range rules {
-			allocs := s.matchAndAllocate(bill, rule, period, now)
-			if len(allocs) > 0 {
-				allocations = append(allocations, allocs...)
-				matched = true
-				break // first matching rule wins (priority order)
+			for _, rule := range rules {
+				allocs := s.matchAndAllocate(bill, rule, period, now)
+				if len(allocs) > 0 {
+					allocations = append(allocations, allocs...)
+					matched = true
+					break // first matching rule wins (priority order)
+				}
+			}
+
+			if !matched {
+				alloc := s.createUnmatchedAllocation(bill, period, now, hasDefaultPolicy, defaultPolicy)
+				allocations = append(allocations, alloc)
 			}
 		}
-
-		if !matched {
-			alloc := s.createUnmatchedAllocation(bill, period, now, hasDefaultPolicy, defaultPolicy)
-			allocations = append(allocations, alloc)
-		}
+		billCount += len(bills)
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("paginate bills: %w", err)
 	}
 
 	// 5. Batch insert allocations
@@ -172,7 +177,7 @@ func (s *AllocationService) AllocateCosts(ctx context.Context, tenantID int64, p
 	s.logger.Info("cost allocation completed",
 		elog.Int64("tenant_id", tenantID),
 		elog.String("period", period),
-		elog.Int("bill_count", len(bills)),
+		elog.Int("bill_count", billCount),
 		elog.Int("allocation_count", len(allocations)))
 
 	return nil
