@@ -2,6 +2,7 @@ package huawei
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -184,6 +185,14 @@ func lookupSeries(domainData map[string]interface{}, statType string) ([]*float6
 				continue
 			}
 			val := v
+			series = append(series, &val)
+		case json.Number: // ShowDomainStats 的 map[string]interface{} 以 json.Number 保真解码
+			f, err := v.Float64()
+			if err != nil || f == noDataSentinel {
+				series = append(series, nil)
+				continue
+			}
+			val := f
 			series = append(series, &val)
 		case string:
 			trimmed := strings.TrimSpace(v)

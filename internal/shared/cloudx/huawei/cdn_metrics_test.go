@@ -1,6 +1,7 @@
 package huawei
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -32,6 +33,36 @@ func TestLookupAndAggregateDailySeries(t *testing.T) {
 		t.Fatalf("aggregated = %v", got)
 	}
 	// 无数据日不得占位 0
+	if _, ok := got["2026-09-15"]; ok {
+		t.Fatalf("no-data day must be absent, got %v", got["2026-09-15"])
+	}
+}
+
+// 回归:ShowDomainStats 的 map[string]interface{} 元素是 json.Number
+// (SDK 用 UseNumber 解码),此前未被 lookupSeries 识别,全部解析为 nil,
+// 导致华为域名日指标永远写 0(bytes=0 且命中率 -1)。必须能解析。
+func TestLookupSeriesJSONNumber(t *testing.T) {
+	result := map[string]interface{}{
+		"d": map[string]interface{}{
+			"flux": []interface{}{json.Number("10765798179"), json.Number("-1")},
+		},
+	}
+	series, ok := lookupSeries(result["d"].(map[string]interface{}), "flux")
+	if !ok || len(series) != 2 {
+		t.Fatalf("series = %v, %v", series, ok)
+	}
+	if series[0] == nil || *series[0] != 10765798179 {
+		t.Fatalf("json.Number 值应解析, got %v", series[0])
+	}
+	// 哨兵 -1 仍视为无数据
+	if series[1] != nil {
+		t.Fatalf("sentinel -1 should be nil, got %v", *series[1])
+	}
+	// 全链路:json.Number 响应 → 聚合出真实流量
+	got := aggregateDailySeries(series, "2026-09-14", aggregateModeSum)
+	if got["2026-09-14"] != 10765798179 {
+		t.Fatalf("aggregated = %v", got)
+	}
 	if _, ok := got["2026-09-15"]; ok {
 		t.Fatalf("no-data day must be absent, got %v", got["2026-09-15"])
 	}
