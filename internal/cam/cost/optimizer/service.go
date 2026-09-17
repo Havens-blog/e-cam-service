@@ -146,18 +146,7 @@ func (s *OptimizerService) detectLowCPUInstances(ctx context.Context, tenantID i
 	endDate := now.Format("2006-01-02")
 	startDate := now.AddDate(0, 0, -lowCPUConsecutiveDays).Format("2006-01-02")
 
-	// 查询计算类型的账单，找到连续有账单的资源
-	bills, err := s.billDAO.ListUnifiedBills(ctx, repository.UnifiedBillFilter{
-		TenantID:    tenantID,
-		ServiceType: "compute",
-		StartDate:   startDate,
-		EndDate:     endDate,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("list compute bills: %w", err)
-	}
-
-	// 按资源 ID 聚合，统计出现天数和总金额
+	// 按资源 ID 聚合，统计出现天数和总金额（分页遍历，内存有界）
 	type resourceStats struct {
 		days         map[string]bool
 		totalAmount  float64
@@ -167,20 +156,31 @@ func (s *OptimizerService) detectLowCPUInstances(ctx context.Context, tenantID i
 		region       string
 	}
 	resourceMap := make(map[string]*resourceStats)
-	for _, bill := range bills {
-		stats, ok := resourceMap[bill.ResourceID]
-		if !ok {
-			stats = &resourceStats{
-				days:         make(map[string]bool),
-				resourceName: bill.ResourceName,
-				provider:     bill.Provider,
-				accountID:    bill.AccountID,
-				region:       bill.Region,
+	err := repository.PaginateUnifiedBills(ctx, s.billDAO, repository.UnifiedBillFilter{
+		TenantID:    tenantID,
+		ServiceType: "compute",
+		StartDate:   startDate,
+		EndDate:     endDate,
+	}, 0, func(bills []domain.UnifiedBill) error {
+		for _, bill := range bills {
+			stats, ok := resourceMap[bill.ResourceID]
+			if !ok {
+				stats = &resourceStats{
+					days:         make(map[string]bool),
+					resourceName: bill.ResourceName,
+					provider:     bill.Provider,
+					accountID:    bill.AccountID,
+					region:       bill.Region,
+				}
+				resourceMap[bill.ResourceID] = stats
 			}
-			resourceMap[bill.ResourceID] = stats
+			stats.days[bill.BillingDate] = true
+			stats.totalAmount += bill.AmountCNY
 		}
-		stats.days[bill.BillingDate] = true
-		stats.totalAmount += bill.AmountCNY
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list compute bills: %w", err)
 	}
 
 	var recs []domain.Recommendation
@@ -216,34 +216,8 @@ func (s *OptimizerService) detectUnattachedDisks(ctx context.Context, tenantID i
 	endDate := now.Format("2006-01-02")
 	startDate := now.AddDate(0, 0, -7).Format("2006-01-02")
 
-	// 查询存储类型账单
-	storageBills, err := s.billDAO.ListUnifiedBills(ctx, repository.UnifiedBillFilter{
-		TenantID:    tenantID,
-		ServiceType: "storage",
-		StartDate:   startDate,
-		EndDate:     endDate,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("list storage bills: %w", err)
-	}
-
-	// 查询计算类型账单，获取所有有关联的资源 ID
-	computeBills, err := s.billDAO.ListUnifiedBills(ctx, repository.UnifiedBillFilter{
-		TenantID:    tenantID,
-		ServiceType: "compute",
-		StartDate:   startDate,
-		EndDate:     endDate,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("list compute bills: %w", err)
-	}
-
 	computeResources := make(map[string]bool)
-	for _, bill := range computeBills {
-		computeResources[bill.ResourceID] = true
-	}
-
-	// 聚合存储资源
+	// 聚合存储资源（分页遍历，内存有界）
 	type diskStats struct {
 		totalAmount  float64
 		resourceName string
@@ -253,19 +227,46 @@ func (s *OptimizerService) detectUnattachedDisks(ctx context.Context, tenantID i
 		days         int
 	}
 	diskMap := make(map[string]*diskStats)
-	for _, bill := range storageBills {
-		stats, ok := diskMap[bill.ResourceID]
-		if !ok {
-			stats = &diskStats{
-				resourceName: bill.ResourceName,
-				provider:     bill.Provider,
-				accountID:    bill.AccountID,
-				region:       bill.Region,
+	err := repository.PaginateUnifiedBills(ctx, s.billDAO, repository.UnifiedBillFilter{
+		TenantID:    tenantID,
+		ServiceType: "storage",
+		StartDate:   startDate,
+		EndDate:     endDate,
+	}, 0, func(bills []domain.UnifiedBill) error {
+		for _, bill := range bills {
+			stats, ok := diskMap[bill.ResourceID]
+			if !ok {
+				stats = &diskStats{
+					resourceName: bill.ResourceName,
+					provider:     bill.Provider,
+					accountID:    bill.AccountID,
+					region:       bill.Region,
+				}
+				diskMap[bill.ResourceID] = stats
 			}
-			diskMap[bill.ResourceID] = stats
+			stats.totalAmount += bill.AmountCNY
+			stats.days++
 		}
-		stats.totalAmount += bill.AmountCNY
-		stats.days++
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list storage bills: %w", err)
+	}
+
+	// 查询计算类型账单，获取所有有关联的资源 ID
+	err = repository.PaginateUnifiedBills(ctx, s.billDAO, repository.UnifiedBillFilter{
+		TenantID:    tenantID,
+		ServiceType: "compute",
+		StartDate:   startDate,
+		EndDate:     endDate,
+	}, 0, func(bills []domain.UnifiedBill) error {
+		for _, bill := range bills {
+			computeResources[bill.ResourceID] = true
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list compute bills: %w", err)
 	}
 
 	var recs []domain.Recommendation
@@ -300,17 +301,7 @@ func (s *OptimizerService) detectOnDemandConvert(ctx context.Context, tenantID i
 	endDate := now.Format("2006-01-02")
 	startDate := now.AddDate(0, 0, -onDemandRunningDays).Format("2006-01-02")
 
-	// 查询按量付费的账单
-	bills, err := s.billDAO.ListUnifiedBills(ctx, repository.UnifiedBillFilter{
-		TenantID:  tenantID,
-		StartDate: startDate,
-		EndDate:   endDate,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("list on-demand bills: %w", err)
-	}
-
-	// 按资源 ID 聚合，筛选按量付费且运行超过 30 天的
+	// 按资源 ID 聚合，筛选按量付费且运行超过 30 天的（分页遍历，内存有界）
 	type resourceStats struct {
 		days         map[string]bool
 		totalAmount  float64
@@ -321,24 +312,34 @@ func (s *OptimizerService) detectOnDemandConvert(ctx context.Context, tenantID i
 		chargeType   string
 	}
 	resourceMap := make(map[string]*resourceStats)
-	for _, bill := range bills {
-		if bill.ChargeType != "postpaid" {
-			continue
-		}
-		stats, ok := resourceMap[bill.ResourceID]
-		if !ok {
-			stats = &resourceStats{
-				days:         make(map[string]bool),
-				resourceName: bill.ResourceName,
-				provider:     bill.Provider,
-				accountID:    bill.AccountID,
-				region:       bill.Region,
-				chargeType:   bill.ChargeType,
+	err := repository.PaginateUnifiedBills(ctx, s.billDAO, repository.UnifiedBillFilter{
+		TenantID:  tenantID,
+		StartDate: startDate,
+		EndDate:   endDate,
+	}, 0, func(bills []domain.UnifiedBill) error {
+		for _, bill := range bills {
+			if bill.ChargeType != "postpaid" {
+				continue
 			}
-			resourceMap[bill.ResourceID] = stats
+			stats, ok := resourceMap[bill.ResourceID]
+			if !ok {
+				stats = &resourceStats{
+					days:         make(map[string]bool),
+					resourceName: bill.ResourceName,
+					provider:     bill.Provider,
+					accountID:    bill.AccountID,
+					region:       bill.Region,
+					chargeType:   bill.ChargeType,
+				}
+				resourceMap[bill.ResourceID] = stats
+			}
+			stats.days[bill.BillingDate] = true
+			stats.totalAmount += bill.AmountCNY
 		}
-		stats.days[bill.BillingDate] = true
-		stats.totalAmount += bill.AmountCNY
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list on-demand bills: %w", err)
 	}
 
 	var recs []domain.Recommendation
