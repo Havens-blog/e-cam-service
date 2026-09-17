@@ -333,7 +333,7 @@ func InitCertModule(
 		VerifyProbeIntervalMinutes: scheduler.ResolveVerifyProbeIntervalMinutes(context.Background(), repos.AlertConfig),
 		Hdl:                        web.NewCertHandler(importSvc),
 		ReferenceHdl:               web.NewReferenceHandler(service.NewReferenceQueryService(repos.Certificates, repos.CertReferences, repos.ScanSnapshots, scanSvc)),
-		DiscoveryHdl:               web.NewDiscoveryHandler(service.NewDiscoveryPreviewService(repos.ScanSnapshots, repos.CertReferences, repos.Certificates, repos.CloudMappings), discoveryImportSvc),
+		DiscoveryHdl:               web.NewDiscoveryHandler(service.NewDiscoveryPreviewService(repos.ScanSnapshots, repos.CertReferences, repos.Certificates, repos.CloudMappings), discoveryImportSvc, certSyncSvc),
 		LedgerHdl:                  web.NewLedgerHandler(ledgerSvc),
 		DashboardHdl:               web.NewDashboardHandler(dashboardSvc, probeSvc),
 		SettingsHdl:                web.NewSettingsHandler(settingsSvc, crdRegSvc, k8sCredSvc, service.NewK8sCredentialFetchService(service.NewAliyunCSGateway(), accounts, k8sCredSvc)),

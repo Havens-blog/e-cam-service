@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -17,26 +18,35 @@ import (
 const DiscoveryNotAfterPending = "—（导入后补全）"
 
 // DiscoveryHandler 云端发现导入端点（cert-cloud-discovery-import 任务 3 查询面 +
-// 任务 5 会话面）：发现预览/快照状态查询 + 勾选条目导入会话/进度轮询。
+// 任务 5 会话面；cert-volcano-import-sync 任务 5 手动同步面）：发现预览/快照
+// 状态查询 + 勾选条目导入会话/进度轮询 + 多云增量同步手动触发。
 type DiscoveryHandler struct {
 	svc     service.DiscoveryPreviewService
 	imports service.DiscoveryImportService
+	sync    service.CertSyncService
 }
 
 // NewDiscoveryHandler 创建发现导入 handler（imports 为任务 4 会话编排服务，
-// 任务 5 装配注入）。
-func NewDiscoveryHandler(svc service.DiscoveryPreviewService, imports service.DiscoveryImportService) *DiscoveryHandler {
-	return &DiscoveryHandler{svc: svc, imports: imports}
+// 任务 5 装配注入）。sync 为 cert-volcano-import-sync 任务 5 手动同步服务，
+// 可选变参——既有装配点不传零影响，生产装配在 module.go 注入
+// Module.CertSyncSvc（手动端点与定时轮共享同一服务与 CAS 防重守卫）。
+func NewDiscoveryHandler(svc service.DiscoveryPreviewService, imports service.DiscoveryImportService, sync ...service.CertSyncService) *DiscoveryHandler {
+	h := &DiscoveryHandler{svc: svc, imports: imports}
+	if len(sync) > 0 {
+		h.sync = sync[0]
+	}
+	return h
 }
 
 // RegisterRoutes 注册发现导入端点（导入类端点沿用 RoleOpsEngineer，权限矩阵
 // 同 /reverse、/:id/scan；SC-8 四端点 preview/snapshot-status/import/progress
-// 均限运维工程师）：
+// 均限运维工程师；手动同步端点同权限面，cert-volcano-import-sync 任务 5）：
 //
 //	GET  /api/v1/certs/discovery/preview            发现预览（纯 DB 聚合）
 //	GET  /api/v1/certs/discovery/snapshot-status    最近快照状态（引导轮询）
 //	POST /api/v1/certs/discovery/import             勾选条目创建导入会话（202）
 //	GET  /api/v1/certs/discovery/import/:sessionId  会话进度轮询
+//	POST /api/v1/certs/discovery/sync               手动触发一轮多云增量同步（一次性摘要）
 //
 // 注意 Gin 通配顺序：/discovery 静态段先于 ledger /:id 注册（与 /reverse 同理）。
 func (h *DiscoveryHandler) RegisterRoutes(g *gin.RouterGroup) {
@@ -44,6 +54,7 @@ func (h *DiscoveryHandler) RegisterRoutes(g *gin.RouterGroup) {
 	g.GET("/discovery/snapshot-status", RequireRoles(RoleOpsEngineer), h.SnapshotStatus)
 	g.POST("/discovery/import", RequireRoles(RoleOpsEngineer), h.Import)
 	g.GET("/discovery/import/:sessionId", RequireRoles(RoleOpsEngineer), h.ImportProgress)
+	g.POST("/discovery/sync", RequireRoles(RoleOpsEngineer), h.Sync)
 }
 
 // DiscoveryPreviewEntryVO 预览唯一证书条目（AC 七类字段：cloud/accountKey/
@@ -215,6 +226,67 @@ func (h *DiscoveryHandler) ImportProgress(c *gin.Context) {
 }
 
 // ---------------------------------------------------------------------
+// 手动同步端点（cert-volcano-import-sync 任务 5）
+// ---------------------------------------------------------------------
+
+// CodeCertSyncInProgress 手动同步防重冲突码（409；与定时轮共享同一 CAS 守卫
+// 的归一语义——任一入口在跑即拒绝第二入口，不排队不吞错）。
+const CodeCertSyncInProgress = "CERT_SYNC_IN_PROGRESS"
+
+// CertSyncFailureVO 同步轮单条失败摘要（reason 为静态错误码+固定文案；云侧
+// 错误细节只进服务层日志，不进响应——NFR「云侧错误细节不进响应」）。
+type CertSyncFailureVO struct {
+	Cloud       string `json:"cloud,omitempty"`
+	AccountKey  string `json:"accountKey,omitempty"`
+	CloudCertID string `json:"cloudCertId,omitempty"`
+	Reason      string `json:"reason"`
+}
+
+// CertSyncRunVO 手动同步轮结果摘要（service.SyncRun 同构；响应形态对齐
+// /discovery/import 信封契约，但为一次性终态摘要而非轮询会话对象）。
+// sessionId 非空表示本轮产出了导入会话——逐条导入结果经既有
+// GET /discovery/import/:sessionId 轮询获取（复用既有端点，不新增轮询面）。
+type CertSyncRunVO struct {
+	SessionID       string              `json:"sessionId,omitempty"`
+	Status          string              `json:"status"` // completed / partial_failed
+	StartedAt       string              `json:"startedAt"`
+	FinishedAt      string              `json:"finishedAt"`
+	CloudsScanned   int                 `json:"cloudsScanned"`   // 参与枚举的云数
+	AccountsScanned int                 `json:"accountsScanned"` // 枚举的 (cloud, account) 对数
+	Listed          int                 `json:"listed"`          // 列举返回的实例总数
+	Skipped         int                 `json:"skipped"`         // 已映射跳过（增量判定四态之一）
+	Backfilled      int                 `json:"backfilled"`      // 映射缺失补建
+	Drifted         int                 `json:"drifted"`         // 同 cloudCertID 新指纹刷新
+	Imported        int                 `json:"imported"`        // 未入账指纹转导入条目数
+	ImportSucceeded int                 `json:"importSucceeded"` // 导入会话 success 条数
+	ImportFailed    int                 `json:"importFailed"`    // 导入会话 failed 条数
+	Failures        []CertSyncFailureVO `json:"failures"`
+}
+
+// Sync POST /api/v1/certs/discovery/sync —— 手动触发一轮多云证书增量同步
+// （与定时轮共享同一 CertSyncService 与 CAS 防重守卫，消费 Manual 面；供
+// 天级调度前试跑与运维按需触发）。同步为同步执行面：调用返回即本轮终态，
+// 响应为一次性结果摘要（200；无轮询端点）；零新条目亦 200（业务"已收敛"
+// 非错误）。同步已在跑（定时轮/手工任一入口）→ 409 CERT_SYNC_IN_PROGRESS。
+func (h *DiscoveryHandler) Sync(c *gin.Context) {
+	if h.sync == nil {
+		// 装配缺口防御（生产装配恒注入；仅未装配 sync 的路由形态可触达）
+		WriteAPIError(c, http.StatusInternalServerError, CodeInternalError, "cert sync service not wired")
+		return
+	}
+	run, err := h.sync.SyncCertificatesManual(c.Request.Context())
+	if err != nil {
+		if errors.Is(err, service.ErrSyncRunning) {
+			WriteAPIError(c, http.StatusConflict, CodeCertSyncInProgress, "cert sync already running")
+			return
+		}
+		WriteError(c, err)
+		return
+	}
+	WriteOK(c, http.StatusOK, toCertSyncRunVO(run), nil)
+}
+
+// ---------------------------------------------------------------------
 // VO 转换
 // ---------------------------------------------------------------------
 
@@ -291,5 +363,35 @@ func toDiscoveryImportSessionVO(s domain.DiscoveryImportSession) DiscoveryImport
 		Progress:   DiscoveryImportProgressVO{Total: s.Progress.Total, Succeeded: s.Progress.Succeeded, Failed: s.Progress.Failed},
 		CreatedAt:  formatTime(s.CreatedAt),
 		FinishedAt: formatTimePtr(s.FinishedAt),
+	}
+}
+
+// toCertSyncRunVO 同步轮摘要 → 响应 VO（failures 空集为 [] 而非 null；仅
+// 透传静态 reason 字段，不携带任何云侧错误细节）。
+func toCertSyncRunVO(r service.SyncRun) CertSyncRunVO {
+	failures := make([]CertSyncFailureVO, 0, len(r.Failures))
+	for _, f := range r.Failures {
+		failures = append(failures, CertSyncFailureVO{
+			Cloud:       f.Cloud,
+			AccountKey:  f.AccountKey,
+			CloudCertID: f.CloudCertID,
+			Reason:      f.Reason,
+		})
+	}
+	return CertSyncRunVO{
+		SessionID:       r.SessionID,
+		Status:          string(r.Status),
+		StartedAt:       formatTime(r.StartedAt),
+		FinishedAt:      formatTime(r.FinishedAt),
+		CloudsScanned:   r.CloudsScanned,
+		AccountsScanned: r.AccountsScanned,
+		Listed:          r.Listed,
+		Skipped:         r.Skipped,
+		Backfilled:      r.Backfilled,
+		Drifted:         r.Drifted,
+		Imported:        r.Imported,
+		ImportSucceeded: r.ImportSucceeded,
+		ImportFailed:    r.ImportFailed,
+		Failures:        failures,
 	}
 }

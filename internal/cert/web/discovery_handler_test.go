@@ -25,11 +25,18 @@ type discoveryDeps struct {
 	snaps    *certtest.FakeScanSnapshotRepo
 	mappings *certtest.FakeCloudCertMappingRepo
 	imports  *discoveryImportTestDeps
+	sync     *webCertSyncStub
 }
 
 // newDiscoveryRouter 构造挂载全部 /api/v1/certs 路由的测试引擎
 // （覆盖 /discovery 静态段与 ledger /:id 参数段共存；发现面以运维工程师发起）。
 func newDiscoveryRouter(t *testing.T) (*gin.Engine, *discoveryDeps) {
+	return newDiscoveryRouterAsRole(t, RoleOpsEngineer)
+}
+
+// newDiscoveryRouterAsRole 指定角色发起的发现面测试路由（cert-volcano-import-sync
+// 任务 5 鉴权用例；role 空串=未设置，deny-by-default 场景）。
+func newDiscoveryRouterAsRole(t *testing.T, role Role) (*gin.Engine, *discoveryDeps) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	d := &discoveryDeps{
@@ -38,6 +45,7 @@ func newDiscoveryRouter(t *testing.T) (*gin.Engine, *discoveryDeps) {
 		snaps:    certtest.NewFakeScanSnapshotRepo(),
 		mappings: certtest.NewFakeCloudCertMappingRepo(),
 		imports:  newDiscoveryImportTestDeps(),
+		sync:     &webCertSyncStub{},
 	}
 	importSvc := service.NewImportService(d.certs, certtest.NewFakeBatchSessionRepo(), certtest.NewTestCrypto(t))
 	ledgerSvc := service.NewLedgerService(d.certs, d.refs, d.snaps)
@@ -46,9 +54,11 @@ func newDiscoveryRouter(t *testing.T) (*gin.Engine, *discoveryDeps) {
 	discImportSvc := d.imports.svc(d.certs, d.mappings, d.refs)
 	dashH, settingsH := newDashboardSettingsHandlers(d.certs, d.refs, d.snaps)
 	engine := gin.New()
-	engine.Use(withRole(RoleOpsEngineer))
+	if role != "" {
+		engine.Use(withRole(role))
+	}
 	RegisterRoutes(engine, NewCertHandler(importSvc), NewReferenceHandler(querySvc),
-		NewDiscoveryHandler(discSvc, discImportSvc), NewLedgerHandler(ledgerSvc),
+		NewDiscoveryHandler(discSvc, discImportSvc, d.sync), NewLedgerHandler(ledgerSvc),
 		dashH, settingsH, newChangeHandlerFixture(t))
 	return engine, d
 }
@@ -470,5 +480,188 @@ func TestDiscoveryImportAPI_ProgressLookup(t *testing.T) {
 		env := decode(t, w)
 		require.NotNil(t, env.Error)
 		assert.Equal(t, CodeInvalidID, env.Error.Code)
+	})
+}
+
+// ---------------------------------------------------------------------
+// POST /api/v1/certs/discovery/sync（cert-volcano-import-sync 任务 5）
+// ---------------------------------------------------------------------
+
+// webCertSyncStub 手动同步端点测试桩（命名前缀 web 区别于 service 层测试桩，
+// 防撞名）：预置返回值 + 双入口调用计数——断言端点消费 Manual 面、不触调度面。
+type webCertSyncStub struct {
+	run         service.SyncRun
+	err         error
+	schedCalls  int
+	manualCalls int
+}
+
+func (s *webCertSyncStub) SyncCertificates(context.Context) (service.SyncRun, error) {
+	s.schedCalls++
+	return s.run, s.err
+}
+
+func (s *webCertSyncStub) SyncCertificatesManual(context.Context) (service.SyncRun, error) {
+	s.manualCalls++
+	return s.run, s.err
+}
+
+func TestDiscoverySyncAPI_ManualTrigger(t *testing.T) {
+	t.Run("success returns one-shot run summary consuming manual face", func(t *testing.T) {
+		engine, d := newDiscoveryRouter(t)
+		started := time.Date(2026, 9, 17, 1, 0, 0, 0, time.UTC)
+		finished := time.Date(2026, 9, 17, 1, 30, 0, 0, time.UTC)
+		d.sync.run = service.SyncRun{
+			SessionID:       primitive.NewObjectID().Hex(),
+			Status:          domain.DiscoveryImportCompleted,
+			StartedAt:       started,
+			FinishedAt:      finished,
+			CloudsScanned:   1,
+			AccountsScanned: 2,
+			Listed:          5,
+			Skipped:         3,
+			Backfilled:      1,
+			Drifted:         1,
+			Imported:        2,
+			ImportSucceeded: 2,
+			ImportFailed:    0,
+		}
+
+		w := doPostJSON(t, engine, "/api/v1/certs/discovery/sync", nil)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		data := decodeData(t, w)
+		assert.Equal(t, d.sync.run.SessionID, data["sessionId"], "同步轮 ID/会话摘要（产出导入会话时非空）")
+		assert.Equal(t, "completed", data["status"])
+		assert.Equal(t, started.UTC().Format(time.RFC3339), data["startedAt"])
+		assert.Equal(t, finished.UTC().Format(time.RFC3339), data["finishedAt"])
+		assert.Equal(t, float64(1), data["cloudsScanned"])
+		assert.Equal(t, float64(2), data["accountsScanned"])
+		assert.Equal(t, float64(5), data["listed"])
+		assert.Equal(t, float64(3), data["skipped"])
+		assert.Equal(t, float64(1), data["backfilled"])
+		assert.Equal(t, float64(1), data["drifted"])
+		assert.Equal(t, float64(2), data["imported"])
+		assert.Equal(t, float64(2), data["importSucceeded"])
+		assert.Equal(t, float64(0), data["importFailed"])
+		failures, ok := data["failures"].([]any)
+		require.True(t, ok, "failures 为数组而非 null")
+		assert.Empty(t, failures)
+		assert.Equal(t, 1, d.sync.manualCalls, "端点消费 Manual 面（SyncCertificatesManual）")
+		assert.Equal(t, 0, d.sync.schedCalls, "不触调度面入口")
+		assertNoKeyMaterial(t, w)
+	})
+
+	t.Run("running conflict returns 409 normalized code", func(t *testing.T) {
+		engine, d := newDiscoveryRouter(t)
+		d.sync.err = service.ErrSyncRunning
+
+		w := doPostJSON(t, engine, "/api/v1/certs/discovery/sync", nil)
+		require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
+		env := decode(t, w)
+		require.NotNil(t, env.Error)
+		assert.Equal(t, CodeCertSyncInProgress, env.Error.Code, "ErrSyncRunning 归一结构化错误码")
+		assert.False(t, env.Success)
+		assert.NotEmpty(t, env.Error.Message)
+	})
+
+	t.Run("no import entries still 200 converged", func(t *testing.T) {
+		// 零新条目 = 已收敛：200（非错误）；sessionId 空（omitempty 不出现）
+		engine, d := newDiscoveryRouter(t)
+		d.sync.run = service.SyncRun{Status: domain.DiscoveryImportCompleted}
+
+		w := doPostJSON(t, engine, "/api/v1/certs/discovery/sync", nil)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		data := decodeData(t, w)
+		assert.Equal(t, "completed", data["status"])
+		_, hasSession := data["sessionId"]
+		assert.False(t, hasSession, "零导入条目不产 sessionId")
+		failures, ok := data["failures"].([]any)
+		require.True(t, ok)
+		assert.Empty(t, failures)
+	})
+
+	t.Run("failure summary carries static reason only", func(t *testing.T) {
+		// NFR：云侧错误细节不进响应——仅静态错误码+文案，且仅白名单字段
+		engine, d := newDiscoveryRouter(t)
+		d.sync.run = service.SyncRun{
+			Status: domain.DiscoveryImportPartialFailed,
+			Failures: []service.SyncFailure{
+				{Cloud: "volcano", AccountKey: "acct-v", CloudCertID: "cert-x",
+					Reason: "CERT_LIST_FAILED: 云证书库列举失败"},
+				{Reason: "SESSION_TIMEOUT: 同步整体超时，剩余条目可重跑"}, // 跨云聚合
+			},
+		}
+
+		w := doPostJSON(t, engine, "/api/v1/certs/discovery/sync", nil)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		raw, ok := decodeData(t, w)["failures"].([]any)
+		require.True(t, ok)
+		require.Len(t, raw, 2)
+
+		first := raw[0].(map[string]any)
+		assert.Equal(t, "CERT_LIST_FAILED: 云证书库列举失败", first["reason"], "仅静态错误码+文案")
+		keys := make([]string, 0, len(first))
+		for k := range first {
+			keys = append(keys, k)
+		}
+		assert.ElementsMatch(t, []string{"cloud", "accountKey", "cloudCertId", "reason"}, keys,
+			"失败摘要仅白名单字段")
+
+		agg := raw[1].(map[string]any)
+		assert.Equal(t, "SESSION_TIMEOUT: 同步整体超时，剩余条目可重跑", agg["reason"])
+		_, hasCloud := agg["cloud"]
+		assert.False(t, hasCloud, "跨云聚合失败不带 cloud（omitempty）")
+		assert.Equal(t, "partial_failed", decodeData(t, w)["status"])
+	})
+
+	t.Run("generic service error surfaces 500 envelope without detail", func(t *testing.T) {
+		// 非 ErrSyncRunning 服务错误 → 500 INTERNAL_ERROR 固定文案（不透传细节）
+		engine, d := newDiscoveryRouter(t)
+		d.sync.err = errors.New("signature mismatch with secret detail")
+
+		w := doPostJSON(t, engine, "/api/v1/certs/discovery/sync", nil)
+		require.Equal(t, http.StatusInternalServerError, w.Code, w.Body.String())
+		env := decode(t, w)
+		require.NotNil(t, env.Error)
+		assert.Equal(t, CodeInternalError, env.Error.Code)
+		assert.Equal(t, "internal server error", env.Error.Message)
+		assert.NotContains(t, w.Body.String(), "signature mismatch", "云侧错误细节不进响应")
+	})
+
+	t.Run("unwired sync service degrades to 500 envelope", func(t *testing.T) {
+		// 防御分支：未注入 sync 的装配形态不 panic（既有测试路由均此形态）
+		gin.SetMode(gin.TestMode)
+		certs := certtest.NewFakeCertificateRepo()
+		refs := certtest.NewFakeCertReferenceRepo()
+		snaps := certtest.NewFakeScanSnapshotRepo()
+		engine := gin.New()
+		engine.Use(withRole(RoleOpsEngineer))
+		RegisterRoutes(engine, NewCertHandler(service.NewImportService(certs, certtest.NewFakeBatchSessionRepo(), certtest.NewTestCrypto(t))),
+			NewReferenceHandler(service.NewReferenceQueryService(certs, refs, snaps, &fakeScanTrigger{})),
+			NewDiscoveryHandler(service.NewDiscoveryPreviewService(snaps, refs, certs, certtest.NewFakeCloudCertMappingRepo()), newDiscoveryImportSvcForRouter()),
+			NewLedgerHandler(service.NewLedgerService(certs, refs, snaps)), nil, nil, newChangeHandlerFixture(t))
+
+		w := doPostJSON(t, engine, "/api/v1/certs/discovery/sync", nil)
+		require.Equal(t, http.StatusInternalServerError, w.Code, w.Body.String())
+		env := decode(t, w)
+		require.NotNil(t, env.Error)
+		assert.Equal(t, CodeInternalError, env.Error.Code)
+	})
+}
+
+func TestDiscoverySyncAPI_RoleGuard(t *testing.T) {
+	t.Run("viewer rejected 403", func(t *testing.T) {
+		engine, _ := newDiscoveryRouterAsRole(t, RoleViewer)
+		w := doPostJSON(t, engine, "/api/v1/certs/discovery/sync", nil)
+		require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+		env := decode(t, w)
+		require.NotNil(t, env.Error)
+		assert.Equal(t, CodeForbidden, env.Error.Code)
+	})
+
+	t.Run("unset role denied by default", func(t *testing.T) {
+		engine, _ := newDiscoveryRouterAsRole(t, "")
+		w := doPostJSON(t, engine, "/api/v1/certs/discovery/sync", nil)
+		require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
 	})
 }

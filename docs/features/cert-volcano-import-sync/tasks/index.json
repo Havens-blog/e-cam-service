@@ -68,7 +68,7 @@
       "dependencies": [
         "3"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5-manual-sync-endpoint.md",
       "record": "records/5-manual-sync-endpoint.md",
       "surface-type": "api",
