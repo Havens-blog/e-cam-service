@@ -201,10 +201,10 @@ func strPtr(s string) *string { return &s }
 // ---------------------------------------------------------------------
 
 // prefixCacheTTL 前缀发现缓存新鲜时长。
-const prefixCacheTTL = 10 * time.Minute
+const prefixCacheTTL = 30 * time.Minute
 
 // prefixStaleGrace 新鲜期过后仍供旧清单的宽限时长(期间后台刷新)。
-const prefixStaleGrace = 10 * time.Minute
+const prefixStaleGrace = 20 * time.Minute
 
 // prefixRefreshBackoff 后台刷新失败后的重试退避。
 const prefixRefreshBackoff = 30 * time.Second

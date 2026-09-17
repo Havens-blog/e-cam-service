@@ -10,8 +10,8 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
 )
 
-// sourceCacheTTL 流清单缓存时长。
-const sourceCacheTTL = 10 * time.Minute
+// sourceCacheTTL 流清单缓存新鲜时长(变动频率低:30 分钟)。
+const sourceCacheTTL = 30 * time.Minute
 
 type sourceCacheEntry struct {
 	sources []logquery.LogSource
@@ -20,20 +20,28 @@ type sourceCacheEntry struct {
 
 // sourceCache 进程内 TTL 缓存(键 = 账号/日志类型)。
 type sourceCache struct {
-	mu      sync.RWMutex
-	entries map[string]sourceCacheEntry
+	mu         sync.RWMutex
+	entries    map[string]sourceCacheEntry
+	refreshing map[string]bool // 后台刷新单飞
 }
 
-var sourceEnumCache = &sourceCache{entries: make(map[string]sourceCacheEntry)}
+var sourceEnumCache = &sourceCache{entries: make(map[string]sourceCacheEntry), refreshing: make(map[string]bool)}
 
-// get 命中返回缓存副本(hit=true);过期/缺失调用 fetch 回填(成功且非空
-// 才缓存;失败/空结果不缓存,不长期锁死)。
+// get 取流清单缓存副本。SWR 语义:
+//   - 新鲜命中:返回缓存 + hit=true;
+//   - 已过期但有旧值:立即返回旧值 + hit=false,后台单飞刷新(前台不阻塞);
+//   - 无旧值:同步 fetch(成功且非空才缓存;失败/空不缓存,不长期锁死)。
 func (c *sourceCache) get(key string, fetch func() ([]logquery.LogSource, error)) ([]logquery.LogSource, bool, error) {
 	c.mu.RLock()
 	e, ok := c.entries[key]
 	c.mu.RUnlock()
 	if ok && time.Now().Before(e.expires) {
 		return copySources(e.sources), true, nil
+	}
+	if ok {
+		// 过期有旧值:SWR,前台先拿旧值,后台刷新
+		c.refreshAsync(key, fetch)
+		return copySources(e.sources), false, nil
 	}
 	sources, err := fetch()
 	if err != nil || len(sources) == 0 {
@@ -43,6 +51,31 @@ func (c *sourceCache) get(key string, fetch func() ([]logquery.LogSource, error)
 	c.entries[key] = sourceCacheEntry{sources: copySources(sources), expires: time.Now().Add(sourceCacheTTL)}
 	c.mu.Unlock()
 	return sources, false, nil
+}
+
+// refreshAsync 后台单飞刷新(脱离请求 ctx;失败保留旧值)。
+func (c *sourceCache) refreshAsync(key string, fetch func() ([]logquery.LogSource, error)) {
+	c.mu.Lock()
+	if c.refreshing[key] {
+		c.mu.Unlock()
+		return
+	}
+	c.refreshing[key] = true
+	c.mu.Unlock()
+	go func() {
+		defer func() {
+			c.mu.Lock()
+			delete(c.refreshing, key)
+			c.mu.Unlock()
+		}()
+		sources, err := fetch()
+		if err != nil || len(sources) == 0 {
+			return
+		}
+		c.mu.Lock()
+		c.entries[key] = sourceCacheEntry{sources: copySources(sources), expires: time.Now().Add(sourceCacheTTL)}
+		c.mu.Unlock()
+	}()
 }
 
 // copySources 浅拷贝切片(LogSource 全值字段,共享底层数组安全)。
