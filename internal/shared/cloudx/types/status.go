@@ -396,21 +396,24 @@ const (
 	SecurityGroupStatusUnknown   = "unknown"   // 未知
 )
 
+// securityGroupStatusMap 安全组状态映射表 (小写输入 → 规范状态)
+var securityGroupStatusMap = map[string]string{
+	"available": SecurityGroupStatusAvailable,
+	"active":    SecurityGroupStatusAvailable,
+	"pending":   SecurityGroupStatusPending,
+	"creating":  SecurityGroupStatusPending,
+	"deleting":  SecurityGroupStatusDeleting,
+	"":          SecurityGroupStatusUnknown,
+}
+
 // NormalizeSecurityGroupStatus 标准化安全组状态
 func NormalizeSecurityGroupStatus(status string) string {
 	lower := strings.ToLower(status)
-	switch lower {
-	case "available", "active":
-		return SecurityGroupStatusAvailable
-	case "pending", "creating":
-		return SecurityGroupStatusPending
-	case "deleting":
-		return SecurityGroupStatusDeleting
-	case "":
-		return SecurityGroupStatusUnknown
-	default:
-		return lower
+	if normalized, ok := securityGroupStatusMap[lower]; ok {
+		return normalized
 	}
+	// 兜底：未匹配返回小写形式
+	return lower
 }
 
 // ============================================================================
@@ -428,27 +431,38 @@ const (
 	ImageStatusUnknown     = "unknown"     // 未知
 )
 
+// imageStatusMap 镜像状态映射表 (小写输入 → 规范状态)
+var imageStatusMap = map[string]string{
+	"available":    ImageStatusAvailable,
+	"active":       ImageStatusAvailable,
+	"normal":       ImageStatusAvailable,
+	"using":        ImageStatusAvailable,
+	"creating":     ImageStatusCreating,
+	"pending":      ImageStatusCreating,
+	"saving":       ImageStatusCreating,
+	"syncing":      ImageStatusCreating,
+	"transient":    ImageStatusCreating,
+	"waiting":      ImageStatusWaiting,
+	"queued":       ImageStatusWaiting,
+	"deprecated":   ImageStatusDeprecated,
+	"deregistered": ImageStatusDeprecated,
+	"unavailable":  ImageStatusUnavailable,
+	"deleted":      ImageStatusUnavailable,
+	"error":        ImageStatusError,
+	"failed":       ImageStatusError,
+	"invalid":      ImageStatusError,
+	"killed":       ImageStatusError,
+	"":             ImageStatusUnknown,
+}
+
 // NormalizeImageStatus 标准化镜像状态
 func NormalizeImageStatus(status string) string {
 	lower := strings.ToLower(status)
-	switch lower {
-	case "available", "active", "normal", "using":
-		return ImageStatusAvailable
-	case "creating", "pending", "saving", "syncing", "transient":
-		return ImageStatusCreating
-	case "waiting", "queued":
-		return ImageStatusWaiting
-	case "deprecated", "deregistered":
-		return ImageStatusDeprecated
-	case "unavailable", "deleted":
-		return ImageStatusUnavailable
-	case "error", "failed", "invalid", "killed":
-		return ImageStatusError
-	case "":
-		return ImageStatusUnknown
-	default:
-		return lower
+	if normalized, ok := imageStatusMap[lower]; ok {
+		return normalized
 	}
+	// 兜底：未匹配返回小写形式
+	return lower
 }
 
 // ============================================================================
@@ -468,31 +482,42 @@ const (
 	DiskStatusUnknown   = "unknown"   // 未知
 )
 
+// diskStatusMap 云盘状态映射表 (小写输入 → 规范状态)
+var diskStatusMap = map[string]string{
+	"available":        DiskStatusAvailable,
+	"unattached":       DiskStatusAvailable,
+	"in_use":           DiskStatusInUse,
+	"in-use":           DiskStatusInUse,
+	"attached":         DiskStatusInUse,
+	"creating":         DiskStatusCreating,
+	"uploading":        DiskStatusCreating,
+	"downloading":      DiskStatusCreating,
+	"extending":        DiskStatusCreating,
+	"expanding":        DiskStatusCreating,
+	"attaching":        DiskStatusAttaching,
+	"detaching":        DiskStatusDetaching,
+	"deleting":         DiskStatusDeleting,
+	"deleted":          DiskStatusDeleting,
+	"torecycle":        DiskStatusDeleting,
+	"reiniting":        DiskStatusReIniting,
+	"rollbacking":      DiskStatusReIniting,
+	"error":            DiskStatusError,
+	"error_extending":  DiskStatusError,
+	"error_deleting":   DiskStatusError,
+	"error_restoring":  DiskStatusError,
+	"error_rollbacking": DiskStatusError,
+	"all":              DiskStatusUnknown,
+	"":                 DiskStatusUnknown,
+}
+
 // NormalizeDiskStatus 标准化云盘状态
 func NormalizeDiskStatus(status string) string {
 	lower := strings.ToLower(status)
-	switch lower {
-	case "available", "unattached":
-		return DiskStatusAvailable
-	case "in_use", "in-use", "attached":
-		return DiskStatusInUse
-	case "creating", "uploading", "downloading", "extending", "expanding":
-		return DiskStatusCreating
-	case "attaching":
-		return DiskStatusAttaching
-	case "detaching":
-		return DiskStatusDetaching
-	case "deleting", "deleted", "torecycle":
-		return DiskStatusDeleting
-	case "reiniting", "rollbacking":
-		return DiskStatusReIniting
-	case "error", "error_extending", "error_deleting", "error_restoring", "error_rollbacking":
-		return DiskStatusError
-	case "all", "":
-		return DiskStatusUnknown
-	default:
-		return lower
+	if normalized, ok := diskStatusMap[lower]; ok {
+		return normalized
 	}
+	// 兜底：未匹配返回小写形式
+	return lower
 }
 
 // IsDiskAvailable 判断云盘是否可用 (未挂载)
@@ -519,25 +544,34 @@ const (
 	SnapshotStatusUnknown      = "unknown"      // 未知
 )
 
+// snapshotStatusMap 快照状态映射表 (小写输入 → 规范状态)
+var snapshotStatusMap = map[string]string{
+	"normal":        SnapshotStatusNormal,
+	"progressing":   SnapshotStatusProgressing,
+	"pending":       SnapshotStatusProgressing,
+	"creating":      SnapshotStatusProgressing,
+	"rollbacking":   SnapshotStatusProgressing,
+	"backing_up":    SnapshotStatusProgressing,
+	"copying":       SnapshotStatusProgressing,
+	"accomplished":  SnapshotStatusAccomplished,
+	"completed":     SnapshotStatusAccomplished,
+	"available":     SnapshotStatusAccomplished,
+	"failed":        SnapshotStatusFailed,
+	"error":         SnapshotStatusFailed,
+	"error_deleting": SnapshotStatusFailed,
+	"deleting":      SnapshotStatusDeleting,
+	"torecycle":     SnapshotStatusDeleting,
+	"":              SnapshotStatusUnknown,
+}
+
 // NormalizeSnapshotStatus 标准化快照状态
 func NormalizeSnapshotStatus(status string) string {
 	lower := strings.ToLower(status)
-	switch lower {
-	case "normal":
-		return SnapshotStatusNormal
-	case "progressing", "pending", "creating", "rollbacking", "backing_up", "copying":
-		return SnapshotStatusProgressing
-	case "accomplished", "completed", "available":
-		return SnapshotStatusAccomplished
-	case "failed", "error", "error_deleting":
-		return SnapshotStatusFailed
-	case "deleting", "torecycle":
-		return SnapshotStatusDeleting
-	case "":
-		return SnapshotStatusUnknown
-	default:
-		return lower
+	if normalized, ok := snapshotStatusMap[lower]; ok {
+		return normalized
 	}
+	// 兜底：未匹配返回小写形式
+	return lower
 }
 
 // IsSnapshotCompleted 判断快照是否已完成
