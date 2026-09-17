@@ -33,19 +33,24 @@ intent: "new-feature"
 <!-- pre-revised: high -->
 对标 CDN 指标模式(已上线验证),为 NAS 新增容量/使用率天粒度指标采集与展示:
 
-1. **NASMetricQuerier 可选接口**(仿 `cloudx.CDNMetricQuerier`):`GetNASMetrics(ctx, fsID, fsName, startDate, endDate) ([]types.NASMetric, error)`。NASMetric **落库字段**:`fs_id / date / capacity(GB) / used_capacity(GB)`;**utilization 不落库**,读取时由 capacity/used 派生(单位与边界语义见「单位归一化与字段语义」)。
+<!-- pre-revised: medium -->
+1. **NASMetricQuerier 可选接口**(仿 `cloudx.CDNMetricQuerier`,但**带 region**——NAS 是地域性资源,CDN 为全局服务故 CDN 签名无 region):`GetNASMetrics(ctx, fsID, fsName, region, startDate, endDate) ([]types.NASMetric, error)`。`region` 解析:由 `ecam_instance` 实例元数据取该 fs 的 region(各厂商枚举实例时已带 region),适配器按**实例所在 region** 调用对应监控 API(华为 CES 用实例真实 region,aliyun/tencent/volcengine/aws 同按实例 region 查询);对多 region 账号按「实例 → region」逐实例查询,**不做全局 region 推断**,避免非默认 region 的实例查错地域。NASMetric **落库字段**:`fs_id / date / capacity(GB) / used_capacity(GB) / qc_status`;**utilization 不落库**,读取时由 capacity/used 派生(单位与边界语义见「单位归一化与字段语义」)。
 <!-- pre-revised: high -->
 2. **5 厂商实现**:aliyun(CMS DescribeMetricList)、tencent(monitor 子包,需新增依赖)、huawei(CES BatchListMetricData,按文件系统类型分别用 `SYS.SFS`/`SYS.SFS_Turbo`)、volcengine(cloudmonitor GetMetricData,指标名经探测任务确认)、aws(CloudWatch EFS `StorageBytes`,新增一行 go.mod)。**必达项:aliyun/huawei/aws 三家**(均为标准指标,SDK 已在或轻量引入;aws 的 EFS StorageBytes 有标准指标、并非不可行,不套用 CloudFront「主动放弃」先例);**尽力而为项:tencent/volcengine**(指标可用性待探测)。任一适配器失败只返回自身空,不阻塞全流程,但须走「失败可观测性」路径(见对应章节)。**必达厂商选择依据(非仅实现便利)**:分组由「指标标准化程度 × 实盘容量分布」双因素决定——探测任务统计实盘容量按厂商占比;若 tencent/volcengine 任一占比 >15%:探测可用则升格为必达项纳入本期,探测不可用则显式降级为「二期补」并在发布说明承诺二期补采窗口;占比 ≤15% 维持尽力而为并记录理由。
 <!-- pre-revised: high -->
-3. **NAS 指标采集执行器** `nas:collect_metrics`(仿 sync_cdn_metrics.go):按活跃账号遍历 NAS 实例 → 调 querier → 写入 `ecam_nas_metric`(唯一键 `(account_id, fs_id, date)`,复用 CDN 修复后的多账号经验)。同日行**首写生效**(补缺式 upsert,当日已有行不覆盖;**仅保护今日行**,昨日行由次日补采覆盖更新),与 CDN「同日重采覆盖为最新值」不同——理由见「日快照取值口径与采集窗口」。
+<!-- pre-revised: medium -->
+3. **NAS 指标采集执行器** `nas:collect_metrics`(仿 sync_cdn_metrics.go):按**活跃账号**遍历 NAS 实例 → 调 querier → 写入 `ecam_nas_metric`(唯一键 `(account_id, fs_id, date)`,复用 CDN 修复后的多账号经验)。**「活跃账号」口径 = 租户下已纳管且存在 ≥1 个 NAS 实例的云账号**(以 `ecam_instance` 枚举为准);采集遍历**不依赖账号的 EnableAutoSync 开关**——与 CDN 一致(指标采集对已纳管账号统一执行,不因账号禁用自动同步而跳过),避免「非活跃(未启用自动同步)账号下 NAS 实例静默漏采」。同日行**首写生效**(补缺式 upsert,当日已有行不覆盖;**仅保护今日行**,昨日行由次日补采覆盖更新),与 CDN「同日重采覆盖为最新值」不同——理由见「日快照取值口径与采集窗口」。
 4. **持久化日闸 + 原子认领**(本计划的改进点):CDN 现用内存 `lastMetricsCollectDate`,今天实测发现服务重启会重复提交 25+ 条待办指标任务。NAS 采用持久化日闸(记录最近触发日期到 MongoDB,如 `scheduler_state` collection),并**顺带把 CDN 的也改为持久化**——一次解决同类问题。语义:
    - **原子认领**:一次 `findOneAndUpdate`(条件 `resource_type=nas AND last_date<today`,更新为 today)原子认领当日,认领成功才提交采集任务——多副本同时触发、或手动 `nas:collect_metrics` 与每日自动任务重叠时,同一资源只被一个实例认领(对 CloudWatch 这类有 GetMetricData 配额上限的 API 尤其必要)。
    - **写失败降级**:日闸写入失败走指数退避重试并升级告警,**不是**仅记日志——否则「写失败 + 重启」会让本计划要修的重启重复提交缺陷原样回归。
    - **读失败退避**:日闸读失败设置最短退避窗口(如 5 分钟)再重读,防止挂在分钟级调度循环上逐分钟洪泛任务队列。
    <!-- pre-revised: high -->
+   - **CDN 迁移回归与首部署过渡**:迁移后新增「CDN 日值正确性回归」——对比迁移前后同域同日值(以迁移前内存闸期间已落库的 CDN 日值为基准),验证持久化日闸首日不重采、不丢历史缺口、仍按 `days=2` 语义正确写入。首部署时 `scheduler_state` 尚无 cdn 记录 → `last_date` 为空 → **过渡行为定义**:视为首次认领,认领后触发一次当日提交(不回溯补采历史,既有 CDN 历史由既有数据延续),此后按日闸「每日一次」语义运行。
+   <!-- pre-revised: high -->
    - **特性开关与回滚**:持久化日闸以特性开关(如 `SCHEDULER_PERSISTENT_GATE_ENABLED`)控制,默认开启;若 mongo 日闸出现不可恢复故障,一键切回 CDN/NAS 原内存闸(接受重启重复提交旧缺陷换取调度器可用),回滚后记录原因与重新开启计划。回滚验证步骤纳入 SC:开关切回内存闸后调度任务仍可正常提交、NAS/CDN 指标采集不中断。
 <!-- pre-revised: medium -->
-5. **NAS 指标读取接口**(契约,租户校验见 Non-Functional Requirements):`GET /assets/nas/metrics?fs_id=&account_id=&days=`(单实例趋势)与 `GET /assets/nas/top?account_id=&days=&sort=&top=&page=&page_size=`(账号视角 Top)。接口从鉴权上下文取 tenantID,服务端校验客户端传入的 `account_id` ∈ 该租户账号集合,越权返回 404(不泄露账号存在性);`days` 限 1~90(回看天数);`sort` ∈ `capacity|utilization`(utilization 用近 N 天均值口径);趋势与 Top 同时返回「最新一天」与「近 N 天均值」两类值。**Top 端点契约**:`top=N`(默认 10,最大 50,按 `sort` 降序取前 N)、分页 `page`(默认 1)/`page_size`(默认 10,最大 50);响应结构 `{ total, page, page_size, items[] }`,`items[]` 每条含 `fs_id / fs_name / account_id 列表 / data_status / 最新一天 capacity·used·utilization / 近 N 天均值 capacity·used·utilization`;趋势端点响应 `{ fs_id, days[] }`,`days[]` 按日期升序,每项 `date / capacity / used / utilization / data_status`,缺失日以 `data_status` 标注、不填充假值。
+<!-- pre-revised: medium -->
+5. **NAS 指标读取接口**(契约,租户校验见 Non-Functional Requirements):`GET /assets/nas/metrics?fs_id=&account_id=&days=`(单实例趋势)与 `GET /assets/nas/top?account_id=&days=&sort=&top=&page=&page_size=`(账号视角 Top)。接口从鉴权上下文取 tenantID,服务端校验客户端传入的 `account_id` ∈ 该租户账号集合,越权返回 404(不泄露账号存在性);`days` 限 1~90(回看天数);`sort` ∈ `capacity|utilization`(utilization 用近 N 天均值口径);趋势与 Top 同时返回「最新一天」与「近 N 天均值」两类值。**Top 端点契约**:`top=N`(默认 10,最大 50,按 `sort` 降序取前 N)、分页 `page`(默认 1)/`page_size`(默认 10,最大 50);响应结构 `{ total, page, page_size, items[] }`,`items[]` 每条含 `fs_id / fs_name / account_id 列表 / data_status / qc_status / 最新一天 capacity·used·utilization / 近 N 天均值 capacity·used·utilization`;趋势端点响应 `{ fs_id, days[] }`,`days[]` 按日期升序,每项 `date / capacity / used / utilization / data_status / qc_status`,缺失日以 `data_status` 标注、不填充假值。**qc_status 读取侧闭环**:写路径的 `qc_status=zero_exception`(capacity=0 异常行)在读取响应中原样暴露,并映射进 `data_status`(`data_status=zero_exception`)——使「capacity=0 是异常」在运营视图可分辨,SC-5「落库可见」从 DB 层延伸到读取层;前端据此渲染警示/异常标记,而非当作正常零容量。
 <!-- pre-revised: high -->
 6. **前端**:NAS 抽屉「监控」tab 填容量/已用/使用率趋势图(echarts,仿 CdnDetailDrawer);NAS 列表页顶部加运营卡(总容量/已用容量/平均使用率,仿 CDN 近2日卡)。空态区分「无数据」与「采集失败/未启用」,采集异常时运营卡显示警示而非纯空(见「失败可观测性」)。**数据来源声明(统一展示口径)**:NAS 相关界面(列表页行内容量/使用率、运营卡、趋势图、Top)一律以 `ecam_nas_metric` 指标表为唯一数据来源;资产表 `ecam_instance` 的 capacity/used_capacity 仅作实例枚举与 fs 元数据,不再在 NAS 界面展示其容量数值——避免「资产表坏值 vs 指标表好值」同屏矛盾;资产表字段本身修复不在本期范围(见 Out of Scope)。
 
@@ -79,7 +84,8 @@ intent: "new-feature"
 ## 日快照取值口径与采集窗口
 
 <!-- pre-revised: medium -->
-- **每日值口径**:落库的每日值取**日末态快照**(次日凌晨补采昨日完整行,取厂商当日最终聚合值)。取舍说明:末态可稳定复现、跨日不可变,但会系统性漏报当日高水位——扩容判断依赖运营卡「近 N 天峰值」与趋势图尖峰(峰值由读取接口按 MAX 聚合派生,不落库)。
+<!-- pre-revised: high -->
+- **每日值口径**:落库的每日值取**日末态快照**(次日凌晨补采昨日完整行,取厂商当日最终聚合值)。取舍说明:末态可稳定复现、跨日不可变,但会系统性漏报当日高水位——扩容判断依赖运营卡「近 N 天峰值」与趋势图尖峰。**「近 N 天峰值」口径明确 = 日值序列的最大值**(由读取接口对已落库日值按 MAX 聚合派生,不落库)——它表达「近 N 天里水位最高的那一天」,**不捕获日内尖峰**(日内峰值需更高频采样/峰值落库,列为二期),与日末态快照架构一致,不承诺无法从日值恢复的日内尖峰。
 - **调度时刻与采集区间**:对齐 CDN 的 `days=2` 思路——调度在 00:10 后触发,采集区间为 `[昨日, 今日]`:补昨日完整行 + 今日初态,避开各厂商监控指标聚合延迟窗口(CloudWatch/CES 均有分钟级延迟)。
 <!-- pre-revised: high -->
 - **同日首写生效(仅保护「今日」行)**:同日行**首写生效**——当日(今日)已有行则不覆盖、仅补当日缺失行,保证「每天一个值」而非「每天最后一个碰巧写到的值」;叠加在唯一键 `(account_id, fs_id, date)` 之上,不影响跨账号同 fs 并存。
@@ -101,13 +107,15 @@ intent: "new-feature"
 - **运营卡判定顺序(0 占位 vs 警示)**:当某账号/厂商全部实例采集失败(API 停机/鉴权失效/执行器连续失败)时,**优先显示警示**,其次才考虑 0 占位——「采集失败→警示」优先级高于「无数据→0 占位」;只有「任务成功执行且指标真实为 0/空」才落入 0 占位分支,避免把未知伪装成真零容量。判定以执行器任务 Result 的失败计数为准。
 - **不继承 CDN 全零跳过过滤**:CDN 执行器有「当日 `Bytes==0 && Bandwidth==0 && HitRate<0` 即跳过不写库」的过滤,NAS **不继承**——`capacity=0` 的异常行必须落库可见,否则华为/AWS 首日会整表静默为空。
 <!-- pre-revised: medium -->
-- **自我健康监控(主动告警)**:对必达厂商(aliyun/huawei/aws)增加「连续 N 天(默认 3 天)零成功采集 → 升级告警」规则——执行器每日检查各必达厂商当日是否有成功写库行,连续 N 天为 0 时告警升级(钉群/日志 ERROR → 页面级),避免「监控系统自身静默失效数周无人察觉」。该规则与持久化日闸写失败升级告警链路共用同一告警通道。
+<!-- pre-revised: medium -->
+- **自我健康监控(主动告警)**:对必达厂商(aliyun/huawei/aws)增加「连续 N 天(默认 3 天)零成功采集 → 升级告警」规则——执行器每日检查各必达厂商当日是否有成功写库行,连续 N 天为 0 时告警升级(钉群/日志 ERROR → 页面级),避免「监控系统自身静默失效数周无人察觉」。**前置条件:该厂商当前存在 ≥1 个 NAS 实例(实盘枚举非空)**——无 NAS 实例的厂商不触发零成功告警,避免每 3 天稳定误报、告警疲劳反而掩盖真实失效。该规则与持久化日闸写失败升级告警链路共用同一告警通道。
 
 ## 聚合口径(运营卡与 Top)
 
 <!-- pre-revised: medium -->
 - CDN 的 Top 聚合暗含「域名只归属一个账号」的前提,该前提在 NAS **不成立**(NAS 主动允许多账号同 fs_id 并存,多活/共享实例)。
-- **运营卡与 Top 均按 `fs_id` 去重后计数**:同一物理文件系统只计一次;多账号并存时取**最新日期、容量最大**的那一行,避免共享容量被双计、Top 失真。
+<!-- pre-revised: medium -->
+- **运营卡与 Top 均按 `fs_id` 去重后计数**:同一物理文件系统只计一次;多账号并存时按**「日期 desc,再容量 desc」排序取第一行**——先取最新日期,同日多账号行内再取容量最大,避免共享容量被双计、Top 失真。**口径声明**:该行的 capacity/used 作为该物理 fs 的容量/用量口径(代表物理文件系统容量);跨账号计量口径差异(共享配额/共享文件系统视图、各账号容量口径不同)一律以最新日期行的厂商返回值为准,不做跨账号容量求和或平均,避免「双计已除、口径仍高估」。
 - **「平均使用率」分母口径**:对无数据实例**跳过不参与**(而非记 0 拉低均值);`capacity=0` 行也不参与均值(作为异常单独可见)。
 - 趋势接口(单实例)按账号保留各自行(多账号各看各的);聚合去重只作用于运营卡与 Top。
 
@@ -143,7 +151,18 @@ intent: "new-feature"
 ### Industry Solutions
 
 <!-- pre-revised: medium -->
-- 云厂商控制台均提供 NAS 监控(阿里云 CMS `DescribeMetricList`、腾讯云监控、华为 CES `BatchListMetricData`/`SYS.SFS`、AWS CloudWatch EFS `StorageBytes`/命名空间 `AWS/EFS`、火山云监控),指标通过各厂商监控 API 获取是行业标准路径(均有官方文档可查)。
+<!-- pre-revised: medium -->
+- 云厂商控制台均提供 NAS 监控(阿里云 CMS `DescribeMetricList`、腾讯云监控、华为 CES `BatchListMetricData`/`SYS.SFS`、AWS CloudWatch EFS `StorageBytes`/命名空间 `AWS/EFS`、火山云监控),指标通过各厂商监控 API 获取是行业标准路径(来源引证见下)。
+- **具名参考来源引证**(官方文档/项目链接,把「行业标准路径」从断言转为可核查引证):
+  - AWS CloudWatch EFS 指标(`StorageBytes`、`AWS/EFS`):https://docs.aws.amazon.com/efs/latest/ug/monitoring-cloudwatch.html
+  - 阿里云云监控 CMS `DescribeMetricList`:https://help.aliyun.com/document_detail/28616.html(云监控产品首页 https://help.aliyun.com/product/28608.html)
+  - 腾讯云云监控:https://cloud.tencent.com/document/product/248
+  - 华为云 CES `BatchListMetricData`:https://support.huaweicloud.com/api-ces/index.html(CES 首页 https://support.huaweicloud.com/ces/index.html)
+  - 火山引擎云监控(cloudmonitor):https://www.volcengine.com/product/cloudmonitor
+  - `aws-cloudwatch-exporter`(prometheus 官方 exporter):https://github.com/prometheus/cloudwatch_exporter
+  - `aliyun-exporter`(社区 exporter):https://github.com/aylei/aliyun-exporter
+  - Zabbix 云监控模板:https://www.zabbix.com/integrations/aws
+  - 版本以各项目 release 页为准(撰写时 `cloudwatch_exporter` ≥ v0.24、`aliyun-exporter` ≥ v0.9);本方案采用「厂商监控 API 直采」,上述 exporter 仅作行业基准对照、不引入依赖。
 - CMDB/多云平台(具名参考:Zabbix 云监控模板、Prometheus 生态的 `aws-cloudwatch-exporter` / `aliyun-exporter`、多云 FinOps 容量看板)通常采集各云监控指标聚合展示——本方案同源,但内嵌于已有资产平台,免额外部署。
 
 ### Comparison Table
@@ -177,7 +196,9 @@ intent: "new-feature"
   | `nas:collect_metrics` 执行器 + 持久化日闸(含 CDN 迁移)+ 原子认领 + 回滚开关 | 3~4 天 | 适配器 | M2 日闸重启×3 通过 |
   | 历史回填(配额节流)+ 读取接口(趋势+Top 分页)+ 前端 | 4~5 天 | 执行器 | M3 联调完成,发布评审 |
 
-  - **里程碑**:M1 = 探测定案(T+2 天,发布与否的 gate);M2 = 指标落库 + 日闸通过重启测试(T+7~9 天,此后观测 ≥2 天,SC-1/SC-5 可验收);M3 = 前端 + 回填完成、发布评审(T+12~14 天)。
+<!-- pre-revised: high -->
+  - **里程碑(按 1 名后端串行排期,对齐依赖链)**:M1 = 探测定案(T+2 天,发布与否的 gate);M2 = 指标落库 + 日闸通过重启测试(**T+10~12 天**,由依赖链串行推导:建表最迟 T+4 → 适配器最迟 T+8 → 执行器最迟 T+12;此后观测 ≥2 天,SC-1/SC-5 可验收);M3 = 前端 + 回填完成、发布评审(**T+15~17 天**,执行器最迟 T+12 + 回填/接口/前端 4~5 天串行推导)。
+  - **并行压缩(可选,需 >1 名后端)**:持久化日闸/CDN 迁移/原子认领**不依赖 NAS 适配器**,可由第 2 名后端与「适配器」并行推进;2 名后端下 M2 可提前至 T+8~9、M3 可提前至 T+12~14。若维持 1 名后端,按上述串行里程碑承诺交付,不把 M2/M3 定在依赖链不可达的日期。
 
 ### Dependency Readiness
 
@@ -199,7 +220,8 @@ intent: "new-feature"
 ### In Scope
 
 1. NASMetricQuerier 可选接口 + types.NASMetric 模型
-2. 5 厂商 NAS 监控实现(必达项 aliyun/huawei/aws + 尽力而为项 tencent/volcengine)
+<!-- pre-revised: medium -->
+2. 5 厂商 NAS 监控实现(必达项 aliyun/huawei/aws + 尽力而为项 tencent/volcengine)**——必达/尽力而为分组是 M1 探测定案的条件结果,以 M1 定案为准;若 tencent/volcengine 任一实盘占比 >15% 且探测可用,升格为必达项纳入本期(SC-1 必达清单随分组同步更新,见 Success Criteria)**
 3. `nas:collect_metrics` 执行器 + 注册(module.go)
 4. `ecam_nas_metric` DAO(唯一键 (account_id, fs_id, date))+ 读取接口(单实例趋势 + Top)
 5. 持久化日闸(scheduler_state):NAS 采用 + CDN 改用,消除重启重复提交
@@ -226,15 +248,18 @@ intent: "new-feature"
 | 与 CDN 指标执行器并发抢同一调度循环 / 多副本或手动+自动重叠并发触发 | L | M | 日闸按资源类型分键(cdn/nas 独立)+ findOneAndUpdate 原子认领,同一 NAS 只被一个实例认领 |
 
 <!-- pre-revised: high -->
-> **必达项失败处置与覆盖量化**:① 华为探测失败时的 SC-1 处置 = **条件式达标**——华为降级为尽力而为项,SC-1 改写为「aliyun/aws 必达」,降级结论与影响写入发布评审,不阻塞其余厂商;② volcengine「仅该厂商无指标」对租户覆盖的影响量化口径 = volcengine 账号下确有 NAS 实例的租户数 ÷ 总租户数,分子分母由探测任务随附的实盘容量分布统计产出;若任一尽力而为厂商实盘容量占比 >15% 且探测可用,升格为必达项纳入本期(见「必达厂商选择依据」)。
+<!-- pre-revised: medium -->
+> **必达项失败处置与覆盖量化**:① 华为探测失败时的 SC-1 处置 = **条件式达标**——华为降级为尽力而为项,SC-1 改写为「aliyun/aws 必达」,降级结论与影响写入发布评审,不阻塞其余厂商;② volcengine「仅该厂商无指标」对租户覆盖的影响量化口径 = volcengine 账号下确有 NAS 实例的租户数 ÷ 总租户数,分子分母由探测任务随附的实盘容量分布统计产出;若任一尽力而为厂商实盘容量占比 >15% 且探测可用,升格为必达项纳入本期,**SC-1 同步更新:必达项清单随 M1 定案后的分组扩列——升格厂商(tencent/volcengine)的指标写库纳入 SC-1 的观测与数量级自检,SC-1 以「M1 定案后的分组」为准、不在 SC-1 中写死厂商清单**(见「必达厂商选择依据」)。
 
 ## Success Criteria
 
 <!-- pre-revised: high -->
-- [ ] aliyun/huawei/aws 三家(必达项)的 NAS 容量/使用率指标持续写入 `ecam_nas_metric`;**非零行** capacity 数量级经换算自检通过(真实 >0 级数据,观测 ≥2 天);capacity=0 行按「例外放行+打标」落库可见(见 SC-5,不因数量级自检被拦截)
+<!-- pre-revised: high -->
+- [ ] aliyun/huawei/aws 三家(必达项,**必达项清单以 M1 探测定案后的分组为准;华为以 M1 探测通过为前提**)的 NAS 容量/使用率指标持续写入 `ecam_nas_metric`;**非零行** capacity 数量级经换算自检通过(真实 >0 级数据,观测 ≥2 天);capacity=0 行按「例外放行+打标」落库可见(见 SC-5,不因数量级自检被拦截)。**华为探测失败条件式改写**:华为降级为尽力而为项,SC-1 改写为「aliyun/aws 必达」,降级结论与影响写入发布评审(见 Next Steps)。**窗口内瞬时故障容忍(与 NFR「采集尽力而为」对齐)**:观测 ≥2 天的窗口内允许单厂商个别日期失败——不变量为「每必达厂商窗口内 ≥1 天成功写库」,一次性厂商 API 宕机不使 SC-1 不可达。**升格同步**:若 tencent/volcengine 任一实盘占比 >15% 且探测可用升格为必达项,SC-1 必达清单相应扩列(升格厂商指标写库纳入本 SC 的观测与数量级自检)
 - [ ] tencent/volcengine 无数据时不报错、不阻塞(尽力而为语义);且适配器失败与真实无数据在 Result/前端可分辨(失败计数 + 末次错误可见)
 <!-- pre-revised: medium -->
-- [ ] 服务重启后当日不再重复提交 NAS/CDN 指标采集任务(持久化日闸 + 原子认领生效)。**验收方法**:连续 3 次重启 × 每次观察调度器当日提交的 NAS/CDN 任务各仅 1 条;故障注入:模拟写日闸失败 3 次验证指数退避重试 + 升级告警触发、模拟读日闸失败验证 ≥5 分钟退避窗口内不重复提交。**通过判定**:重启与注入场景均无重复提交、告警按预期触发
+<!-- pre-revised: high -->
+- [ ] 服务重启后当日不再重复提交 NAS/CDN 指标采集任务(持久化日闸 + 原子认领生效)。**验收方法**:连续 3 次重启 × 每次观察调度器当日提交的 NAS/CDN 任务各仅 1 条;故障注入:模拟写日闸失败 3 次验证指数退避重试 + 升级告警触发、模拟读日闸失败验证 ≥5 分钟退避窗口内不重复提交。**CDN 迁移值回归**:迁移后对比 CDN 同域同日值与迁移前已落库值无缺口、无重复历史(仍按 `days=2` 语义正确写入);首部署 `scheduler_state` 无 cdn 记录时按「首次认领 → 触发一次当日提交」过渡行为执行。**通过判定**:重启与注入场景均无重复提交、CDN 日值回归无缺口、告警按预期触发
 <!-- pre-revised: high -->
 - [ ] 持久化日闸回滚路径验证:特性开关切回内存闸后,NAS/CDN 调度任务仍正常提交、指标采集不中断(回滚验证,见「特性开关与回滚」)
 <!-- pre-revised: high -->
