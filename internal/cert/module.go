@@ -39,7 +39,7 @@ import (
 type Module struct {
 	Repos *repository.Repositories
 
-	// 调度面（ioc InitCertJobs 消费；9 类定时任务入口，7.1）
+	// 调度面（ioc InitCertJobs 消费；10 类定时任务 / 9 个调度点入口，7.1）
 	ScanSvc          service.ReferenceScanService
 	ProbeSvc         service.ProbeService // 4.1 TLS 探测（HTTP /probes/scan 立即触发）
 	InspectionJob    *scheduler.InspectionJob

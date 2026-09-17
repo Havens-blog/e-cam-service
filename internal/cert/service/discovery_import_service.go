@@ -430,7 +430,7 @@ type DiscoveryCertMaterial struct {
 // 的 CloudCertStatus 形态（无 PEM）——导入路径需要证书材料落台账，经任务 1
 // 的 CertChainPEM 通道承载。逐证限速由各适配器 waitRateLimit 内部保证。
 type DiscoveryCertAdapter interface {
-	// Cloud 适配归属云（aliyun|tencent|huawei|aws|azure）。
+	// Cloud 适配归属云（aliyun|tencent|huawei|aws|azure|volcano）。
 	Cloud() domain.Cloud
 	// GetCertChain 读取云侧证书材料（净化 PEM）；华为云/IAM-hosted 形态返回
 	// cloudx.ErrCertPEMUnsupported 降级哨兵（预检拦截外的防御性兜底）。
