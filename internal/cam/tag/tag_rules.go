@@ -9,6 +9,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 )
 
 // ==================== 自动打标规则 ====================
@@ -319,7 +321,7 @@ func MatchRule(doc bson.M, rule TagRule) bool {
 // matchCondition 检查单个条件是否匹配
 func matchCondition(doc bson.M, attrs bson.M, cond RuleCondition) bool {
 	val := getFieldValue(doc, attrs, cond.Field)
-	return matchOperator(val, cond.Operator, cond.Value)
+	return camdomain.MatchValue(cond.Operator, val, cond.Value)
 }
 
 // getFieldValue 从文档中提取字段值
@@ -351,23 +353,4 @@ func getFieldValue(doc bson.M, attrs bson.M, field string) string {
 		}
 	}
 	return ""
-}
-
-// matchOperator 执行匹配操作
-func matchOperator(fieldVal, operator, pattern string) bool {
-	switch operator {
-	case "equals":
-		return fieldVal == pattern
-	case "contains":
-		return strings.Contains(strings.ToLower(fieldVal), strings.ToLower(pattern))
-	case "prefix":
-		return strings.HasPrefix(strings.ToLower(fieldVal), strings.ToLower(pattern))
-	case "suffix":
-		return strings.HasSuffix(strings.ToLower(fieldVal), strings.ToLower(pattern))
-	case "regex":
-		matched, err := regexp.MatchString(pattern, fieldVal)
-		return err == nil && matched
-	default:
-		return false
-	}
 }
