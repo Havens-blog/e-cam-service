@@ -27,6 +27,7 @@ import (
 	azurecert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/azure"
 	huaweicert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
 	tencentcert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/tencent"
+	volcanocert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/volcano"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/gin-gonic/gin"
@@ -211,7 +212,7 @@ func InitCertModule(
 	}
 	orphanCancel()
 	// 云端发现导入会话编排（cert-cloud-discovery-import 任务 4 服务 → 任务 5
-	// 装配）：五云材料端口对称注册（华为云 shim 恒降级哨兵——服务层预检即记因
+	// 装配）：六云材料端口注册（火山经任务 1 cloudx 证书库适配器接入；华为云 shim 恒降级哨兵——服务层预检即记因
 	// 跳过，不发起云 API 调用）；账号源复用扫描链路 ActiveByCloud 模式（会话
 	// 生命周期长于 HTTP 请求，凭证按账号在会话内解析）。
 	discoveryImportSvc := service.NewDiscoveryImportService(
@@ -223,6 +224,7 @@ func InitCertModule(
 			service.NewHuaweiDiscoveryCertAdapter(huaweicert.NewCertDiscoveryAdapter(logger)),
 			service.NewAwsDiscoveryCertAdapter(awscert.NewCertDiscoveryAdapter(logger)),
 			service.NewAzureDiscoveryCertAdapter(azurecert.NewCertDiscoveryAdapter(logger)),
+			service.NewVolcanoDiscoveryCertAdapter(volcanocert.NewCertAdapter(logger)),
 		},
 		service.NewAccountScanSource(accounts),
 	)
