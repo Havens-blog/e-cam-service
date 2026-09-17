@@ -131,6 +131,20 @@ func (f *fakeRecheckRunner) RunDueRechecks(context.Context) (int, error) {
 	return 0, nil
 }
 
+// fakeCertificateSyncer cert-import 窄端口替身（记录调用并可注入返回）。
+type fakeCertificateSyncer struct {
+	mu    sync.Mutex
+	calls int
+	err   error
+}
+
+func (f *fakeCertificateSyncer) SyncCertificates(context.Context) (service.SyncRun, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	return service.SyncRun{}, f.err
+}
+
 // recordingPublisher 记录发布事件（含 ops 处置通知）。
 type recordingPublisher struct {
 	mu     sync.Mutex
@@ -151,12 +165,13 @@ func (p *recordingPublisher) snapshot() []service.CertAlertEvent {
 }
 
 // newTestCertJobs 组装带 fake 的调度依赖集。
-func newTestCertJobs() (*CertJobs, *fakeScanRunner, *fakeWindowRunner, *fakePauseCanceller, *fakeOrphanConsumer, *recordingPublisher) {
+func newTestCertJobs() (*CertJobs, *fakeScanRunner, *fakeWindowRunner, *fakePauseCanceller, *fakeOrphanConsumer, *recordingPublisher, *fakeCertificateSyncer) {
 	scan := &fakeScanRunner{}
 	windows := &fakeWindowRunner{}
 	pause := &fakePauseCanceller{}
 	orphan := &fakeOrphanConsumer{}
 	pub := &recordingPublisher{}
+	sync := &fakeCertificateSyncer{}
 	jobs := &CertJobs{
 		Scan:       scan,
 		Inspection: &fakeInspectionRunner{},
@@ -165,9 +180,10 @@ func newTestCertJobs() (*CertJobs, *fakeScanRunner, *fakeWindowRunner, *fakePaus
 		Execute:    &fakeExecutingRecoverer{},
 		Orphan:     orphan,
 		Recheck:    &fakeRecheckRunner{},
+		Sync:       sync,
 		Publisher:  pub,
 	}
-	return jobs, scan, windows, pause, orphan, pub
+	return jobs, scan, windows, pause, orphan, pub, sync
 }
 
 // specByName 从清单中按名取调度点（缺失即失败）。
@@ -183,20 +199,22 @@ func specByName(t *testing.T, specs []CertJobSpec, name string) CertJobSpec {
 }
 
 // ---------------------------------------------------------------------
-// AC-1：9 类任务按 Scheduler Tasks 表频率注册
+// AC-1：10 类任务按 Scheduler Tasks 表频率注册（含 cert-volcano-import-sync 任务 4）
 // ---------------------------------------------------------------------
 
-// TestCertJobs_JobSpecs_CoversSchedulerTasks 8 个调度点承载 9 类任务
-// （probe 天级由 cert:inspection 第三步承载，见 jobs.go 头注释），频率逐项对表。
+// TestCertJobs_JobSpecs_CoversSchedulerTasks 9 个调度点承载 10 类任务
+// （probe 天级由 cert:inspection 第三步承载；cert:cert-import 为
+// cert-volcano-import-sync 任务 4 新增，见 jobs.go 头注释），频率逐项对表。
 func TestCertJobs_JobSpecs_CoversSchedulerTasks(t *testing.T) {
-	jobs, scan, _, _, _, _ := newTestCertJobs()
+	jobs, scan, _, _, _, _, sync := newTestCertJobs()
 	specs := jobs.JobSpecs(10)
-	if len(specs) != 8 {
-		t.Fatalf("期望 8 个调度点（9 类任务，probe 天级折叠进 inspection），实际 %d", len(specs))
+	if len(specs) != 9 {
+		t.Fatalf("期望 9 个调度点（10 类任务，probe 天级折叠进 inspection），实际 %d", len(specs))
 	}
 
 	expect := []struct{ name, spec string }{
 		{JobScan, "0 2 * * *"},               // scan 天级
+		{JobCertImport, "0 1 * * *"},         // cert-import 天级（01:00，与 scan 02:00 错峰）
 		{JobScanTimeout, "*/15 * * * *"},     // scan-timeout 每 15 分钟
 		{JobInspection, "0 5 * * *"},         // inspection 天级（含 probe 天级）
 		{JobVerifyWindow, "*/10 * * * *"},    // window-expiry/probe 提频 = verifyProbeIntervalMinutes
@@ -228,6 +246,13 @@ func TestCertJobs_JobSpecs_CoversSchedulerTasks(t *testing.T) {
 	}
 	if scan.recoverHits != 1 {
 		t.Fatalf("RecoverTimedOutScans 期望调用 1 次，实际 %d", scan.recoverHits)
+	}
+	// cert-import 调度点触发 SyncCertificates（窄端口接线，任务 4 AC-2）。
+	if err := specByName(t, specs, JobCertImport).Run(context.Background()); err != nil {
+		t.Fatalf("cert-import 调度点执行失败: %v", err)
+	}
+	if sync.calls != 1 {
+		t.Fatalf("SyncCertificates 期望调用 1 次，实际 %d", sync.calls)
 	}
 }
 
@@ -285,7 +310,7 @@ func TestResolveVerifyProbeIntervalMinutes(t *testing.T) {
 // （ErrScanInProgress）按"跳过本轮"处理，不作为调度错误上抛——scan-timeout
 // 恢复释放锁后下一轮可正常触发（联动语义由 3.5 仓储状态承载）。
 func TestCertJobs_ScanDedupSwallowsInProgress(t *testing.T) {
-	jobs, scan, _, _, _, _ := newTestCertJobs()
+	jobs, scan, _, _, _, _, _ := newTestCertJobs()
 	scan.startErr = domain.ErrScanInProgress
 	specs := jobs.JobSpecs(10)
 	if err := specByName(t, specs, JobScan).Run(context.Background()); err != nil {
@@ -301,10 +326,44 @@ func TestCertJobs_ScanDedupSwallowsInProgress(t *testing.T) {
 	}
 }
 
+// TestCertJobs_CertImportYieldsToRunning cert-import 防重联动（任务 4 AC-3
+// 调度侧语义）：同步服务 CAS 守卫拒绝（手工轮 running 中返回 ErrSyncRunning）
+// 按"让位跳过"处理、不作调度错误上抛——对齐 scan ErrScanInProgress 口径；
+// "running 中二次触发不启动第二轮"的 CAS 语义本身由任务 3 服务层测试承载
+// （cert_sync_service_test.go），调度层不重复断言。
+func TestCertJobs_CertImportYieldsToRunning(t *testing.T) {
+	jobs, _, _, _, _, _, sync := newTestCertJobs()
+	sync.err = service.ErrSyncRunning
+	specs := jobs.JobSpecs(10)
+	if err := specByName(t, specs, JobCertImport).Run(context.Background()); err != nil {
+		t.Fatalf("ErrSyncRunning 应让位跳过而非报错: %v", err)
+	}
+	if sync.calls != 1 {
+		t.Fatalf("SyncCertificates 期望调用 1 次，实际 %d", sync.calls)
+	}
+	// 其余错误正常上抛（调度层可见）。
+	sync.err = errors.New("boom")
+	if err := specByName(t, specs, JobCertImport).Run(context.Background()); err == nil {
+		t.Fatal("真实错误应上抛")
+	}
+}
+
+// TestCertJobs_CertImportSkipsUnwiredSync Sync 未装配（如既有装配构造未带该
+// 字段）→ cert-import 本轮空转跳过不 panic（对齐 cert 域可选端口降级口径：
+// ioc dnsSource=nil 时 probe 回退台账路径）。
+func TestCertJobs_CertImportSkipsUnwiredSync(t *testing.T) {
+	jobs, _, _, _, _, _, _ := newTestCertJobs()
+	jobs.Sync = nil
+	specs := jobs.JobSpecs(10)
+	if err := specByName(t, specs, JobCertImport).Run(context.Background()); err != nil {
+		t.Fatalf("Sync 未装配应空转跳过而非报错: %v", err)
+	}
+}
+
 // TestCertJobs_VerifyWindowJob_OrphanEventTrigger window 调度点：提频探测 →
 // 终局判定 → 每个终局订单即时消费孤儿清理队列（orphan-cleanup 事件触发路径）。
 func TestCertJobs_VerifyWindowJob_OrphanEventTrigger(t *testing.T) {
-	jobs, _, windows, _, orphan, _ := newTestCertJobs()
+	jobs, _, windows, _, orphan, _, _ := newTestCertJobs()
 	windows.finalized = []string{"order-a", "order-b"}
 	specs := jobs.JobSpecs(10)
 	if err := specByName(t, specs, JobVerifyWindow).Run(context.Background()); err != nil {
@@ -322,7 +381,7 @@ func TestCertJobs_VerifyWindowJob_OrphanEventTrigger(t *testing.T) {
 // TestCertJobs_PauseTimeoutNotifiesCancelledOrders pause-timeout 调度点：
 // 每笔超时取消的订单经 ops 通道发布"变更单超时取消"处置通知（不计四类业务告警）。
 func TestCertJobs_PauseTimeoutNotifiesCancelledOrders(t *testing.T) {
-	jobs, _, _, pause, _, pub := newTestCertJobs()
+	jobs, _, _, pause, _, pub, _ := newTestCertJobs()
 	pause.cancelled = []string{"order-x", "order-y"}
 	specs := jobs.JobSpecs(10)
 	if err := specByName(t, specs, JobPauseTimeout).Run(context.Background()); err != nil {
@@ -347,7 +406,7 @@ func TestCertJobs_PauseTimeoutNotifiesCancelledOrders(t *testing.T) {
 
 // TestCertJobs_RunRecoversPanic 任务入口 panic 不击穿调度框架（recover 转 error）。
 func TestCertJobs_RunRecoversPanic(t *testing.T) {
-	jobs, _, _, _, _, _ := newTestCertJobs()
+	jobs, _, _, _, _, _, _ := newTestCertJobs()
 	// 用会 panic 的 scan fake 验证包装层 recover。
 	jobs.Scan = &panicScanRunner{}
 	specs := jobs.JobSpecs(10)
@@ -371,7 +430,7 @@ func (p *panicScanRunner) RecoverOrphanedScans(context.Context) (int, error) { r
 // TestCertJobs_SingleFlightSkipsOverlap 同一任务不重复并发执行：上一轮
 // 未结束时下一轮触发直接跳过（框架级互斥，AC-3）。
 func TestCertJobs_SingleFlightSkipsOverlap(t *testing.T) {
-	jobs, _, _, _, _, _ := newTestCertJobs()
+	jobs, _, _, _, _, _, _ := newTestCertJobs()
 	started := make(chan struct{})
 	release := make(chan struct{})
 	jobs.Scan = &blockingScanRunner{started: started, release: release}
@@ -441,7 +500,7 @@ func (b *blockingScanRunner) RecoverOrphanedScans(context.Context) (int, error) 
 // ---------------------------------------------------------------------
 
 func TestCertJobs_AllSpecsRunnable(t *testing.T) {
-	jobs, _, windows, pause, orphan, _ := newTestCertJobs()
+	jobs, _, windows, pause, orphan, _, _ := newTestCertJobs()
 	windows.finalized = []string{"o1"}
 	pause.cancelled = []string{"o1"}
 	specs := jobs.JobSpecs(10)
@@ -460,7 +519,7 @@ func TestCertJobs_AllSpecsRunnable(t *testing.T) {
 // TestCertJobs_AllSpecsParseable 全部 cron 表达式可被标准 5 字段解析器解析
 // （ego ecron 默认解析器；坏表达式会在启动期 panic——装配前置校验）。
 func TestCertJobs_AllSpecsParseable(t *testing.T) {
-	jobs, _, _, _, _, _ := newTestCertJobs()
+	jobs, _, _, _, _, _, _ := newTestCertJobs()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	for _, s := range jobs.JobSpecs(10) {
 		if _, err := parser.Parse(s.Spec); err != nil {

@@ -1,12 +1,14 @@
 // Package scheduler cert 域调度接线（任务 7.1）。
 //
-// 本文件是 9 类定时任务的注册清单（tech-design Scheduler Tasks 表）：
+// 本文件是 10 类定时任务的注册清单（tech-design Scheduler Tasks 表 +
+// cert-volcano-import-sync 调度行）：
 // 仅做调度接线——频率、防重守卫与结果通知，不内联业务逻辑（Hard Rule：
 // 业务逻辑在 3.5/4.4/5.9/5.10 已实现的恢复/Job 函数）。
 //
-// 9 类任务 → 8 个调度点的映射（实现取舍，与 4.4/5.10 已实现形态一致）：
+// 10 类任务 → 9 个调度点的映射（实现取舍，与 4.4/5.10 已实现形态一致）：
 //
 //	cert:scan             scan            天级 02:00（手动触发走 POST /:id/scan，防重 409）
+//	cert:cert-import      cert-import     天级 01:00（多云证书库增量同步，与 scan 02:00 错峰）
 //	cert:scan-timeout     scan-timeout    每 15 分钟（超时快照转 failed 释放防重锁）
 //	cert:inspection       inspection      天级 05:00（4.4 InspectionJob 流水线，
 //	                                       第三步即 probe 天级调度点——表内 probe
@@ -52,6 +54,7 @@ import (
 // 调度点名称（日志/测试断言锚点；与表行对应关系见包注释）。
 const (
 	JobScan             = "cert:scan"              // scan：五云引用发现
+	JobCertImport       = "cert:cert-import"       // cert-import：多云证书库增量同步（任务 4）
 	JobScanTimeout      = "cert:scan-timeout"      // scan-timeout：超时快照恢复
 	JobInspection       = "cert:inspection"        // inspection + probe 天级
 	JobVerifyWindow     = "cert:verify-window"     // probe 提频 + window-expiry
@@ -64,6 +67,7 @@ const (
 // 固定频率调度点的 cron 表达式（5 字段：分 时 日 月 周，ego ecron 默认解析器）。
 const (
 	SpecScanDaily          = "0 2 * * *"    // scan 天级（02:00 低峰）
+	SpecCertImportDaily    = "0 1 * * *"    // cert-import 天级（01:00，与 scan 02:00 错峰）
 	SpecScanTimeoutQuarter = "*/15 * * * *" // scan-timeout 每 15 分钟（表值）
 	SpecInspectionDaily    = "0 5 * * *"    // inspection 天级（05:00，与 scan 错峰）
 	SpecPauseTimeoutHourly = "0 * * * *"    // pause-timeout 每小时（表值）
@@ -114,6 +118,13 @@ type RecheckConsumer interface {
 	RunDueRechecks(ctx context.Context) (int, error)
 }
 
+// CertificateSyncer cert-import 入口（cert-volcano-import-sync 任务 3
+// CertSyncService 的定时轮执行面）。CAS 防重守卫在同步服务内：手工轮 running
+// 中调度触发返回 ErrSyncRunning，调度侧按"让位跳过"处理（对齐 scan 口径）。
+type CertificateSyncer interface {
+	SyncCertificates(ctx context.Context) (service.SyncRun, error)
+}
+
 // 编译期断言：既有服务实现满足调度窄端口。
 var (
 	_ ScanRunner         = (service.ReferenceScanService)(nil)
@@ -123,9 +134,10 @@ var (
 	_ ExecutingRecoverer = (service.ChangeExecuteService)(nil)
 	_ OrphanConsumer     = (service.OrphanCleanupService)(nil)
 	_ RecheckConsumer    = (service.CrdRecheckService)(nil)
+	_ CertificateSyncer  = (service.CertSyncService)(nil)
 )
 
-// CertJobs 9 类定时任务的调度依赖集（ioc 装配注入，字段均为已实现服务）。
+// CertJobs 10 类定时任务的调度依赖集（ioc 装配注入，字段均为已实现服务）。
 type CertJobs struct {
 	Scan       ScanRunner                 // 3.5 引用扫描（scan + scan-timeout）
 	Inspection InspectionRunner           // 4.4 巡检流水线（inspection + probe 天级）
@@ -134,6 +146,7 @@ type CertJobs struct {
 	Execute    ExecutingRecoverer         // 5.7 心跳超时恢复
 	Orphan     OrphanConsumer             // 5.9 孤儿清理
 	Recheck    RecheckConsumer            // 5.9 CRD 复检
+	Sync       CertificateSyncer          // cert:cert-import 多云增量同步（volcano-import 任务 3）
 	Publisher  service.CertAlertPublisher // pause-timeout 处置通知（ops 类）
 }
 
@@ -144,7 +157,7 @@ type CertJobSpec struct {
 	Run  func(ctx context.Context) error // 入口（单飞守卫 + panic 恢复）
 }
 
-// JobSpecs 构建 8 个调度点（承载 9 类任务，映射见包注释）。
+// JobSpecs 构建 9 个调度点（承载 10 类任务，映射见包注释）。
 // verifyProbeIntervalMinutes 为窗口周期（装配期经 ResolveVerifyProbeIntervalMinutes
 // 从 AlertConfig.thresholds 读取；非法值在 VerifyWindowSpec 内回退默认）。
 func (j *CertJobs) JobSpecs(verifyProbeIntervalMinutes int) []CertJobSpec {
@@ -158,6 +171,25 @@ func (j *CertJobs) JobSpecs(verifyProbeIntervalMinutes int) []CertJobSpec {
 				// 释放锁后下一轮可正常触发。
 				if _, err := j.Scan.StartScan(ctx); err != nil && !errors.Is(err, domain.ErrScanInProgress) {
 					return fmt.Errorf("cert scan: %w", err)
+				}
+				return nil
+			}),
+		},
+		{
+			Name: JobCertImport,
+			Spec: SpecCertImportDaily,
+			Run: j.guarded(JobCertImport, func(ctx context.Context) error {
+				// Sync 未装配 → 本轮空转跳过不 panic（对齐 cert 域可选端口
+				// 降级口径；ioc 生产装配恒注入任务 3 同步服务）。
+				if j.Sync == nil {
+					slog.Warn("cert job skipped: sync service not wired", slog.String("job", JobCertImport))
+					return nil
+				}
+				// 防重联动：CAS 守卫在同步服务内（任务 3），手工轮 running 中
+				// 调度触发返回 ErrSyncRunning 属预期让位（对齐 scan
+				// ErrScanInProgress 口径）。
+				if _, err := j.Sync.SyncCertificates(ctx); err != nil && !errors.Is(err, service.ErrSyncRunning) {
+					return fmt.Errorf("cert cert-import: %w", err)
 				}
 				return nil
 			}),

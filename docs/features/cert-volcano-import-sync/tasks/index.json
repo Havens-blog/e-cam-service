@@ -53,7 +53,7 @@
       "dependencies": [
         "3"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "4-scheduler-job.md",
       "record": "records/4-scheduler-job.md",
       "surface-type": "api",

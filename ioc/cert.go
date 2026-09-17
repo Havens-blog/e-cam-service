@@ -10,8 +10,8 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam"
 	"github.com/Havens-blog/e-cam-service/internal/cert"
 	"github.com/Havens-blog/e-cam-service/internal/cert/repository"
-	certservice "github.com/Havens-blog/e-cam-service/internal/cert/service"
 	"github.com/Havens-blog/e-cam-service/internal/cert/scheduler"
+	certservice "github.com/Havens-blog/e-cam-service/internal/cert/service"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/gotomicro/ego/core/elog"
@@ -57,7 +57,8 @@ func InitCertModule(db *mongox.Mongo, camModule *cam.Module) (*cert.Module, erro
 	return cert.InitCertModule(db, logger, accounts, instances, queue, publisher, dnsSource)
 }
 
-// initCertJobs 构建 cert 域 9 类定时任务的 ecron 组件（任务 7.1）。
+// initCertJobs 构建 cert 域 10 类定时任务（9 个调度点）的 ecron 组件（任务 7.1；
+// cert:cert-import 由 cert-volcano-import-sync 任务 4 接入）。
 //
 // 窗口周期（AC-6）：verifyProbeIntervalMinutes 于模块装配期从
 // AlertConfig.thresholds 解析（DB 单文档，运行期改动需重启生效）；
@@ -75,6 +76,7 @@ func initCertJobs(certModule *cert.Module, logger *elog.Component) []*ecron.Comp
 		Execute:    certModule.ExecuteSvc,
 		Orphan:     certModule.OrphanCleanupSvc,
 		Recheck:    certModule.CrdRecheckSvc,
+		Sync:       certModule.CertSyncSvc, // cert:cert-import 多云增量同步（volcano-import 任务 3）
 		Publisher:  certModule.AlertPublisher,
 	}
 	specs := jobs.JobSpecs(certModule.VerifyProbeIntervalMinutes)
