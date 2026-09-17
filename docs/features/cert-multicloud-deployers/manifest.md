@@ -1,7 +1,7 @@
 ---
 feature: "cert-multicloud-deployers"
 created: "2026-09-16"
-status: tasks
+status: completed
 mode: quick
 ---
 
