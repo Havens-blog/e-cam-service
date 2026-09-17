@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
@@ -264,17 +263,19 @@ func (s *ruleEngineService) getFieldValue(instance domain.Instance, field string
 }
 
 // compareValue 比较值
+// Eq/Contains/Regex 委托共享 cam/domain.MatchValue（语义单点定义）；
+// Contains 由此由大小写敏感放宽为不敏感（唯一行为变化，已确认）。
+// Ne/In/NotIn/Exists 为 servicetree 独有操作符，保留在原处。
 func (s *ruleEngineService) compareValue(actual, operator, expected string) bool {
 	switch operator {
 	case stdomain.OperatorEq:
-		return actual == expected
+		return domain.MatchValue("equals", actual, expected)
+	case stdomain.OperatorContains:
+		return domain.MatchValue("contains", actual, expected)
+	case stdomain.OperatorRegex:
+		return domain.MatchValue("regex", actual, expected)
 	case stdomain.OperatorNe:
 		return actual != expected
-	case stdomain.OperatorContains:
-		return strings.Contains(actual, expected)
-	case stdomain.OperatorRegex:
-		matched, _ := regexp.MatchString(expected, actual)
-		return matched
 	case stdomain.OperatorIn:
 		values := strings.Split(expected, ",")
 		for _, v := range values {
