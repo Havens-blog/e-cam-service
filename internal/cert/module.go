@@ -48,6 +48,9 @@ type Module struct {
 	ExecuteSvc       service.ChangeExecuteService
 	OrphanCleanupSvc service.OrphanCleanupService
 	CrdRecheckSvc    service.CrdRecheckService
+	// CertSyncSvc 多云定时增量同步服务（cert-volcano-import-sync 任务 3；
+	// 调度点 cert:cert-import 任务 4 接线 + 手工触发端点任务 5 共用）。
+	CertSyncSvc service.CertSyncService
 	// K8sCredSvc 集群凭证登记服务（3.4；HTTP 面端点未落地前经模块面暴露，
 	// 供运维登记/脚本调用接线）。
 	K8sCredSvc     service.K8sCredentialService
@@ -228,6 +231,20 @@ func InitCertModule(
 		},
 		service.NewAccountScanSource(accounts),
 	)
+	// 多云定时增量同步服务（cert-volcano-import-sync 任务 3）：调度点
+	// cert:cert-import（任务 4 接线）与手工触发端点（任务 5）共用同一服务与
+	// CAS 防重守卫。证书库列举端口当前仅火山具备（任务 1 cloudx 适配器承载
+	// 全部云侧逻辑）；五云接入列举端口后即插即用。未入账指纹经 discoveryImportSvc
+	// 既有幂等管线入账（operator=scheduler 标识来源）——不复制管线逻辑。
+	certSyncSvc := service.NewCertSyncService(
+		[]service.CertLibraryLister{
+			service.NewVolcanoCertLibraryLister(volcanocert.NewCertAdapter(logger)),
+		},
+		service.NewAccountScanSource(accounts),
+		discoveryImportSvc,
+		repos.Certificates,
+		repos.CloudMappings,
+	)
 	probeSvc := service.NewProbeService(repos.Certificates, repos.ProbeResults, repos.Exemptions, repos.AlertConfig, repos.ChangeOrders, nil, service.ProbeOptions{
 		DNS:       dnsSource,
 		Refs:      repos.CertReferences, // Phase 3 expected 侧：引用扫描解析的资源绑定指纹
@@ -310,6 +327,7 @@ func InitCertModule(
 		ExecuteSvc:                 executeSvc,
 		OrphanCleanupSvc:           orphanSvc,
 		CrdRecheckSvc:              crdRecheckSvc,
+		CertSyncSvc:                certSyncSvc,
 		K8sCredSvc:                 k8sCredSvc,
 		AlertPublisher:             publisher,
 		VerifyProbeIntervalMinutes: scheduler.ResolveVerifyProbeIntervalMinutes(context.Background(), repos.AlertConfig),

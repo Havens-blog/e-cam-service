@@ -67,6 +67,11 @@ type DiscoveryImportService interface {
 	// ImportFromDiscovery 创建发现导入会话（status=running、items=pending）
 	// 并异步逐条处理，返回会话 ID（hex）。空清单返回 ErrEmptyDiscoveryImport。
 	ImportFromDiscovery(ctx context.Context, items []DiscoveryImportItemInput, operator string) (string, error)
+	// ImportFromDiscoverySync 同步执行版导入（cert-volcano-import-sync 任务 3
+	// 同步服务消费的暴露面）：会话创建与逐条处理语义与 ImportFromDiscovery
+	// 完全一致，仅不另起 goroutine——调用方在返回即得终态会话（增量同步轮
+	// 需在会话终态后聚合轮结果）。空清单返回 ErrEmptyDiscoveryImport。
+	ImportFromDiscoverySync(ctx context.Context, items []DiscoveryImportItemInput, operator string) (string, error)
 	// GetSession 会话进度轮询数据源（任务 5 GET 端点）。
 	GetSession(ctx context.Context, sessionID string) (domain.DiscoveryImportSession, error)
 }
@@ -113,9 +118,47 @@ func (s *discoveryImportService) GetSession(ctx context.Context, sessionID strin
 // ImportFromDiscovery 先持久化会话（浏览器中断后重开仍可见结果），再异步逐条
 // 处理。返回会话 ID 即 cert_discovery_import_sessions._id。
 func (s *discoveryImportService) ImportFromDiscovery(ctx context.Context, items []DiscoveryImportItemInput, operator string) (string, error) {
-	if len(items) == 0 {
-		return "", ErrEmptyDiscoveryImport
+	sessionID, session, err := s.createSession(ctx, items, operator)
+	if err != nil {
+		return "", err
 	}
+
+	// 会话处理不随请求生命周期终止（浏览器中断不影响）；整体限时防泄漏。
+	go s.runImport(sessionID, session.Items)
+	return sessionID, nil
+}
+
+// ImportFromDiscoverySync 同步执行版导入（cert-volcano-import-sync 任务 3 同步
+// 服务消费的暴露面）：会话创建与逐条处理语义与 ImportFromDiscovery 完全一致
+// （同一 runImport 幂等管线：单条失败/panic 隔离、整体限时、终态收敛全复用），
+// 区别仅在不另起 goroutine——返回即终态会话（增量同步轮需在会话终态后聚合
+// 轮结果），行为不改变。
+func (s *discoveryImportService) ImportFromDiscoverySync(ctx context.Context, items []DiscoveryImportItemInput, operator string) (string, error) {
+	sessionID, session, err := s.createSession(ctx, items, operator)
+	if err != nil {
+		return "", err
+	}
+	s.runImport(sessionID, session.Items)
+	return sessionID, nil
+}
+
+// createSession 会话构建 + 先持久化（异步/同步两入口共用）：请求条目 pending
+// 落库（浏览器中断不丢结果），返回会话 ID 与已持久化实体。
+func (s *discoveryImportService) createSession(ctx context.Context, items []DiscoveryImportItemInput, operator string) (string, *domain.DiscoveryImportSession, error) {
+	if len(items) == 0 {
+		return "", nil, ErrEmptyDiscoveryImport
+	}
+	session := newDiscoveryImportSession(items, operator)
+	sessionID, err := s.sessions.Create(ctx, session)
+	if err != nil {
+		return "", nil, err
+	}
+	return sessionID, session, nil
+}
+
+// newDiscoveryImportSession 请求条目 → 会话实体（status=running、items=pending、
+// progress.total=条目数、operator 来源标识）。
+func newDiscoveryImportSession(items []DiscoveryImportItemInput, operator string) *domain.DiscoveryImportSession {
 	session := &domain.DiscoveryImportSession{
 		Items:    make([]domain.DiscoveryImportItem, len(items)),
 		Progress: domain.DiscoveryImportProgress{Total: len(items)},
@@ -129,14 +172,7 @@ func (s *discoveryImportService) ImportFromDiscovery(ctx context.Context, items 
 			Result:      domain.DiscoveryItemPending,
 		}
 	}
-	sessionID, err := s.sessions.Create(ctx, session)
-	if err != nil {
-		return "", err
-	}
-
-	// 会话处理不随请求生命周期终止（浏览器中断不影响）；整体限时防泄漏。
-	go s.runImport(sessionID, session.Items)
-	return sessionID, nil
+	return session
 }
 
 // runImport 逐条处理会话：单条失败/panic 落 errorReason 后继续（Hard Rule），

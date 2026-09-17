@@ -38,7 +38,7 @@
       "dependencies": [
         "2"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "3-scheduled-sync-service.md",
       "record": "records/3-scheduled-sync-service.md",
       "surface-type": "api",

@@ -27,7 +27,7 @@ intent: "new-feature"
 两件事，复用既有管线，不发明新机制：
 
 1. **火山云证书库发现适配器**：`internal/shared/cloudx/volcano/cert.go` 实现发现端口（List 实例清单 / Get 链下载），经 `service.NewVolcanoDiscoveryCertAdapter` 接入既有发现导入管线（幂等台账、映射补建、ALREADY_IN_LEDGER 全复用）。
-2. **天级定时增量同步** `cert:cert-import`（01:00，与 scan 02:00 错峰）：调度窄端口驱动同步服务，枚举**全部证书可达云 × active 账号** → 适配器 List → 指纹比对台账 → 仅对「指纹不在台账」或「映射缺失/漂移」的实例执行导入/补刷；其余跳过（不拉链、省云 API）。
+2. **天级定时增量同步** `cert:cert-import`（01:00，与 scan 02:00 错峰）：调度窄端口驱动同步服务，枚举**全部证书可达云 × active 账号** → 适配器 List → 指纹比对台账 → 仅对「指纹不在台账」或「映射缺失/漂移」的实例执行导入/补刷；其余跳过（同步判定层不发起任何云 Get、不产生导入动作与台账写）。
 
 **冲突策略**（brainstorm 已确认，用户决策「幂等优先+守卫+漂移留痕」）：
 
@@ -41,7 +41,7 @@ intent: "new-feature"
 
 ### Innovation Highlights
 
-- **增量判定放在指纹层**（List 元数据指纹 vs 台账指纹），已映射实例不调 Get，控制六云 × 账号 × 分页的云 API 成本。
+- **增量判定放在同步服务判定层**（List 元数据指纹 vs 台账指纹 + 现有映射），已映射实例跳过 = 无导入动作、无台账/映射写，控制同步轮的导入成本。**实现注记（任务 3 修正）**：火山 SDK `CertificateGetInstanceList` 输出不含指纹字段，任务 1 适配器的 List 内部已逐实例调 Get 拉链——该 Get 成本是适配器层固有约束，无法在 List 层省略；跳过的收益落在「不重复导入、不重写台账/映射」与五云口径（List 即返回元数据）下「无额外 Get」。五云证书库列举端口后续接入时按「List 即元数据」形态实现即可获得完整省 Get 收益。
 - **冲突是"语义利用"不是"新冲突解决器"**：mapping 唯一键 + uploadedAt 排序 + 指纹幂等三要素已内建在现有仓储，本期只把它们显式化为策略与测试。
 - 调度接线完全对齐现有 8 个调度点的窄端口模式（`scheduler/jobs.go` 只做接线、`ioc/cert.go InitCertJobs` 挂载），零新架构。
 
@@ -61,7 +61,7 @@ intent: "new-feature"
 - **安全**：凭证仅内存传递（既有 AccountScanSource 语义）；云侧错误细节不进响应仅日志。
 - **幂等**：定时轮任意重复执行结果收敛（不产生重复台账/映射）。
 - **只读纪律**：定时轮只入账，不触发任何线上变更（替换走变更清单，本期不做）。
-- **性能**：已映射指纹不调 Get；List 分页上限与既有发现适配器对齐。
+- **性能**：同步判定层对已映射指纹不发起 Get（火山适配器 List 内部逐实例 Get 为固有成本，见 Proposed Solution 实现注记）；List 分页上限与既有发现适配器对齐。
 - **可观测**：同步轮结果（导入/跳过/补刷/漂移/失败）逐项落入会话 `Items[].result/errorReason`，`operator="scheduler"` 标识来源。
 
 ### Constraints & Dependencies
@@ -132,14 +132,14 @@ SDK 已就绪（certificateservice 两方法 + 链下载）、账号体系已按
 |------|-----------|--------|------------|
 | 火山 certificateservice 分页/字段形态与假想不符 | M | M | Get 依赖最小字段集（Chain/FingerPrintSha256/San）；List 分页按响应结构文档化；fake 严格按 SDK 模型生成 |
 | 定时轮与手动导入并发双 Create 竞态 | M | L | ErrDuplicateFingerprint 记为 success（幂等语义）；单测断言「恰一条台账 + 双会话 success」 |
-| 六云×账号×分页云 API 限流/耗时 | M | M | 增量跳过已映射指纹不调 Get；逐云逐账号隔离失败；整体限时复用 discoveryImportTimeout 语义 |
+| 六云×账号×分页云 API 限流/耗时 | M | M | 同步判定层跳过已映射指纹不发起 Get（火山 List 内 Get 为适配器固有成本）；逐云逐账号隔离失败；整体限时复用 discoveryImportTimeout 语义 |
 | 同步轮误把「撤销/审核中」实例入账 | M | M | List 过滤 status 非 issued 实例（对齐签发语义）；IsCertificateRevoked 标记不入账，会话留痕迹 |
 | 只读纪律被后续替换需求破坏 | L | M | Out of Scope 显式声明 + Success Criteria 断言「定时轮不触发任何云写操作」 |
 
 ## Success Criteria
 
 - [ ] 火山适配器：List/Get 单测覆盖（fake volcengine SDK），chain→指纹(sha256)/SAN 解析与 CAS 口径一致；revoked/非 issued 实例不入账。
-- [ ] 定时同步服务单测：新指纹实例→导入并建 active 映射；已映射实例→跳过且不调用 Get；映射缺失→补建；同 cloudCertID 新指纹（漂移）→新映射刷新 + 旧映射留痕。
+- [ ] 定时同步服务单测：新指纹实例→导入并建 active 映射；已映射实例→跳过且材料通道 Get 调用计数为 0（五云口径 List 即元数据；火山口径跳过=不导入，List 内 Get 为适配器层固有成本，见实现注记）；映射缺失→补建；同 cloudCertID 新指纹（漂移）→新映射刷新 + 旧映射留痕。
 - [ ] 并发竞态单测：同一指纹双会话并发导入 → 台账恰 1 条、双会话均 success（无 failed 条目）。
 - [ ] 调度点注册：`cert:cert-import` spec=`0 1 * * *`、CAS 防重守卫生效（running 中再次触发不重启）。
 - [ ] 首 run 回填：空台账一轮同步后，fake 云全部 List 实例入库且映射完整。
