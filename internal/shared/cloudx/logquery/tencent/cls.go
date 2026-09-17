@@ -77,8 +77,27 @@ func (p *provider) clsAnalysis(ctx context.Context, region, topicID string, from
 	return rows, nil
 }
 
+// rawMapper 原始日志行 → 统一模型(CDN=eoLog,WAF=wafLog)。
+type rawMapper func(m logquery.LogMeta, raw map[string]string) logquery.LogEntry
+
+// eoEntry eoLog 适配 rawMapper(空指针 → nil interface)。
+func eoEntry(m logquery.LogMeta, raw map[string]string) logquery.LogEntry {
+	if e := eoLog(m, raw); e != nil {
+		return e
+	}
+	return nil
+}
+
+// wafEntry wafLog 适配 rawMapper。
+func wafEntry(m logquery.LogMeta, raw map[string]string) logquery.LogEntry {
+	if e := wafLog(m, raw); e != nil {
+		return e
+	}
+	return nil
+}
+
 // clsSearchLogs 分页拉取原始日志(单 topic,游标 Context 翻页至 limit)。
-func (p *provider) clsSearchLogs(ctx context.Context, region, topicID string, fromMs, toMs int64, query string, limit int, meta logquery.LogMeta) ([]logquery.LogEntry, error) {
+func (p *provider) clsSearchLogs(ctx context.Context, region, topicID string, fromMs, toMs int64, query string, limit int, meta logquery.LogMeta, mapper rawMapper) ([]logquery.LogEntry, error) {
 	client, err := p.clsClient(region)
 	if err != nil {
 		return nil, err
@@ -119,7 +138,7 @@ func (p *provider) clsSearchLogs(ctx context.Context, region, topicID string, fr
 			if raw["__TIMESTAMP__"] == "" && lr.Time != nil {
 				raw["Time"] = fmt.Sprintf("%d", *lr.Time)
 			}
-			if e := eoLog(meta, raw); e != nil {
+			if e := mapper(meta, raw); e != nil {
 				entries = append(entries, e)
 			}
 		}
@@ -131,12 +150,12 @@ func (p *provider) clsSearchLogs(ctx context.Context, region, topicID string, fr
 	return entries, nil
 }
 
-// eoProbeTopic 采样确认 topic 是否为 EdgeOne 访问日志(近 24h 拉 1 条,
-// 含 RequestHost + EdgeResponseStatusCode 字段即判定;0 条/失败返回 false)。
-func (p *provider) eoProbeTopic(ctx context.Context, region, topicID string) bool {
+// probeRawLog 采样最近一条日志的 LogJson 字段(近 24h,limit 1);
+// 无数据/失败返回空 map。topic 分类(EO/WAF/other)与已投递判定共用。
+func (p *provider) probeRawLog(ctx context.Context, region, topicID string) map[string]string {
 	client, err := p.clsClient(region)
 	if err != nil {
-		return false
+		return nil
 	}
 	now := time.Now().UnixMilli()
 	req := cls.NewSearchLogRequest()
@@ -151,22 +170,21 @@ func (p *provider) eoProbeTopic(ctx context.Context, region, topicID string) boo
 	req.Query = &star
 	resp, err := client.SearchLogWithContext(ctx, req)
 	if err != nil {
-		return false
+		return nil
 	}
 	body := resp.Response
 	if body == nil || len(body.Results) == 0 {
-		return false
+		return nil
 	}
 	for _, lr := range body.Results {
 		if lr == nil {
 			continue
 		}
-		raw := eoLogJsonMap(valStr(lr.LogJson))
-		if raw["RequestHost"] != "" && raw["EdgeResponseStatusCode"] != "" {
-			return true
+		if raw := eoLogJsonMap(valStr(lr.LogJson)); len(raw) > 0 {
+			return raw
 		}
 	}
-	return false
+	return nil
 }
 
 // int64Ptr *int64 指针(SDK 请求参数)。

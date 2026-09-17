@@ -29,37 +29,60 @@ import (
 // defaultEnumRegions 源枚举兜底区域(腾讯日志常见落点;账号 Regions 交集优先)。
 var defaultEnumRegions = []string{"ap-guangzhou", "ap-shanghai", "ap-beijing"}
 
-// eoTopicTTL topic 识别缓存新鲜时长(识别结果分钟级稳定)。
-const eoTopicTTL = 30 * time.Minute
+// topicKindTTL topic 分类缓存新鲜时长(识别结果分钟级稳定)。
+const topicKindTTL = 30 * time.Minute
 
-// eoTopicCache 进程级 topic 识别缓存(region/topic → 是否 EdgeOne 访问日志)。
-type eoTopicCache struct {
+// topicKindCache 进程级 topic 分类缓存(region/topic → "eo"|"waf"|"other")。
+type topicKindCache struct {
 	mu      sync.Mutex
-	entries map[string]eoTopicEntry
+	entries map[string]topicKindEntry
 }
 
-type eoTopicEntry struct {
-	isEO    bool
+type topicKindEntry struct {
+	kind    string
 	expires time.Time
 }
 
-var eoTopicCacheInst = &eoTopicCache{entries: make(map[string]eoTopicEntry)}
+var topicKindCacheInst = &topicKindCache{entries: make(map[string]topicKindEntry)}
 
-// get 命中且未过期返回 (isEO, true)。
-func (c *eoTopicCache) get(region, topicID string) (bool, bool) {
+// get 命中且未过期返回 (kind, true)。
+func (c *topicKindCache) get(region, topicID string) (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.entries[region+"/"+topicID]
 	if !ok || time.Now().After(e.expires) {
-		return false, false
+		return "", false
 	}
-	return e.isEO, true
+	return e.kind, true
 }
 
-func (c *eoTopicCache) set(region, topicID string, isEO bool) {
+func (c *topicKindCache) set(region, topicID, kind string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[region+"/"+topicID] = eoTopicEntry{isEO: isEO, expires: time.Now().Add(eoTopicTTL)}
+	c.entries[region+"/"+topicID] = topicKindEntry{kind: kind, expires: time.Now().Add(topicKindTTL)}
+}
+
+// topicKind 判定 topic 类型:采样最近一条日志按字段特征分类。
+// 0 条/无特征 → "other" 且**不缓存**(投递可能晚来,下次再探);
+// 有特征 → 缓存 30min(稳定)。
+func (p *provider) topicKind(ctx context.Context, region, topicID string) string {
+	if k, ok := topicKindCacheInst.get(region, topicID); ok {
+		return k
+	}
+	raw := p.probeRawLog(ctx, region, topicID)
+	kind := "other"
+	if len(raw) > 0 {
+		switch {
+		case raw["RequestHost"] != "" && raw["EdgeResponseStatusCode"] != "":
+			kind = "eo"
+		case hasWAFFields(raw):
+			kind = "waf"
+		}
+	}
+	if len(raw) > 0 {
+		topicKindCacheInst.set(region, topicID, kind)
+	}
+	return kind
 }
 
 // topicsCache 进程级 DescribeTopics 清单缓存(每区域;topic 清单变动频率低)。
@@ -122,7 +145,7 @@ func (p *provider) listTopicsCached(ctx context.Context, region string) ([]strin
 	}
 	if len(ids) > 0 {
 		topicsCacheInst.mu.Lock()
-		topicsCacheInst.entries[region] = topicsEntry{topics: ids, names: names, expires: time.Now().Add(eoTopicTTL)}
+		topicsCacheInst.entries[region] = topicsEntry{topics: ids, names: names, expires: time.Now().Add(topicKindTTL)}
 		topicsCacheInst.mu.Unlock()
 	}
 	return ids, names
@@ -177,16 +200,19 @@ func (p *provider) enumRegions() []string {
 	return defaultEnumRegions
 }
 
-// ListLogSources 枚举日志源:CDN = EdgeOne topic(动态识别,Enabled),WAF = 占位 stub。
+// ListLogSources 枚举日志源:CDN = EdgeOne topic, WAF = WAF topic(均动态
+// 识别;WAF 已知 stub 在 0 条时仍列出 enabled=false 引导云侧投递)。
 func (p *provider) ListLogSources(ctx context.Context, account *domain.CloudAccount) ([]logquery.LogSource, error) {
-	if p.logType == logquery.LogTypeWAF {
-		return p.wafStubSources(), nil
+	switch p.logType {
+	case logquery.LogTypeWAF:
+		return p.wafSources(ctx)
+	default:
+		return p.sourcesByKind(ctx, "eo", "EdgeOne", "EdgeOne 访问日志(CLS 混装全部站点)")
 	}
-	return p.eoSources(ctx)
 }
 
-// eoSources 枚举 EdgeOne 访问日志 topic(识别结果带缓存;并发逐区域)。
-func (p *provider) eoSources(ctx context.Context) ([]logquery.LogSource, error) {
+// sourcesByKind 枚举指定类型 topic 为源(识别带缓存,并发逐区域)。
+func (p *provider) sourcesByKind(ctx context.Context, kind, label, note string) ([]logquery.LogSource, error) {
 	regions := p.enumRegions()
 	var (
 		mu  sync.Mutex
@@ -200,12 +226,7 @@ func (p *provider) eoSources(ctx context.Context) ([]logquery.LogSource, error) 
 			ids, names := p.listTopicsCached(ctx, region)
 			var found []logquery.LogSource
 			for _, id := range ids {
-				isEO, ok := eoTopicCacheInst.get(region, id)
-				if !ok {
-					isEO = p.eoProbeTopic(ctx, region, id)
-					eoTopicCacheInst.set(region, id, isEO)
-				}
-				if !isEO {
+				if p.topicKind(ctx, region, id) != kind {
 					continue
 				}
 				name := names[id]
@@ -219,9 +240,9 @@ func (p *provider) eoSources(ctx context.Context) ([]logquery.LogSource, error) 
 					Region:      region,
 					LogType:     p.logType,
 					ResourceID:  id,
-					Name:        "EdgeOne / " + name,
+					Name:        label + " / " + name,
 					Enabled:     true,
-					Note:        "EdgeOne 访问日志(CLS 混装全部站点)",
+					Note:        note,
 				})
 			}
 			mu.Lock()
@@ -233,31 +254,49 @@ func (p *provider) eoSources(ctx context.Context) ([]logquery.LogSource, error) 
 	return out, nil
 }
 
-// wafStubSources WAF 占位源(Phase 0/实测:topic 存在但 0 条,引导云侧投递)。
-func (p *provider) wafStubSources() []logquery.LogSource {
-	return []logquery.LogSource{
-		{
+// wafSources WAF 日志源:动态识别的 WAF topic(enabled) + 已知 stub
+// (0 条时 enabled=false 引导云侧开启投递)。
+func (p *provider) wafSources(ctx context.Context) ([]logquery.LogSource, error) {
+	sources, err := p.sourcesByKind(ctx, "waf", "WAF 访问日志", "腾讯云 WAF 访问日志(CLS 混装全部域名)")
+	if err != nil {
+		return nil, err
+	}
+	// 已知 stub topic:未被识别为 WAF(当前 0 条)时仍列出,引导投递
+	const stubID = "a0bfd8ed-d7b1-480a-879b-3c143f7302b8"
+	found := false
+	for _, s := range sources {
+		if s.ResourceID == stubID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		sources = append(sources, logquery.LogSource{
 			Cloud:       domain.CloudProviderTencent,
 			AccountID:   fmt.Sprintf("%d", p.account.ID),
 			AccountName: p.account.Name,
 			Region:      "ap-shanghai",
 			LogType:     p.logType,
-			ResourceID:  "a0bfd8ed-d7b1-480a-879b-3c143f7302b8",
-			Name:        "WAF 访问日志 / a0bfd8ed-d7b1-480a-879b-3c143f7302b8",
+			ResourceID:  stubID,
+			Name:        "WAF 访问日志 / " + stubID,
 			Enabled:     false,
 			Note:        "topic 存在但近 30 天 0 条,需腾讯云 WAF 控制台开启日志服务投递(ap-shanghai)",
-		},
+		})
 	}
+	return sources, nil
 }
 
-// errWAFNotFlowing WAF 数据源未流动(明确错误,引导云侧修复)。
-var errWAFNotFlowing = fmt.Errorf("tencent WAF log delivery not flowing (topic 30d no data); enable WAF log service delivery in Tencent console first")
-
-// Search 查询窗口内日志:CDN 走 CLS 分页拉取映射;WAF 返回明确错误。
-func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, params logquery.SearchParams) ([]logquery.LogEntry, error) {
+// kindForLogType 日志类型 → topic 分类(kind)+ 映射器。
+func (p *provider) kindForLogType() (string, rawMapper) {
 	if p.logType == logquery.LogTypeWAF {
-		return nil, errWAFNotFlowing
+		return "waf", wafEntry
 	}
+	return "eo", eoEntry
+}
+
+// Search 查询窗口内日志:CLS 分页拉取映射统一模型(CDN=EdgeOne,WAF=WAF 日志;
+// WAF topic 0 条时自然返回空,投递开启即有数据,不硬报错)。
+func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, params logquery.SearchParams) ([]logquery.LogEntry, error) {
 	if params.EndTime <= params.StartTime {
 		return nil, fmt.Errorf("tencent logquery: invalid time window")
 	}
@@ -265,7 +304,8 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 	if limit <= 0 || limit > 3000 {
 		limit = 100
 	}
-	targets := p.eoTopicTargets(ctx, params.Resources)
+	kind, mapper := p.kindForLogType()
+	targets := p.topicsByKind(ctx, kind, params.Resources)
 	query := "*"
 	if q := strings.TrimSpace(params.Query); q != "" && q != "*" {
 		query = q
@@ -288,7 +328,7 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 				ResourceID:  tgt.topicID,
 				Source:      tgt.region + "/" + tgt.topicID,
 			}
-			entries, err := p.clsSearchLogs(ctx, tgt.region, tgt.topicID, params.StartTime, params.EndTime, query, limit, meta)
+			entries, err := p.clsSearchLogs(ctx, tgt.region, tgt.topicID, params.StartTime, params.EndTime, query, limit, meta, mapper)
 			if err != nil {
 				p.logger.Warn("[logquery-tencent] search topic failed",
 					elog.String("region", tgt.region), elog.String("topic", tgt.topicID), elog.FieldErr(err))
@@ -320,8 +360,8 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 	return entries, nil
 }
 
-// eoTopicTargets 解析目标 topic 列表:Resources 指定 topicId 时收敛;否则全部 EO topic。
-func (p *provider) eoTopicTargets(ctx context.Context, resources []string) []struct{ region, topicID string } {
+// topicsByKind 解析目标 topic 列表:指定 kind 的 topic;Resources 收敛(topicId)。
+func (p *provider) topicsByKind(ctx context.Context, kind string, resources []string) []struct{ region, topicID string } {
 	want := make(map[string]bool, len(resources))
 	for _, r := range resources {
 		if r != "" {
@@ -332,12 +372,7 @@ func (p *provider) eoTopicTargets(ctx context.Context, resources []string) []str
 	for _, region := range p.enumRegions() {
 		ids, _ := p.listTopicsCached(ctx, region)
 		for _, id := range ids {
-			isEO, ok := eoTopicCacheInst.get(region, id)
-			if !ok {
-				isEO = p.eoProbeTopic(ctx, region, id)
-				eoTopicCacheInst.set(region, id, isEO)
-			}
-			if !isEO {
+			if p.topicKind(ctx, region, id) != kind {
 				continue
 			}
 			if len(want) > 0 && !want[id] {
@@ -350,11 +385,8 @@ func (p *provider) eoTopicTargets(ctx context.Context, resources []string) []str
 }
 
 // Aggregate 窗口内真实聚合:CLS 分析下推分桶 + TopN。字段筛选暂不支持下推
-// (返回错误,联邦层标注该源跳过,防失真)。WAF 未流动,直接报不支持。
+// (返回错误,联邦层标注该源跳过,防失真)。WAF 同构(维度/指标按类型)。
 func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, params logquery.AggregateParams) (*logquery.AggregateResult, error) {
-	if p.logType == logquery.LogTypeWAF {
-		return nil, errWAFNotFlowing
-	}
 	if params.EndTime <= params.StartTime {
 		return nil, fmt.Errorf("tencent logquery aggregate: invalid time window")
 	}
@@ -368,7 +400,8 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 	if q := strings.TrimSpace(params.Query); q != "" && q != "*" {
 		query = q
 	}
-	targets := p.eoTopicTargets(ctx, params.Resources)
+	kind, _ := p.kindForLogType()
+	targets := p.topicsByKind(ctx, kind, params.Resources)
 	if len(targets) == 0 {
 		return &logquery.AggregateResult{}, nil
 	}
@@ -380,7 +413,7 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[i] = p.aggregateTopic(ctx, tgt.region, tgt.topicID, params, query)
+			results[i] = p.aggregateTopic(ctx, tgt.region, tgt.topicID, params, query, kind)
 		}()
 	}
 	wg.Wait()
@@ -434,7 +467,7 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 }
 
 // aggregateTopic 单 topic 两条分析 SQL:分桶 + TopN。失败返回 nil(隔离)。
-func (p *provider) aggregateTopic(ctx context.Context, region, topicID string, params logquery.AggregateParams, baseQuery string) *logquery.AggregateResult {
+func (p *provider) aggregateTopic(ctx context.Context, region, topicID string, params logquery.AggregateParams, baseQuery, kind string) *logquery.AggregateResult {
 	result := &logquery.AggregateResult{}
 	bucketMs := params.BucketSec * 1000
 
@@ -457,22 +490,30 @@ func (p *provider) aggregateTopic(ctx context.Context, region, topicID string, p
 	}
 
 	// TopN:维度/指标编译;失败标注 TopNSkipReason(趋势/总数不受影响)
-	dim := "RequestHost"
+	dimExpr := eoDimensionExpr
+	dimMetrics := eoMetricExpr
+	defaultDim := "RequestHost"
+	if kind == "waf" {
+		dimExpr = wafDimensionExpr
+		dimMetrics = wafMetricExpr
+		defaultDim = "domain"
+	}
+	dim := defaultDim
 	if params.Dimension != "" {
-		expr, ok := eoDimensionExpr(params.Dimension)
+		expr, ok := dimExpr(params.Dimension)
 		if !ok {
 			result.TopNSkipReason = "维度 " + params.Dimension + " 该源不支持"
 			return result
 		}
 		dim = expr
 	}
-	mExpr, ok := eoMetricExpr[params.Metric]
+	mExpr, ok := dimMetrics[params.Metric]
 	if !ok {
 		if params.Metric != "" {
 			result.TopNSkipReason = "指标 " + params.Metric + " 该源不支持"
 			return result
 		}
-		mExpr = eoMetricExpr["count"]
+		mExpr = dimMetrics["count"]
 	}
 	topnSQL := fmt.Sprintf("%s | select %s as k, count(*) as n, %s as v group by k order by v desc limit 10", baseQuery, dim, mExpr)
 	rows, err = p.clsAnalysis(ctx, region, topicID, params.StartTime, params.EndTime, topnSQL, 10)
