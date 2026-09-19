@@ -12,9 +12,9 @@ import (
 )
 
 // GetDomainMetrics 查询 [startDate, endDate](含两端)内域名的逐日指标。
-// 单次跨日拉取全量 5min/1h 粒度数据(DescribeDomainTrafficData 等 90 天内
-// 自适应粒度),再按运营时区(Asia/Shanghai)逐日聚合:
-// 流量求和、带宽取峰值、命中率取均值。
+// 每指标单次范围调用(StartTime=首日 00:00、EndTime=末日 23:59:59)拉取
+// 全区间 5min 粒度数据(Interval=300),再按运营时区(Asia/Shanghai)逐日聚合:
+// 流量求和、带宽取峰值、命中率取均值。每域名 3 次 API(原逐日 30×3=90 次)。
 func (a *CDNAdapter) GetDomainMetrics(ctx context.Context, domainName, domainID string, startDate, endDate string) ([]types.CDNMetric, error) {
 	if domainName == "" {
 		return nil, fmt.Errorf("阿里云CDN指标查询需要域名")
@@ -29,17 +29,17 @@ func (a *CDNAdapter) GetDomainMetrics(ctx context.Context, domainName, domainID 
 		return nil, err
 	}
 
-	// 逐日查询避免厂商自适应粒度在跨 3 天边界时混入不同区间语义,
-	// 且单日 300 粒度数据量小、失败重试代价低
-	traffic, err := a.fetchTrafficByDay(client, domainName, dates)
+	// 与 tencent/huawei/volcano 对齐的单次范围调用(区间 Start/End 见各 fetch);
+	// 若范围响应混入非目标日期模块,聚合按时间戳分桶天然忽略
+	traffic, err := a.fetchTraffic(client, domainName, dates)
 	if err != nil {
 		return nil, err
 	}
-	bps, err := a.fetchBpsByDay(client, domainName, dates)
+	bps, err := a.fetchBps(client, domainName, dates)
 	if err != nil {
 		return nil, err
 	}
-	hitRate, err := a.fetchHitRateByDay(client, domainName, dates)
+	hitRate, err := a.fetchHitRate(client, domainName, dates)
 	if err != nil {
 		return nil, err
 	}
@@ -68,81 +68,65 @@ func (a *CDNAdapter) GetDomainMetrics(ctx context.Context, domainName, domainID 
 // unknownHitRate 命中率未知哨兵值
 const unknownHitRate = -1.0
 
-// fetchTrafficByDay 逐日拉 DescribeDomainTrafficData,按日累加流量(字节)。
-func (a *CDNAdapter) fetchTrafficByDay(client *cdn.Client, domainName string, dates []string) (map[string]int64, error) {
-	result := make(map[string]int64, len(dates))
-	for _, d := range dates {
-		start, end := dayBoundsUTC(d)
-		request := cdn.CreateDescribeDomainTrafficDataRequest()
-		request.DomainName = domainName
-		request.StartTime = start
-		request.EndTime = end
-		request.Interval = "300" // 单日 5min 粒度
-
-		response, err := client.DescribeDomainTrafficData(request)
-		if err != nil {
-			return nil, fmt.Errorf("查询CDN流量数据失败(%s): %w", d, err)
-		}
-		sums := aggregateAliyunTraffic(response.TrafficDataPerInterval.DataModule)
-		if len(sums) == 0 {
-			// 当日无数据(如刚添加的域名)不写库
-			continue
-		}
-		total := int64(0)
-		for _, v := range sums {
-			total += v
-		}
-		result[d] = total
+// fetchTraffic 单次范围拉 DescribeDomainTrafficData(Start=dates[0] 00:00、
+// End=dates[last] 23:59:59,Interval=300 固定 5min 粒度),按日累加流量(字节)。
+// 风险提示: 30 天单次响应约 8640 个模块;若生产遇阿里截断,回退方案为
+// 分段范围查询(按周/月拆分 Start/End,聚合按日分桶无需改动)。
+func (a *CDNAdapter) fetchTraffic(client *cdn.Client, domainName string, dates []string) (map[string]int64, error) {
+	if len(dates) == 0 {
+		return map[string]int64{}, nil
 	}
-	return result, nil
+	start, end := rangeBoundsUTC(dates)
+	request := cdn.CreateDescribeDomainTrafficDataRequest()
+	request.DomainName = domainName
+	request.StartTime = start
+	request.EndTime = end
+	request.Interval = "300" // 5min 粒度
+
+	response, err := client.DescribeDomainTrafficData(request)
+	if err != nil {
+		return nil, fmt.Errorf("查询CDN流量数据失败(%s~%s): %w", dates[0], dates[len(dates)-1], err)
+	}
+	// 无数据日(如刚添加的域名)在聚合 map 中缺键,由调用方跳过,不写库
+	return aggregateAliyunTraffic(response.TrafficDataPerInterval.DataModule), nil
 }
 
-// fetchBpsByDay 逐日拉 DescribeDomainBpsData,按日取带宽峰值(bps)。
-func (a *CDNAdapter) fetchBpsByDay(client *cdn.Client, domainName string, dates []string) (map[string]int64, error) {
-	result := make(map[string]int64, len(dates))
-	for _, d := range dates {
-		start, end := dayBoundsUTC(d)
-		request := cdn.CreateDescribeDomainBpsDataRequest()
-		request.DomainName = domainName
-		request.StartTime = start
-		request.EndTime = end
-		request.Interval = "300"
-
-		response, err := client.DescribeDomainBpsData(request)
-		if err != nil {
-			return nil, fmt.Errorf("查询CDN带宽数据失败(%s): %w", d, err)
-		}
-		peaks := aggregateAliyunBps(response.BpsDataPerInterval.DataModule)
-		if len(peaks) == 0 {
-			continue
-		}
-		result[d] = peaks[d]
+// fetchBps 单次范围拉 DescribeDomainBpsData,按日取带宽峰值(bps)。
+func (a *CDNAdapter) fetchBps(client *cdn.Client, domainName string, dates []string) (map[string]int64, error) {
+	if len(dates) == 0 {
+		return map[string]int64{}, nil
 	}
-	return result, nil
+	start, end := rangeBoundsUTC(dates)
+	request := cdn.CreateDescribeDomainBpsDataRequest()
+	request.DomainName = domainName
+	request.StartTime = start
+	request.EndTime = end
+	request.Interval = "300"
+
+	response, err := client.DescribeDomainBpsData(request)
+	if err != nil {
+		return nil, fmt.Errorf("查询CDN带宽数据失败(%s~%s): %w", dates[0], dates[len(dates)-1], err)
+	}
+	return aggregateAliyunBps(response.BpsDataPerInterval.DataModule), nil
 }
 
-// fetchHitRateByDay 逐日拉 DescribeDomainHitRateData,按日取命中率均值(0-1)。
-func (a *CDNAdapter) fetchHitRateByDay(client *cdn.Client, domainName string, dates []string) (map[string]float64, error) {
-	result := make(map[string]float64, len(dates))
-	for _, d := range dates {
-		start, end := dayBoundsUTC(d)
-		request := cdn.CreateDescribeDomainHitRateDataRequest()
-		request.DomainName = domainName
-		request.StartTime = start
-		request.EndTime = end
-		request.Interval = "300"
-
-		response, err := client.DescribeDomainHitRateData(request)
-		if err != nil {
-			return nil, fmt.Errorf("查询CDN命中率数据失败(%s): %w", d, err)
-		}
-		rates := aggregateAliyunHitRate(response.HitRateInterval.DataModule)
-		if len(rates) == 0 {
-			continue
-		}
-		result[d] = rates[d]
+// fetchHitRate 单次范围拉 DescribeDomainHitRateData,按日取命中率均值(0-1)。
+func (a *CDNAdapter) fetchHitRate(client *cdn.Client, domainName string, dates []string) (map[string]float64, error) {
+	if len(dates) == 0 {
+		return map[string]float64{}, nil
 	}
-	return result, nil
+	start, end := rangeBoundsUTC(dates)
+	request := cdn.CreateDescribeDomainHitRateDataRequest()
+	request.DomainName = domainName
+	request.StartTime = start
+	request.EndTime = end
+	request.Interval = "300"
+
+	response, err := client.DescribeDomainHitRateData(request)
+	if err != nil {
+		return nil, fmt.Errorf("查询CDN命中率数据失败(%s~%s): %w", dates[0], dates[len(dates)-1], err)
+	}
+	return aggregateAliyunHitRate(response.HitRateInterval.DataModule), nil
 }
 
 // ==================== 纯聚合函数(单测覆盖) ====================
@@ -161,6 +145,17 @@ func dayBoundsUTC(date string) (string, string) {
 
 // metricCSTZone CDN 指标按运营时区(Asia/Shanghai)取日,勿改用服务器本地时区
 var metricCSTZone = time.FixedZone("CST", 8*3600)
+
+// rangeBoundsUTC 多日范围(运营时区 Asia/Shanghai)的 UTC ISO 起止时间:
+// Start=首日 00:00、End=末日 23:59:59,沿用 dayBoundsUTC 的单日边界语义。
+func rangeBoundsUTC(dates []string) (string, string) {
+	if len(dates) == 0 {
+		return "", ""
+	}
+	start, _ := dayBoundsUTC(dates[0])
+	_, end := dayBoundsUTC(dates[len(dates)-1])
+	return start, end
+}
 
 // metricDateRange 解析 [startDate, endDate](含两端)为日期切片(YYYY-MM-DD)。
 func metricDateRange(startDate, endDate string) ([]string, error) {
