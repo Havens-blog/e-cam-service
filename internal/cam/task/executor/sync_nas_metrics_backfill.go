@@ -30,7 +30,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
@@ -94,10 +93,10 @@ type SyncNASBackfillExecutor struct {
 	metricDAO     dao.NASMetricDAO
 	taskRepo      taskx.TaskRepository
 	logger        *elog.Component
-	// syncingNow 账号级回填互斥:多个回填任务并发时同账号只放行一个,
-	// 避免重复消耗厂商 API 配额(与每日采集执行器同模式)
-	syncMu     sync.Mutex
-	syncingNow map[int64]string
+	// nasAccountGate 账号级回填互斥：多个回填任务并发时同账号只放行一个,
+	// 避免重复消耗厂商 API 配额(与每日采集执行器共用同一实现,
+	// nas_account_gate.go;嵌入后方法/字段同名提升)。
+	nasAccountGate
 	// nowFn / sleepFn 时钟与退避等待注入点(单测固定窗口时刻、消除真实等待)
 	nowFn   func() time.Time
 	sleepFn func(time.Duration)
@@ -112,15 +111,15 @@ func NewSyncNASBackfillExecutor(
 	logger *elog.Component,
 ) *SyncNASBackfillExecutor {
 	return &SyncNASBackfillExecutor{
-		accountRepo:   accountRepo,
-		instanceRepo:  instanceRepo,
-		cloudxFactory: cloudx.NewAdapterFactory(logger),
-		metricDAO:     metricDAO,
-		taskRepo:      taskRepo,
-		logger:        logger,
-		syncingNow:    make(map[int64]string),
-		nowFn:         time.Now,
-		sleepFn:       time.Sleep,
+		accountRepo:    accountRepo,
+		instanceRepo:   instanceRepo,
+		cloudxFactory:  cloudx.NewAdapterFactory(logger),
+		metricDAO:      metricDAO,
+		taskRepo:       taskRepo,
+		logger:         logger,
+		nasAccountGate: newNASAccountGate(),
+		nowFn:          time.Now,
+		sleepFn:        time.Sleep,
 	}
 }
 
@@ -304,7 +303,7 @@ func (e *SyncNASBackfillExecutor) Execute(ctx context.Context, t *taskx.Task) er
 	e.taskRepo.UpdateProgress(ctx, t.ID, 10,
 		fmt.Sprintf("准备回填 %s ~ %s 的 NAS 历史指标(%d 天)", startDate, endDate, days))
 
-	accounts, err := e.resolveAccounts(ctx, params)
+	accounts, err := resolveNASAccounts(ctx, e.accountRepo, params.AccountID, params.Provider)
 	if err != nil {
 		return err
 	}
@@ -421,58 +420,6 @@ type nasBackfillAccountResult struct {
 	failure         *nasAccountFailure
 }
 
-// resolveAccounts 解析待回填账号:指定 account_id 取单个,否则取全部活跃账号
-// (provider 可选过滤)。回填与每日采集同口径:不依赖 EnableAutoSync 开关。
-func (e *SyncNASBackfillExecutor) resolveAccounts(ctx context.Context, params syncNASBackfillParams) ([]domain.CloudAccount, error) {
-	if params.AccountID > 0 {
-		account, err := e.accountRepo.GetByID(ctx, params.AccountID)
-		if err != nil {
-			return nil, fmt.Errorf("获取云账号失败: %w", err)
-		}
-		return []domain.CloudAccount{account}, nil
-	}
-	filter := domain.CloudAccountFilter{
-		Provider: domain.CloudProvider(params.Provider),
-		Status:   domain.CloudAccountStatusActive,
-		Limit:    100,
-	}
-	accts, _, err := e.accountRepo.List(ctx, filter)
-	if err != nil {
-		return nil, fmt.Errorf("获取云账号列表失败: %w", err)
-	}
-	// provider 过滤在执行器侧再收口一次(仓储实现差异不影响限定语义)
-	if params.Provider != "" {
-		filtered := make([]domain.CloudAccount, 0, len(accts))
-		for _, a := range accts {
-			if string(a.Provider) == params.Provider {
-				filtered = append(filtered, a)
-			}
-		}
-		accts = filtered
-	}
-	return accts, nil
-}
-
-// tryAcquireBackfill 占用账号回填权;已被其他任务持有返回 false。
-func (e *SyncNASBackfillExecutor) tryAcquireBackfill(accountID int64, taskID string) bool {
-	e.syncMu.Lock()
-	defer e.syncMu.Unlock()
-	if owner, busy := e.syncingNow[accountID]; busy && owner != taskID {
-		return false
-	}
-	e.syncingNow[accountID] = taskID
-	return true
-}
-
-// releaseBackfill 释放账号回填权(仅持有者可释放)。
-func (e *SyncNASBackfillExecutor) releaseBackfill(accountID int64, taskID string) {
-	e.syncMu.Lock()
-	defer e.syncMu.Unlock()
-	if owner, busy := e.syncingNow[accountID]; busy && owner == taskID {
-		delete(e.syncingNow, accountID)
-	}
-}
-
 // backfillAccount 回填单账号:实例分片(≤5)× 日期分片(≤10)逐批处理。
 // 每批先预检已落库日期(幂等去重:整批已成功不重试),只对缺失日期回源补采;
 // 批间退避 nasBackfillBackoffInitial;命中限流指数退避、重试耗尽返回 rateLimited
@@ -486,12 +433,12 @@ func (e *SyncNASBackfillExecutor) backfillAccount(
 	result := nasBackfillAccountResult{failure: newNASAccountFailure(string(account.Provider), account.ID)}
 
 	taskID := fmt.Sprintf("backfill:%d", account.ID)
-	if !e.tryAcquireBackfill(account.ID, taskID) {
+	if !e.tryAcquireAccount(account.ID, taskID) {
 		e.logger.Warn("该账号已有回填任务在执行,跳过该账号",
 			elog.Int64("account_id", account.ID))
 		return result
 	}
-	defer e.releaseBackfill(account.ID, taskID)
+	defer e.releaseAccount(account.ID, taskID)
 	result.accounts = 1
 
 	adapter, err := e.cloudxFactory.CreateAdapter(account)

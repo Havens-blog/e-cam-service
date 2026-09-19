@@ -131,10 +131,10 @@ type SyncNASMetricsExecutor struct {
 	metricDAO     dao.NASMetricDAO
 	taskRepo      taskx.TaskRepository
 	logger        *elog.Component
-	// syncingNow 账号级采集互斥(account_id -> task_id)，与 CDN 指标执行器
+	// nasAccountGate 账号级采集互斥(account_id -> task_id)，与 CDN 指标执行器
 	// 同模式：同一账号同时只放行一个采集任务，避免重复消耗厂商 API 配额。
-	syncMu     sync.Mutex
-	syncingNow map[int64]string
+	// 与回填执行器共用的实现见 nas_account_gate.go(嵌入后方法/字段同名提升)。
+	nasAccountGate
 	// healthAlerter 自我健康监控告警桥(与日闸告警共用同一实现，cam/wire.go
 	// 装配；nil 时仅跳过健康监控，不影响采集主链路)
 	healthAlerter NASHealthAlerter
@@ -149,33 +149,13 @@ func NewSyncNASMetricsExecutor(
 	logger *elog.Component,
 ) *SyncNASMetricsExecutor {
 	return &SyncNASMetricsExecutor{
-		accountRepo:   accountRepo,
-		instanceRepo:  instanceRepo,
-		cloudxFactory: cloudx.NewAdapterFactory(logger),
-		metricDAO:     metricDAO,
-		taskRepo:      taskRepo,
-		logger:        logger,
-		syncingNow:    make(map[int64]string),
-	}
-}
-
-// tryAcquireAccount 占用账号采集权;已被其他任务持有返回 false(持有者自身幂等)。
-func (e *SyncNASMetricsExecutor) tryAcquireAccount(accountID int64, taskID string) bool {
-	e.syncMu.Lock()
-	defer e.syncMu.Unlock()
-	if owner, busy := e.syncingNow[accountID]; busy && owner != taskID {
-		return false
-	}
-	e.syncingNow[accountID] = taskID
-	return true
-}
-
-// releaseAccount 释放账号采集权(仅持有者可释放)。
-func (e *SyncNASMetricsExecutor) releaseAccount(accountID int64, taskID string) {
-	e.syncMu.Lock()
-	defer e.syncMu.Unlock()
-	if owner, busy := e.syncingNow[accountID]; busy && owner == taskID {
-		delete(e.syncingNow, accountID)
+		accountRepo:    accountRepo,
+		instanceRepo:   instanceRepo,
+		cloudxFactory:  cloudx.NewAdapterFactory(logger),
+		metricDAO:      metricDAO,
+		taskRepo:       taskRepo,
+		logger:         logger,
+		nasAccountGate: newNASAccountGate(),
 	}
 }
 
@@ -211,7 +191,7 @@ func (e *SyncNASMetricsExecutor) Execute(ctx context.Context, t *taskx.Task) err
 		fmt.Sprintf("准备采集 %s ~ %s 的 NAS 指标", startDate, endDate))
 
 	// 获取需要采集的账号列表(活跃账号，不检查 EnableAutoSync 开关)
-	accounts, err := e.resolveAccounts(ctx, params)
+	accounts, err := resolveNASAccounts(ctx, e.accountRepo, params.AccountID, params.Provider)
 	if err != nil {
 		return err
 	}
@@ -296,29 +276,6 @@ func (e *SyncNASMetricsExecutor) Execute(ctx context.Context, t *taskx.Task) err
 		elog.Int("total_metrics", totalMetrics),
 		elog.Int("failed_instances", failedInstances))
 	return nil
-}
-
-// resolveAccounts 解析待采集账号:指定 account_id 取单个，否则取全部活跃账号
-// (provider 可选过滤)。指标采集对已纳管账号统一执行，不依赖账号的
-// EnableAutoSync 开关——与 CDN 一致，避免未开自动同步的账号静默漏采。
-func (e *SyncNASMetricsExecutor) resolveAccounts(ctx context.Context, params syncNASMetricsParams) ([]domain.CloudAccount, error) {
-	if params.AccountID > 0 {
-		account, err := e.accountRepo.GetByID(ctx, params.AccountID)
-		if err != nil {
-			return nil, fmt.Errorf("获取云账号失败: %w", err)
-		}
-		return []domain.CloudAccount{account}, nil
-	}
-	filter := domain.CloudAccountFilter{
-		Provider: domain.CloudProvider(params.Provider),
-		Status:   domain.CloudAccountStatusActive,
-		Limit:    100,
-	}
-	accts, _, err := e.accountRepo.List(ctx, filter)
-	if err != nil {
-		return nil, fmt.Errorf("获取云账号列表失败: %w", err)
-	}
-	return accts, nil
 }
 
 // listAccountNASInstances 从 ecam_instance 枚举该账号的全部 NAS 实例
