@@ -17,15 +17,17 @@ type AssetHandler struct {
 	instanceSvc service.InstanceService
 	snapshotDAO dao.StatsSnapshotDAO
 	cdnQuery    CDNCacheConfigService
+	nasQuery    NASQueryService
 	logger      *elog.Component
 }
 
 // NewAssetHandler 创建资产处理器
-func NewAssetHandler(instanceSvc service.InstanceService, snapshotDAO dao.StatsSnapshotDAO, cdnQuery CDNCacheConfigService) *AssetHandler {
+func NewAssetHandler(instanceSvc service.InstanceService, snapshotDAO dao.StatsSnapshotDAO, cdnQuery CDNCacheConfigService, nasQuery NASQueryService) *AssetHandler {
 	return &AssetHandler{
 		instanceSvc: instanceSvc,
 		snapshotDAO: snapshotDAO,
 		cdnQuery:    cdnQuery,
+		nasQuery:    nasQuery,
 		logger:      elog.DefaultLogger,
 	}
 }
@@ -151,6 +153,8 @@ func (h *AssetHandler) registerAssetRoutes(assetsGroup *gin.RouterGroup) {
 
 	// NAS 文件存储
 	assetsGroup.GET("/nas", h.ListNAS)
+	assetsGroup.GET("/nas/metrics", h.GetNASFsMetrics)
+	assetsGroup.GET("/nas/top", h.GetNASTop)
 	assetsGroup.GET("/nas/:asset_id", h.GetNAS)
 
 	// OSS 对象存储

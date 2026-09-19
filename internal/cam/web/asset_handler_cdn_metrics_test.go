@@ -48,7 +48,7 @@ func newCDNMetricsRouter(t *testing.T, fake *fakeCDNQuery) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	h := NewAssetHandler(nil, nil, fake)
+	h := NewAssetHandler(nil, nil, fake, nil)
 	r.Use(func(c *gin.Context) {
 		c.Set(middleware.TenantIDKey, int64(7))
 		c.Next()

@@ -34,6 +34,12 @@ type NASMetricDAO interface {
 	// 已落库的指标行数(自我健康监控用:行存在即「成功采集」证据,窗口内全零
 	// 且实盘存在 NAS 实例 → 升级告警)。返回 map 以厂商为键,无行厂商计 0。
 	CountMetricsByProviders(ctx context.Context, providers []string, sinceDate string) (map[string]int64, error)
+	// ListByFs 取指定账号+fs_id 近 N 天单日指标,按 date 升序(趋势接口读取)。
+	// days 缺省 30、上限收敛 90(读取窗口 1~90,规格「Proposed Solution」第 5 点)。
+	ListByFs(ctx context.Context, accountID int64, fsID string, days int) ([]types.NASMetric, error)
+	// ListByAccounts 取一组账号近 N 天全部指标行(Top 聚合读取,服务层按 fs_id
+	// 去重与分页)。accountIDs 为空返回空切片;days 缺省/上限同 ListByFs。
+	ListByAccounts(ctx context.Context, accountIDs []int64, days int) ([]types.NASMetric, error)
 	// ListExistingMetricDates 查询指定账号下一组 fs_id 在 [startDate, endDate]
 	// (含两端,YYYY-MM-DD)内已落库的日期集合,返回 map[fs_id]set(date)。
 	// 历史回填的幂等预检专用:已成功批次凭此跳过(不重试厂商 API),缺失日期
