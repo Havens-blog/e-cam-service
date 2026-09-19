@@ -8,7 +8,7 @@
       "title": "火山部署器证书库层（UploadCert/GetCert/CleanupOrphan）",
       "priority": "P0",
       "estimatedTime": "2h",
-      "status": "pending",
+      "status": "in_progress",
       "file": "1-upload-get-cleanup.md",
       "record": "records/1-upload-get-cleanup.md",
       "surface-type": "api",
