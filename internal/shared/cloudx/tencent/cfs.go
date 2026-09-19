@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
@@ -21,6 +22,18 @@ type CFSAdapter struct {
 	accessKeySecret string
 	defaultRegion   string
 	logger          *elog.Component
+
+	// nasMonitorClients 云监控客户端按实例 region 缓存(nas_metrics.go)
+	nasMonitorClients map[string]nasMonitorClient
+	// nasMonitorMu 保护 nasMonitorClients 的并发创建
+	nasMonitorMu sync.Mutex
+	// appid 缓存:CAM GetUserAppId 解析结果(CFS 云监控维度必带),once 防并发重复解析
+	appidOnce  sync.Once
+	appidValue string
+	appidErr   error
+	// nasMonitorHooks NAS 指标查询测试注入钩子(非 nil 时替代真实云监控/
+	// CAM 客户端创建;仅单测使用),见 nas_metrics.go
+	nasMonitorHooks *nasMetricHooks
 }
 
 // NewCFSAdapter 创建 CFS 适配器
