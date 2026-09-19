@@ -29,6 +29,10 @@ var metricCSTZone = time.FixedZone("CST", 8*60*60)
 type CDNMetricDAO interface {
 	// UpsertMetric 按 (domain, date) 幂等写入单日指标,同日重采覆盖为最新值
 	UpsertMetric(ctx context.Context, m types.CDNMetric) error
+	// BulkUpsertMetrics 批量幂等写入单日指标(mongo BulkWrite + upsert),
+	// 唯一键与 UpsertMetric 一致 (account_id, domain, date);空批直接返回 nil,
+	// BulkWrite 错误(含部分失败)原样回传
+	BulkUpsertMetrics(ctx context.Context, metrics []types.CDNMetric) error
 	// ListByDomain 取指定域名近 N 天单日指标,按 date 降序。
 	// accountID > 0 时仅返回该账号的指标(账号级隔离),0 表示不过滤。
 	ListByDomain(ctx context.Context, domain string, days int, accountID int64) ([]types.CDNMetric, error)
@@ -73,14 +77,43 @@ func NewCDNMetricDAO(db *mongox.Mongo) CDNMetricDAO {
 }
 
 func (d *cdnMetricDAO) UpsertMetric(ctx context.Context, m types.CDNMetric) error {
-	// 以 (account_id, domain, date) 为键:同一域名可由多家 CDN 账号共同加速,
-	// 各账号同日数据独立保留(多活 CDN),互不覆盖。
-	filter := bson.M{
+	_, err := d.db.Collection(CDNMetricCollection).UpdateOne(ctx, cdnMetricFilter(m), cdnMetricUpsertUpdate(m), options.Update().SetUpsert(true))
+	return err
+}
+
+// BulkUpsertMetrics 批量幂等写入单日指标,替代逐条 UpsertMetric 降低写放大。
+// filter 与 UpsertMetric 同唯一键 (account_id, domain, date),upsert 覆盖语义,
+// 整批可安全重放(同键二次写入只覆盖不新增);空批直接返回 nil 不触碰数据库;
+// BulkWrite 错误(含 unordered 部分失败)原样回传。
+func (d *cdnMetricDAO) BulkUpsertMetrics(ctx context.Context, metrics []types.CDNMetric) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+	models := make([]mongo.WriteModel, 0, len(metrics))
+	for _, m := range metrics {
+		models = append(models, mongo.NewUpdateOneModel().
+			SetFilter(cdnMetricFilter(m)).
+			SetUpdate(cdnMetricUpsertUpdate(m)).
+			SetUpsert(true))
+	}
+	opts := options.BulkWrite().SetOrdered(false)
+	_, err := d.db.Collection(CDNMetricCollection).BulkWrite(ctx, models, opts)
+	return err
+}
+
+// cdnMetricFilter 以 (account_id, domain, date) 唯一键定位单日指标行:
+// 同一域名可由多家 CDN 账号共同加速,各账号同日数据独立保留(多活 CDN),互不覆盖。
+func cdnMetricFilter(m types.CDNMetric) bson.M {
+	return bson.M{
 		"account_id": m.AccountID,
 		"domain":     m.Domain,
 		"date":       m.Date,
 	}
-	update := bson.M{
+}
+
+// cdnMetricUpsertUpdate 单日指标覆盖字段($set 重采值,$setOnInsert 补齐键字段)
+func cdnMetricUpsertUpdate(m types.CDNMetric) bson.M {
+	return bson.M{
 		"$set": bson.M{
 			"bytes":      m.Bytes,
 			"bandwidth":  m.Bandwidth,
@@ -93,8 +126,6 @@ func (d *cdnMetricDAO) UpsertMetric(ctx context.Context, m types.CDNMetric) erro
 			"date":   m.Date,
 		},
 	}
-	_, err := d.db.Collection(CDNMetricCollection).UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
-	return err
 }
 
 // ListByDomain 取指定域名近 N 天单日指标,按 date 降序
