@@ -87,7 +87,7 @@
         "2",
         "3"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "4-best-effort-adapters.md",
       "record": "records/4-best-effort-adapters.md",
       "surface-type": "api",
