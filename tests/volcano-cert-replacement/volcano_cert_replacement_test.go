@@ -194,7 +194,7 @@ func TestVolcanoCertReplacement_BindFailureCompensation(t *testing.T) {
 
 	// AC-2：CleanupOrphan 幂等——同一孤儿双调用同结果（第二次命中云侧
 	// not-found，部署器归一为成功）。
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		creds, cerr := h.Creds.CloudCredential(context.Background(), "volcano", item.ResourceRef.AccountKey)
 		require.NoError(t, cerr)
 		cerr = h.Channel.CleanupOrphanCert(context.Background(), creds, "volcano", newCloudCertID)

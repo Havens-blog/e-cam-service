@@ -282,23 +282,6 @@ func (s *StubVolcanoCertLibrary) recordDelete(product, rawID string) error {
 	return nil
 }
 
-// recordUpload bumps the per-library counter and records the artifact.
-func (s *StubVolcanoCertLibrary) recordUpload(product, rawID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	switch product {
-	case "csv":
-		s.csvUploads++
-	case "cdn":
-		s.cdnUploads++
-	case "waf":
-		s.wafUploads++
-	case "alb":
-		s.albUploads++
-	}
-	s.uploadInputs = append(s.uploadInputs, product+":"+rawID)
-}
-
 // ---------------------------------------------------------------------
 // certificateservice ( csv ) unified library
 // ---------------------------------------------------------------------

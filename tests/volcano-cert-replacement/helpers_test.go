@@ -142,7 +142,7 @@ func batchedVolcanoConf() *deployer.BatchConf {
 // of consecutive rounds ( default 2 = VerifyConfirmProbes ).
 func probeRounds(t *testing.T, h *multicloudtest.Harness, rounds int) {
 	t.Helper()
-	for i := 0; i < rounds; i++ {
+	for range rounds {
 		_, err := h.Verify.ProbeVerifyingWindows(context.Background())
 		require.NoError(t, err)
 	}
