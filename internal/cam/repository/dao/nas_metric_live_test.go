@@ -192,6 +192,72 @@ func TestNASMetricPerAccountLive(t *testing.T) {
 	}
 }
 
+// 首写生效 vs 覆盖更新活体验证(T5 AC:今日行首写生效/昨日行覆盖更新):
+//   - BulkInsertIfAbsent 同键二次写入:首次值保留(已有行不被覆盖,不产生脏行);
+//   - BulkUpsertMetrics 同键二次写入:值覆盖为最新(次日补采昨日行的语义)。
+func TestNASMetricInsertIfAbsentLive(t *testing.T) {
+	d, coll := liveNASMetricDAO(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	base := types.NASMetric{
+		FsID: "test-insert-absent-nas-1", FsName: "首写生效fs", Date: "2026-09-14",
+		Capacity: 100, UsedCapacity: 10,
+		AccountID: 9903, Provider: "aliyun",
+	}
+	// 1. 首写:插入成功
+	if err := d.BulkInsertIfAbsent(ctx, []types.NASMetric{base}); err != nil {
+		t.Fatalf("insert-if-absent first: %v", err)
+	}
+	// 2. 同键二次首写:不得覆盖已有行(首写生效)
+	retry := base
+	retry.Capacity = 999
+	retry.UsedCapacity = 99
+	if err := d.BulkInsertIfAbsent(ctx, []types.NASMetric{retry}); err != nil {
+		t.Fatalf("insert-if-absent second: %v", err)
+	}
+	var got types.NASMetric
+	if err := coll.FindOne(ctx, bson.M{"account_id": base.AccountID, "fs_id": base.FsID, "date": base.Date}).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Capacity != 100 || got.UsedCapacity != 10 {
+		t.Fatalf("首写生效失败,二次写入覆盖了已有行: capacity=%v used=%v (want 100/10)", got.Capacity, got.UsedCapacity)
+	}
+	// 行数仍为 1(同日重复采集不产生脏行)
+	cnt, err := coll.CountDocuments(ctx, bson.M{"account_id": base.AccountID, "fs_id": base.FsID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cnt != 1 {
+		t.Fatalf("rows = %d, want 1 (首写批重放产生脏行)", cnt)
+	}
+
+	// 3. 覆盖更新路径(BulkUpsertMetrics)同键重写:值覆盖为最新(昨日补采语义)
+	override := base
+	override.Capacity = 250
+	override.UsedCapacity = 25
+	if err := d.BulkUpsertMetrics(ctx, []types.NASMetric{override}); err != nil {
+		t.Fatalf("bulk upsert override: %v", err)
+	}
+	if err := coll.FindOne(ctx, bson.M{"account_id": base.AccountID, "fs_id": base.FsID, "date": base.Date}).Decode(&got); err != nil {
+		t.Fatalf("decode override: %v", err)
+	}
+	if got.Capacity != 250 || got.UsedCapacity != 25 {
+		t.Fatalf("覆盖更新失败: capacity=%v used=%v (want 250/25)", got.Capacity, got.UsedCapacity)
+	}
+
+	// 4. 首写批与覆盖批互不串扰:覆盖后再次首写仍不回退已有值
+	if err := d.BulkInsertIfAbsent(ctx, []types.NASMetric{retry}); err != nil {
+		t.Fatalf("insert-if-absent after override: %v", err)
+	}
+	if err := coll.FindOne(ctx, bson.M{"account_id": base.AccountID, "fs_id": base.FsID, "date": base.Date}).Decode(&got); err != nil {
+		t.Fatalf("decode final: %v", err)
+	}
+	if got.Capacity != 250 {
+		t.Fatalf("覆盖后首写批误改已有行: capacity=%v (want 250)", got.Capacity)
+	}
+}
+
 // 批量写入活体验证:单批多条一次落库、同键二次批量重放幂等不重复(值覆盖)、
 // 零容量行整批内照常落库并打标。
 func TestNASMetricBulkUpsertLive(t *testing.T) {

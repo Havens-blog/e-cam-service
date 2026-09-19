@@ -56,6 +56,12 @@ func InitModule(
 	taskQueue.RegisterExecutor(executor.NewSyncCDNMetricsExecutor(accountRepo, metricDAO, taskRepo, logger))
 	logger.Info("CDN指标采集执行器已注册")
 
+	// 注册 NAS 指标采集执行器(每日容量/使用率指标采集;今日行首写生效、
+	// 昨日行覆盖更新,实例枚举以 ecam_instance 为准,不依赖 EnableAutoSync)
+	nasMetricDAO := dao.NewNASMetricDAO(db)
+	taskQueue.RegisterExecutor(executor.NewSyncNASMetricsExecutor(accountRepo, instanceRepo, nasMetricDAO, taskRepo, logger))
+	logger.Info("NAS指标采集执行器已注册")
+
 	// 启动任务队列
 	taskQueue.Start()
 

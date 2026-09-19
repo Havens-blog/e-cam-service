@@ -132,6 +132,29 @@ func TestNASMetricBulkUpsertMetrics_EmptyBatch(t *testing.T) {
 	}
 }
 
+// 首写生效写入(T5 AC:今日行首写生效)同样必须先过数量级自检:
+// 越界行在触碰数据库前整批拒绝(零容量行照常放行)。
+func TestNASMetricBulkInsertIfAbsentGateBeforeWrite(t *testing.T) {
+	d := &nasMetricDAO{}
+	batch := []types.NASMetric{
+		{FsID: "fs-ok", Date: "2026-09-19", Capacity: 100, AccountID: 1, Provider: "aliyun"},
+		{FsID: "fs-bad", Date: "2026-09-19", Capacity: 10485760}, // 单行越界 → 整批拒绝
+	}
+	if err := d.BulkInsertIfAbsent(context.Background(), batch); err == nil {
+		t.Fatal("insert-if-absent batch with out-of-range row must be rejected before db write, got nil")
+	}
+}
+
+func TestNASMetricBulkInsertIfAbsent_EmptyBatch(t *testing.T) {
+	d := &nasMetricDAO{}
+	if err := d.BulkInsertIfAbsent(context.Background(), nil); err != nil {
+		t.Fatalf("nil batch: %v", err)
+	}
+	if err := d.BulkInsertIfAbsent(context.Background(), []types.NASMetric{}); err != nil {
+		t.Fatalf("empty batch: %v", err)
+	}
+}
+
 // 错误注入:超时/不可达的 context 必须把错误原样回传,不得吞错
 func TestNASMetricUpsertMetrics_ErrorPassthrough(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)

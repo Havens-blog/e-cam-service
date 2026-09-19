@@ -25,6 +25,11 @@ type NASMetricDAO interface {
 	// 与 UpsertMetric 一致;空批直接返回 nil;任一行未过数量级自检则整批拒绝
 	// (不良行不得落库,错误携带 fs_id 供执行器失败归因);BulkWrite 错误原样回传。
 	BulkUpsertMetrics(ctx context.Context, metrics []types.NASMetric) error
+	// BulkInsertIfAbsent 批量「首写生效」写入(采集执行器专用):更新文档仅含
+	// $setOnInsert——唯一键 (account_id, fs_id, date) 命中已存在行时不做任何修改
+	// (今日行当日已有则不覆盖),仅补缺失行;未命中则整行插入。空批直接返回 nil;
+	// 数量级自检与 BulkUpsertMetrics 同口径,任一行未过则整批拒绝。
+	BulkInsertIfAbsent(ctx context.Context, metrics []types.NASMetric) error
 }
 
 type nasMetricDAO struct {
@@ -115,6 +120,43 @@ func (d *nasMetricDAO) BulkUpsertMetrics(ctx context.Context, metrics []types.NA
 	opts := options.BulkWrite().SetOrdered(false)
 	_, err := d.db.Collection(NASMetricCollection).BulkWrite(ctx, models, opts)
 	return err
+}
+
+// BulkInsertIfAbsent 批量「首写生效」写入:filter 定位唯一键行,更新文档仅含
+// $setOnInsert(upsert)——命中已存在行时不修改任何字段(首写保护),未命中才
+// 整行插入;同键二次写入天然幂等且不产生脏行。整批 ordered=false 提升吞吐。
+func (d *nasMetricDAO) BulkInsertIfAbsent(ctx context.Context, metrics []types.NASMetric) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+	models := make([]mongo.WriteModel, 0, len(metrics))
+	for _, m := range metrics {
+		qc, err := nasMetricQC(m)
+		if err != nil {
+			return err
+		}
+		models = append(models, mongo.NewUpdateOneModel().
+			SetFilter(nasMetricFilter(qc)).
+			SetUpdate(bson.M{"$setOnInsert": nasMetricInsertDoc(qc)}).
+			SetUpsert(true))
+	}
+	opts := options.BulkWrite().SetOrdered(false)
+	_, err := d.db.Collection(NASMetricCollection).BulkWrite(ctx, models, opts)
+	return err
+}
+
+// nasMetricInsertDoc 首写生效的插入文档($setOnInsert 全字段:插入时补齐整行)
+func nasMetricInsertDoc(m types.NASMetric) bson.M {
+	return bson.M{
+		"account_id":    m.AccountID,
+		"fs_id":         m.FsID,
+		"date":          m.Date,
+		"fs_name":       m.FsName,
+		"capacity":      m.Capacity,
+		"used_capacity": m.UsedCapacity,
+		"qc_status":     m.QcStatus,
+		"provider":      m.Provider,
+	}
 }
 
 // nasMetricFilter 以 (account_id, fs_id, date) 唯一键定位单日指标行:
