@@ -118,7 +118,7 @@
       "dependencies": [
         "5"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "6-observability-health.md",
       "record": "records/6-observability-health.md",
       "surface-type": "api",

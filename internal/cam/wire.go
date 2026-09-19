@@ -131,11 +131,12 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	// 写失败指数退避重试+升级告警、读失败 ≥5 分钟退避,见 scheduler/daily_gate.go)。
 	// 告警通道落 alert 告警事件(T6 健康监控/T8 CDN 迁移共用,勿重复造)。
 	schedulerStateDAO := dao.NewSchedulerStateDAO(db)
-	dailyGate := scheduler.NewPersistentDailyGate(
-		schedulerStateDAO,
-		NewSchedulerGateAlerter(alertdao.NewAlertDAO(db)),
-		component)
+	gateAlerter := NewSchedulerGateAlerter(alertdao.NewAlertDAO(db))
+	dailyGate := scheduler.NewPersistentDailyGate(schedulerStateDAO, gateAlerter, component)
 	autoSyncScheduler := scheduler.NewAutoSyncScheduler(cloudAccountRepository, queue, component, dailyGate)
+
+	// NAS 自我健康监控(任务 6):与日闸告警共用同一告警桥实例
+	taskModule.SetNASHealthAlerter(gateAlerter)
 
 	// Web 层
 	handler := web.NewHandler(serviceService, cloudAccountService, modelService)

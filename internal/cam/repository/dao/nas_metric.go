@@ -30,6 +30,10 @@ type NASMetricDAO interface {
 	// (今日行当日已有则不覆盖),仅补缺失行;未命中则整行插入。空批直接返回 nil;
 	// 数量级自检与 BulkUpsertMetrics 同口径,任一行未过则整批拒绝。
 	BulkInsertIfAbsent(ctx context.Context, metrics []types.NASMetric) error
+	// CountMetricsByProviders 统计各厂商自 sinceDate(含当日,YYYY-MM-DD)以来
+	// 已落库的指标行数(自我健康监控用:行存在即「成功采集」证据,窗口内全零
+	// 且实盘存在 NAS 实例 → 升级告警)。返回 map 以厂商为键,无行厂商计 0。
+	CountMetricsByProviders(ctx context.Context, providers []string, sinceDate string) (map[string]int64, error)
 }
 
 type nasMetricDAO struct {
@@ -185,4 +189,22 @@ func nasMetricUpsertUpdate(m types.NASMetric) bson.M {
 			"date":  m.Date,
 		},
 	}
+}
+
+// CountMetricsByProviders 统计各厂商自 sinceDate(含当日)以来已落库的指标行数。
+// 逐厂商 CountDocuments(必达厂商仅 3 家,无需聚合管道);date 字符串按
+// YYYY-MM-DD 字典序比较即时间序,与写入路径格式一致。
+func (d *nasMetricDAO) CountMetricsByProviders(ctx context.Context, providers []string, sinceDate string) (map[string]int64, error) {
+	out := make(map[string]int64, len(providers))
+	for _, p := range providers {
+		n, err := d.db.Collection(NASMetricCollection).CountDocuments(ctx, bson.M{
+			"provider": p,
+			"date":     bson.M{"$gte": sinceDate},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("统计厂商 %s 指标行数失败: %w", p, err)
+		}
+		out[p] = n
+	}
+	return out, nil
 }

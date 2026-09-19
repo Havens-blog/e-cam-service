@@ -22,6 +22,7 @@ type Module struct {
 	Queue              *taskx.Queue
 	TaskRepo           taskx.TaskRepository
 	syncAssetsExecutor *executor.SyncAssetsExecutor
+	nasMetricsExecutor *executor.SyncNASMetricsExecutor
 }
 
 // InitModule 初始化任务模块
@@ -59,7 +60,8 @@ func InitModule(
 	// 注册 NAS 指标采集执行器(每日容量/使用率指标采集;今日行首写生效、
 	// 昨日行覆盖更新,实例枚举以 ecam_instance 为准,不依赖 EnableAutoSync)
 	nasMetricDAO := dao.NewNASMetricDAO(db)
-	taskQueue.RegisterExecutor(executor.NewSyncNASMetricsExecutor(accountRepo, instanceRepo, nasMetricDAO, taskRepo, logger))
+	nasMetricsExecutor := executor.NewSyncNASMetricsExecutor(accountRepo, instanceRepo, nasMetricDAO, taskRepo, logger)
+	taskQueue.RegisterExecutor(nasMetricsExecutor)
 	logger.Info("NAS指标采集执行器已注册")
 
 	// 启动任务队列
@@ -69,7 +71,16 @@ func InitModule(
 		Queue:              taskQueue,
 		TaskRepo:           taskRepo,
 		syncAssetsExecutor: syncAssetsExecutor,
+		nasMetricsExecutor: nasMetricsExecutor,
 	}, nil
+}
+
+// SetNASHealthAlerter 注入 NAS 自我健康监控告警桥(与持久化日闸故障告警
+// 共用同一 schedulerGateAlerter 实现,cam/wire.go 装配;任务 6)
+func (m *Module) SetNASHealthAlerter(a executor.NASHealthAlerter) {
+	if m.nasMetricsExecutor != nil {
+		m.nasMetricsExecutor.SetNASHealthAlerter(a)
+	}
 }
 
 // SetDNSCollections 设置 DNS 专用集合（在 DNS 模块初始化后调用）

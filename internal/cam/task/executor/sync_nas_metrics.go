@@ -63,10 +63,64 @@ type syncNASMetricsParams struct {
 
 // nasAccountCollectResult 单账号采集结果汇总
 type nasAccountCollectResult struct {
-	written         int  // 成功写入的日指标条数
-	failedInstances int  // 采集失败实例数(查询/写库失败，单实例失败不中断其余实例)
-	noMetricSupport bool // 厂商未实现 NASMetricQuerier(整体跳过)
-	noNASInstances  bool // ecam_instance 中无 NAS 实例(非活跃账号，不采集)
+	written         int                // 成功写入的日指标条数
+	failedInstances int                // 采集失败实例数(查询/写库失败，单实例失败不中断其余实例)
+	noMetricSupport bool               // 厂商未实现 NASMetricQuerier(整体跳过)
+	noNASInstances  bool               // ecam_instance 中无 NAS 实例(非活跃账号，不采集)
+	failure         *nasAccountFailure // 厂商/账号维度失败累计(无失败时 ErrorCount=0)
+}
+
+// nasProviderFailure 厂商/账号维度失败汇总(任务 Result 携带，运营可查)。
+// spec「失败可观测性」：扩展 CDN skipped_providers 雏形为含错误明细的结构，
+// 让「适配器失效」与「真实无指标」在结果上可分辨(Hard Rule)。
+type nasProviderFailure struct {
+	Provider   string `json:"provider"`    // 云厂商
+	AccountID  int64  `json:"account_id"`  // 云账号 ID
+	ErrorCount int    `json:"error_count"` // 本次任务内该账号累计失败次数
+	LastError  string `json:"last_error"`  // 末次错误信息
+}
+
+// nasAccountFailure 单账号失败累计器(并发安全)：实例采集在有界并发 goroutine
+// 中进行，失败次数与末次错误需互斥累计；采集结束经 snapshot 转为 Result 明细。
+type nasAccountFailure struct {
+	mu         sync.Mutex
+	provider   string
+	accountID  int64
+	errorCount int
+	lastError  string
+}
+
+func newNASAccountFailure(provider string, accountID int64) *nasAccountFailure {
+	return &nasAccountFailure{provider: provider, accountID: accountID}
+}
+
+// record 记一次失败(仅对实际发生的错误计数，不把「真实无数据」算作失败)
+func (f *nasAccountFailure) record(err error) {
+	if err == nil {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.errorCount++
+	f.lastError = err.Error()
+}
+
+// snapshot 无失败返回 nil，有失败返回 Result 携带的汇总结构
+func (f *nasAccountFailure) snapshot() *nasProviderFailure {
+	if f == nil {
+		return nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.errorCount == 0 {
+		return nil
+	}
+	return &nasProviderFailure{
+		Provider:   f.provider,
+		AccountID:  f.accountID,
+		ErrorCount: f.errorCount,
+		LastError:  f.lastError,
+	}
 }
 
 // SyncNASMetricsExecutor NAS 指标采集任务执行器
@@ -81,6 +135,9 @@ type SyncNASMetricsExecutor struct {
 	// 同模式：同一账号同时只放行一个采集任务，避免重复消耗厂商 API 配额。
 	syncMu     sync.Mutex
 	syncingNow map[int64]string
+	// healthAlerter 自我健康监控告警桥(与日闸告警共用同一实现，cam/wire.go
+	// 装配；nil 时仅跳过健康监控，不影响采集主链路)
+	healthAlerter NASHealthAlerter
 }
 
 // NewSyncNASMetricsExecutor 创建 NAS 指标采集执行器
@@ -171,6 +228,7 @@ func (e *SyncNASMetricsExecutor) Execute(ctx context.Context, t *taskx.Task) err
 		noMetricSupport    []string
 		skippedAccounts    []string
 		accountsWithoutNAS []string
+		failures           = make([]nasProviderFailure, 0)
 	)
 
 	for ai, account := range accounts {
@@ -194,6 +252,10 @@ func (e *SyncNASMetricsExecutor) Execute(ctx context.Context, t *taskx.Task) err
 				elog.Int64("account_id", account.ID),
 				elog.FieldErr(collectErr))
 		}
+		if f := result.failure.snapshot(); f != nil {
+			// 失败可观测(spec「失败可观测性」):厂商/账号维度失败明细入 Result
+			failures = append(failures, *f)
+		}
 		if result.noMetricSupport {
 			noMetricSupport = append(noMetricSupport, string(account.Provider))
 		}
@@ -210,6 +272,11 @@ func (e *SyncNASMetricsExecutor) Execute(ctx context.Context, t *taskx.Task) err
 
 	e.taskRepo.UpdateProgress(ctx, t.ID, 95, "正在汇总采集结果")
 
+	// 自我健康监控(每日采集完成钩子):仅全量运行判定，手动单账号/单厂商
+	// 运行不判定(避免以偏概全误报)。必达厂商连续 3 天零成功且实盘存在
+	// ≥1 个 NAS 实例 → 经共用告警通道升级告警。
+	healthAlerts := e.checkMandatoryProviderHealth(ctx, params)
+
 	t.Result = map[string]any{
 		"metrics_total":        totalMetrics,
 		"accounts":             collectedAccounts,
@@ -218,6 +285,8 @@ func (e *SyncNASMetricsExecutor) Execute(ctx context.Context, t *taskx.Task) err
 		"no_metric_support":    noMetricSupport,
 		"accounts_without_nas": accountsWithoutNAS,
 		"failed_instances":     failedInstances,
+		"failures":             failures,
+		"health_alerts":        healthAlerts,
 	}
 	t.Progress = 100
 	t.Message = fmt.Sprintf("NAS 指标采集完成,共写入 %d 条日指标(%d 个账号)", totalMetrics, collectedAccounts)
@@ -281,40 +350,49 @@ func (e *SyncNASMetricsExecutor) listAccountNASInstances(ctx context.Context, ac
 // collectAccount 采集单个账号全部 NAS 实例在 [startDate, endDate] 的指标
 // (endDate 即「今日」，今日行首写生效、更早行覆盖更新的分流以此为准)。
 // 实例循环有界并发(semaphore 上限 nasMetricInstanceConcurrency)，单实例失败
-// 记日志不中断其余实例。厂商未实现 NASMetricQuerier 时整体跳过(noMetricSupport)。
+// 记日志并计入失败明细、不中断其余实例。厂商未实现 NASMetricQuerier 时整体
+// 跳过(noMetricSupport，探测不支持属 INFO 语义，不计失败)。
 func (e *SyncNASMetricsExecutor) collectAccount(
 	ctx context.Context,
 	account *domain.CloudAccount,
 	startDate, endDate string,
 ) (nasAccountCollectResult, error) {
+	failure := newNASAccountFailure(string(account.Provider), account.ID)
+
 	adapter, err := e.cloudxFactory.CreateAdapter(account)
 	if err != nil {
-		return nasAccountCollectResult{}, fmt.Errorf("创建适配器失败: %w", err)
+		err = fmt.Errorf("创建适配器失败: %w", err)
+		failure.record(err)
+		return nasAccountCollectResult{failure: failure}, err
 	}
 
 	nasAdapter := adapter.NAS()
 	if nasAdapter == nil {
-		return nasAccountCollectResult{}, fmt.Errorf("NAS适配器不可用")
+		err := fmt.Errorf("NAS适配器不可用")
+		failure.record(err)
+		return nasAccountCollectResult{failure: failure}, err
 	}
 
 	querier, ok := nasAdapter.(cloudx.NASMetricQuerier)
 	if !ok {
+		// 探测不支持(指标能力缺失):INFO 语义，不计失败、不触发告警
 		e.logger.Info("该厂商NAS适配器不支持指标查询,跳过",
 			elog.String("provider", string(account.Provider)))
-		return nasAccountCollectResult{noMetricSupport: true}, nil
+		return nasAccountCollectResult{noMetricSupport: true, failure: failure}, nil
 	}
 
 	// 活跃账号口径:ecam_instance 中存在 ≥1 个 NAS 实例
 	instances, err := e.listAccountNASInstances(ctx, account)
 	if err != nil {
-		return nasAccountCollectResult{}, err
+		failure.record(err)
+		return nasAccountCollectResult{failure: failure}, err
 	}
 	if len(instances) == 0 {
-		return nasAccountCollectResult{noNASInstances: true}, nil
+		return nasAccountCollectResult{noNASInstances: true, failure: failure}, nil
 	}
 
 	// 实例有界并发采集(沿 CDN 指标执行器 semaphore 先例):单实例失败记日志
-	// 不中断其余实例;任务取消不再派发。
+	// + 计入失败明细，不中断其余实例;任务取消不再派发。
 	var (
 		wg      sync.WaitGroup
 		sem     = make(chan struct{}, nasMetricInstanceConcurrency)
@@ -333,11 +411,11 @@ func (e *SyncNASMetricsExecutor) collectAccount(
 				return
 			}
 			defer func() { <-sem }()
-			written.Add(int64(e.collectInstanceMetrics(ctx, querier, account, inst, startDate, endDate)))
+			written.Add(int64(e.collectInstanceMetrics(ctx, querier, account, inst, startDate, endDate, failure)))
 		}(inst)
 	}
 	wg.Wait()
-	return nasAccountCollectResult{written: int(written.Load())}, nil
+	return nasAccountCollectResult{written: int(written.Load()), failure: failure}, nil
 }
 
 // collectInstanceMetrics 单实例采集 [startDate, endDate] 指标并按日期分流写库:
@@ -345,7 +423,8 @@ func (e *SyncNASMetricsExecutor) collectAccount(
 //   - 更早(昨日及以前)行 → BulkUpsertMetrics 覆盖更新(次日补采显式覆盖昨日行)。
 //
 // 不做 CDN「全零跳过」过滤:capacity=0 行照常入批，由 DAO 数量级自检例外放行
-// 并打 qc_status=zero_exception。查询/写库失败记日志返回已写条数，不中断其余
+// 并打 qc_status=zero_exception。查询/写库失败记日志 + 计入失败明细(调用失败
+// 属 ERROR 语义，与「真实无数据」的空结果可分辨)，返回已写条数，不中断其余
 // 实例(由调用方并发调度)。
 func (e *SyncNASMetricsExecutor) collectInstanceMetrics(
 	ctx context.Context,
@@ -353,6 +432,7 @@ func (e *SyncNASMetricsExecutor) collectInstanceMetrics(
 	account *domain.CloudAccount,
 	inst camdomain.Instance,
 	startDate, endDate string,
+	failure *nasAccountFailure,
 ) int {
 	fsID := inst.AssetID
 	if fsID == "" {
@@ -371,6 +451,7 @@ func (e *SyncNASMetricsExecutor) collectInstanceMetrics(
 			elog.String("region", region),
 			elog.Int64("account_id", account.ID),
 			elog.FieldErr(err))
+		failure.record(err)
 		return 0
 	}
 
@@ -395,6 +476,7 @@ func (e *SyncNASMetricsExecutor) collectInstanceMetrics(
 				elog.String("fs_id", fsID),
 				elog.Int("batch_size", len(todayRows)),
 				elog.FieldErr(err))
+			failure.record(err)
 		} else {
 			written += len(todayRows)
 		}
@@ -405,6 +487,7 @@ func (e *SyncNASMetricsExecutor) collectInstanceMetrics(
 				elog.String("fs_id", fsID),
 				elog.Int("batch_size", len(pastRows)),
 				elog.FieldErr(err))
+			failure.record(err)
 		} else {
 			written += len(pastRows)
 		}
