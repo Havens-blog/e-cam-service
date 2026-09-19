@@ -8,7 +8,7 @@
       "title": "厂商监控 API 探测:volcengine 指标名 / 华为 namespace / 实盘非零验证 / 容量分布统计",
       "priority": "P0",
       "estimatedTime": "2d",
-      "status": "pending",
+      "status": "completed",
       "file": "1-probe-vendors.md",
       "record": "records/1-probe-vendors.md",
       "surface-type": "api",
@@ -54,7 +54,7 @@
       "dependencies": [
         "1"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "file": "2-model-dao-schema.md",
       "record": "records/2-model-dao-schema.md",
       "surface-type": "api",

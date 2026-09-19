@@ -126,6 +126,8 @@ github.com/aws/aws-sdk-go-v2/service/acm v1.38.0 h1:Vti3TgWkfWBJcLjh9g5SABNgwEkY
 github.com/aws/aws-sdk-go-v2/service/acm v1.38.0/go.mod h1:0XoAyD03Stvqf8e/vVCk/1FP2aaF+xUluP7K9MrHWcQ=
 github.com/aws/aws-sdk-go-v2/service/cloudfront v1.60.2 h1:+5lijyTp+IoU5oh6rL3374yEkaPeFnaes+b4WWUQC2I=
 github.com/aws/aws-sdk-go-v2/service/cloudfront v1.60.2/go.mod h1:Ndq7ECdcXc8jmE4WPhl409BdAAWW6jrirMFgliMxMtU=
+github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.45.2 h1:pc8D62wqqWtXlIFp5/e/rhpVPxWnA0craqovONbol5M=
+github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.45.2/go.mod h1:W6zagkMLyJeopkbOOzERmC4tTQD2I3vdrpw30ywOeEU=
 github.com/aws/aws-sdk-go-v2/service/costexplorer v1.63.4 h1:RbQP00fIi1Z/KxP0RU/PaO8a5qzOqtayEUbrPEzQ074=
 github.com/aws/aws-sdk-go-v2/service/costexplorer v1.63.4/go.mod h1:MmnbHUdwk+3lzeQIC0IJs6GjY+fubcgBUZOEFbmMo+s=
 github.com/aws/aws-sdk-go-v2/service/docdb v1.48.9 h1:KGrW7LuAQfNMUNSUxtaN0cAqhl3w5tMh0k6ygu/kq8M=
