@@ -1133,6 +1133,258 @@
       "value": "ProbeDomains(ctx, []string) 按域名 TLS 拨测，云无关复用",
       "confidence": "inferred",
       "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_API_METRICS_ENDPOINT",
+      "source": "static",
+      "subject": "单实例 NAS 趋势端点 (internal/cam/web/asset_handler.go:156)",
+      "kind": "signature",
+      "value": "GET /assets/nas/metrics?fs_id=&account_id=&days=",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_API_TOP_ENDPOINT",
+      "source": "static",
+      "subject": "NAS Top 排行端点 (internal/cam/web/asset_handler.go:157)",
+      "kind": "signature",
+      "value": "GET /assets/nas/top?account_id=&days=&sort=&top=&page=&page_size=",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_AUTH_REQUIRED",
+      "source": "static",
+      "subject": "assets 路由组挂鉴权中间件,未认证会话 401 (internal/cam/web/asset_handler.go:77-89 上游路由装配)",
+      "kind": "precondition",
+      "value": "有效登录会话+租户上下文必需;未认证 401",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_DAYS_BOUND",
+      "source": "static",
+      "subject": "days 参数边界 (internal/cam/web/asset_handler_nas_metrics.go:24-32,115-137)",
+      "kind": "precondition",
+      "value": "缺省 30,合法域 1~90,越界 400 FieldInvalid",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_TOP_BOUNDS",
+      "source": "static",
+      "subject": "top/page/page_size 边界 (internal/cam/web/asset_handler_nas_metrics.go:27-32,84-95)",
+      "kind": "precondition",
+      "value": "top 缺省 10 最大 50;page 缺省 1;page_size 缺省 10 最大 50;越界 400",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_SORT_DOMAIN",
+      "source": "static",
+      "subject": "Top sort 合法域 (internal/cam/web/asset_handler_nas_metrics.go:79-83)",
+      "kind": "precondition",
+      "value": "sort 仅 capacity|utilization,缺省 capacity,非法值 400",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_CROSS_TENANT_404",
+      "source": "static",
+      "subject": "越权账号错误映射 (internal/cam/web/asset_handler_nas_metrics.go:139-146; internal/cam/service/asset_nas_query.go:44-46)",
+      "kind": "error_code",
+      "value": "ErrNASAccountNotInTenant → 404 errs.AccountNotFound(404002),不泄露账号存在性;其余错误 500 SystemError",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_METRIC_UNIQUE_KEY",
+      "source": "static",
+      "subject": "ecam_nas_metric 唯一索引 (internal/cam/repository/dao/nas_metric.go:60-72)",
+      "kind": "signature",
+      "value": "(account_id, fs_id, date) 唯一,共享 fs 各账号行独立保留",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_QC_GATE",
+      "source": "static",
+      "subject": "写入数量级自检门禁 (internal/cam/repository/dao/nas_metric.go:93-105)",
+      "kind": "precondition",
+      "value": "capacity=0 放行并强制 qc_status=zero_exception;非零越 [1MB,1PB] 拒绝并报错(错误携带 fs_id/date);批量任一行越界整批拒绝",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_FIRST_WRITE_PROTECT",
+      "source": "static",
+      "subject": "今日行首写生效 (internal/cam/repository/dao/nas_metric.go:143-161)",
+      "kind": "side_effect",
+      "value": "BulkInsertIfAbsent 更新文档仅含 $setOnInsert,唯一键命中不修改任何字段,仅补缺失行",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_OVERWRITE_PATH",
+      "source": "static",
+      "subject": "昨日行覆盖更新 (internal/cam/repository/dao/nas_metric.go:120-138)",
+      "kind": "side_effect",
+      "value": "BulkUpsertMetrics $set capacity/used_capacity/qc_status/fs_name/provider,upsert 可重放覆盖",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_UNIT_GIB",
+      "source": "static",
+      "subject": "容量单位口径 (internal/cam/repository/dao/nas_metric.go:74-81; internal/shared/cloudx/types BytesToGB)",
+      "kind": "signature",
+      "value": "capacity/used_capacity 以 GB(二进制 GiB) 落库,字节换算仅发生在采集边界,nasBytesPerGB=1024^3",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_GATE_TRY_CLAIM",
+      "source": "static",
+      "subject": "持久化日闸原子认领 (internal/cam/repository/dao/scheduler_state.go:60-96)",
+      "kind": "signature",
+      "value": "TryClaimDaily 单次 findOneAndUpdate(filter resource_type=? AND last_date<$lt date, $set last_date=date, upsert);重复键重试一次;ErrNoDocuments=认领失败",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_GATE_RESOURCE_KEYS",
+      "source": "static",
+      "subject": "日闸资源分键 (internal/cam/scheduler/daily_gate.go:31; auto_sync_nas_backfill.go:29)",
+      "kind": "signature",
+      "value": "resource_type 取值 nas / cdn / nas_backfill,分键独立认领互不阻塞",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_GATE_READ_BACKOFF",
+      "source": "static",
+      "subject": "日闸读失败退避 (internal/cam/scheduler/daily_gate.go:37-38,126-132)",
+      "kind": "side_effect",
+      "value": "读失败设置 5 分钟 readBackoffWindow,窗口内不重读不提交",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_GATE_WRITE_RETRY",
+      "source": "static",
+      "subject": "日闸写失败重试与升级 (internal/cam/scheduler/daily_gate.go:39-46,181-190)",
+      "kind": "side_effect",
+      "value": "单轮 1s/2s/4s 共 3 次重试,耗尽经 AlertDailyGateFailure 升级告警并进入跨轮 1min~5min 指数退避",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_SUBMIT_NO_ROLLBACK",
+      "source": "static",
+      "subject": "认领后提交失败不回滚 (internal/cam/scheduler/auto_sync_nas_metrics.go:79-87)",
+      "kind": "side_effect",
+      "value": "Submit 失败仅 ERROR 留痕,当日认领保留不重试(避免与多副本竞争)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_ROLLBACK_FLAG",
+      "source": "static",
+      "subject": "持久化闸回滚开关 (internal/cam/scheduler/auto_sync_nas_metrics.go:36-48; feature_flag SCHEDULER_PERSISTENT_GATE_ENABLED)",
+      "kind": "precondition",
+      "value": "开关显式 false 时回滚内存闸 lastNASMetricsCollectDate;dailyGate==nil 安全跳过不降级内存闸",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_TASK_TYPE",
+      "source": "static",
+      "subject": "采集任务类型与参数 (internal/cam/task/executor/sync_nas_metrics.go:41-42; auto_sync_nas_metrics.go:69-73)",
+      "kind": "signature",
+      "value": "nas:collect_metrics,自动触发 days=2 区间 [昨日,今日] Asia/Shanghai",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_RESULT_KEYS",
+      "source": "static",
+      "subject": "执行器 Result 可观测键 (internal/cam/task/executor/sync_nas_metrics.go:261-269)",
+      "kind": "output_format",
+      "value": "metrics_total/failed_instances/skipped_accounts/no_metric_support/accounts_without_nas/failures[](provider,account_id,error_count,last_error)/health_alerts",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_MANDATORY_PROVIDERS",
+      "source": "static",
+      "subject": "必达厂商与健康监控前置 (internal/cam/task/executor/nas_health_monitor.go:45-47,108-110)",
+      "kind": "precondition",
+      "value": "aliyun/huawei/aws;零成功告警前置=countNASInstances≥1;仅全量运行判定;共用 schedulerGateAlerter 告警通道",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_DATA_STATUS_VALUES",
+      "source": "static",
+      "subject": "读取侧 data_status 取值 (internal/cam/service/asset_nas_query.go:28-36,160-166)",
+      "kind": "output_format",
+      "value": "ok | zero_exception(qc_status 映射) | missing(缺失日,null 不填假值);qc_status 原样透出",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_UTILIZATION_DERIVED",
+      "source": "static",
+      "subject": "utilization 读取派生 (internal/cam/service/asset_nas_query.go:141-156)",
+      "kind": "signature",
+      "value": "永不落库,读取时 used/capacity(0-1);capacity=0 → null;used>capacity 按 min 收敛+warn;不产生 NaN",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_TREND_WINDOW",
+      "source": "static",
+      "subject": "趋势窗口展开 (internal/cam/service/asset_nas_query.go:201-219)",
+      "kind": "output_format",
+      "value": "days 窗口逐日升序展开,缺失日 data_status=missing 全 null;响应含 fs_id/days[]/latest/average",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_TOP_AGG_REPRESENTATIVE",
+      "source": "static",
+      "subject": "Top/运营卡去重聚合 (internal/cam/service/asset_nas_query.go:317-379)",
+      "kind": "signature",
+      "value": "按 fs_id 聚合;同日多账号行取容量最大为代表行(等价「日期 desc 再容量 desc」第一行);均值按每日代表行计算;account_id 去重升序;不跨账号求和/平均",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_AVERAGE_SKIP",
+      "source": "static",
+      "subject": "均值分母收敛 (internal/cam/service/asset_nas_query.go:409-437)",
+      "kind": "signature",
+      "value": "capacity=0 行与缺失日跳出不参与均值;无可用行各字段 null",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_TOP_EMPTY_SCOPE",
+      "source": "static",
+      "subject": "Top 空集合行为 (internal/cam/service/asset_nas_query.go:252-253,270-283)",
+      "kind": "output_format",
+      "value": "无账号/无行返回 200 空 items[] 与 total/page/page_size 元数据;page 超界返回空页不报错",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "NAS_ZERO_EXCEPTION_CONST",
+      "source": "static",
+      "subject": "qc_status 常量 (internal/shared/cloudx/types NASMetricQcZeroException)",
+      "kind": "signature",
+      "value": "zero_exception;正常行为空串;utilization 不落库",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
     }
   ]
 }
