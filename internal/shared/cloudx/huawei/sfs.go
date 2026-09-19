@@ -22,6 +22,10 @@ type SFSAdapter struct {
 	accessKeySecret string
 	defaultRegion   string
 	logger          *elog.Component
+
+	// cesHooks NAS 指标查询(CES)测试注入钩子(非 nil 时替代真实 CES 客户端
+	// 创建;仅单测使用),见 nas_metrics.go
+	cesHooks *cesMetricHooks
 }
 
 // NewSFSAdapter 创建 SFS 适配器

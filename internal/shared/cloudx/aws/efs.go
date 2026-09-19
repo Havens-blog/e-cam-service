@@ -21,6 +21,10 @@ type EFSAdapter struct {
 	accessKeySecret string
 	defaultRegion   string
 	logger          *elog.Component
+
+	// cwHooks NAS 指标查询(CloudWatch)测试注入钩子(非 nil 时替代真实
+	// CloudWatch 客户端创建;仅单测使用),见 nas_metrics.go
+	cwHooks *cwMetricHooks
 }
 
 // NewEFSAdapter 创建 EFS 适配器

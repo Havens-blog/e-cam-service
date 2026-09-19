@@ -8,16 +8,20 @@
 // 「单位归一化与字段语义」「必达厂商选择依据」「Key Risks」。
 package nasprobe
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+)
 
 // bytesPerGB 字节 → GB(二进制 GiB)换算分母。
 // 规格口径:ecam_nas_metric 容量字段以 GB(二进制 GiB)为唯一口径,
 // 换算在采集边界完成,禁止把字节直接写进 GB 字段。
 const bytesPerGB = 1024 * 1024 * 1024
 
-// BytesToGB 字节 → GB(二进制 GiB)。
+// BytesToGB 字节 → GB(二进制 GiB)。委托至 types 共享实现(采集链路唯一换算入口)。
 func BytesToGB(raw float64) float64 {
-	return raw / float64(bytesPerGB)
+	return types.BytesToGB(raw)
 }
 
 // 数量级自检区间(规格:capacity 落在 [1MB, 1PB] 区间),以 GB 计。

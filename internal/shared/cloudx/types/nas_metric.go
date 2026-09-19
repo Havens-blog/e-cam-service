@@ -1,5 +1,14 @@
 package types
 
+// BytesToGB 字节 → GB(二进制 GiB)。
+// 规格口径(proposal「单位归一化与字段语义」):各厂商 NASMetricQuerier 必须在
+// 采集边界完成「厂商原始字节 → GB」换算,禁止把字节直接写进 GB 字段。
+// NAS 指标链路(T3 三厂商适配器 + T4 执行器/回填)统一复用本函数,
+// 不在适配器内各自手写分母(nasprobe 包内同义函数为探测期产物,委托至此)。
+func BytesToGB(raw float64) float64 {
+	return raw / (1024 * 1024 * 1024)
+}
+
 // NAS 指标 qc_status 数据质量标注取值(spec「单位归一化与字段语义」)。
 // 取值是读取侧闭环契约(读取接口原样暴露并映射进 data_status,前端据此
 // 渲染警示/异常标记),字面量漂移会让异常行被当正常零容量。

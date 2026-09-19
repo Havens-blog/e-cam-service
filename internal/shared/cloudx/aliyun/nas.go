@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
@@ -19,6 +20,15 @@ type NASAdapter struct {
 	accessKeySecret string
 	defaultRegion   string
 	logger          *elog.Component
+
+	// NAS 指标查询(CMS)状态,见 nas_metrics.go
+	metricMu      sync.Mutex
+	metricClients map[string]cmsMetricClient
+	userIDOnce    sync.Once
+	userIDValue   string
+	userIDErr     error
+	// metricHooks 测试注入钩子(非 nil 时替代真实 CMS 客户端创建与账号 ID 解析)
+	metricHooks *nasMetricHooks
 }
 
 // NewNASAdapter 创建NAS适配器
