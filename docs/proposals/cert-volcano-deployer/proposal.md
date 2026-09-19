@@ -24,7 +24,7 @@ intent: "new-feature"
 ## Proposed Solution
 
 1. **火山部署器**（`internal/cert/deployer/volcano_deployer.go`）实现 `CloudDeployer` 五方法 × 4 产品：
-   - `UploadCert`：证书束上传至火山证书库，返回云证书 ID。**证书库形态按产品归一**（火山各产品证书库独立：CDN `AddCdnCertificate` / WAF 服务证书 / ALB-NLB 监听证书 / certificateservice `ImportCertificate`），云证书 ID 形态 `{product}:{id}` 前缀归一（对齐 huawei SCM / AWS ACM ARN 归一模式）。
+   - `UploadCert`：证书束上传至火山证书库，返回云证书 ID。**证书库形态按产品归一**（火山各产品证书库独立：CDN `AddCdnCertificate` / WAF 服务证书 / ALB-NLB 监听证书 / certificateservice `ImportCertificate`），云证书 ID 形态 `{product}:{id}` 前缀归一（对齐 huawei SCM / AWS ACM ARN 归一模式）。<!-- 注:实现调整为统一 csv（certificateservice）库主流程上传（`CloudDeployer.UploadCert` 端口无 product 入参）+ `UploadCertForProduct`（ProductAwareUploader 可选升级端口）产品库定向上传，任务 5 接通裁决落地（15d6e1e），详见文末 Drift Verification -->
    - `BindResource`：CDN=`BatchDeployCert`(加速域名)；WAF=域名证书替换；ALB/NLB=监听证书更新（对齐既有 alb/nlb 监听复合 ID + served domains 展开先例）。
    - `ListReferences`：四产品资源 → `CertReference` 指纹解析（对齐 3.5 口径：映射反查 → GetCert 要素 → 确定性占位指纹）。
    - `GetCert`：证书在库状态校验（回滚目标有效性判定）。
@@ -135,6 +135,23 @@ SDK 四产品证书 API 已逐一探明齐备；端口与编排已生产验证�
 - [ ] 验证窗口：火山目标域名经 `ProbeDomains` 判定线上指纹 = 新证书（云无关复用；`TestVerifyWindow_*` 先例）。
 - [ ] 回滚：`GetCert` 校验旧 ID 有效 → `BindResource` 恢复旧 ID（每产品覆盖用例）。
 - [ ] 回归：现有五云部署/清单/验证测试全绿（新增第 6 云不破坏既有行为）。
+
+## Drift Verification (2026-09-19, T-quick-doc-drift)
+
+对照实际实现（commits）与测试结果逐项核对 Success Criteria，结论：**8 项 SC 全部满足；1 处 UploadCert 证书库归一描述为文本级漂移已标注（见上方 Proposed Solution 注），②csv 实例私钥不可导出 fail-fast 与 ③GetCert 指纹回退为与端口语义一致的实现细化，其余全项一致**。项目级 spec 目录（docs/business-rules / docs/conventions）不存在，无 drift 对象。
+
+| 核对项 | 实测/实况 | 结论 |
+|---|---|---|
+| SC1 五方法×4产品 fake 单测 | commits `830d58f`（证书库层）+ `b0f6800`（绑定层）：`internal/cert/deployer/volcano_deployer.go` 五方法齐备；`volcano_deployer_test.go` 34 个 Test（Upload 6 / GetCert 6 / Bind 9 / ListReferences 6 / CleanupOrphan 4 / 归一与重试 3）deployer 包单测全绿（run-test 记录：deployer 185 绿） | 一致 |
+| SC2 引用扫描适配器 | commit `4826fa0`：四产品资源 → `CertReference`，指纹解析 `resolveVolcanoFingerprint`（映射反查→云侧要素→占位指纹口径）`TestVolcanoDeployerListReferencesFingerprintResolution` PASS | 一致 |
+| SC3 第 6 云装配 | commit `37fcf7f`：`module.go` `RegisterDeployer`（volcano×4）+ 扫描适配器；火山引用 `AutoChangeable=true` 回归（不再 ERR_DISCOVERY_ONLY/skipped） | 一致 |
+| SC4 两段式映射 active + `{product}:{id}` 归一 | commit `15d6e1e` 接通闭环：`TestVolcanoDeployerUploadForProductIDNormalization` PASS；执行后映射写入 active（journey 契约覆盖） | 一致 |
+| SC5 失败补偿 | `TestVolcanoDeployerCleanupOrphanIdempotent`（双调用同结果）+ `TestVolcanoDeployerBindRateLimitedAndFailure` PASS；`active→orphan` 入清理队列复用既有状态机 | 一致 |
+| SC6 验证窗口 | `ProbeDomains` 按域名云无关复用；staged 套件 verify probe 步骤（scan→confirm→upload→bind→verify→cleanup→rollback 全链）7/7 PASS（`5febc04`） | 一致 |
+| SC7 回滚 | `15d6e1e`：`GetCert` 三判定回滚预检 + `TestVolcanoDeployerBindIdempotentRebind` / `TestVolcanoDeployerBindGetCertInterop` PASS；staged 套件 rollback 步骤 PASS | 一致 |
+| SC8 五云回归不破坏 | 五云既有测试全绿（run-test 记录）；staged 套件内 five-cloud regression intactness 断言（`5febc04` 7/7，0 skipped） | 一致 |
+| **UploadCert 证书库归一描述** | proposal 原文「UploadCert 按产品上传即得该库 ID」→ 实现为**统一 csv 库主流程上传**（`UploadCert` 端口无 product 入参，落 `volcanoUploadProduct`）+ **`UploadCertForProduct`（ProductAwareUploader 可选升级端口）产品库定向上传**（编译期断言 `var _ ProductAwareUploader`）；缺产品入参时统一 csv 实例私钥不可导出、无法晋升产品库，`BindResource` 对 csv 前缀 fail-fast `ErrVolcanoCSVCertNotBindable`（volcano_deployer.go:130/616）；`TestVolcanoProductAwareUpload_FallbackWithoutPort` / `TestVolcanoProductAwareUpload_PortDirectedIDSpaceMutex` PASS | **漂移，已标注** |
+| GetCert 指纹回退（实现细化） | waf/alb/nlb 云侧库无指纹返回通道 → `GetCert` 回退 `mappings.FindByCloudCertID` 映射反查（volcano_deployer.go:1232-1240，fail-safe 无记录指纹留空）；`TestVolcanoGetCertFingerprintFallback_NoRecordFailSafe` PASS。对齐 proposal §1 ListReferences「映射反查→云侧要素」既有口径，属端口语义内的实现细化 | 一致（实现细化） |
 
 ## Next Steps
 
