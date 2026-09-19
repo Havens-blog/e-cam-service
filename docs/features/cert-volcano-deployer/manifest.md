@@ -1,7 +1,7 @@
 ---
 feature: "cert-volcano-deployer"
 created: "2026-09-19"
-status: tasks
+status: completed
 mode: quick
 ---
 
