@@ -809,6 +809,330 @@
       "value": "云账号读取/列举失败细节仅 slog.Error 日志；摘要/响应仅静态 reason",
       "confidence": "inferred",
       "updated_at": "2026-09-17T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_CLOUD_CERT_ID_NORMALIZE",
+      "source": "static",
+      "subject": "火山云证书 ID 归一形态与解析 (internal/cert/deployer/volcano_deployer.go:421-433)",
+      "kind": "signature",
+      "value": "{product}:{id}，product ∈ csv/cdn/waf/alb/nlb；非归一形态 fail-fast",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_PRODUCT_AWARE_UPLOADER_PORT",
+      "source": "static",
+      "subject": "ProductAwareUploader 可选升级端口定义 (internal/cert/deployer/channel.go:317-330)",
+      "kind": "signature",
+      "value": "UploadCertForProduct(ctx, creds, product, certPEM, keyPEM) (string, error)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_CHANNEL_PRODUCT_AWARE_DISPATCH",
+      "source": "static",
+      "subject": "通道按类型断言分发产品感知上传 (internal/cert/deployer/cloud_api_channel.go:179-191)",
+      "kind": "signature",
+      "value": "实现 ProductAwareUploader 的部署器按 target.Product 定向；未实现走 UploadCert 行为不变",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_UPLOAD_FIRST_SEGMENT_CSV",
+      "source": "static",
+      "subject": "UploadCert 端口第一段统一 csv 口径 (internal/cert/deployer/volcano_deployer.go:87,446-448)",
+      "kind": "precondition",
+      "value": "CloudDeployer.UploadCert 以 certificateservice(csv) 库上传（端口无 product 入参的已记录 SPEC 偏差）",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_UPLOAD_PER_PRODUCT_APIS",
+      "source": "static",
+      "subject": "四产品库定向上传 API 分支 (internal/cert/deployer/volcano_deployer.go:501-572)",
+      "kind": "signature",
+      "value": "csv=ImportCertificate / cdn=AddCertificate(Desc 承载名) / waf=UploadWafServiceCertificate / alb-nlb=UploadCertificate(CertificateName 承载名)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_UPLOAD_EMPTY_MATERIAL_REJECT",
+      "source": "static",
+      "subject": "上传材料缺失拒绝 (internal/cert/deployer/volcano_deployer.go:477-479)",
+      "kind": "precondition",
+      "value": "certPEM 为空或 keyPEM 为空即结构化报错，不发起云侧调用",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_UPLOAD_KEY_ZEROIZE",
+      "source": "static",
+      "subject": "私钥明文卫生 (internal/cert/deployer/volcano_deployer.go:480-481)",
+      "kind": "side_effect",
+      "value": "SDK 构参副本用后 Zeroize；私钥从不写入日志/错误信息/返回结构",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_UPLOAD_NAME_C7",
+      "source": "static",
+      "subject": "上传名唯一生成公式 (internal/cert/deployer/volcano_deployer.go:412-414,441-443)",
+      "kind": "signature",
+      "value": "ecam-{指纹前8}-{unix秒}-{随机后缀}；每次尝试（含重试）生成全新名称，重试不复用可能已成功的名称",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_UPLOAD_EMPTY_CLOUD_ID_FAIL",
+      "source": "static",
+      "subject": "云侧响应空 ID 结构化失败 (internal/cert/deployer/volcano_deployer.go:520-522,535-537,550-552,565-567)",
+      "kind": "error_code",
+      "value": "上传成功但 InstanceId/CertId/Id/CertificateId 为空即报错，不产出伪归一 ID",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_PRODUCT_NOT_SUPPORTED_SENTINEL",
+      "source": "static",
+      "subject": "产品不支持哨兵 (internal/cert/deployer/volcano_deployer.go:124,459-464)",
+      "kind": "error_code",
+      "value": "ErrVolcanoProductNotSupported：UploadCertForProduct 仅接受 cdn/waf/alb/nlb 四绑定目标",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_CSV_NOT_BINDABLE_SENTINEL",
+      "source": "static",
+      "subject": "csv 统一库证书不可直接绑定哨兵 (internal/cert/deployer/volcano_deployer.go:136,615-617)",
+      "kind": "error_code",
+      "value": "ErrVolcanoCSVCertNotBindable：csv 前缀证书绑定产品资源即 fail-fast",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_BIND_PRODUCT_MISMATCH",
+      "source": "static",
+      "subject": "绑定证书前缀与目标产品不匹配 (internal/cert/deployer/volcano_deployer.go:141,608-624)",
+      "kind": "error_code",
+      "value": "errVolcanoBindCertProductMismatch：同前缀或 alb/nlb 互跨（共用 ALB 监听证书库）之外拒绝",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_BIND_ID_NOT_NORMALIZED",
+      "source": "static",
+      "subject": "绑定/查询/清理对非归一 ID fail-fast (internal/cert/deployer/volcano_deployer.go:128,585-588,1219-1221,1401-1403)",
+      "kind": "error_code",
+      "value": "errVolcanoCloudCertIDNotNormalized：缺前缀/未知前缀/空裸 ID 拒绝",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_BIND_EMPTY_RESOURCE_ID",
+      "source": "static",
+      "subject": "绑定空资源 ID 拒绝 (internal/cert/deployer/volcano_deployer.go:592-594)",
+      "kind": "error_code",
+      "value": "resourceID 空白即结构化报错",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_BIND_APIS_PER_PRODUCT",
+      "source": "static",
+      "subject": "四产品绑定 API (internal/cert/deployer/volcano_deployer.go:627-776)",
+      "kind": "signature",
+      "value": "CDN=BatchDeployCert(逐域 DeployResult 校验 success) / WAF=UpdateDomain(读取现网 AccessMode 必填) / ALB=ModifyListenerAttributes / NLB=ModifyNLBListenerAttributes",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_BIND_HTTP_LISTENER_REJECT",
+      "source": "static",
+      "subject": "ALB HTTP 监听拒绑 (internal/cert/deployer/volcano_deployer.go:754-755)",
+      "kind": "error_code",
+      "value": "HTTP 监听无服务器证书显式报错",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_BIND_RESOURCE_COMPOSITE_ID",
+      "source": "static",
+      "subject": "ALB/NLB 监听复合资源 ID (internal/cert/deployer/volcano_deployer.go:732-739,1169-1189)",
+      "kind": "signature",
+      "value": "resourceID={lbId}/{listenerId}；纯监听形态容忍（旧快照升级窗口互认）",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_LISTENER_NOT_FOUND",
+      "source": "static",
+      "subject": "监听定位地域遍历耗尽 (internal/cert/deployer/volcano_deployer.go:742-775)",
+      "kind": "error_code",
+      "value": "逐地域定位未命中即报 listener not found（附地域清单）",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_CLEANUP_NOT_FOUND_IDEMPOTENT",
+      "source": "static",
+      "subject": "清理 not-found 归一成功 (internal/cert/deployer/volcano_deployer.go:1430-1432)",
+      "kind": "signature",
+      "value": "云侧已不存在=幂等成功（清理队列重放安全）",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_CLEANUP_PER_PRODUCT_APIS",
+      "source": "static",
+      "subject": "四库清理删除 API (internal/cert/deployer/volcano_deployer.go:1410-1437)",
+      "kind": "signature",
+      "value": "csv=DeleteInstance / cdn=DeleteCdnCertificate / waf=DeleteWafServiceCertificate / alb-nlb=DeleteCertificate",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_GETCERT_FINGERPRINT_CHANNELS",
+      "source": "static",
+      "subject": "GetCert 指纹通道差异 (internal/cert/deployer/volcano_deployer.go:1209-1380)",
+      "kind": "output_format",
+      "value": "csv=链解析 SHA256 / cdn=原生 sha256(64hex 直读) / waf-alb-nlb=无指纹通道留空（无法复核）",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_GETCERT_NOT_FOUND_EXISTS_FALSE",
+      "source": "static",
+      "subject": "GetCert 已不存在归一 (internal/cert/deployer/volcano_deployer.go:1272-1274,1307-1309,1339-1341,1367-1369)",
+      "kind": "output_format",
+      "value": "not-found 归一 Exists=false 非错误；csv revoked/非 Issued 同为 Exists=false",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_GETCERT_MAPPING_FALLBACK",
+      "source": "static",
+      "subject": "GetCert 指纹留空回退映射反查 (internal/cert/deployer/volcano_deployer.go:1236-1240)",
+      "kind": "signature",
+      "value": "waf/alb/nlb 无指纹通道时经 FindByCloudCertID 回填映射指纹（fail-safe：无记录则留空上层阻断）",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_FINGERPRINT_RESOLUTION_CHAIN",
+      "source": "static",
+      "subject": "引用指纹解析回退链 (internal/cert/deployer/volcano_deployer.go:1136-1159)",
+      "kind": "signature",
+      "value": "映射反查 → GetCert 要素（仅 64hex 对齐口径）→ 确定性占位指纹 certscan-unresolved:{cloud}|{accountKey}|{certID} 公式",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_LISTREFS_READONLY",
+      "source": "static",
+      "subject": "ListReferences 只读发现 (internal/cert/deployer/volcano_deployer.go:818-1116)",
+      "kind": "side_effect",
+      "value": "四产品资源枚举产出 CertReference；CDN/WAF=域名粒度、ALB/NLB=监听复合 ID；ALB 按 served domains 展开、NLB 无规则为空",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_REGION_ITERATION",
+      "source": "static",
+      "subject": "WAF/ALB/NLB 地域级遍历 (internal/cert/deployer/volcano_deployer.go:1191-1198)",
+      "kind": "precondition",
+      "value": "按账号 Regions 遍历绑定定位与引用枚举；缺省回退 cn-beijing",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "VOLCANO_RATE_LIMIT_BOUNDED_RETRY",
+      "source": "static",
+      "subject": "有界退避重试 (internal/cert/deployer/volcano_deployer.go:399-401)",
+      "kind": "signature",
+      "value": "boundedRetry：限流固定序列退避，次数+总时长双闸，禁止无限重试",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "CHANNEL_MAPPING_ACTIVE_BEFORE_BIND",
+      "source": "static",
+      "subject": "映射先行写入 active (internal/cert/deployer/cloud_api_channel.go:192-200)",
+      "kind": "side_effect",
+      "value": "两段式第一段成功后先 Upsert active（去重与崩溃恢复锚点）再 BindResource",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "CHANNEL_BIND_FAILURE_COMPENSATION",
+      "source": "static",
+      "subject": "绑定失败补偿 (internal/cert/deployer/cloud_api_channel.go:203-246)",
+      "kind": "side_effect",
+      "value": "compensateBindFailure：映射 active→orphan + 尽力 CleanupOrphan；反查/更新/清理任一失败 complete=false（映射保持供 5.9 幂等重试）",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "CHANNEL_MAX_BATCH_RATIO",
+      "source": "static",
+      "subject": "分批灰度上限 (internal/cert/deployer/channel.go:256-263)",
+      "kind": "precondition",
+      "value": "MaxBatchRatio ∈ (0, 0.5]，硬上限 MaxBatchRatioLimit=0.5（PRD 分批灰度 ≤50%）",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "CHANGE_HANDLER_BATCH_RATIO_REJECT",
+      "source": "static",
+      "subject": "批次参数越界拒绝 (internal/cert/web/change_handler.go:412)",
+      "kind": "error_code",
+      "value": "batchConf 越界 400 / MaxBatchRatio>0.5 拒绝",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "CHANGE_AUTO_CHANGEABLE_FIELD",
+      "source": "static",
+      "subject": "清单项可执行判定字段 (internal/cert/service/changelist_generator.go:39-40)",
+      "kind": "output_format",
+      "value": "AutoChangeable 布尔 + Reason 静态判定依据",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "CHANGE_ERR_DISCOVERY_ONLY_REGRESSION",
+      "source": "static",
+      "subject": "ERR_DISCOVERY_ONLY 回归口径 (internal/cert/service/changelist_generator.go:339)",
+      "kind": "error_code",
+      "value": "火山部署器装配后该分区不再产生；火山引用判定 AutoChangeable=true",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "MATERIAL_UNAVAILABLE_SENTINEL",
+      "source": "static",
+      "subject": "证书材料不可用哨兵 (internal/cert/deployer/channel.go:50-51)",
+      "kind": "error_code",
+      "value": "ErrCertMaterialUnavailable：证书未登记或无私钥（fingerprint_only）无法执行第一段",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "MODULE_VOLCANO_REGISTER",
+      "source": "static",
+      "subject": "第 6 云部署器装配 (internal/cert/module.go:180-189)",
+      "kind": "signature",
+      "value": "RegisterDeployer(volcano, NewVolcanoDeployer(mappings), cdn, waf, alb, nlb)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "PROBE_DOMAINS_CLOUD_AGNOSTIC",
+      "source": "static",
+      "subject": "验证窗口拨测 (internal/cert/scheduler/inspection_job_test.go:64, domain.ProbeResult)",
+      "kind": "signature",
+      "value": "ProbeDomains(ctx, []string) 按域名 TLS 拨测，云无关复用",
+      "confidence": "inferred",
+      "updated_at": "2026-09-19T00:00:00Z"
     }
   ]
 }
