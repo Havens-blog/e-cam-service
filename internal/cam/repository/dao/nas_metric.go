@@ -34,6 +34,11 @@ type NASMetricDAO interface {
 	// 已落库的指标行数(自我健康监控用:行存在即「成功采集」证据,窗口内全零
 	// 且实盘存在 NAS 实例 → 升级告警)。返回 map 以厂商为键,无行厂商计 0。
 	CountMetricsByProviders(ctx context.Context, providers []string, sinceDate string) (map[string]int64, error)
+	// ListExistingMetricDates 查询指定账号下一组 fs_id 在 [startDate, endDate]
+	// (含两端,YYYY-MM-DD)内已落库的日期集合,返回 map[fs_id]set(date)。
+	// 历史回填的幂等预检专用:已成功批次凭此跳过(不重试厂商 API),缺失日期
+	// 才回源补采;未落库的 fs 不出现在返回 map 中。
+	ListExistingMetricDates(ctx context.Context, accountID int64, fsIDs []string, startDate, endDate string) (map[string]map[string]struct{}, error)
 }
 
 type nasMetricDAO struct {
@@ -189,6 +194,44 @@ func nasMetricUpsertUpdate(m types.NASMetric) bson.M {
 			"date":  m.Date,
 		},
 	}
+}
+
+// ListExistingMetricDates 回填幂等预检:按 (account_id, fs_id, date) 唯一键查询
+// 已落库日期,投影只取 fs_id/date 两列(走唯一索引前缀,无需回表全行)。
+func (d *nasMetricDAO) ListExistingMetricDates(ctx context.Context, accountID int64, fsIDs []string, startDate, endDate string) (map[string]map[string]struct{}, error) {
+	out := make(map[string]map[string]struct{})
+	if len(fsIDs) == 0 {
+		return out, nil
+	}
+	cursor, err := d.db.Collection(NASMetricCollection).Find(ctx, bson.M{
+		"account_id": accountID,
+		"fs_id":      bson.M{"$in": fsIDs},
+		"date":       bson.M{"$gte": startDate, "$lte": endDate},
+	}, options.Find().SetProjection(bson.D{
+		{Key: "fs_id", Value: 1},
+		{Key: "date", Value: 1},
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("查询已落库NAS指标日期失败: %w", err)
+	}
+	defer cursor.Close(ctx)
+	for cursor.Next(ctx) {
+		var row struct {
+			FsID string `bson:"fs_id"`
+			Date string `bson:"date"`
+		}
+		if err := cursor.Decode(&row); err != nil {
+			return nil, fmt.Errorf("解析已落库NAS指标日期失败: %w", err)
+		}
+		if out[row.FsID] == nil {
+			out[row.FsID] = make(map[string]struct{})
+		}
+		out[row.FsID][row.Date] = struct{}{}
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("遍历已落库NAS指标日期失败: %w", err)
+	}
+	return out, nil
 }
 
 // CountMetricsByProviders 统计各厂商自 sinceDate(含当日)以来已落库的指标行数。

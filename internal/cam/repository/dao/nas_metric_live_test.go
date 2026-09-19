@@ -314,3 +314,46 @@ func TestNASMetricBulkUpsertLive(t *testing.T) {
 		t.Fatalf("replayed capacity = %v, want 121", got.Capacity)
 	}
 }
+
+// ListExistingMetricDates 活体验证(T9 回填幂等预检):只返回区间内已落库的
+// (fs_id, date) 对,未落库 fs 不出现;区间外日期不计入。
+func TestNASMetricListExistingDatesLive(t *testing.T) {
+	d, coll := liveNASMetricDAO(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	rows := []types.NASMetric{
+		{FsID: "test-existing-fs-1", FsName: "fs1", Date: "2026-09-10", Capacity: 100, UsedCapacity: 10, AccountID: 9904, Provider: "aliyun"},
+		{FsID: "test-existing-fs-1", FsName: "fs1", Date: "2026-09-11", Capacity: 101, UsedCapacity: 11, AccountID: 9904, Provider: "aliyun"},
+		{FsID: "test-existing-fs-2", FsName: "fs2", Date: "2026-09-12", Capacity: 200, UsedCapacity: 20, AccountID: 9904, Provider: "aliyun"},
+		// 区间外的行不应计入预检结果
+		{FsID: "test-existing-fs-1", FsName: "fs1", Date: "2026-09-20", Capacity: 300, UsedCapacity: 30, AccountID: 9904, Provider: "aliyun"},
+	}
+	if err := d.BulkUpsertMetrics(ctx, rows); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	t.Cleanup(func() {
+		dropCtx, dropCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer dropCancel()
+		_, _ = coll.DeleteMany(dropCtx, bson.M{"account_id": int64(9904)})
+	})
+
+	got, err := d.ListExistingMetricDates(ctx, 9904, []string{"test-existing-fs-1", "test-existing-fs-2", "test-existing-fs-missing"}, "2026-09-10", "2026-09-15")
+	if err != nil {
+		t.Fatalf("ListExistingMetricDates: %v", err)
+	}
+	if len(got["test-existing-fs-1"]) != 2 {
+		t.Fatalf("fs-1 dates = %v, want 2 个区间内日期", got["test-existing-fs-1"])
+	}
+	if len(got["test-existing-fs-2"]) != 1 {
+		t.Fatalf("fs-2 dates = %v, want 1", got["test-existing-fs-2"])
+	}
+	if _, ok := got["test-existing-fs-missing"]; ok {
+		t.Fatalf("未落库 fs 不应出现: %v", got)
+	}
+	if d2, ok := got["test-existing-fs-1"]; ok {
+		if _, hit := d2["2026-09-20"]; hit {
+			t.Fatalf("区间外日期不应计入: %v", d2)
+		}
+	}
+}

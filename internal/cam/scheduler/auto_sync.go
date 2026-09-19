@@ -33,6 +33,8 @@ type AutoSyncScheduler struct {
 	// dailyGate 持久化日闸(scheduler_state,findOneAndUpdate 原子认领):
 	// NAS 每日采集的唯一提交入口,详见 daily_gate.go / auto_sync_nas_metrics.go。
 	dailyGate *PersistentDailyGate
+	// nowFn 时钟注入点(NAS 回填错峰窗口判定用,单测固定窗口时刻)
+	nowFn func() time.Time
 }
 
 // NewAutoSyncScheduler 创建自动同步调度器。
@@ -54,6 +56,7 @@ func NewAutoSyncScheduler(
 		checkInterval: 1 * time.Minute, // 每分钟检查一次
 		stopCh:        make(chan struct{}),
 		syncing:       make(map[int64]bool),
+		nowFn:         time.Now,
 	}
 }
 
@@ -120,6 +123,10 @@ func (s *AutoSyncScheduler) checkAndSync() {
 	// 每日 NAS 指标采集(持久化日闸原子认领,与账号自动同步解耦,
 	// 详见 auto_sync_nas_metrics.go / daily_gate.go)
 	s.checkNASMetricsCollection()
+
+	// NAS 历史指标回填(错峰窗口 01:30~06:00 内日闸提交,
+	// 详见 auto_sync_nas_backfill.go)
+	s.checkNASMetricsBackfill()
 
 	// 获取所有启用自动同步的活跃账号
 	accounts, err := s.getAutoSyncAccounts(ctx)

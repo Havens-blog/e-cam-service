@@ -324,11 +324,17 @@ func (e *SyncNASMetricsExecutor) resolveAccounts(ctx context.Context, params syn
 // listAccountNASInstances 从 ecam_instance 枚举该账号的全部 NAS 实例
 // (活跃账号口径以本地资产枚举为准，不调云端 ListInstances;region 取实例
 // attributes["region"]，多 region 账号按「实例 → region」逐实例查询)。
+// 每日采集与历史回填共用(回填分片/去重同以本地实例枚举为准)。
 func (e *SyncNASMetricsExecutor) listAccountNASInstances(ctx context.Context, account *domain.CloudAccount) ([]camdomain.Instance, error) {
+	return listAccountNASInstancesFromRepo(ctx, e.instanceRepo, account)
+}
+
+// listAccountNASInstancesFromRepo 按账号分页枚举 ecam_instance 中的 NAS 实例。
+func listAccountNASInstancesFromRepo(ctx context.Context, instanceRepo camrepository.InstanceRepository, account *domain.CloudAccount) ([]camdomain.Instance, error) {
 	var out []camdomain.Instance
 	offset := int64(0)
 	for {
-		page, total, err := e.instanceRepo.Search(ctx, camdomain.SearchFilter{
+		page, total, err := instanceRepo.Search(ctx, camdomain.SearchFilter{
 			TenantID:   account.TenantID,
 			AccountID:  account.ID,
 			AssetTypes: []string{"nas"},
