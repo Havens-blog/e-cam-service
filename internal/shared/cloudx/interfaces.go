@@ -421,6 +421,22 @@ type NASAdapter interface {
 	ListInstancesWithFilter(ctx context.Context, region string, filter *types.NASInstanceFilter) ([]types.NASInstance, error)
 }
 
+// NASMetricQuerier 可选能力:按文件系统查询 NAS 单日容量/用量指标。
+// 指标不随同步落库,由定时任务 nas:collect_metrics 按日采集;NASAdapter
+// 实现方可按需实现本接口(探测不到可用监控 API 的厂商不实现,采集跳过)。
+// 与 CDNMetricQuerier 不同:签名带 region——CDN 是全局服务故签名无 region,
+// NAS 是地域性资源,必须按实例所在 region 调用对应厂商监控 API(华为 CES 用
+// 实例真实 region,其余厂商同);对多 region 账号按「实例 → region」逐实例
+// 查询,不做全局 region 推断,避免非默认 region 的实例查错地域。
+type NASMetricQuerier interface {
+	// GetNASMetrics 查询 [startDate, endDate](含两端,YYYY-MM-DD)内该文件系统
+	// 的逐日容量/用量指标(单位归一化与 qc_status 语义见 types.NASMetric)。
+	// fsID 为文件系统 ID(各厂商检索键);fsName 为文件系统名称(展示/部分
+	// 厂商检索用);region 为实例所在地域,由调用方从实例元数据取,适配器
+	// 必须按该 region 调用对应监控 API。
+	GetNASMetrics(ctx context.Context, fsID, fsName, region, startDate, endDate string) ([]types.NASMetric, error)
+}
+
 // ============================================================================
 // OSSAdapter - OSS对象存储适配器接口
 // ============================================================================

@@ -54,7 +54,7 @@
       "dependencies": [
         "1"
       ],
-      "status": "in_progress",
+      "status": "completed",
       "file": "2-model-dao-schema.md",
       "record": "records/2-model-dao-schema.md",
       "surface-type": "api",
