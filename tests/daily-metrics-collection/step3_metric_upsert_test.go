@@ -160,9 +160,16 @@ func TestStep3_LiveDAO_CrossAccountRowsCoexist(t *testing.T) {
 	got, err := store.ListByAccounts(ctx, []int64{1, 2, 3}, 7)
 	require.NoError(t, err)
 	require.Len(t, got, 3, "同 fs 同日三账号应各留一行")
-	require.Equal(t, types.NASMetricQcZeroException, got[0].QcStatus, "capacity=0 行应打 zero_exception")
-	require.Equal(t, float64(100), got[1].Capacity)
-	require.Equal(t, float64(200), got[2].Capacity)
+	// ListByAccounts 排序键 (fs_id, date) 在本用例三行全并列,返回次序不受契约
+	// 约束——按 account_id 归位断言,不依赖次序。
+	byAccount := make(map[int64]types.NASMetric, len(got))
+	for _, row := range got {
+		byAccount[row.AccountID] = row
+	}
+	require.Equal(t, types.NASMetricQcZeroException, byAccount[3].QcStatus, "capacity=0 行应打 zero_exception")
+	require.Equal(t, float64(0), byAccount[3].Capacity)
+	require.Equal(t, float64(100), byAccount[1].Capacity)
+	require.Equal(t, float64(200), byAccount[2].Capacity)
 }
 
 // Live 复核:真实 mongo 之上同键重放幂等、行数不增长。无 mongo 时跳过。
