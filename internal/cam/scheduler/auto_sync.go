@@ -26,37 +26,49 @@ type AutoSyncScheduler struct {
 	mu            sync.Mutex
 	syncing       map[int64]bool // 正在同步的账号ID，防止重复提交
 	syncingMu     sync.Mutex
-	// lastMetricsCollectDate 最近一次提交每日 CDN 指标采集的日期(Asia/Shanghai
-	// YYYY-MM-DD)。用于幂等触发,详见 auto_sync_metrics.go。
-	// (NAS 每日采集已改用持久化日闸 dailyGate;CDN 迁移到持久化闸在 T8。)
+	// lastMetricsCollectDate CDN 内存闸日期(Asia/Shanghai YYYY-MM-DD)。
+	// 仅特性开关 SCHEDULER_PERSISTENT_GATE_ENABLED 显式关闭(回滚到内存闸)时
+	// 使用;默认走持久化日闸 dailyGate 的 cdn 键(见 auto_sync_metrics.go)。
 	lastMetricsCollectDate string
+	// lastNASMetricsCollectDate NAS 内存闸日期,仅回滚模式下使用
+	// (NAS 生产走持久化日闸,内存闸是 Hard Rule 要求的回滚退路)。
+	lastNASMetricsCollectDate string
 	// dailyGate 持久化日闸(scheduler_state,findOneAndUpdate 原子认领):
-	// NAS 每日采集的唯一提交入口,详见 daily_gate.go / auto_sync_nas_metrics.go。
+	// NAS/CDN 每日采集的提交入口,详见 daily_gate.go / auto_sync_nas_metrics.go。
 	dailyGate *PersistentDailyGate
+	// persistentGateEnabled 持久化日闸特性开关(SCHEDULER_PERSISTENT_GATE_ENABLED,
+	// 默认开启):开启时 NAS/CDN 每日采集经持久化日闸原子认领;显式关闭时整体
+	// 回滚到内存闸(spec「特性开关与回滚」,Hard Rule:必须有退路)。
+	persistentGateEnabled bool
 	// nowFn 时钟注入点(NAS 回填错峰窗口判定用,单测固定窗口时刻)
 	nowFn func() time.Time
 }
 
 // NewAutoSyncScheduler 创建自动同步调度器。
-// dailyGate 为持久化日闸(scheduler_state DAO 装配);传 nil 时 NAS 每日采集跳过。
+// dailyGate 为持久化日闸(scheduler_state DAO 装配);persistentGateEnabled 为
+// 特性开关 SCHEDULER_PERSISTENT_GATE_ENABLED 的解析结果(默认开启):开启时
+// NAS/CDN 每日采集经持久化日闸原子认领,dailyGate 传 nil 时安全跳过;关闭时
+// 回滚到内存闸(调度可用性优先,接受重启重复提交旧缺陷)。
 func NewAutoSyncScheduler(
 	accountRepo repository.CloudAccountRepository,
 	taskQueue *taskx.Queue,
 	logger *elog.Component,
 	dailyGate *PersistentDailyGate,
+	persistentGateEnabled bool,
 ) *AutoSyncScheduler {
 	if logger == nil {
 		logger = elog.DefaultLogger
 	}
 	return &AutoSyncScheduler{
-		accountRepo:   accountRepo,
-		taskQueue:     taskQueue,
-		logger:        logger,
-		dailyGate:     dailyGate,
-		checkInterval: 1 * time.Minute, // 每分钟检查一次
-		stopCh:        make(chan struct{}),
-		syncing:       make(map[int64]bool),
-		nowFn:         time.Now,
+		accountRepo:           accountRepo,
+		taskQueue:             taskQueue,
+		logger:                logger,
+		dailyGate:             dailyGate,
+		persistentGateEnabled: persistentGateEnabled,
+		checkInterval:         1 * time.Minute, // 每分钟检查一次
+		stopCh:                make(chan struct{}),
+		syncing:               make(map[int64]bool),
+		nowFn:                 time.Now,
 	}
 }
 

@@ -61,7 +61,7 @@ func newTestScheduler(t *testing.T, gate *PersistentDailyGate) (*AutoSyncSchedul
 	repo := &mockTaskRepo{}
 	queue := taskx.NewQueue(repo, testLogger(), taskx.Config{WorkerNum: 1, BufferSize: 10})
 	queue.RegisterExecutor(&dummyNASExecutor{})
-	return NewAutoSyncScheduler(nil, queue, testLogger(), gate), repo
+	return NewAutoSyncScheduler(nil, queue, testLogger(), gate, true), repo
 }
 
 // 认领成功 → 恰好提交 1 条 nas:collect_metrics(days=2);同日第二轮不重复提交

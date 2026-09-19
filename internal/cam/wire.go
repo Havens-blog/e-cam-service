@@ -127,13 +127,15 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	dashboardHandler := web.NewDashboardHandler(dashboardService)
 
 	// Scheduler
-	// 持久化日闸(scheduler_state):NAS 每日采集的原子认领入口(唯一提交入口,
+	// 持久化日闸(scheduler_state):NAS/CDN 每日采集的原子认领入口(唯一提交入口,
 	// 写失败指数退避重试+升级告警、读失败 ≥5 分钟退避,见 scheduler/daily_gate.go)。
 	// 告警通道落 alert 告警事件(T6 健康监控/T8 CDN 迁移共用,勿重复造)。
+	// 特性开关 SCHEDULER_PERSISTENT_GATE_ENABLED 默认开启;mongo 日闸不可恢复
+	// 故障时可显式关闭,一键回滚内存闸(scheduler/feature_flag.go)。
 	schedulerStateDAO := dao.NewSchedulerStateDAO(db)
 	gateAlerter := NewSchedulerGateAlerter(alertdao.NewAlertDAO(db))
 	dailyGate := scheduler.NewPersistentDailyGate(schedulerStateDAO, gateAlerter, component)
-	autoSyncScheduler := scheduler.NewAutoSyncScheduler(cloudAccountRepository, queue, component, dailyGate)
+	autoSyncScheduler := scheduler.NewAutoSyncScheduler(cloudAccountRepository, queue, component, dailyGate, scheduler.IsPersistentGateEnabled())
 
 	// NAS 自我健康监控(任务 6):与日闸告警共用同一告警桥实例
 	taskModule.SetNASHealthAlerter(gateAlerter)

@@ -24,13 +24,23 @@ import (
 //     不回溯补采历史(spec 过渡行为定义);
 //   - 写失败指数退避重试+升级告警、读失败 ≥5 分钟退避,降级语义见 daily_gate.go。
 //
-// CDN 迁移到本闸(含特性开关回滚)在 T8,本文件不触碰 CDN 内存闸。
+// CDN 已迁移到本闸(T8):CDN 默认走持久化日闸 cdn 键(auto_sync_metrics.go);
+// 特性开关 SCHEDULER_PERSISTENT_GATE_ENABLED 显式关闭时 NAS/CDN 一并回滚到
+// 内存闸(本文件 checkNASMetricsCollectionMemory 回退路径)。
 //
 // 注意:与 CDN 一致,指标采集不依赖账号的 EnableAutoSync——触发在 checkAndSync
 // 的账号循环之外。
 
-// checkNASMetricsCollection 每日触发一次 NAS 指标采集(持久化日闸原子认领)。
+// checkNASMetricsCollection 每日触发一次 NAS 指标采集。
+// 默认走持久化日闸原子认领;特性开关显式关闭时回滚内存闸(采集不中断)。
 func (s *AutoSyncScheduler) checkNASMetricsCollection() {
+	if !s.persistentGateEnabled {
+		// 特性开关回滚(Hard Rule:生产行为变更必须有退路):切回内存闸,
+		// 接受重启重复提交旧缺陷换取调度器可用(spec「特性开关与回滚」)
+		s.checkNASMetricsCollectionMemory()
+		return
+	}
+
 	if s.dailyGate == nil {
 		// 未装配持久化日闸(如未接 mongo 的最小装配):安全跳过,不降级回内存闸
 		// ——内存闸的重启重复提交缺陷正是本闸要修的问题,不做半吊子回退。
@@ -40,7 +50,7 @@ func (s *AutoSyncScheduler) checkNASMetricsCollection() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	today := metricCollectDate(time.Now())
+	today := metricCollectDate(s.nowFn())
 	claimed, err := s.dailyGate.TryClaim(ctx, GateResourceNAS, today)
 	if err != nil {
 		s.logger.Error("NAS 持久化日闸认领失败,下轮重试", elog.FieldErr(err))
@@ -79,4 +89,46 @@ func (s *AutoSyncScheduler) checkNASMetricsCollection() {
 	s.logger.Info("每日 NAS 指标采集任务已提交(持久化日闸认领成功)",
 		elog.String("task_id", taskID),
 		elog.String("date", today))
+}
+
+// checkNASMetricsCollectionMemory 内存闸版 NAS 每日采集
+// (仅特性开关 SCHEDULER_PERSISTENT_GATE_ENABLED 显式关闭的回滚模式使用)。
+func (s *AutoSyncScheduler) checkNASMetricsCollectionMemory() {
+	now := s.nowFn()
+
+	s.mu.Lock()
+	shouldTrigger := shouldTriggerDailyMetric(s.lastNASMetricsCollectDate, now)
+	s.mu.Unlock()
+	if !shouldTrigger {
+		return
+	}
+
+	taskID := uuid.New().String()
+	task := &taskx.Task{
+		ID:     taskID,
+		Type:   executor.TaskTypeNASCollectMetrics,
+		Status: taskx.TaskStatusPending,
+		Params: map[string]any{
+			// days=2:凌晨补采时「今日」行只有约 1 小时数据,
+			// 必须连昨日完整数据一起采集(与 CDN days=2 同语义)
+			"days": 2,
+		},
+		Progress:  0,
+		Message:   "每日 NAS 指标采集任务已创建",
+		CreatedBy: "auto_sync_scheduler",
+	}
+
+	if err := s.taskQueue.Submit(task); err != nil {
+		s.logger.Error("提交 NAS 指标采集任务失败,下轮重试",
+			elog.FieldErr(err))
+		return // 不更新内存闸日期,下轮重试
+	}
+
+	s.mu.Lock()
+	s.lastNASMetricsCollectDate = metricCollectDate(now)
+	s.mu.Unlock()
+
+	s.logger.Info("每日 NAS 指标采集任务已提交(内存闸回滚模式)",
+		elog.String("task_id", taskID),
+		elog.String("date", s.lastNASMetricsCollectDate))
 }
