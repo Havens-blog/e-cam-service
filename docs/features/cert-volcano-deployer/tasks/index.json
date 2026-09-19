@@ -35,7 +35,7 @@
       "title": "火山引用扫描适配器（4 产品 → CertReference）",
       "priority": "P0",
       "estimatedTime": "2h",
-      "status": "in_progress",
+      "status": "completed",
       "file": "3-reference-scan-adapter.md",
       "record": "records/3-reference-scan-adapter.md",
       "surface-type": "api",
