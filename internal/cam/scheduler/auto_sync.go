@@ -28,14 +28,20 @@ type AutoSyncScheduler struct {
 	syncingMu     sync.Mutex
 	// lastMetricsCollectDate 最近一次提交每日 CDN 指标采集的日期(Asia/Shanghai
 	// YYYY-MM-DD)。用于幂等触发,详见 auto_sync_metrics.go。
+	// (NAS 每日采集已改用持久化日闸 dailyGate;CDN 迁移到持久化闸在 T8。)
 	lastMetricsCollectDate string
+	// dailyGate 持久化日闸(scheduler_state,findOneAndUpdate 原子认领):
+	// NAS 每日采集的唯一提交入口,详见 daily_gate.go / auto_sync_nas_metrics.go。
+	dailyGate *PersistentDailyGate
 }
 
-// NewAutoSyncScheduler 创建自动同步调度器
+// NewAutoSyncScheduler 创建自动同步调度器。
+// dailyGate 为持久化日闸(scheduler_state DAO 装配);传 nil 时 NAS 每日采集跳过。
 func NewAutoSyncScheduler(
 	accountRepo repository.CloudAccountRepository,
 	taskQueue *taskx.Queue,
 	logger *elog.Component,
+	dailyGate *PersistentDailyGate,
 ) *AutoSyncScheduler {
 	if logger == nil {
 		logger = elog.DefaultLogger
@@ -44,6 +50,7 @@ func NewAutoSyncScheduler(
 		accountRepo:   accountRepo,
 		taskQueue:     taskQueue,
 		logger:        logger,
+		dailyGate:     dailyGate,
 		checkInterval: 1 * time.Minute, // 每分钟检查一次
 		stopCh:        make(chan struct{}),
 		syncing:       make(map[int64]bool),
@@ -109,6 +116,10 @@ func (s *AutoSyncScheduler) checkAndSync() {
 
 	// 每日 CDN 指标采集(与账号自动同步解耦,详见 auto_sync_metrics.go)
 	s.checkMetricsCollection()
+
+	// 每日 NAS 指标采集(持久化日闸原子认领,与账号自动同步解耦,
+	// 详见 auto_sync_nas_metrics.go / daily_gate.go)
+	s.checkNASMetricsCollection()
 
 	// 获取所有启用自动同步的活跃账号
 	accounts, err := s.getAutoSyncAccounts(ctx)

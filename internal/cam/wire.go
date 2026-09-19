@@ -3,6 +3,7 @@ package cam
 import (
 	"sync"
 
+	alertdao "github.com/Havens-blog/e-cam-service/internal/alert/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
@@ -126,7 +127,15 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	dashboardHandler := web.NewDashboardHandler(dashboardService)
 
 	// Scheduler
-	autoSyncScheduler := scheduler.NewAutoSyncScheduler(cloudAccountRepository, queue, component)
+	// 持久化日闸(scheduler_state):NAS 每日采集的原子认领入口(唯一提交入口,
+	// 写失败指数退避重试+升级告警、读失败 ≥5 分钟退避,见 scheduler/daily_gate.go)。
+	// 告警通道落 alert 告警事件(T6 健康监控/T8 CDN 迁移共用,勿重复造)。
+	schedulerStateDAO := dao.NewSchedulerStateDAO(db)
+	dailyGate := scheduler.NewPersistentDailyGate(
+		schedulerStateDAO,
+		NewSchedulerGateAlerter(alertdao.NewAlertDAO(db)),
+		component)
+	autoSyncScheduler := scheduler.NewAutoSyncScheduler(cloudAccountRepository, queue, component, dailyGate)
 
 	// Web 层
 	handler := web.NewHandler(serviceService, cloudAccountService, modelService)

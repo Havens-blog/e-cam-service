@@ -133,7 +133,7 @@
       "dependencies": [
         "5"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "7-persistent-gate.md",
       "record": "records/7-persistent-gate.md",
       "surface-type": "api",
