@@ -3,8 +3,9 @@
 // 文件：internal/cam/task/executor/sync_cdn_metrics.go
 //
 // 作用：实现 SyncCDNMetricsExecutor，由任务队列(定时任务/手动触发)调度，
-// 遍历活跃云账号的活跃 CDN 域名，按日采集带宽/流量/命中率指标并逐条 upsert
-// 到 ecam_cdn_metric(按 {domain,date} 幂等)。
+// 遍历活跃云账号的活跃 CDN 域名，按日采集带宽/流量/命中率指标并按域名攒批
+// upsert 到 ecam_cdn_metric(按 {domain,date} 幂等)。域名采集经 semaphore
+// 有界并发(上限 cdnMetricDomainConcurrency)，单域名失败记日志不中断其余域名。
 //
 // 厂商适配：CDNAdapter 通过可选接口 CDNMetricQuerier 暴露指标能力，
 // 未实现(探测不到可用监控 API，如 AWS CloudFront)的厂商跳过不视为失败。
@@ -15,11 +16,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	camrepository "github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/gotomicro/ego/core/elog"
@@ -33,6 +36,9 @@ const (
 	defaultCollectDays = 1
 	// maxCollectDays 采集区间上限(厂商 5min/日粒度明细最长 31 天)
 	maxCollectDays = 31
+	// cdnMetricDomainConcurrency 单账号域名采集有界并发上限(对齐厂商限流 QPS
+	// 量级,沿 cert probe_service.go semaphore 先例;调大前先评估厂商限流)
+	cdnMetricDomainConcurrency = 5
 )
 
 // syncCDNMetricsParams 指标采集参数(executor 内部解析用)
@@ -40,6 +46,12 @@ type syncCDNMetricsParams struct {
 	Provider  string `json:"provider"`   // 可选,限定云厂商
 	AccountID int64  `json:"account_id"` // 可选,限定单账号
 	Days      int    `json:"days"`       // 可选,采集近 N 天(含今日),默认 1
+}
+
+// cdnMetricDomainTarget 待采集域名目标(名称回退后)
+type cdnMetricDomainTarget struct {
+	name     string // 加速域名,多数厂商的检索键(空名称回退 DomainID)
+	domainID string // 厂商侧域名/分发 ID(AWS CloudFront 仅认 ID)
 }
 
 // SyncCDNMetricsExecutor CDN 指标采集任务执行器
@@ -207,7 +219,9 @@ func (e *SyncCDNMetricsExecutor) resolveAccounts(ctx context.Context, params syn
 }
 
 // collectAccount 采集单个账号所有活跃 CDN 域名在 [startDate, endDate] 的指标。
-// 返回写入条数;providerSkipped 表示厂商未实现 CDNMetricQuerier(整体跳过)。
+// 域名循环有界并发(semaphore 上限 cdnMetricDomainConcurrency),每域名独立
+// 采集+攒批批量写。返回写入条数;providerSkipped 表示厂商未实现
+// CDNMetricQuerier(整体跳过)。
 func (e *SyncCDNMetricsExecutor) collectAccount(
 	ctx context.Context,
 	account *domain.CloudAccount,
@@ -236,42 +250,86 @@ func (e *SyncCDNMetricsExecutor) collectAccount(
 		return 0, false, fmt.Errorf("获取CDN域名列表失败: %w", err)
 	}
 
-	written := 0
+	// 预过滤待采集域名(仅在线;空名称回退 DomainID),语义与串行版本一致
+	targets := make([]cdnMetricDomainTarget, 0, len(instances))
 	for _, inst := range instances {
 		// 仅采集在线域名(空状态按在线处理,避免厂商未回状态时漏采)
 		if inst.Status != "" && inst.Status != "online" {
 			continue
 		}
-		domainName := inst.DomainName
-		if domainName == "" {
-			domainName = inst.DomainID
+		name := inst.DomainName
+		if name == "" {
+			name = inst.DomainID
 		}
-
-		metrics, err := metricQuerier.GetDomainMetrics(ctx, domainName, inst.DomainID, startDate, endDate)
-		if err != nil {
-			e.logger.Error("查询CDN域名指标失败",
-				elog.String("domain", domainName),
-				elog.Int64("account_id", account.ID),
-				elog.FieldErr(err))
-			continue
-		}
-		for _, m := range metrics {
-			if m.Date == "" || (m.Bytes == 0 && m.Bandwidth == 0 && m.HitRate < 0) {
-				continue // 当日无数据不写库
-			}
-			m.AccountID = account.ID
-			m.Provider = string(account.Provider)
-			if err := e.metricDAO.UpsertMetric(ctx, m); err != nil {
-				e.logger.Error("写入CDN指标失败",
-					elog.String("domain", m.Domain),
-					elog.String("date", m.Date),
-					elog.FieldErr(err))
-				continue
-			}
-			written++
-		}
+		targets = append(targets, cdnMetricDomainTarget{name: name, domainID: inst.DomainID})
 	}
-	return written, false, nil
+
+	// 域名有界并发采集(沿 cert probe_service.go semaphore 先例):每域名
+	// 独立采集+攒批写,单域名失败记日志不中断其余域名;任务取消不再派发。
+	var (
+		wg      sync.WaitGroup
+		sem     = make(chan struct{}, cdnMetricDomainConcurrency)
+		written atomic.Int64
+	)
+	for _, tgt := range targets {
+		if err := ctx.Err(); err != nil {
+			break
+		}
+		wg.Add(1)
+		go func(tgt cdnMetricDomainTarget) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-sem }()
+			written.Add(int64(e.collectDomainMetrics(ctx, metricQuerier, account, tgt, startDate, endDate)))
+		}(tgt)
+	}
+	wg.Wait()
+	return int(written.Load()), false, nil
+}
+
+// collectDomainMetrics 单域名采集 [startDate, endDate] 指标并攒批写库:
+// 过滤无数据日后一次性 BulkUpsertMetrics(每域名一批,替代逐条单写,
+// AccountID/Provider 在批内注入)。返回写入条数;查询/批量写失败记日志
+// 返回 0,不影响其它域名(由调用方并发调度)。
+func (e *SyncCDNMetricsExecutor) collectDomainMetrics(
+	ctx context.Context,
+	querier cloudx.CDNMetricQuerier,
+	account *domain.CloudAccount,
+	tgt cdnMetricDomainTarget,
+	startDate, endDate string,
+) int {
+	metrics, err := querier.GetDomainMetrics(ctx, tgt.name, tgt.domainID, startDate, endDate)
+	if err != nil {
+		e.logger.Error("查询CDN域名指标失败",
+			elog.String("domain", tgt.name),
+			elog.Int64("account_id", account.ID),
+			elog.FieldErr(err))
+		return 0
+	}
+	batch := make([]types.CDNMetric, 0, len(metrics))
+	for _, m := range metrics {
+		if m.Date == "" || (m.Bytes == 0 && m.Bandwidth == 0 && m.HitRate < 0) {
+			continue // 当日无数据不写库
+		}
+		m.AccountID = account.ID
+		m.Provider = string(account.Provider)
+		batch = append(batch, m)
+	}
+	if len(batch) == 0 {
+		return 0
+	}
+	if err := e.metricDAO.BulkUpsertMetrics(ctx, batch); err != nil {
+		e.logger.Error("批量写入CDN指标失败",
+			elog.String("domain", tgt.name),
+			elog.Int("batch_size", len(batch)),
+			elog.FieldErr(err))
+		return 0
+	}
+	return len(batch)
 }
 
 // cdnMetricsDateRange 近 N 天(含今日,运营时区)的采集区间 [startDate, endDate]
