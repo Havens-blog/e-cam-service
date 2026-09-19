@@ -48,6 +48,7 @@ import (
 	volcanosdkalb "github.com/volcengine/volcengine-go-sdk/service/alb"
 	volcanosdkcdn "github.com/volcengine/volcengine-go-sdk/service/cdn"
 	volcanosdkcsv "github.com/volcengine/volcengine-go-sdk/service/certificateservice"
+	volcanosdkclb "github.com/volcengine/volcengine-go-sdk/service/clb"
 	volcanosdkwaf "github.com/volcengine/volcengine-go-sdk/service/waf"
 	"github.com/volcengine/volcengine-go-sdk/volcengine"
 	"github.com/volcengine/volcengine-go-sdk/volcengine/credentials"
@@ -91,7 +92,18 @@ const (
 	// 经 AddCertificate 上传的证书口径）。实网复核项：Source 枚举若与云侧漂移
 	// 在此单点修正。
 	volcanoCDNListCertSource = "external"
+	// volcanoRefPageSizeDefault 引用枚举（ListReferences）默认分页大小（四产品
+	// 统一口径，对齐扫描适配器 volcanoScanPageSizeDefault 语义）。
+	volcanoRefPageSizeDefault = int64(100)
 )
+
+// volcanoBindCertProducts 绑定目标产品合法集（BindResource product 入参校验）。
+var volcanoBindCertProducts = map[string]bool{
+	volcanoProductCDN: true,
+	volcanoProductWAF: true,
+	volcanoProductALB: true,
+	volcanoProductNLB: true,
+}
 
 // volcanoCloudCertProducts 归一前缀合法集（splitVolcanoCloudCertID 消费）。
 var volcanoCloudCertProducts = map[string]bool{
@@ -115,13 +127,28 @@ var ErrVolcanoProductNotSupported = errors.New("volcano deployer: product not su
 // 前缀/空裸 ID——fail-fast 不猜测）。
 var errVolcanoCloudCertIDNotNormalized = errors.New("volcano deployer: cloud cert id is not normalized ({product}:{id})")
 
+// ErrVolcanoCSVCertNotBindable certificateservice（csv）统一证书库实例不可直接
+// 绑定产品资源哨兵：火山四产品证书库独立，csv 实例私钥不可再导出（云侧仅
+// 返回公开链），产品资源绑定消费的必须是该产品库证书（{product}:{id} 前缀）。
+// 两段式第一段统一落 csv（UploadCert 端口无 product 入参的已记录 SPEC 偏差）
+// 与本哨兵的接通形态归任务 5 接通验证裁决（「暴露任何编排层与火山 ID 归一的
+// 不匹配」）——本层不猜测、不静默降级。
+var ErrVolcanoCSVCertNotBindable = errors.New("volcano deployer: csv unified-library cert cannot bind product resource directly (product-library cert required)")
+
+// errVolcanoBindCertProductMismatch 绑定云证书前缀与目标产品不符（如 cdn 证书
+// 绑 waf 资源；alb/nlb 共用 ALB 监听证书库除外——与 GetCert/CleanupOrphan
+// 路由口径一致）。
+var errVolcanoBindCertProductMismatch = errors.New("volcano deployer: cloud cert product does not match bind target product")
+
 // ---------------------------------------------------------------------
 // SDK 窄接口与客户端工厂
 // ---------------------------------------------------------------------
 
 // volcanoCertLibraryAPI 火山四证书库 SDK 窄接口（生产实现为 volcanoSDKClients；
 // 测试注入 fake）。签名即适配原签名——本层只消费 SDK，不改适配面。
-// 只含证书库层必需方法：上传 ×4 库、查询 ×4 库、删除 ×4 库。
+// 覆盖证书库层（上传/查询/删除 ×4 库）+ 绑定层（任务 2：CDN BatchDeployCert /
+// WAF UpdateDomain / ALB-NLB 监听属性更新）+ 引用枚举只读面（任务 2
+// ListReferences 活体重查，与任务 3 扫描适配器同 API 口径）。
 type volcanoCertLibraryAPI interface {
 	// certificateservice 统一证书库（csv）
 	ImportCertificateWithContext(ctx context.Context, input *volcanosdkcsv.ImportCertificateInput, opts ...request.Option) (*volcanosdkcsv.ImportCertificateOutput, error)
@@ -131,14 +158,24 @@ type volcanoCertLibraryAPI interface {
 	AddCertificateWithContext(ctx context.Context, input *volcanosdkcdn.AddCertificateInput, opts ...request.Option) (*volcanosdkcdn.AddCertificateOutput, error)
 	ListCertInfoWithContext(ctx context.Context, input *volcanosdkcdn.ListCertInfoInput, opts ...request.Option) (*volcanosdkcdn.ListCertInfoOutput, error)
 	DeleteCdnCertificateWithContext(ctx context.Context, input *volcanosdkcdn.DeleteCdnCertificateInput, opts ...request.Option) (*volcanosdkcdn.DeleteCdnCertificateOutput, error)
-	// WAF 服务证书库
+	BatchDeployCertWithContext(ctx context.Context, input *volcanosdkcdn.BatchDeployCertInput, opts ...request.Option) (*volcanosdkcdn.BatchDeployCertOutput, error)
+	ListCdnCertInfoWithContext(ctx context.Context, input *volcanosdkcdn.ListCdnCertInfoInput, opts ...request.Option) (*volcanosdkcdn.ListCdnCertInfoOutput, error)
+	// WAF 服务证书库 + 防护域名（region 级；Region 经 input/客户端承载）
 	UploadWafServiceCertificateWithContext(ctx context.Context, input *volcanosdkwaf.UploadWafServiceCertificateInput, opts ...request.Option) (*volcanosdkwaf.UploadWafServiceCertificateOutput, error)
 	ListWafServiceCertificateWithContext(ctx context.Context, input *volcanosdkwaf.ListWafServiceCertificateInput, opts ...request.Option) (*volcanosdkwaf.ListWafServiceCertificateOutput, error)
 	DeleteWafServiceCertificateWithContext(ctx context.Context, input *volcanosdkwaf.DeleteWafServiceCertificateInput, opts ...request.Option) (*volcanosdkwaf.DeleteWafServiceCertificateOutput, error)
-	// ALB 监听证书库（alb/nlb 共用）
+	ListDomainWithContext(ctx context.Context, input *volcanosdkwaf.ListDomainInput, opts ...request.Option) (*volcanosdkwaf.ListDomainOutput, error)
+	UpdateDomainWithContext(ctx context.Context, input *volcanosdkwaf.UpdateDomainInput, opts ...request.Option) (*volcanosdkwaf.UpdateDomainOutput, error)
+	// ALB 监听证书库（alb/nlb 共用）+ 监听/转发规则（region 级）
 	UploadCertificateWithContext(ctx context.Context, input *volcanosdkalb.UploadCertificateInput, opts ...request.Option) (*volcanosdkalb.UploadCertificateOutput, error)
 	DescribeCertificatesWithContext(ctx context.Context, input *volcanosdkalb.DescribeCertificatesInput, opts ...request.Option) (*volcanosdkalb.DescribeCertificatesOutput, error)
 	DeleteCertificateWithContext(ctx context.Context, input *volcanosdkalb.DeleteCertificateInput, opts ...request.Option) (*volcanosdkalb.DeleteCertificateOutput, error)
+	ModifyListenerAttributesWithContext(ctx context.Context, input *volcanosdkalb.ModifyListenerAttributesInput, opts ...request.Option) (*volcanosdkalb.ModifyListenerAttributesOutput, error)
+	DescribeListenersWithContext(ctx context.Context, input *volcanosdkalb.DescribeListenersInput, opts ...request.Option) (*volcanosdkalb.DescribeListenersOutput, error)
+	DescribeRulesWithContext(ctx context.Context, input *volcanosdkalb.DescribeRulesInput, opts ...request.Option) (*volcanosdkalb.DescribeRulesOutput, error)
+	// NLB 监听器（clb 服务 NLB API；region 级）
+	DescribeNLBListenersWithContext(ctx context.Context, input *volcanosdkclb.DescribeNLBListenersInput, opts ...request.Option) (*volcanosdkclb.DescribeNLBListenersOutput, error)
+	ModifyNLBListenerAttributesWithContext(ctx context.Context, input *volcanosdkclb.ModifyNLBListenerAttributesInput, opts ...request.Option) (*volcanosdkclb.ModifyNLBListenerAttributesOutput, error)
 }
 
 // volcanoSDKClients 火山四证书库 SDK 客户端束（生产实现，volcanoCertLibraryAPI）。
@@ -149,6 +186,7 @@ type volcanoSDKClients struct {
 	cdn *volcanosdkcdn.CDN
 	waf *volcanosdkwaf.WAF
 	alb *volcanosdkalb.ALB
+	nlb *volcanosdkclb.CLB // NLB 监听器走 clb 服务 NLB API（对齐扫描适配器口径）
 }
 
 func (c *volcanoSDKClients) ImportCertificateWithContext(ctx context.Context, input *volcanosdkcsv.ImportCertificateInput, opts ...request.Option) (*volcanosdkcsv.ImportCertificateOutput, error) {
@@ -199,12 +237,57 @@ func (c *volcanoSDKClients) DeleteCertificateWithContext(ctx context.Context, in
 	return c.alb.DeleteCertificateWithContext(ctx, input, opts...)
 }
 
+func (c *volcanoSDKClients) BatchDeployCertWithContext(ctx context.Context, input *volcanosdkcdn.BatchDeployCertInput, opts ...request.Option) (*volcanosdkcdn.BatchDeployCertOutput, error) {
+	return c.cdn.BatchDeployCertWithContext(ctx, input, opts...)
+}
+
+func (c *volcanoSDKClients) ListCdnCertInfoWithContext(ctx context.Context, input *volcanosdkcdn.ListCdnCertInfoInput, opts ...request.Option) (*volcanosdkcdn.ListCdnCertInfoOutput, error) {
+	return c.cdn.ListCdnCertInfoWithContext(ctx, input, opts...)
+}
+
+func (c *volcanoSDKClients) ListDomainWithContext(ctx context.Context, input *volcanosdkwaf.ListDomainInput, opts ...request.Option) (*volcanosdkwaf.ListDomainOutput, error) {
+	return c.waf.ListDomainWithContext(ctx, input, opts...)
+}
+
+func (c *volcanoSDKClients) UpdateDomainWithContext(ctx context.Context, input *volcanosdkwaf.UpdateDomainInput, opts ...request.Option) (*volcanosdkwaf.UpdateDomainOutput, error) {
+	return c.waf.UpdateDomainWithContext(ctx, input, opts...)
+}
+
+func (c *volcanoSDKClients) ModifyListenerAttributesWithContext(ctx context.Context, input *volcanosdkalb.ModifyListenerAttributesInput, opts ...request.Option) (*volcanosdkalb.ModifyListenerAttributesOutput, error) {
+	return c.alb.ModifyListenerAttributesWithContext(ctx, input, opts...)
+}
+
+func (c *volcanoSDKClients) DescribeListenersWithContext(ctx context.Context, input *volcanosdkalb.DescribeListenersInput, opts ...request.Option) (*volcanosdkalb.DescribeListenersOutput, error) {
+	return c.alb.DescribeListenersWithContext(ctx, input, opts...)
+}
+
+func (c *volcanoSDKClients) DescribeRulesWithContext(ctx context.Context, input *volcanosdkalb.DescribeRulesInput, opts ...request.Option) (*volcanosdkalb.DescribeRulesOutput, error) {
+	return c.alb.DescribeRulesWithContext(ctx, input, opts...)
+}
+
+func (c *volcanoSDKClients) DescribeNLBListenersWithContext(ctx context.Context, input *volcanosdkclb.DescribeNLBListenersInput, opts ...request.Option) (*volcanosdkclb.DescribeNLBListenersOutput, error) {
+	return c.nlb.DescribeNLBListenersWithContext(ctx, input, opts...)
+}
+
+func (c *volcanoSDKClients) ModifyNLBListenerAttributesWithContext(ctx context.Context, input *volcanosdkclb.ModifyNLBListenerAttributesInput, opts ...request.Option) (*volcanosdkclb.ModifyNLBListenerAttributesOutput, error) {
+	return c.nlb.ModifyNLBListenerAttributesWithContext(ctx, input, opts...)
+}
+
 // newVolcanoSDKClients 生产客户端工厂：四服务共用一次会话装配（静态 AK/SK，
 // 账号默认地域仅用于客户端签名装配——证书库为全局/账号级服务）。
 func newVolcanoSDKClients(creds *sharedomain.CloudAccount) (volcanoCertLibraryAPI, error) {
+	return newVolcanoSDKClientsForRegion(creds, volcanoCredsRegion(creds))
+}
+
+// newVolcanoSDKClientsForRegion 地域级客户端工厂（WAF/ALB/NLB 为地域级产品，
+// 绑定定位与引用枚举按账号地域遍历——对齐扫描适配器 per-region 客户端口径）。
+func newVolcanoSDKClientsForRegion(creds *sharedomain.CloudAccount, region string) (volcanoCertLibraryAPI, error) {
+	if strings.TrimSpace(region) == "" {
+		region = "cn-beijing"
+	}
 	config := volcengine.NewConfig().
 		WithCredentials(credentials.NewStaticCredentials(creds.AccessKeyID, creds.AccessKeySecret, "")).
-		WithRegion(volcanoCredsRegion(creds))
+		WithRegion(region)
 	sess, err := session.NewSession(config)
 	if err != nil {
 		return nil, fmt.Errorf("创建火山证书库会话失败: %w", err)
@@ -214,6 +297,7 @@ func newVolcanoSDKClients(creds *sharedomain.CloudAccount) (volcanoCertLibraryAP
 		cdn: volcanosdkcdn.New(sess),
 		waf: volcanosdkwaf.New(sess),
 		alb: volcanosdkalb.New(sess),
+		nlb: volcanosdkclb.New(sess),
 	}, nil
 }
 
@@ -232,8 +316,8 @@ func volcanoCredsRegion(creds *sharedomain.CloudAccount) string {
 
 // VolcanoDeployer 火山引擎 CloudDeployer：覆盖 cdn/waf/alb/nlb 四产品 +
 // certificateservice 统一证书库。任务 1 交付证书库层三方法（UploadCert/
-// GetCert/CleanupOrphan）；BindResource/ListReferences 由任务 2 追加（本文件
-// 内显式未装配桩，见编译期断言）。
+// GetCert/CleanupOrphan）；任务 2 追加绑定层 BindResource（四产品分支）与
+// 只读发现 ListReferences（活体重查面）。
 type VolcanoDeployer struct {
 	mappings domain.CloudCertMappingRepository // 可空：任务 2 ListReferences 指纹映射反查
 	retry    RetryPolicy
@@ -242,6 +326,11 @@ type VolcanoDeployer struct {
 	sleep    func(ctx context.Context, d time.Duration) error // 退避睡眠（测试可注入）
 
 	newClients func(creds *sharedomain.CloudAccount) (volcanoCertLibraryAPI, error) // 客户端工厂（测试注入 fake）
+	// newClientsForRegion 地域级客户端工厂（任务 2 绑定定位/引用枚举按地域遍历；
+	// 测试注入 fake）。与 newClients 分离：任务 1 证书库层三方法固定账号默认地域
+	// 口径不受影响。
+	newClientsForRegion func(creds *sharedomain.CloudAccount, region string) (volcanoCertLibraryAPI, error)
+	refPageSize         int64 // 引用枚举分页大小（零值回退默认；测试可缩小覆盖翻页分支）
 }
 
 // 编译期断言：满足 CloudDeployer 端口（供 5.3 CloudAPIChannel 注入；任务 2
@@ -253,12 +342,13 @@ var _ CloudDeployer = (*VolcanoDeployer)(nil)
 // 字段注入 fake）。
 func NewVolcanoDeployer(mappings domain.CloudCertMappingRepository, opts ...VolcanoOption) *VolcanoDeployer {
 	d := &VolcanoDeployer{
-		mappings:   mappings,
-		retry:      DefaultRetryPolicy(),
-		now:        time.Now,
-		randHex:    randomHexSuffix,
-		sleep:      sleepWithContext,
-		newClients: newVolcanoSDKClients,
+		mappings:            mappings,
+		retry:               DefaultRetryPolicy(),
+		now:                 time.Now,
+		randHex:             randomHexSuffix,
+		sleep:               sleepWithContext,
+		newClients:          newVolcanoSDKClients,
+		newClientsForRegion: newVolcanoSDKClientsForRegion,
 	}
 	for _, opt := range opts {
 		opt(d)
@@ -440,19 +530,639 @@ func (d *VolcanoDeployer) uploadForProduct(ctx context.Context, acct *sharedomai
 	}
 }
 
-// BindResource 两段式第二段（任务 2 落地：CDN BatchDeployCert / WAF 域名证书
-// 替换 / ALB-NLB 监听证书更新）。本任务显式未装配桩——编译期断言要求端口
-// 完整，先以哨兵占位，任务 2 以同签名真实实现替换。
+// BindResource 两段式第二段（CDN BatchDeployCert / WAF 防护域名证书替换 /
+// ALB-NLB 监听证书更新）：云证书 ID 为 {product}:{id} 归一形态（fail-fast 解析），
+// 证书前缀须与目标产品证书库兼容（alb/nlb 共用 ALB 监听证书库，与 GetCert/
+// CleanupOrphan 路由口径一致；csv 统一库实例不可直接绑定——ErrVolcanoCSVCertNotBindable）。
+// 幂等：各绑定 API 均为「置位」语义（把资源证书设为指定 ID），同一
+// (resource, cloudCertID) 重绑收敛同结果。
 func (d *VolcanoDeployer) BindResource(ctx context.Context, creds Credential, product, resourceID, cloudCertID string) error {
-	_ = ctx
-	return fmt.Errorf("volcano deployer: BindResource not wired yet (task 2 bind layer); product=%q", product)
+	acct, err := d.account(creds)
+	if err != nil {
+		return err
+	}
+	certProduct, rawID, ok := splitVolcanoCloudCertID(cloudCertID)
+	if !ok {
+		return fmt.Errorf("%w: %q", errVolcanoCloudCertIDNotNormalized, cloudCertID)
+	}
+	if err := volcanoBindProductCompat(product, certProduct); err != nil {
+		return err
+	}
+	if strings.TrimSpace(resourceID) == "" {
+		return fmt.Errorf("volcano deployer: bind %s requires non-empty resource id", product)
+	}
+	if err := d.withRetry(ctx, func(int) error {
+		return d.bindForProduct(ctx, acct, product, resourceID, rawID)
+	}); err != nil {
+		return fmt.Errorf("volcano deployer: bind %s resource %s: %w", product, resourceID, err)
+	}
+	return nil
 }
 
-// ListReferences 只读发现（任务 2 落地：四产品资源 → CertReference 指纹解析）。
-// 本任务显式未装配桩（同 BindResource 口径）。
+// volcanoBindProductCompat 绑定目标产品与云证书前缀兼容性校验：
+//   - 目标产品须为四部署产品之一（csv 仅证书库，非绑定目标）；
+//   - 证书前缀与目标产品同库（同前缀，或 alb/nlb 互跨——共用 ALB 监听证书库）；
+//   - csv 前缀 → ErrVolcanoCSVCertNotBindable（两段式第一段落库与绑定的接通
+//     形态归任务 5 裁决，本层 fail-fast 不猜测）。
+func volcanoBindProductCompat(product, certProduct string) error {
+	if !volcanoBindCertProducts[product] {
+		return fmt.Errorf("%w: %q", ErrVolcanoProductNotSupported, product)
+	}
+	if certProduct == product {
+		return nil
+	}
+	if certProduct == volcanoProductCSV {
+		return fmt.Errorf("%w: cert %q -> target product %q", ErrVolcanoCSVCertNotBindable, certProduct, product)
+	}
+	albFamily := (certProduct == volcanoProductALB || certProduct == volcanoProductNLB) &&
+		(product == volcanoProductALB || product == volcanoProductNLB)
+	if albFamily {
+		return nil
+	}
+	return fmt.Errorf("%w: cert %q -> target product %q", errVolcanoBindCertProductMismatch, certProduct, product)
+}
+
+// bindForProduct 按目标产品路由绑定（单次定位 + 单次绑定调用）。
+func (d *VolcanoDeployer) bindForProduct(ctx context.Context, acct *sharedomain.CloudAccount, product, resourceID, certID string) error {
+	switch product {
+	case volcanoProductCDN:
+		return d.bindCDN(ctx, acct, resourceID, certID)
+	case volcanoProductWAF:
+		return d.bindWAF(ctx, acct, resourceID, certID)
+	case volcanoProductALB, volcanoProductNLB:
+		return d.bindLBListener(ctx, acct, product, resourceID, certID)
+	default:
+		return fmt.Errorf("%w: %q", ErrVolcanoProductNotSupported, product)
+	}
+}
+
+// bindCDN CDN 加速域名绑定（resourceID=加速域名，对齐扫描域名粒度）：
+// BatchDeployCert 置位语义（重绑收敛）。逐域部署结果（DeployResult）非 success
+// 即失败（携带云侧 ErrorMsg，不含敏感材料）。实网复核项：Status 枚举大小写
+// 以云侧为准。
+func (d *VolcanoDeployer) bindCDN(ctx context.Context, acct *sharedomain.CloudAccount, domain, certID string) error {
+	client, err := d.client(acct) // CDN 为全局服务（账号默认地域签名装配）
+	if err != nil {
+		return err
+	}
+	out, err := client.BatchDeployCertWithContext(ctx, &volcanosdkcdn.BatchDeployCertInput{
+		CertId: volcengine.String(certID),
+		Domain: volcengine.String(domain),
+	})
+	if err != nil {
+		return wrapVolcanoCertErr("cdn_batch_deploy_cert", err)
+	}
+	for _, item := range out.DeployResult {
+		if item == nil || item.Status == nil {
+			continue
+		}
+		if !strings.EqualFold(*item.Status, "success") {
+			return fmt.Errorf("volcano cdn_batch_deploy_cert: domain %s deploy failed: %s",
+				volcengine.StringValue(item.Domain), volcengine.StringValue(item.ErrorMsg))
+		}
+	}
+	return nil
+}
+
+// bindWAF WAF 防护域名证书替换（resourceID=防护域名）：逐地域定位域名
+// （ListDomain 分页，Region 经 input 透传）读取现网 AccessMode（UpdateDomain
+// 必填，缺失 fail-fast——不猜默认值），UpdateDomain 仅携带 Domain/CertificateID/
+// AccessMode 三字段（其余字段 omitempty 不下发）。实网复核项：UpdateDomain 对
+// 未携带字段的云侧保留语义以此单点验证。
+func (d *VolcanoDeployer) bindWAF(ctx context.Context, acct *sharedomain.CloudAccount, domain, certID string) error {
+	certNum, err := strconv.ParseInt(certID, 10, 32)
+	if err != nil {
+		return fmt.Errorf("volcano waf bind: cert id %q is not a waf service certificate id (numeric)", certID)
+	}
+	regions := volcanoRegions(acct)
+	for _, region := range regions {
+		client, cerr := d.newClientsForRegion(acct, region)
+		if cerr != nil {
+			return cerr
+		}
+		item, found, lerr := findVolcanoWAFDomain(ctx, client, region, domain)
+		if lerr != nil {
+			return lerr
+		}
+		if !found {
+			continue // 地域未命中继续（域名定位与 AccessMode 读取一并完成）
+		}
+		if item.AccessMode == nil {
+			return fmt.Errorf("volcano waf_update_domain: domain %s access mode unavailable (region %s)", domain, region)
+		}
+		if _, uerr := client.UpdateDomainWithContext(ctx, &volcanosdkwaf.UpdateDomainInput{
+			Domain:        volcengine.String(domain),
+			CertificateID: volcengine.Int32(int32(certNum)),
+			AccessMode:    item.AccessMode,
+		}); uerr != nil {
+			return wrapVolcanoCertErr("waf_update_domain", uerr)
+		}
+		return nil
+	}
+	return fmt.Errorf("volcano waf_update_domain: domain %s not found in regions %v", domain, regions)
+}
+
+// findVolcanoWAFDomain 逐页定位防护域名条目（分页耗尽/空页即未命中）。
+func findVolcanoWAFDomain(ctx context.Context, client volcanoCertLibraryAPI, region, domain string) (*volcanosdkwaf.DataForListDomainOutput, bool, error) {
+	pageSize := int32(volcanoRefPageSizeDefault)
+	for page := int32(1); ; page++ {
+		out, err := client.ListDomainWithContext(ctx, &volcanosdkwaf.ListDomainInput{
+			Page:     volcengine.Int32(page),
+			PageSize: volcengine.Int32(pageSize),
+			Region:   volcengine.String(region),
+		})
+		if err != nil {
+			return nil, false, wrapVolcanoCertErr("waf_list_domain", err)
+		}
+		if out == nil || len(out.Data) == 0 {
+			return nil, false, nil
+		}
+		for _, item := range out.Data {
+			if item != nil && volcengine.StringValue(item.Domain) == domain {
+				return item, true, nil
+			}
+		}
+		if int32(len(out.Data)) < pageSize {
+			return nil, false, nil
+		}
+	}
+}
+
+// bindLBListener ALB/NLB 监听证书绑定（resourceID="{lbId}/{listenerId}" 监听
+// 复合形态，纯监听形态容忍——对齐快照旧引用升级窗口互认口径）：逐地域经
+// ListenerIds 定点定位监听（对齐 aliyun findALBListener 先例），命中地域执行
+// 监听属性置位；HTTP 监听无服务器证书显式报错（对齐扫描跳过口径）。
+func (d *VolcanoDeployer) bindLBListener(ctx context.Context, acct *sharedomain.CloudAccount, product, resourceID, certID string) error {
+	lbID, listenerID := volcanoSplitLBResourceID(resourceID)
+	if listenerID == "" {
+		return fmt.Errorf("volcano %s bind: resource id %q must be {lbId}/{listenerId} composite", product, resourceID)
+	}
+	regions := volcanoRegions(acct)
+	for _, region := range regions {
+		client, cerr := d.newClientsForRegion(acct, region)
+		if cerr != nil {
+			return cerr
+		}
+		protocol, found, lerr := findVolcanoLBListener(ctx, client, product, lbID, listenerID)
+		if lerr != nil {
+			return lerr
+		}
+		if !found {
+			continue
+		}
+		if product == volcanoProductALB && strings.EqualFold(protocol, "http") {
+			return fmt.Errorf("volcano alb bind: listener %s is HTTP (no server certificate)", listenerID)
+		}
+		switch product {
+		case volcanoProductALB:
+			if _, err := client.ModifyListenerAttributesWithContext(ctx, &volcanosdkalb.ModifyListenerAttributesInput{
+				ListenerId:    volcengine.String(listenerID),
+				CertificateId: volcengine.String(certID),
+			}); err != nil {
+				return wrapVolcanoCertErr("alb_modify_listener_attributes", err)
+			}
+		case volcanoProductNLB:
+			if _, err := client.ModifyNLBListenerAttributesWithContext(ctx, &volcanosdkclb.ModifyNLBListenerAttributesInput{
+				ListenerId:    volcengine.String(listenerID),
+				CertificateId: volcengine.String(certID),
+			}); err != nil {
+				return wrapVolcanoCertErr("nlb_modify_listener_attributes", err)
+			}
+		}
+		return nil
+	}
+	return fmt.Errorf("volcano %s bind: listener %s not found in regions %v", product, listenerID, regions)
+}
+
+// findVolcanoLBListener 逐地域定点定位监听（ListenerIds 过滤单查，复合形态附
+// LoadBalancerId 收窄）。返回协议（alb HTTP 拒绑判定用）与命中标记。
+func findVolcanoLBListener(ctx context.Context, client volcanoCertLibraryAPI, product, lbID, listenerID string) (protocol string, found bool, err error) {
+	switch product {
+	case volcanoProductALB:
+		out, err := client.DescribeListenersWithContext(ctx, &volcanosdkalb.DescribeListenersInput{
+			ListenerIds:    []*string{volcengine.String(listenerID)},
+			LoadBalancerId: nullableVolcanoString(lbID),
+		})
+		if err != nil {
+			return "", false, wrapVolcanoCertErr("alb_describe_listeners", err)
+		}
+		if out == nil || len(out.Listeners) == 0 || out.Listeners[0] == nil {
+			return "", false, nil
+		}
+		return volcengine.StringValue(out.Listeners[0].Protocol), true, nil
+	case volcanoProductNLB:
+		out, err := client.DescribeNLBListenersWithContext(ctx, &volcanosdkclb.DescribeNLBListenersInput{
+			ListenerIds:    []*string{volcengine.String(listenerID)},
+			LoadBalancerId: nullableVolcanoString(lbID),
+		})
+		if err != nil {
+			return "", false, wrapVolcanoCertErr("nlb_describe_listeners", err)
+		}
+		if out == nil || len(out.Listeners) == 0 || out.Listeners[0] == nil {
+			return "", false, nil
+		}
+		return volcengine.StringValue(out.Listeners[0].Protocol), true, nil
+	default:
+		return "", false, fmt.Errorf("%w: %q", ErrVolcanoProductNotSupported, product)
+	}
+}
+
+// ListReferences 只读发现（活体重查面）：四产品资源枚举 → CertReference，与
+// 任务 3 扫描适配器共享 resourceId/ReferencedCloudCertID 形态（CDN/WAF=域名、
+// ALB/NLB={lbId}/{listenerId} 监听复合 ID、{product}:{id} 归一前缀；ALB 按
+// served domains 展开、NLB 无规则为空），映射反查键与扫描产出同口径。指纹解析
+// 口径同 3.5/5.4/5.5（映射反查 → GetCert 要素〔仅接受 SHA256 对齐口径；csv
+// 链解析/cdn 原生 sha256 通道，waf/alb/nlb 无法复核〕→ 确定性占位指纹，占位
+// 公式与 3.5 扫描路径一致可对账）；同云证书多引用去重查询。
 func (d *VolcanoDeployer) ListReferences(ctx context.Context, creds Credential, product string) ([]domain.CertReference, error) {
-	_ = ctx
-	return nil, fmt.Errorf("volcano deployer: ListReferences not wired yet (task 2 bind layer); product=%q", product)
+	acct, err := d.account(creds)
+	if err != nil {
+		return nil, err
+	}
+	var found []volcanoRef
+	err = d.withRetry(ctx, func(int) error {
+		var e error
+		found, e = d.listRefsForProduct(ctx, acct, product)
+		return e
+	})
+	if err != nil {
+		return nil, fmt.Errorf("volcano deployer: list %s references: %w", product, err)
+	}
+	out := make([]domain.CertReference, 0, len(found))
+	cache := make(map[string]string, len(found))
+	for _, r := range found {
+		out = append(out, domain.CertReference{
+			CertFingerprint:       d.resolveVolcanoFingerprint(ctx, acct, acct.Name, r.cloudCertID, cache),
+			Cloud:                 volcanoCloud,
+			Product:               domain.Product(r.product),
+			ResourceID:            r.resourceID,
+			ReferencedCloudCertID: r.cloudCertID,
+			AccountKey:            acct.Name,
+			ServedDomains:         r.servedDomains,
+		})
+	}
+	return out, nil
+}
+
+// volcanoRef 引用枚举内部形态（产品/资源 ID/归一云证书 ID/served domains）。
+type volcanoRef struct {
+	product       string
+	resourceID    string
+	cloudCertID   string
+	servedDomains []string
+}
+
+// listRefsForProduct 按产品分发引用枚举（错误透传，partials 隔离归服务层编排）。
+func (d *VolcanoDeployer) listRefsForProduct(ctx context.Context, acct *sharedomain.CloudAccount, product string) ([]volcanoRef, error) {
+	switch product {
+	case volcanoProductCDN:
+		return d.listCDNRefs(ctx, acct)
+	case volcanoProductWAF:
+		return d.listWAFRefs(ctx, acct)
+	case volcanoProductALB:
+		return d.listALBRefs(ctx, acct)
+	case volcanoProductNLB:
+		return d.listNLBRefs(ctx, acct)
+	default:
+		return nil, fmt.Errorf("%w: %q", ErrVolcanoProductNotSupported, product)
+	}
+}
+
+// listCDNRefs CDN 加速域名证书引用（域名粒度）：ListCdnCertInfo 分页枚举证书
+// 库（Source 不过滤——活体重查与扫描同口径），逐证书按已配置域名展开引用；
+// 未配置域名的证书不构成引用。
+func (d *VolcanoDeployer) listCDNRefs(ctx context.Context, acct *sharedomain.CloudAccount) ([]volcanoRef, error) {
+	client, err := d.client(acct) // CDN 为全局服务
+	if err != nil {
+		return nil, err
+	}
+	pageSize := d.refPageSizeOr()
+	var refs []volcanoRef
+	for pageNum := int64(1); ; pageNum++ {
+		out, err := client.ListCdnCertInfoWithContext(ctx, &volcanosdkcdn.ListCdnCertInfoInput{
+			PageNum:  volcengine.Int64(pageNum),
+			PageSize: volcengine.Int64(pageSize),
+		})
+		if err != nil {
+			return nil, wrapVolcanoCertErr("cdn_list_cert_info", err)
+		}
+		if out == nil || len(out.CertInfo) == 0 {
+			break
+		}
+		for _, cert := range out.CertInfo {
+			certID := strings.TrimSpace(volcengine.StringValue(cert.CertId))
+			if certID == "" {
+				continue
+			}
+			for _, conf := range cert.ConfiguredDomainDetail {
+				dom := strings.TrimSpace(volcengine.StringValue(conf.Domain))
+				if dom == "" {
+					continue
+				}
+				refs = append(refs, volcanoRef{
+					product:     volcanoProductCDN,
+					resourceID:  dom,
+					cloudCertID: normalizeVolcanoCloudCertID(volcanoProductCDN, certID),
+				})
+			}
+		}
+		if int64(len(out.CertInfo)) < pageSize {
+			break // 整页未满即最后一页
+		}
+	}
+	return refs, nil
+}
+
+// listWAFRefs WAF 防护域名证书引用（域名粒度）：按账号地域遍历 ListDomain
+// 分页——列表内联 CertificateID（WAF 服务证书库 Id，0/缺省=未配置证书不构成
+// 引用），无 N+1 展开（对齐扫描 listWAFReferences 口径）。
+func (d *VolcanoDeployer) listWAFRefs(ctx context.Context, acct *sharedomain.CloudAccount) ([]volcanoRef, error) {
+	var refs []volcanoRef
+	pageSize := d.refPageSizeOr()
+	for _, region := range volcanoRegions(acct) {
+		client, err := d.newClientsForRegion(acct, region)
+		if err != nil {
+			return nil, err
+		}
+		for page := int32(1); ; page++ {
+			out, err := client.ListDomainWithContext(ctx, &volcanosdkwaf.ListDomainInput{
+				Page:     volcengine.Int32(page),
+				PageSize: volcengine.Int32(int32(pageSize)),
+				Region:   volcengine.String(region),
+			})
+			if err != nil {
+				return nil, wrapVolcanoCertErr("waf_list_domain", err)
+			}
+			if out == nil || len(out.Data) == 0 {
+				break
+			}
+			for _, item := range out.Data {
+				dom := strings.TrimSpace(volcengine.StringValue(item.Domain))
+				var certID int64
+				if item.CertificateID != nil {
+					certID = int64(*item.CertificateID)
+				}
+				if dom == "" || certID == 0 {
+					continue
+				}
+				refs = append(refs, volcanoRef{
+					product:     volcanoProductWAF,
+					resourceID:  dom,
+					cloudCertID: normalizeVolcanoCloudCertID(volcanoProductWAF, strconv.FormatInt(certID, 10)),
+				})
+			}
+			if int64(len(out.Data)) < int64(pageSize) {
+				break // 整页未满即最后一页
+			}
+		}
+	}
+	return refs, nil
+}
+
+// listALBRefs ALB 监听证书引用（L7 终结）：按账号地域遍历 DescribeListeners
+// 分页——主证书（CertificateId，证书中心形态回退 CertCenterCertificateId）与
+// SNI 扩展证书（DomainExtensions，与主证书同 ID 去重）均为引用；HTTP 监听无
+// 服务器证书跳过；served domains 逐监听经转发规则展开（失败置空不阻塞——
+// 回退 coverage 语义，对齐扫描/aliyun 口径）。
+func (d *VolcanoDeployer) listALBRefs(ctx context.Context, acct *sharedomain.CloudAccount) ([]volcanoRef, error) {
+	var refs []volcanoRef
+	pageSize := d.refPageSizeOr()
+	for _, region := range volcanoRegions(acct) {
+		client, err := d.newClientsForRegion(acct, region)
+		if err != nil {
+			return nil, err
+		}
+		for pageNum := int64(1); ; pageNum++ {
+			out, err := client.DescribeListenersWithContext(ctx, &volcanosdkalb.DescribeListenersInput{
+				PageNumber: volcengine.Int64(pageNum),
+				PageSize:   volcengine.Int64(pageSize),
+			})
+			if err != nil {
+				return nil, wrapVolcanoCertErr("alb_describe_listeners", err)
+			}
+			if out == nil || len(out.Listeners) == 0 {
+				break
+			}
+			for _, listener := range out.Listeners {
+				refs = append(refs, d.albListenerRefs(ctx, client, listener)...)
+			}
+			if int64(len(out.Listeners)) < pageSize {
+				break // 整页未满即最后一页
+			}
+		}
+	}
+	return refs, nil
+}
+
+// albListenerRefs 展开单个 ALB 监听的证书引用（主证书 + SNI 扩展证书）。
+func (d *VolcanoDeployer) albListenerRefs(ctx context.Context, client volcanoCertLibraryAPI, listener *volcanosdkalb.ListenerForDescribeListenersOutput) []volcanoRef {
+	if listener == nil || strings.EqualFold(volcengine.StringValue(listener.Protocol), "http") {
+		return nil // HTTP 监听无服务器证书
+	}
+	listenerID := volcengine.StringValue(listener.ListenerId)
+	if listenerID == "" {
+		return nil
+	}
+	resourceID := volcanoLBResourceID(volcengine.StringValue(listener.LoadBalancerId), listenerID)
+	served := volcanoALBServedDomains(ctx, client, listenerID)
+
+	defaultCertID := strings.TrimSpace(volcengine.StringValue(listener.CertificateId))
+	if defaultCertID == "" {
+		// 证书中心（cert center）形态监听：CertificateId 缺省时回退
+		// CertCenterCertificateId（对齐扫描口径；实网复核项：两形态互斥性以云侧为准）。
+		defaultCertID = strings.TrimSpace(volcengine.StringValue(listener.CertCenterCertificateId))
+	}
+	var refs []volcanoRef
+	if defaultCertID != "" {
+		refs = append(refs, volcanoRef{
+			product:       volcanoProductALB,
+			resourceID:    resourceID,
+			cloudCertID:   normalizeVolcanoCloudCertID(volcanoProductALB, defaultCertID),
+			servedDomains: served,
+		})
+	}
+	for _, ext := range listener.DomainExtensions {
+		extCertID := ""
+		if ext != nil {
+			extCertID = strings.TrimSpace(volcengine.StringValue(ext.CertificateId))
+		}
+		if ext == nil || extCertID == "" || extCertID == defaultCertID {
+			continue
+		}
+		refs = append(refs, volcanoRef{
+			product:       volcanoProductALB,
+			resourceID:    resourceID,
+			cloudCertID:   normalizeVolcanoCloudCertID(volcanoProductALB, extCertID),
+			servedDomains: served,
+		})
+	}
+	return refs
+}
+
+// volcanoALBServedDomains 逐监听遍历转发规则，提取 Host 条件值（served
+// hostname）。失败返回 nil（不阻塞引用枚举主干——对齐 aliyun listALBServedDomains）。
+func volcanoALBServedDomains(ctx context.Context, client volcanoCertLibraryAPI, listenerID string) []string {
+	out, err := client.DescribeRulesWithContext(ctx, &volcanosdkalb.DescribeRulesInput{
+		ListenerId: volcengine.String(listenerID),
+	})
+	if err != nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	var served []string
+	for _, rule := range out.Rules {
+		for _, cond := range rule.RuleConditions {
+			if cond == nil || !strings.EqualFold(volcengine.StringValue(cond.Type), "host") || cond.HostConfig == nil {
+				continue
+			}
+			for _, v := range cond.HostConfig.Values {
+				name := strings.TrimSpace(volcengine.StringValue(v))
+				if name == "" {
+					continue
+				}
+				if _, dup := seen[name]; dup {
+					continue
+				}
+				seen[name] = struct{}{}
+				served = append(served, name)
+			}
+		}
+	}
+	return served
+}
+
+// listNLBRefs NLB 监听证书引用（L4 TLS）：按账号地域遍历 DescribeNLBListeners
+// （NextToken 分页）——证书内联监听器，无证书监听不产出引用；NLB 无转发规则，
+// ServedDomains 为空。
+func (d *VolcanoDeployer) listNLBRefs(ctx context.Context, acct *sharedomain.CloudAccount) ([]volcanoRef, error) {
+	var refs []volcanoRef
+	for _, region := range volcanoRegions(acct) {
+		client, err := d.newClientsForRegion(acct, region)
+		if err != nil {
+			return nil, err
+		}
+		var nextToken *string
+		for {
+			out, err := client.DescribeNLBListenersWithContext(ctx, &volcanosdkclb.DescribeNLBListenersInput{
+				MaxResults: volcengine.Int64(d.refPageSizeOr()),
+				NextToken:  nextToken,
+			})
+			if err != nil {
+				return nil, wrapVolcanoCertErr("nlb_describe_listeners", err)
+			}
+			if out == nil || len(out.Listeners) == 0 {
+				break
+			}
+			for _, listener := range out.Listeners {
+				listenerID := volcengine.StringValue(listener.ListenerId)
+				certID := strings.TrimSpace(volcengine.StringValue(listener.CertificateId))
+				if listenerID == "" || certID == "" {
+					continue // 无证书监听（tcp/udp 等）不构成引用
+				}
+				refs = append(refs, volcanoRef{
+					product:     volcanoProductNLB,
+					resourceID:  volcanoLBResourceID(volcengine.StringValue(listener.LoadBalancerId), listenerID),
+					cloudCertID: normalizeVolcanoCloudCertID(volcanoProductNLB, certID),
+				})
+			}
+			if out.NextToken == nil || *out.NextToken == "" {
+				break
+			}
+			nextToken = out.NextToken
+		}
+	}
+	return refs, nil
+}
+
+// resolveVolcanoFingerprint 引用指纹解析（逐次发现去重缓存，对齐 huawei/aws
+// resolveFingerprint 结构）。
+func (d *VolcanoDeployer) resolveVolcanoFingerprint(
+	ctx context.Context, acct *sharedomain.CloudAccount, accountKey, cloudCertID string, cache map[string]string,
+) string {
+	cacheKey := strings.Join([]string{string(volcanoCloud), accountKey, cloudCertID}, "|")
+	if fp, ok := cache[cacheKey]; ok {
+		return fp
+	}
+	fp := d.resolveVolcanoUncachedFingerprint(ctx, acct, accountKey, cacheKey, cloudCertID)
+	cache[cacheKey] = fp
+	return fp
+}
+
+// resolveVolcanoUncachedFingerprint 解析主干：映射反查 → GetCert 要素 → 占位
+// 指纹。GetCert 走既有 getCertForProduct 路由（csv 链解析 / cdn 原生 sha256
+// / waf-alb-nlb 无指纹通道——非对齐口径留空落占位，对齐华为 SCM SHA-1 口径
+// 语义）。
+func (d *VolcanoDeployer) resolveVolcanoUncachedFingerprint(
+	ctx context.Context, acct *sharedomain.CloudAccount, accountKey, cacheKey, cloudCertID string,
+) string {
+	if d.mappings != nil {
+		if m, err := d.mappings.FindByCloudCertID(ctx, string(volcanoCloud), accountKey, cloudCertID); err == nil {
+			return m.CertFingerprint
+		}
+		// 无命中/仓储异常不中断发现（同 3.5 口径），走 GetCert fallback
+	}
+	var info CloudCertInfo
+	if err := d.withRetry(ctx, func(int) error {
+		var e error
+		product, rawID, ok := splitVolcanoCloudCertID(cloudCertID)
+		if !ok {
+			return fmt.Errorf("%w: %q", errVolcanoCloudCertIDNotNormalized, cloudCertID)
+		}
+		info, e = d.getCertForProduct(ctx, acct, product, rawID)
+		return e
+	}); err == nil && info.Exists && certFingerprint64Pattern.MatchString(info.Fingerprint) {
+		return info.Fingerprint
+	}
+	// 确定性占位指纹（与 3.5 service.resolveUncached 同公式，两路径结果可对账）。
+	return unresolvedPlaceholderFingerprint(cacheKey)
+}
+
+// refPageSizeOr 获取引用枚举分页大小（零值回退默认）。
+func (d *VolcanoDeployer) refPageSizeOr() int64 {
+	if d.refPageSize <= 0 {
+		return volcanoRefPageSizeDefault
+	}
+	return d.refPageSize
+}
+
+// volcanoSplitLBResourceID 监听复合资源 ID 解析："{lbId}/{listenerId}" →
+// (lbId, listenerId)；纯监听形态（无 "/"，旧快照/存量变更单升级窗口互认形态）
+// lbId 返回空（定点定位仅按 ListenerIds）；空串整体非法由调用方拒绝。
+func volcanoSplitLBResourceID(resourceID string) (lbID, listenerID string) {
+	idx := strings.LastIndexByte(resourceID, '/')
+	if idx < 0 {
+		return "", strings.TrimSpace(resourceID)
+	}
+	return strings.TrimSpace(resourceID[:idx]), strings.TrimSpace(resourceID[idx+1:])
+}
+
+// volcanoLBResourceID 构造负载均衡监听复合资源 ID "{lbId}/{listenerId}"
+// （对齐 aliyun lbScopedResourceID / 华为 ELB 先例：实例 ID 供控制台对账，
+// 监听 ID 供绑定定位）。lbID 为空（云侧响应异常缺字段）时回退纯监听形态，
+// 不产生 "/lsn-*" 脏值（与扫描适配器 volcanoLBResourceID 同语义同形态）。
+func volcanoLBResourceID(lbID, listenerID string) string {
+	if lbID == "" {
+		return listenerID
+	}
+	return lbID + "/" + listenerID
+}
+
+// volcanoRegions 账号地域清单（WAF/ALB/NLB 为地域级产品按地域遍历绑定定位与
+// 引用枚举；缺省回退默认地域——对齐扫描适配器 volcanoScanRegions 口径）。
+func volcanoRegions(acct *sharedomain.CloudAccount) []string {
+	if acct != nil && len(acct.Regions) > 0 {
+		return acct.Regions
+	}
+	return []string{"cn-beijing"}
+}
+
+// nullableVolcanoString 空串 → nil（定点定位的 LoadBalancerId 过滤仅复合形态
+// 携带，纯监听形态不下发空过滤值）。
+func nullableVolcanoString(s string) *string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	return volcengine.String(s)
 }
 
 // GetCert 查询云侧证书在库状态（回滚目标有效性校验依据，只读）：按归一前缀
