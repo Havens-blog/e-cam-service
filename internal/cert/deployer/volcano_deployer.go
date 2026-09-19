@@ -365,6 +365,21 @@ func WithVolcanoRetryPolicy(p RetryPolicy) VolcanoOption {
 	return func(d *VolcanoDeployer) { d.retry = p.normalized() }
 }
 
+// WithVolcanoCertLibrary 注入证书库 SDK 窄接口实现（功能级测试 seam，对齐
+// huawei/aws/azure 构参注入先例）：默认/地域级客户端工厂均返回同一实现
+// （绑定定位与引用枚举的地域遍历落在同一 fake 上）。生产缺省客户端工厂
+// newVolcanoSDKClients 不受影响。
+func WithVolcanoCertLibrary(api volcanoCertLibraryAPI) VolcanoOption {
+	return func(d *VolcanoDeployer) {
+		d.newClients = func(*sharedomain.CloudAccount) (volcanoCertLibraryAPI, error) {
+			return api, nil
+		}
+		d.newClientsForRegion = func(*sharedomain.CloudAccount, string) (volcanoCertLibraryAPI, error) {
+			return api, nil
+		}
+	}
+}
+
 // Stop 透传导配层限流器停止（火山证书库客户端无令牌限流器，no-op；与五云
 // 部署器同形态保留接缝）。
 func (d *VolcanoDeployer) Stop() {}
@@ -429,6 +444,32 @@ func splitVolcanoCloudCertID(cloudCertID string) (product, rawID string, ok bool
 // string(keyCopy) 传入后即刻 Zeroize（string 副本为 SDK 字段类型所必需，
 // 从不写入日志/错误信息/返回结构）。
 func (d *VolcanoDeployer) UploadCert(ctx context.Context, creds Credential, certPEM string, keyPEM []byte) (string, error) {
+	return d.uploadCertIntoLibrary(ctx, creds, volcanoUploadProduct, certPEM, keyPEM)
+}
+
+// UploadCertForProduct 两段式第一段产品库定向上传（ProductAwareUploader 可选
+// 升级端口实现，cert-volcano-deployer 任务 5 接通裁决）：火山四产品证书库
+// 相互独立，统一 csv 库实例私钥不可再导出、无法在适配层内晋升产品库
+// （ErrVolcanoCSVCertNotBindable 已显式化该缺口），两段式主流程第一段按目标
+// 产品定向其产品证书库上传，产物 {product}:{id} 即该产品库可绑定证书。
+// product 仅接受四绑定目标（csv 仅证书库非绑定目标）；每次尝试（含重试）
+// 生成全新名称——重试不得复用可能已成功的名称（C7：重试即新副本，孤儿清理
+// 兜底）。私钥卫生（Hard Rule）同 UploadCert：keyPEM 明文仅内存传递，SDK
+// 构参副本用后即刻 Zeroize，从不写入日志/错误信息/返回结构。
+func (d *VolcanoDeployer) UploadCertForProduct(ctx context.Context, creds Credential, product, certPEM string, keyPEM []byte) (string, error) {
+	if !volcanoBindCertProducts[product] {
+		return "", fmt.Errorf("%w: %q", ErrVolcanoProductNotSupported, product)
+	}
+	return d.uploadCertIntoLibrary(ctx, creds, product, certPEM, keyPEM)
+}
+
+// 编译期断言：产品库定向上传升级端口（CloudAPIChannel.Deploy 类型断言分发）。
+var _ ProductAwareUploader = (*VolcanoDeployer)(nil)
+
+// uploadCertIntoLibrary 上传主干（UploadCert 统一 csv 口径 / UploadCertForProduct
+// 产品库定向共用的单点实现）：生成唯一名（C7）上传指定产品证书库，返回归一
+// 云证书 ID。
+func (d *VolcanoDeployer) uploadCertIntoLibrary(ctx context.Context, creds Credential, product, certPEM string, keyPEM []byte) (string, error) {
 	acct, err := d.account(creds)
 	if err != nil {
 		return "", err
@@ -441,7 +482,7 @@ func (d *VolcanoDeployer) UploadCert(ctx context.Context, creds Credential, cert
 	var cloudCertID string
 	err = d.withRetry(ctx, func(int) error {
 		name := d.generateUploadName(certPEM)
-		id, uerr := d.uploadForProduct(ctx, acct, volcanoUploadProduct, name, certPEM, string(keyCopy))
+		id, uerr := d.uploadForProduct(ctx, acct, product, name, certPEM, string(keyCopy))
 		if uerr != nil {
 			return uerr
 		}
@@ -1187,6 +1228,15 @@ func (d *VolcanoDeployer) GetCert(ctx context.Context, creds Credential, cloudCe
 	})
 	if err != nil {
 		return CloudCertInfo{}, fmt.Errorf("volcano deployer: get cert: %w", err)
+	}
+	// 指纹通道缺失库（waf/alb/nlb 云侧不返回证书指纹）回退映射反查——对齐既有
+	// 指纹解析链「映射反查 → 云侧要素」的云无关口径；csv/cdn 云侧指纹为权威
+	// 不受影响。映射指纹为 e-cam 侧记录值：库内无指纹通道时这是回滚目标复核
+	// 的唯一依据（fail-safe：映射亦无记录则指纹留空，上层三判定阻断转人工）。
+	if info.Exists && info.Fingerprint == "" && d.mappings != nil {
+		if m, merr := d.mappings.FindByCloudCertID(ctx, string(volcanoCloud), creds.AccountKey, cloudCertID); merr == nil {
+			info.Fingerprint = m.CertFingerprint
+		}
 	}
 	return info, nil
 }

@@ -66,7 +66,7 @@
       "dependencies": [
         "4"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "5-execution-closure.md",
       "record": "records/5-execution-closure.md",
       "surface-type": "api",

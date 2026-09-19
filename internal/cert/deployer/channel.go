@@ -314,6 +314,20 @@ type CloudDeployer interface {
 	CleanupOrphan(ctx context.Context, creds Credential, cloudCertID string) error
 }
 
+// ProductAwareUploader CloudDeployer 可选升级端口（cert-volcano-deployer 任务 5
+// 接通裁决「产品感知上传」）：两段式第一段按目标产品定向其产品证书库上传。
+// 背景：CloudDeployer.UploadCert 端口无 product 入参（五云统一证书库先例，
+// 上传产物可绑定该云全部产品）；火山四产品证书库相互独立——统一 csv 库实例
+// 私钥不可再导出、无法在适配层内晋升产品库（ErrVolcanoCSVCertNotBindable 已
+// 显式化该缺口），第一段必须按 target.Product 定向产品库上传，产物
+// {product}:{id} 即该产品库可绑定证书。实现方自愿升级（类型断言分发），
+// 未实现的部署器行为完全不变（五云零影响）；引擎/状态机不感知。
+type ProductAwareUploader interface {
+	// UploadCertForProduct 两段式第一段产品库定向上传：product 为目标部署
+	// 产品（cdn|waf|alb|nlb），返回该产品证书库的归一云证书 ID。
+	UploadCertForProduct(ctx context.Context, creds Credential, product, certPEM string, keyPEM []byte) (string, error)
+}
+
 // CertMaterialSource 证书材料来源：按指纹取证书束 PEM 与解密后的私钥明文。
 // 生产实现见 LedgerMaterialSource（台账仓储 + 信封加密解密，任务 1.1 体系）；
 // keyPEM 仅内存传递（[]byte 保证可 Zeroize），通道用毕即清零，永不落日志。

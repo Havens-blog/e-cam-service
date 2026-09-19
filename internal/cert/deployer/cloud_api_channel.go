@@ -176,8 +176,15 @@ func (c *CloudAPIChannel) Deploy(ctx context.Context, creds Credential, target D
 	}
 	defer domain.Zeroize(&keyPEM)
 
-	// 第一段：上传云证书库。
-	newCloudCertID, err := entry.deployer.UploadCert(ctx, creds, certPEM, keyPEM)
+	// 第一段：上传云证书库（产品库定向升级：实现 ProductAwareUploader 的部署器
+	// 按 target.Product 定向其产品证书库上传——火山四产品证书库独立，统一库
+	// 实例不可绑定产品资源；其余部署器走端口 UploadCert 统一库，行为不变）。
+	var newCloudCertID string
+	if pau, isProductAware := entry.deployer.(ProductAwareUploader); isProductAware {
+		newCloudCertID, err = pau.UploadCertForProduct(ctx, creds, target.Product, certPEM, keyPEM)
+	} else {
+		newCloudCertID, err = entry.deployer.UploadCert(ctx, creds, certPEM, keyPEM)
+	}
 	if err != nil {
 		return DeployResult{OldCloudCertID: oldCloudCertID},
 			fmt.Errorf("cloud api channel: upload cert to %s: %w", target.Cloud, err)
