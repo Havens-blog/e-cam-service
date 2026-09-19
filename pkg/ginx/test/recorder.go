@@ -20,11 +20,3 @@ func (r JSONResponseRecorder[T]) Scan() (T, error) {
 	err := json.NewDecoder(r.Body).Decode(&t)
 	return t, err
 }
-
-func (r JSONResponseRecorder[T]) MustScan() T {
-	t, err := r.Scan()
-	if err != nil {
-		panic(err)
-	}
-	return t
-}
