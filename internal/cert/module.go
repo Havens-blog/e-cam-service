@@ -28,6 +28,7 @@ import (
 	huaweicert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
 	tencentcert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/tencent"
 	volcanocert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/volcano"
+	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"github.com/Havens-blog/e-cam-service/pkg/taskx"
 	"github.com/gin-gonic/gin"
@@ -124,8 +125,9 @@ func InitCertModule(
 	// internal/audit 落地（单集合仅追加；索引失败仅告警不阻断启动）----
 	auditBridge := newChangeAuditBridge(db, logger)
 
-	// ---- 执行通道（5.3 CloudAPI + 5.6 K8s；五云部署器注册——aliyun/tencent
-	// 既有 + huawei/aws/azure（cert-multicloud-deployers 任务 1~4）） ----
+	// ---- 执行通道（5.3 CloudAPI + 5.6 K8s；六云部署器注册——aliyun/tencent
+	// 既有 + huawei/aws/azure（cert-multicloud-deployers 任务 1~4）+ volcano
+	// （cert-volcano-deployer 任务 4）） ----
 	// 三云完整 CertAdapter 与扫描适配共享实例（aliyun 模式：发现只读面与两段式
 	// 部署同源；huawei GetCert 走完整适配 SHA-256 对齐口径）。各云部署器 Stop()
 	// 透传导配层限流器停止（无限流协程时 no-op），随注册实例天然携带。
@@ -173,6 +175,18 @@ func InitCertModule(
 	); err != nil {
 		return nil, fmt.Errorf("cert: register azure deployer: %w", err)
 	}
+	// 火山引擎（cert-volcano-deployer 任务 4）：第 6 云四产品注册（CDN/WAF/
+	// ALB/NLB）。云标识经 shared/domain 账号 provider 常量（"volcano"，cert/
+	// domain Cloud 枚举未含火山——扫描适配器/发现导入/清单同值同源）；部署器
+	// 按账号凭证自建 SDK 客户端（不共享 CertAdapter），映射仓储注入供
+	// ListReferences 反查；云证书 ID {product}:{id} 归一形态随注册实例携带。
+	if err := cloudChannel.RegisterDeployer(
+		string(sharedomain.CloudProviderVolcano),
+		deployer.NewVolcanoDeployer(repos.CloudMappings),
+		string(domain.ProductCDN), string(domain.ProductWAF), string(domain.ProductALB), string(domain.ProductNLB),
+	); err != nil {
+		return nil, fmt.Errorf("cert: register volcano deployer: %w", err)
+	}
 
 	k8sFactory := k8s.NewFactory(repos.K8sCredentials, crypto)
 	k8sChannel := deployer.NewK8sAPIChannel(
@@ -199,6 +213,9 @@ func InitCertModule(
 			service.NewHuaweiScanAdapter(huaweiAdapter),
 			service.NewAwsScanAdapter(awsAdapter),
 			service.NewAzureScanAdapter(azureAdapter),
+			// 火山（cert-volcano-deployer 任务 4）：第 6 云扫描适配器——四产品
+			// 资源引用进变更清单可执行项（{product}:{id} 归一，与部署器消费同形）。
+			service.NewVolcanoScanAdapter(volcanocert.NewCertAdapter(logger)),
 		},
 		service.NewAccountScanSource(accounts),
 		service.NewK8sScanGateway(k8sFactory),

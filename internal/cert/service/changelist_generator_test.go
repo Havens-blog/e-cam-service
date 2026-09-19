@@ -516,6 +516,44 @@ func TestGenerateChangeList_MulticloudExecutable(t *testing.T) {
 	assert.False(t, hasWarning(list.Warnings, "不可执行项"), "无引用落入不可执行分区，不出分区汇总")
 }
 
+// TestGenerateChangeList_VolcanoExecutable（cert-volcano-deployer 任务 4）
+// 第 6 云（火山）装配回归：CDN/WAF/ALB/NLB 四个产品（与部署器注册产品集/
+// 扫描适配器扫描面一致）的云引用生成变更清单时全部 AutoChangeable=true，
+// 无 ERR_DISCOVERY_ONLY 原因（discoveryOnlyClouds 判定对火山同样不触发——
+// 云通道恒可执行）。引用形态对齐任务 3 扫描适配器口径：CDN/WAF 资源 ID=
+// 加速/防护域名，ALB/NLB="{lbId}/{listenerId}" 监听复合 ID，云证书 ID
+// {product}:{id} 归一形态（回滚 GetCert/CleanupOrphan 按前缀路由消费）。
+func TestGenerateChangeList_VolcanoExecutable(t *testing.T) {
+	ctx := context.Background()
+	h := newGenHarness(t, &fakeManagementProbe{})
+	newCertID, _ := h.seedValid(t,
+		cloudRef(changeTestFP, discoveryCloudVolcano, domain.ProductCDN, "ak-volcano", "cdn.example.com", "cdn:cert-cdn-1"),
+		cloudRef(changeTestFP, discoveryCloudVolcano, domain.ProductWAF, "ak-volcano", "waf.example.com", "waf:cert-waf-1"),
+		cloudRef(changeTestFP, discoveryCloudVolcano, domain.ProductALB, "ak-volcano", "vol-alb-1/lsn-1", "alb:cert-alb-1"),
+		cloudRef(changeTestFP, discoveryCloudVolcano, domain.ProductNLB, "ak-volcano", "vol-nlb-1/lsn-1", "nlb:cert-nlb-1"),
+	)
+
+	list, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+	require.NoError(t, err)
+	require.Len(t, list.Items, 4)
+
+	for _, li := range list.Items {
+		assert.True(t, li.AutoChangeable, "%s/%s 引用应可执行（火山部署器已注册）",
+			li.Target.Cloud, li.Target.Product)
+		assert.NotContains(t, li.Reason, "ERR_DISCOVERY_ONLY")
+		assert.Empty(t, li.Reason, "可执行项不带原因")
+	}
+
+	// 持久化分区：全部 pending，无引用落入 skipped 分区
+	items, err := h.items.ListByOrder(ctx, list.OrderID)
+	require.NoError(t, err)
+	require.Len(t, items, 4)
+	for _, it := range items {
+		assert.Equal(t, domain.ItemStatusPending, it.Status, "全部引用均为可执行项")
+	}
+	assert.False(t, hasWarning(list.Warnings, "不可执行项"), "无引用落入不可执行分区，不出分区汇总")
+}
+
 // TestGenerateChangeList_K8sProbeUnavailable（AC-3）
 // 探测通道未注入（nil）→ K8s 项按不可执行分区+声明；探测失败（如集群不可达）
 // 不阻断清单生成，同样按不可执行项分区。
