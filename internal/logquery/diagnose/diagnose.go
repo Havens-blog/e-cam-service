@@ -73,6 +73,9 @@ type DiagnoseResult struct {
 	TopSources     []DiagnoseSource `json:"top_sources"`               // Top 攻击源 IP(默认前 5,含占比)
 	Degraded       bool             `json:"degraded"`                  // 判据缺失降级标注
 	DegradedReason string           `json:"degraded_reason,omitempty"` // 降级原因(空=未降级)
+	// SurgeMultiplier 突增倍数(前窗可用时 >0;Total 倍数与 Top IP 倍数取大,
+	// 与风险分突增分量同源;0=前窗无数据未计算,见 Degraded)。
+	SurgeMultiplier float64 `json:"surge_multiplier"`
 }
 
 // assess 单次判定的中间上下文(输入派生指标集中计算一次)。
@@ -146,6 +149,10 @@ func Evaluate(input *DiagnoseInput) *DiagnoseResult {
 	res.RiskLevel = levelFor(res.RiskScore)
 	if res.AttackType == AttackTypeNormalBurst && levelRank(res.RiskLevel) > levelRank(RiskLevelLow) {
 		res.RiskLevel = RiskLevelLow
+	}
+	// 突增倍数随结论透出(前窗可用时 >0;与风险分突增分量同源,防两处口径漂移)。
+	if a.surgeKnown {
+		res.SurgeMultiplier = a.surge
 	}
 
 	res.TopSources = buildTopSources(a.ips, a.total, cfg.TopSourcesLimit)

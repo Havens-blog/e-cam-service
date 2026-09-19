@@ -428,3 +428,27 @@ func TestEvaluateInputNotMutated(t *testing.T) {
 		}
 	}
 }
+
+// TestEvaluateSurgeMultiplier 突增倍数随结论透出(任务 2 响应契约:
+// 前窗可用时 >0 且取 Total / Top IP 倍数大者;前窗缺失恒 0)。
+func TestEvaluateSurgeMultiplier(t *testing.T) {
+	noPrev := Evaluate(&DiagnoseInput{WindowSec: 60, Total: 100})
+	if noPrev.SurgeMultiplier != 0 {
+		t.Errorf("no prev: surge = %v, want 0", noPrev.SurgeMultiplier)
+	}
+	if !noPrev.Degraded {
+		t.Error("no prev should be degraded")
+	}
+	// Total 倍数 500/50=10,Top IP 倍数 300/20=15 → 取大 15。
+	withPrev := Evaluate(&DiagnoseInput{
+		WindowSec: 60, Total: 500,
+		TopIPs: []logquery.TopNItem{item("10.0.0.1", 300)},
+		Prev:   &PrevWindow{Total: 50, TopIPCount: 20},
+	})
+	if withPrev.SurgeMultiplier != 15 {
+		t.Errorf("surge = %v, want 15(取大)", withPrev.SurgeMultiplier)
+	}
+	if withPrev.Degraded {
+		t.Error("prev available should not degrade")
+	}
+}

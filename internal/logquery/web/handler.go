@@ -1,6 +1,7 @@
 // Package web 日志查询 HTTP 面(Phase 1.4,plan.md §4.5)。
 //
-// 三接口:types(字段字典)/ sources(日志源清单)/ search(联邦查询)。
+// 接口:types(字段字典)/ sources(日志源清单)/ search(联邦查询)/
+// aggregate(窗口聚合)/ diagnose(WAF 流量诊断,手动触发)。
 // 鉴权由全局中间件链承接;组级 RequireTenant(日志按云账号隔离,
 // 云账号属租户,租户边界必须在此拒绝)。
 package web
@@ -126,6 +127,7 @@ func (h *LogQueryHandler) RegisterRoutes(g *gin.RouterGroup) {
 	g.GET("/sources", h.Sources)
 	g.POST("/search", h.Search)
 	g.POST("/aggregate", h.Aggregate)
+	g.POST("/diagnose", h.Diagnose)
 }
 
 // Types GET /types 字段字典(逐类型并发探测可聚合字段填充白名单)。
@@ -192,15 +194,15 @@ func (h *LogQueryHandler) Sources(c *gin.Context) {
 
 // searchRequest POST /search 请求体。
 type searchRequest struct {
-	LogType    string                   `json:"log_type" binding:"required"`
-	StartTime  int64                    `json:"start_time" binding:"required"`
-	EndTime    int64                    `json:"end_time" binding:"required"`
-	Query      string                   `json:"query"`
-	Clouds     []string                 `json:"clouds"`
-	AccountIDs []int64                  `json:"account_ids"`
-	Resources  []string                 `json:"resources"`
-	Filters    []logquery.FieldFilter   `json:"filters"` // 结构化字段筛选(AND 叠加)
-	Limit      int                      `json:"limit"`
+	LogType    string                 `json:"log_type" binding:"required"`
+	StartTime  int64                  `json:"start_time" binding:"required"`
+	EndTime    int64                  `json:"end_time" binding:"required"`
+	Query      string                 `json:"query"`
+	Clouds     []string               `json:"clouds"`
+	AccountIDs []int64                `json:"account_ids"`
+	Resources  []string               `json:"resources"`
+	Filters    []logquery.FieldFilter `json:"filters"` // 结构化字段筛选(AND 叠加)
+	Limit      int                    `json:"limit"`
 }
 
 // Search POST /search 联邦查询。
@@ -244,7 +246,7 @@ type aggregateRequest struct {
 	Clouds     []string               `json:"clouds"`
 	AccountIDs []int64                `json:"account_ids"`
 	Resources  []string               `json:"resources"`
-	Filters    []logquery.FieldFilter `json:"filters"` // 字段筛选(可下推源生效)
+	Filters    []logquery.FieldFilter `json:"filters"`   // 字段筛选(可下推源生效)
 	Dimension  string                 `json:"dimension"` // 分组维度(/types 字段 key)
 	Metric     string                 `json:"metric"`    // count/sum_bytes/avg_latency/p99_latency
 }
@@ -282,6 +284,56 @@ func (h *LogQueryHandler) Aggregate(c *gin.Context) {
 	}
 	if resp.TopN == nil {
 		resp.TopN = []logquery.TopNItem{}
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": resp})
+}
+
+// diagnoseRequest POST /diagnose 请求体(与 aggregateRequest 对齐,无
+// dimension/metric —— 维度集由诊断编排固定;仅 waf 类型开放)。
+type diagnoseRequest struct {
+	LogType    string                 `json:"log_type" binding:"required"`
+	StartTime  int64                  `json:"start_time" binding:"required"`
+	EndTime    int64                  `json:"end_time" binding:"required"`
+	Query      string                 `json:"query"`
+	Clouds     []string               `json:"clouds"`
+	AccountIDs []int64                `json:"account_ids"`
+	Resources  []string               `json:"resources"`
+	Filters    []logquery.FieldFilter `json:"filters"` // 字段筛选(AND 叠加)
+}
+
+// Diagnose POST /diagnose WAF 流量诊断(手动触发:当前窗 + 前一等长窗口
+// 各一帧聚合,规则引擎判定;SLB/CDN 不开放,返回明确错误)。
+func (h *LogQueryHandler) Diagnose(c *gin.Context) {
+	var req diagnoseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "invalid request: "+err.Error())
+		return
+	}
+	tenantID, ok := tenantID(c)
+	if !ok {
+		return
+	}
+	resp, err := h.svc.Diagnose(c.Request.Context(), tenantID, service.DiagnoseRequest{
+		LogType:    logquery.LogType(req.LogType),
+		StartTime:  req.StartTime,
+		EndTime:    req.EndTime,
+		Query:      req.Query,
+		Clouds:     toProviders(req.Clouds),
+		AccountIDs: req.AccountIDs,
+		Resources:  req.Resources,
+		Filters:    req.Filters,
+	})
+	if err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if resp.Buckets == nil {
+		resp.Buckets = []logquery.AggregateBucket{}
+	}
+	for _, f := range []*[]logquery.TopNItem{&resp.TopIPs, &resp.TopUAs, &resp.StatusCodes, &resp.Actions} {
+		if *f == nil {
+			*f = []logquery.TopNItem{}
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": resp})
 }
