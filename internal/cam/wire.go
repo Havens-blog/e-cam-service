@@ -137,8 +137,9 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	dailyGate := scheduler.NewPersistentDailyGate(schedulerStateDAO, gateAlerter, component)
 	autoSyncScheduler := scheduler.NewAutoSyncScheduler(cloudAccountRepository, queue, component, dailyGate, scheduler.IsPersistentGateEnabled())
 
-	// NAS 自我健康监控(任务 6):与日闸告警共用同一告警桥实例
+	// NAS/OSS 自我健康监控(任务 6):与日闸告警共用同一告警桥实例
 	taskModule.SetNASHealthAlerter(gateAlerter)
+	taskModule.SetOSSHealthAlerter(gateAlerter)
 
 	// Web 层
 	handler := web.NewHandler(serviceService, cloudAccountService, modelService)

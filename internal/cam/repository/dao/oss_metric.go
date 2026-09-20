@@ -30,6 +30,10 @@ type OSSMetricDAO interface {
 	// 修改(今日行当日已有则不覆盖),仅补缺失行;未命中则整行插入。空批直接返回 nil;
 	// 数量级自检与 BulkUpsertMetrics 同口径,任一行未过则整批拒绝。
 	BulkInsertIfAbsent(ctx context.Context, metrics []types.OSSMetric) error
+	// CountMetricsByProviders 统计各厂商自 sinceDate(含当日,YYYY-MM-DD)以来
+	// 已落库的指标行数(OSS 自我健康监控用:窗口内行存在即「成功采集」证据,
+	// 与 NAS 同口径;date 字符串字典序即时间序)。
+	CountMetricsByProviders(ctx context.Context, providers []string, sinceDate string) (map[string]int64, error)
 }
 
 type ossMetricDAO struct {
@@ -184,4 +188,22 @@ func ossMetricUpsertUpdate(m types.OSSMetric) bson.M {
 			"date": m.Date,
 		},
 	}
+}
+
+// CountMetricsByProviders 统计各厂商自 sinceDate(含当日)以来已落库的指标行数。
+// 逐厂商 CountDocuments(必达厂商仅 3 家,无需聚合管道);date 字符串按
+// YYYY-MM-DD 字典序比较即时间序,与写入路径格式一致(与 NAS 同口径)。
+func (d *ossMetricDAO) CountMetricsByProviders(ctx context.Context, providers []string, sinceDate string) (map[string]int64, error) {
+	out := make(map[string]int64, len(providers))
+	for _, p := range providers {
+		n, err := d.db.Collection(OSSMetricCollection).CountDocuments(ctx, bson.M{
+			"provider": p,
+			"date":     bson.M{"$gte": sinceDate},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("统计厂商 %s OSS 指标行数失败: %w", p, err)
+		}
+		out[p] = n
+	}
+	return out, nil
 }

@@ -75,6 +75,11 @@ type ossAccountCollectResult struct {
 	failure         *nasAccountFailure // 账号维度失败累计(无失败时 ErrorCount=0)
 }
 
+// ossProviderFailure OSS 失败明细汇总(task 6 命名口径，与 NAS 共享同一底层
+// 结构——字段同型 {provider, account_id, error_count, last_error}，直接复用
+// nasProviderFailure 不重造，仅按 OSS 语义起别名)。
+type ossProviderFailure = nasProviderFailure
+
 // SyncOSSMetricsExecutor OSS 指标采集任务执行器
 type SyncOSSMetricsExecutor struct {
 	accountRepo   camrepository.CloudAccountRepository
@@ -86,6 +91,9 @@ type SyncOSSMetricsExecutor struct {
 	// nasAccountGate 账号级采集互斥(account_id -> task_id)，复用 NAS 共享闸:
 	// 同一账号同时只放行一个采集任务，避免重复消耗厂商 API 配额(Hard Rule)。
 	nasAccountGate
+	// healthAlerter 自我健康监控告警桥(与日闸/NAS 健康监控共用同一实现，
+	// cam/wire.go 装配；nil 时仅跳过健康监控，不影响采集主链路)
+	healthAlerter OSSHealthAlerter
 }
 
 // NewSyncOSSMetricsExecutor 创建 OSS 指标采集执行器
@@ -157,7 +165,7 @@ func (e *SyncOSSMetricsExecutor) Execute(ctx context.Context, t *taskx.Task) err
 		noMetricSupport    []string
 		skippedAccounts    []string
 		accountsWithoutOSS []string
-		failures           = make([]nasProviderFailure, 0)
+		failures           = make([]ossProviderFailure, 0)
 	)
 
 	for ai, account := range accounts {
@@ -202,6 +210,11 @@ func (e *SyncOSSMetricsExecutor) Execute(ctx context.Context, t *taskx.Task) err
 
 	e.taskRepo.UpdateProgress(ctx, t.ID, 95, "正在汇总采集结果")
 
+	// 自我健康监控(每日采集完成钩子):仅全量运行判定，手动单账号/单厂商
+	// 运行不判定(避免以偏概全误报)。必达厂商连续 3 天零成功且实盘存在
+	// ≥1 个 OSS bucket → 经共用告警通道升级告警。
+	healthAlerts := e.checkMandatoryProviderHealth(ctx, params)
+
 	t.Result = map[string]any{
 		"metrics_total":        totalMetrics,
 		"accounts":             collectedAccounts,
@@ -211,6 +224,7 @@ func (e *SyncOSSMetricsExecutor) Execute(ctx context.Context, t *taskx.Task) err
 		"accounts_without_oss": accountsWithoutOSS,
 		"failed_buckets":       failedBuckets,
 		"failures":             failures,
+		"health_alerts":        healthAlerts,
 	}
 	t.Progress = 100
 	t.Message = fmt.Sprintf("OSS 指标采集完成,共写入 %d 条日指标(%d 个账号)", totalMetrics, collectedAccounts)

@@ -23,6 +23,7 @@ type Module struct {
 	TaskRepo            taskx.TaskRepository
 	syncAssetsExecutor  *executor.SyncAssetsExecutor
 	nasMetricsExecutor  *executor.SyncNASMetricsExecutor
+	ossMetricsExecutor  *executor.SyncOSSMetricsExecutor
 	nasBackfillExecutor *executor.SyncNASBackfillExecutor
 }
 
@@ -68,7 +69,8 @@ func InitModule(
 	// 注册 OSS 指标采集执行器(每日容量/对象数指标采集;今日行首写生效、
 	// 昨日行覆盖更新,bucket 枚举以 ecam_instance 为准,不依赖 EnableAutoSync)
 	ossMetricDAO := dao.NewOSSMetricDAO(db)
-	taskQueue.RegisterExecutor(executor.NewSyncOSSMetricsExecutor(accountRepo, instanceRepo, ossMetricDAO, taskRepo, logger))
+	ossMetricsExecutor := executor.NewSyncOSSMetricsExecutor(accountRepo, instanceRepo, ossMetricDAO, taskRepo, logger)
+	taskQueue.RegisterExecutor(ossMetricsExecutor)
 	logger.Info("OSS指标采集执行器已注册")
 
 	// 注册 NAS 历史指标回填执行器(一次性上线回填:14~90 天历史,配额节流 +
@@ -85,6 +87,7 @@ func InitModule(
 		TaskRepo:            taskRepo,
 		syncAssetsExecutor:  syncAssetsExecutor,
 		nasMetricsExecutor:  nasMetricsExecutor,
+		ossMetricsExecutor:  ossMetricsExecutor,
 		nasBackfillExecutor: nasBackfillExecutor,
 	}, nil
 }
@@ -94,6 +97,14 @@ func InitModule(
 func (m *Module) SetNASHealthAlerter(a executor.NASHealthAlerter) {
 	if m.nasMetricsExecutor != nil {
 		m.nasMetricsExecutor.SetNASHealthAlerter(a)
+	}
+}
+
+// SetOSSHealthAlerter 注入 OSS 自我健康监控告警桥(与持久化日闸故障/NAS
+// 健康监控共用同一 schedulerGateAlerter 实现,cam/wire.go 装配;任务 6)
+func (m *Module) SetOSSHealthAlerter(a executor.OSSHealthAlerter) {
+	if m.ossMetricsExecutor != nil {
+		m.ossMetricsExecutor.SetOSSHealthAlerter(a)
 	}
 }
 
