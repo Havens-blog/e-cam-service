@@ -152,6 +152,9 @@ func (a *NASAdapter) createCMSClient(region string) (cmsMetricClient, error) {
 		return nil, fmt.Errorf("创建CMS客户端失败: %w", err)
 	}
 	client.Domain = fmt.Sprintf("metrics.%s.aliyuncs.com", region)
+	if a.metricClients == nil {
+		a.metricClients = make(map[string]cmsMetricClient)
+	}
 	a.metricClients[region] = client
 	return client, nil
 }
