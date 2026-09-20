@@ -139,10 +139,10 @@ func (p *provider) ListLogSources(ctx context.Context, account *domain.CloudAcco
 		logstore string // 动态枚举时为空
 	}
 	var (
-		out        []logquery.LogSource
-		fixed      []logquery.LogSource // 非枚举条目(整源 + 占位)
-		tasks      []enumTask
-		slots      = make([][]logquery.LogSource, len(catalog))
+		out   []logquery.LogSource
+		fixed []logquery.LogSource // 非枚举条目(整源 + 占位)
+		tasks []enumTask
+		slots = make([][]logquery.LogSource, len(catalog))
 	)
 	for _, src := range catalog {
 		if src.logType != p.logType {
@@ -250,16 +250,18 @@ func (p *provider) domainSourcesCached(ctx context.Context, src slsSource) ([]lo
 	return out, hit
 }
 
-// enumDomains 域名枚举:冷启动先 100 条小样本探查(百 ms 级)立即返回,
-// 30 天 SQL 全量分布后台刷新补全(SWR;此前 SQL 优先,慢时 20s 客户端
-// 超时拖垮整个 sources 冷启动——超时降级探查本就是慢路径的实际结果);
-// 探查为空/失败时同步走 SQL 兜底(与旧行为一致)。
+// enumDomains 域名枚举:冷启动先小样本探查(百 ms~秒级)立即返回,30 天 SQL
+// 全量分布后台刷新补全(SWR)。探针窗口/条数不能太苛刻 —— 曾用 24h×100 条,
+// 冷启动只见最近日志里少数活跃域名(如 WAF 国内库 82 个域名,冷启动只返回
+// 八九个),30 天全量要等后台刷新 + 二次拉取才出现,观感"只识别了几个",
+// 且服务重启缓存清零会反复复现。改 7d×1000 后冷启动即覆盖绝大多数活跃
+// 域名(SLS 千行日志读取仍百 ms~秒级);探查为空/失败时同步走 SQL 兜底。
 func (p *provider) enumDomains(ctx context.Context, src slsSource) []string {
 	now := time.Now().UnixMilli()
 	probe, err := p.probeDomains(ctx, src, src.logstore, logquery.SearchParams{
-		StartTime: now - 24*3600_000,
+		StartTime: now - 7*24*3600_000,
 		EndTime:   now,
-	}, 100)
+	}, 1000)
 	if err != nil {
 		p.logger.Warn("[logquery-aliyun] domain probe failed",
 			elog.String("project", src.project), elog.String("logstore", src.logstore),
@@ -582,7 +584,10 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 	})
 	// 跨 logstore 的 TopN 归并(同名聚合,取前 10)
 	if len(merged.TopN) > 0 {
-		type acc struct{ count int64; value float64 }
+		type acc struct {
+			count int64
+			value float64
+		}
 		groups := make(map[string]acc, len(merged.TopN))
 		for _, t := range merged.TopN {
 			g := groups[t.Name]
