@@ -1,8 +1,9 @@
-// 腾讯云 WAF 访问日志映射(CLS 投递,标准字段结构)。
+// 腾讯云 WAF 访问日志映射(CLS 投递)。
 //
-// ⚠️ unverified:topic 近 7/30 天均 0 条(2026-09-17),字段名按腾讯云 WAF
-// 日志服务公开结构编写并做多候选容错(req_method/method 等);投递开启后
-// 用真实日志校准(field-mapping.md §四惯例)。
+// 列名已按 topic(ap-shanghai waf_access_logtopic)真实索引字段校准
+// (2026-09-20):动作/规则按模块分列(cc_*/antiscan_*/waf_*/final_*/scene_*/
+// acl_*),主机 host/matched_host,方法 request_method,状态 status 等;
+// 值形态(枚举)待投递开启后真实日志校准(field-mapping.md §四惯例)。
 package tencent
 
 import (
@@ -11,17 +12,18 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
 )
 
-// wafFieldMap 统一字段 → WAF 原始列(检索/聚合可下推;多候选容错)。
+// wafFieldMap 统一字段 → WAF 原始列(聚合/筛选下推,**须单一列**):
+// 动作/规则取核心模块列(透传允许其他模块列 raw group by)。
 var wafFieldMap = map[string]string{
-	"host":       "domain",
-	"client_ip":  "client_ip",
-	"method":     "req_method",
-	"uri":        "req_uri",
-	"status":     "resp_status",
-	"rule_id":    "rule_id",
-	"rule_name":  "rule_name",
-	"action":     "action",
-	"attack_type": "attack_type",
+	"host":        "host",
+	"client_ip":   "client_ip",
+	"method":      "request_method",
+	"uri":         "request_path",
+	"status":      "status",
+	"rule_id":     "waf_rule_id",
+	"rule_name":   "rule_name",
+	"action":      "waf_action",
+	"attack_type": "waf_rule_type",
 }
 
 // wafMetricExpr WAF 聚合指标(访问日志无字节/耗时列,仅计数)。
@@ -53,27 +55,30 @@ func wafLog(m logquery.LogMeta, raw map[string]string) *logquery.WAFLogEntry {
 	if ts <= 0 {
 		return nil
 	}
-	host := firstNonEmpty(raw, "domain", "host")
+	// 主机/客户端 IP/方法/URI/状态 按真实列多候选回退(索引确认列名;防个别字段缺位)
+	host := firstNonEmpty(raw, "host", "matched_host")
 	if host != "" {
 		m.ResourceID = host // 混装 topic 的选择粒度收敛到域名
 	}
-	uri := firstNonEmpty(raw, "req_uri", "request_uri")
-	if qs := firstNonEmpty(raw, "req_query_string", "query_string"); qs != "" && !strings.Contains(uri, "?") {
+	uri := firstNonEmpty(raw, "request_path", "request_uri", "request")
+	if qs := firstNonEmpty(raw, "req_query_string", "query_string", "querystring"); qs != "" && !strings.Contains(uri, "?") {
 		uri += "?" + qs
 	}
-	status := int(logquery.Int(firstNonEmpty(raw, "resp_status", "status")))
-	action := normalizeWAFAction(firstNonEmpty(raw, "action", "waf_action"))
-	severity := logquery.NormalizeSeverity(firstNonEmpty(raw, "rule_level", "level"))
-	geo := joinNonEmpty(firstNonEmpty(raw, "client_country", "country"), firstNonEmpty(raw, "client_province", "province"))
+	status := int(logquery.Int(firstNonEmpty(raw, "status", "resp_status")))
+	// 动作/规则按模块分列:最终处置(final_*) > WAF 规则(waf_*) > CC/场景/ACL 模块,
+	// > 兼容旧 action 字段。值枚举(拦截/观察/放行)待已投递日志校准。
+	action := normalizeWAFAction(firstNonEmpty(raw, "final_action", "waf_action", "cc_action", "acl_action", "scene_action", "action"))
+	severity := logquery.NormalizeSeverity(firstNonEmpty(raw, "severity", "rule_level", "level"))
+	geo := joinNonEmpty(firstNonEmpty(raw, "client_country", "country", "country_name"), firstNonEmpty(raw, "client_province", "province"))
 	return &logquery.WAFLogEntry{
 		Meta:      m,
 		Timestamp: ts,
-		ClientIP:  firstNonEmpty(raw, "client_ip", "attack_ip"),
+		ClientIP:  firstNonEmpty(raw, "client_ip", "real_client_ip", "src_ip", "remote_addr", "src"),
 		Host:      host,
 		URI:       uri,
-		Method:    firstNonEmpty(raw, "req_method", "method"),
-		RuleID:    firstNonEmpty(raw, "rule_id", "ruleid"),
-		RuleName:  firstNonEmpty(raw, "rule_name", "rulename"),
+		Method:    firstNonEmpty(raw, "request_method", "method"),
+		RuleID:    firstNonEmpty(raw, "final_rule_id", "waf_rule_id", "cc_rule_id", "acl_rule_id", "rule_id"),
+		RuleName:  firstNonEmpty(raw, "rule_name"),
 		Action:    action,
 		Severity:  severity,
 		Status:    status,
@@ -99,11 +104,15 @@ func normalizeWAFAction(s string) string {
 }
 
 // hasWAFFields topic 采样判定为 WAF 访问日志(特征字段;与 EO/Kong 区分)。
+// 真实索引含按模块分列的规则/动作:cc_rule_*、antiscan_*、waf_rule_*、
+// bypass_matched_ids、final_action 等任一即判 WAF。
 func hasWAFFields(raw map[string]string) bool {
-	if firstNonEmpty(raw, "req_uri", "request_uri") == "" {
+	if firstNonEmpty(raw, "request_path", "request_uri", "req_uri", "request") == "" {
 		return false
 	}
-	return raw["rule_id"] != "" || raw["rule_name"] != "" || raw["attack_type"] != "" || raw["waf_action"] != ""
+	return raw["waf_action"] != "" || raw["final_action"] != "" || raw["waf_rule_id"] != "" ||
+		raw["cc_rule_id"] != "" || raw["antiscan_rule_id"] != "" || raw["rule_name"] != "" ||
+		raw["bypass_matched_ids"] != "" || raw["severity"] != ""
 }
 
 // firstNonEmpty 依次取首个非空字段(多候选容错)。

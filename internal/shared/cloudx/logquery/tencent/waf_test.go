@@ -6,21 +6,24 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
 )
 
-// 腾讯 WAF 访问日志标准字段 fixture(结构按公开文档;投递开后用真实日志校准)。
+// 腾讯 WAF 访问日志 sample(列名已按 topic 真实索引校准 2026-09-20:
+// 动作/规则按模块分列 final_*/waf_*/cc_*;值形态待投递日志再校准)。
 func TestWAFLog(t *testing.T) {
 	raw := map[string]string{
 		"__TIMESTAMP__": "1789490755000",
-		"domain":        "www.example.com",
+		"host":          "www.example.com",
 		"client_ip":     "203.0.113.7",
-		"req_method":    "POST",
-		"req_uri":       "/api/login",
-		"req_query_string": "a=1",
-		"resp_status":   "403",
-		"rule_id":       "1001",
+		"request_method": "POST",
+		"request_path":  "/api/login",
+		"querystring":   "a=1",
+		"status":        "403",
+		"waf_rule_id":   "1001",
 		"rule_name":     "SQL 注入规则",
-		"rule_level":    "5",
-		"action":        "attack",
-		"attack_type":   "sql",
+		"severity":      "5",
+		"final_action":  "attack",
+		"waf_rule_type": "sql",
+		"body_bytes_sent": "512",
+		"bypass_matched_ids": "[]",
 		"client_country": "中国",
 		"client_province": "广东",
 	}
@@ -46,10 +49,10 @@ func TestWAFLog(t *testing.T) {
 	if e.RuleID != "1001" || e.RuleName != "SQL 注入规则" {
 		t.Errorf("Rule mismatch")
 	}
-	if e.Action != "block" { // attack → block
+	if e.Action != "block" { // final_action=attack → block
 		t.Errorf("Action = %q, want block", e.Action)
 	}
-	if e.Severity != "high" { // rule_level 5 → high
+	if e.Severity != "high" { // severity 5 → high
 		t.Errorf("Severity = %q, want high", e.Severity)
 	}
 	if e.Geo != "中国/广东" {
@@ -57,21 +60,40 @@ func TestWAFLog(t *testing.T) {
 	}
 }
 
+// 仅命中非 WAF 模块(如 CC 防护)的日志:action/rule 从 cc_* 回退,不丢判定。
+func TestWAFLogModuleFallback(t *testing.T) {
+	raw := map[string]string{
+		"__TIMESTAMP__": "1789490755000",
+		"host":          "x.com",
+		"request_path":  "/api",
+		"cc_action":     "block",
+		"cc_rule_id":    "2001",
+		"antiscan_test": "t",
+	}
+	e := wafLog(logquery.LogMeta{}, raw)
+	if e == nil {
+		t.Fatal("nil")
+	}
+	if e.Action != "block" || e.RuleID != "2001" {
+		t.Errorf("module fallback mismatch: action=%q rule=%q", e.Action, e.RuleID)
+	}
+}
+
 // time 字段秒级兜底换算(×1000 得 ms)。
 func TestWAFLogSecondsFallback(t *testing.T) {
 	e := wafLog(logquery.LogMeta{}, map[string]string{
-		"time": "1789490755", "domain": "x.com",
+		"time": "1789490755", "host": "x.com",
 	})
 	if e == nil || e.Timestamp != 1789490755000 {
 		t.Fatalf("seconds fallback failed: %v", e)
 	}
 }
 
-// 多候选容错:字段别名(resp_status/status 等)取首个非空。
+// 多候选容错:字段别名(host/matched_host、status、method)取首个非空。
 func TestWAFLogAliasFallback(t *testing.T) {
 	e := wafLog(logquery.LogMeta{}, map[string]string{
-		"__TIMESTAMP__": "1789490755000", "host": "x.com",
-		"status": "502", "method": "GET", "level": "2",
+		"__TIMESTAMP__": "1789490755000", "matched_host": "x.com",
+		"status": "502", "method": "GET", "severity": "2",
 	})
 	if e == nil {
 		t.Fatal("nil")
@@ -94,12 +116,13 @@ func TestNormalizeWAFAction(t *testing.T) {
 	}
 }
 
-// 分类特征:WAF 判定;EO/Kong 不误判。
+// 分类特征:WAF 判定(含分模块特征/severity/bypass);EO/Kong 不误判。
 func TestHasWAFFields(t *testing.T) {
-	waf := map[string]string{"req_uri": "/x", "rule_id": "1"}
+	waf := map[string]string{"request_path": "/x", "waf_action": "block", "cc_rule_id": "1"}
+	waf2 := map[string]string{"request_path": "/x", "bypass_matched_ids": "[]"}
 	eo := map[string]string{"RequestHost": "a.com", "EdgeResponseStatusCode": "200"}
 	kong := map[string]string{"request": "GET / HTTP/1.1"}
-	if !hasWAFFields(waf) {
+	if !hasWAFFields(waf) || !hasWAFFields(waf2) {
 		t.Error("waf fields not detected")
 	}
 	if hasWAFFields(eo) || hasWAFFields(kong) {
@@ -115,10 +138,11 @@ func TestWAFDimensionExpr(t *testing.T) {
 		out string
 	}{
 		{"", true, ""},
-		{"host", true, "domain"},
-		{"uri", true, "req_uri"},
-		{"attack_type", true, "attack_type"},
-		{"rule_level", true, "rule_level"}, // 透传原始字段
+		{"host", true, "host"},
+		{"uri", true, "request_path"},
+		{"action", true, "waf_action"},
+		{"attack_type", true, "waf_rule_type"},
+		{"cc_rule_id", true, "cc_rule_id"}, // 透传原始字段
 		{"a;drop", false, ""},
 	}
 	for _, c := range cases {
