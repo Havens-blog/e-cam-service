@@ -9,12 +9,12 @@ package logquery
 
 import (
 	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
+	"github.com/Havens-blog/e-cam-service/internal/logquery/diagwatch"
 	"github.com/Havens-blog/e-cam-service/internal/logquery/service"
 	"github.com/Havens-blog/e-cam-service/internal/logquery/web"
 
 	// 云 provider 注册:统一经 import manifest 触发(新增云在 providers 包补一行)
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/providers"
-
 
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
@@ -25,6 +25,8 @@ type Module struct {
 	// Svc 联邦编排服务(暴露给潜在的任务面/脚本调用;HTTP 面为主)。
 	Svc *service.FederationService
 	Hdl *web.LogQueryHandler
+	// Watch 定时诊断看护(env 开启才非 nil;生命周期同进程,Stop 可手动停止)。
+	Watch *diagwatch.Watcher
 }
 
 // InitLogQueryModule 装配日志查询功能域。
@@ -38,8 +40,9 @@ func InitLogQueryModule(accounts accountrepo.CloudAccountRepository, logger *elo
 	}
 	svc := service.NewFederationService(accounts, logger)
 	return &Module{
-		Svc: svc,
-		Hdl: web.NewLogQueryHandler(svc),
+		Svc:   svc,
+		Hdl:   web.NewLogQueryHandler(svc),
+		Watch: diagwatch.Start(svc, accounts, logger), // env 开启才非 nil
 	}, nil
 }
 
