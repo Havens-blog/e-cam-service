@@ -8,7 +8,7 @@
       "title": "OSS 厂商监控 API 探测:namespace/指标名实盘验证 + 分布统计定分组",
       "priority": "P0",
       "estimatedTime": "1d",
-      "status": "pending",
+      "status": "completed",
       "file": "1-probe-vendors.md",
       "record": "records/1-probe-vendors.md",
       "surface-type": "api",
