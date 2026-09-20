@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/logquery/diagnose"
+	"github.com/Havens-blog/e-cam-service/internal/logquery/llm"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
 	"github.com/gotomicro/ego/core/elog"
@@ -137,7 +138,7 @@ func (s *FederationService) diagnoseUncached(ctx context.Context, tenantID int64
 	prevStart := req.StartTime - span // 前一等长窗口:[end-2*span, end-span)
 
 	var (
-		curIP, curUA, curURI, curStatus, curAction, prev                *AggregateResponse
+		curIP, curUA, curURI, curStatus, curAction, prev                   *AggregateResponse
 		curIPErr, curUAErr, curURIErr, curStatusErr, curActionErr, prevErr error
 	)
 	var g errgroup.Group
@@ -209,7 +210,7 @@ func (s *FederationService) diagnoseUncached(ctx context.Context, tenantID int64
 	if prev != nil {
 		prevSources = prev.Sources
 	}
-	return &DiagnoseResponse{
+	resp := &DiagnoseResponse{
 		LogType:         string(req.LogType),
 		WindowSec:       span / 1000,
 		Total:           curIP.Total,
@@ -225,9 +226,35 @@ func (s *FederationService) diagnoseUncached(ctx context.Context, tenantID int64
 		Result:          res,
 		Sources:         mergeAggregateSources(curIP, curUA, curURI, curStatus, curAction),
 		DimensionNotes:  strings.Join(diagDimensionNotes(curUA, curUAErr, curURI, curURIErr, curStatus, curStatusErr, curAction, curActionErr), ";"),
-		AggregateFrames: 2,  // 当前窗 + 前窗(成本标注;前窗失败也计一次扫描尝试)
-		Summary:         "", // AI 解读后置:模型接入前恒空串
-	}, nil
+		AggregateFrames: 2, // 当前窗 + 前窗(成本标注;前窗失败也计一次扫描尝试)
+	}
+	// AI 解读(后置落地):网关配置时尽力而为 —— 只喂聚合指标(隐私边界),超时/
+	// 失败降级空串(前端不渲染),绝不阻塞或污染诊断主流程。
+	if llm.Enabled() {
+		var prevTotal *int64
+		if prevWin != nil {
+			prevTotal = &prevWin.Total
+		}
+		sctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		if text, err := llm.SummarizeDiagnose(sctx, llm.FromDiagnose(res, curIP.Total, span/1000, prevTotal,
+			topStrs(topNOf(curURI), 5), topStrs(topNOf(curStatus), 6), topStrs(topNOf(curAction), 6))); err == nil && text != "" {
+			resp.Summary = text
+		}
+		cancel()
+	}
+	return resp, nil
+}
+
+// topStrs TopN 条目 → "name(count)" 摘要串(供 AI 输入;数量已截断)。
+func topStrs(items []logquery.TopNItem, n int) []string {
+	if len(items) > n {
+		items = items[:n]
+	}
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		out = append(out, fmt.Sprintf("%s(%d)", it.Name, it.Count))
+	}
+	return out
 }
 
 // topNOf nil 安全取 TopN(维度聚合失败 = 该维度缺失,判据自动退化)。
