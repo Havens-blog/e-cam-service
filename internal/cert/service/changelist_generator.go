@@ -201,6 +201,12 @@ func (s *changeService) GenerateChangeList(ctx context.Context, oldCertFingerpri
 	listItems, changeItems, unchangeable := s.buildChangeItems(ctx, orderID, newCert.Fingerprint, refs)
 	if len(changeItems) > 0 {
 		if _, err := s.items.CreateMulti(ctx, changeItems); err != nil {
+			// 项落库失败回滚预生成订单（TransitionTerminal cancelled 释放
+			// activeMutex）——否则孤儿 pending_confirm 单占用互斥，重试恒
+			// CHANGE_IN_FLIGHT。
+			if rollbackErr := s.orders.TransitionTerminal(ctx, orderID, domain.ChangeStatusCancelled); rollbackErr != nil {
+				return ChangeList{}, fmt.Errorf("change: create items: %w (rollback order %s failed: %v)", err, orderID, rollbackErr)
+			}
 			return ChangeList{}, fmt.Errorf("change: create items: %w", err)
 		}
 	}
@@ -266,6 +272,18 @@ func (s *changeService) buildChangeItems(ctx context.Context, orderID string, ne
 	listItems = make([]ChangeListItem, 0, len(refs))
 	changeItems = make([]domain.ChangeItem, 0, len(refs))
 	for _, r := range refs {
+		// 不可部署产品（cas 证书库清单条目）不生成变更项：upload_and_bind 项会被
+		// cert_change_items 校验器（product enum 仅可部署产品）拒写，致建单 500 且
+		// 留孤儿单（cert-cas-library-scan 遗留风险收敛）。
+		if r.Product != domain.ProductCRD {
+			switch r.Product {
+			case domain.ProductCDN, domain.ProductDCDN, domain.ProductWAF,
+				domain.ProductALB, domain.ProductCLB, domain.ProductNLB:
+				// 可部署云产品，继续
+			default:
+				continue
+			}
+		}
 		var (
 			target deployer.DeployTarget
 			action domain.ChangeAction
