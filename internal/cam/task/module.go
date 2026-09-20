@@ -65,6 +65,12 @@ func InitModule(
 	taskQueue.RegisterExecutor(nasMetricsExecutor)
 	logger.Info("NAS指标采集执行器已注册")
 
+	// 注册 OSS 指标采集执行器(每日容量/对象数指标采集;今日行首写生效、
+	// 昨日行覆盖更新,bucket 枚举以 ecam_instance 为准,不依赖 EnableAutoSync)
+	ossMetricDAO := dao.NewOSSMetricDAO(db)
+	taskQueue.RegisterExecutor(executor.NewSyncOSSMetricsExecutor(accountRepo, instanceRepo, ossMetricDAO, taskRepo, logger))
+	logger.Info("OSS指标采集执行器已注册")
+
 	// 注册 NAS 历史指标回填执行器(一次性上线回填:14~90 天历史,配额节流 +
 	// 错峰窗口 01:30~06:00 + 唯一键幂等去重;命中限流挂起、次日窗口续跑)
 	nasBackfillExecutor := executor.NewSyncNASBackfillExecutor(accountRepo, instanceRepo, nasMetricDAO, taskRepo, logger)
