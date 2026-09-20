@@ -20,6 +20,10 @@ type S3Adapter struct {
 	accessKeySecret string
 	defaultRegion   string
 	logger          *elog.Component
+
+	// S3 指标查询(CloudWatch AWS/S3)状态,见 oss_metrics.go
+	// ossMetricHooks 测试注入钩子(非 nil 时替代真实 region 解析与 CloudWatch 客户端创建)
+	ossMetricHooks *ossMetricHooks
 }
 
 // NewS3Adapter 创建 S3 适配器

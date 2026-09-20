@@ -240,6 +240,12 @@ func coerceCESValue(v interface{}) *float64 {
 	switch n := v.(type) {
 	case float64:
 		return &n
+	case *float64:
+		if n == nil {
+			return nil
+		}
+		f := *n
+		return &f
 	case json.Number:
 		f, err := n.Float64()
 		if err != nil {

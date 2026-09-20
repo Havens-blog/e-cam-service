@@ -3,6 +3,7 @@ package aliyun
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
@@ -15,6 +16,12 @@ type OSSAdapter struct {
 	accessKeySecret string
 	defaultRegion   string
 	logger          *elog.Component
+
+	// OSS 指标查询(CMS acs_oss_dashboard)状态,见 oss_metrics.go
+	ossMetricMu      sync.Mutex
+	ossMetricClients map[string]cmsMetricClient
+	// ossMetricHooks 测试注入钩子(非 nil 时替代真实 CMS 客户端创建)
+	ossMetricHooks *ossMetricHooks
 }
 
 // NewOSSAdapter 创建OSS适配器

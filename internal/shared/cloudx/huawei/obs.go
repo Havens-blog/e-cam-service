@@ -16,6 +16,10 @@ type OBSAdapter struct {
 	accessKeySecret string
 	defaultRegion   string
 	logger          *elog.Component
+
+	// OSS 指标查询(CES SYS.OBS)状态,见 obs_metrics.go
+	// ossCesHooks 测试注入钩子(非 nil 时替代真实 CES 客户端创建)
+	ossCesHooks *cesMetricHooks
 }
 
 // NewOBSAdapter 创建 OBS 适配器
