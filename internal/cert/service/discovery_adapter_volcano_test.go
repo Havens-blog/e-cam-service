@@ -33,19 +33,20 @@ func TestVolcanoDiscoveryCertAdapter_GetCertChainErrorPassthrough(t *testing.T) 
 	assert.Equal(t, DiscoveryCertMaterial{}, material)
 }
 
-// TestVolcanoCertMaterial_Mapping 端口映射纯函数：成功 → Exists + 链透传（链
-// 净化在 cloudx 适配层构造性完成，包装层不重复处理）；错误（含 ErrCertFiltered
-// 过滤哨兵）→ 零值材料 + 错误保持（调用方 errors.Is 可识别过滤态）。
+// TestVolcanoCertMaterial_Mapping 端口映射纯函数：成功 → Exists + 链透传
+// + 私钥透传（链净化在 cloudx 适配层构造性完成，包装层不重复处理）；错误
+// （含 ErrCertFiltered 过滤哨兵）→ 零值材料 + 错误保持（调用方 errors.Is
+// 可识别过滤态）。
 func TestVolcanoCertMaterial_Mapping(t *testing.T) {
-	t.Run("成功映射", func(t *testing.T) {
-		inst := volcano.CloudCertInstance{CloudCertID: "inst-1", CertChainPEM: "chain-pem"}
-		material, err := volcanoCertMaterial(inst, nil)
+	t.Run("成功映射含私钥", func(t *testing.T) {
+		m := volcano.CloudCertKeyMaterial{CloudCertID: "inst-1", CertChainPEM: "chain-pem", PrivateKeyPEM: "key-pem"}
+		material, err := volcanoCertMaterial(m, nil)
 		assert.NoError(t, err)
-		assert.Equal(t, DiscoveryCertMaterial{Exists: true, CertChainPEM: "chain-pem"}, material)
+		assert.Equal(t, DiscoveryCertMaterial{Exists: true, CertChainPEM: "chain-pem", PrivateKeyPEM: "key-pem"}, material)
 	})
 	t.Run("过滤哨兵透传", func(t *testing.T) {
 		filtered := fmt.Errorf("%w: instance inst-1", volcano.ErrCertFiltered)
-		material, err := volcanoCertMaterial(volcano.CloudCertInstance{}, filtered)
+		material, err := volcanoCertMaterial(volcano.CloudCertKeyMaterial{}, filtered)
 		assert.ErrorIs(t, err, volcano.ErrCertFiltered)
 		assert.Equal(t, DiscoveryCertMaterial{}, material)
 	})

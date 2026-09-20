@@ -157,7 +157,7 @@ func (d *syncDeps) lister(cloud domain.Cloud) *syncListerStub {
 // importer 构建导入管线（真实服务；材料桩注册 aliyun/tencent/volcano 三云）。
 func (d *syncDeps) importer() DiscoveryImportService {
 	return NewDiscoveryImportService(d.sessions, d.certs, d.mappings, d.refs,
-		[]DiscoveryCertAdapter{d.aliyun, d.tencent, d.volcano}, d.accounts)
+		[]DiscoveryCertAdapter{d.aliyun, d.tencent, d.volcano}, d.accounts, nil)
 }
 
 // svc 构建同步服务（listers 全量注入）。
@@ -437,7 +437,7 @@ func TestCertSync_ConcurrentDuplicateFingerprint(t *testing.T) {
 	barrier := &syncBarrierAdapter{cloud: domain.CloudAliyun, chainPEM: string(b.CertPEM), wg: &wg, release: release}
 	// 同步服务与手动会话共享同一 importer 实例；材料通道换为栅栏桩制造竞态窗口
 	imp := NewDiscoveryImportService(d.sessions, d.certs, d.mappings, d.refs,
-		[]DiscoveryCertAdapter{barrier, d.tencent, d.volcano}, d.accounts)
+		[]DiscoveryCertAdapter{barrier, d.tencent, d.volcano}, d.accounts, nil)
 	svc := NewCertSyncService([]CertLibraryLister{d.lister(domain.CloudAliyun)}, d.accounts, imp, d.certs, d.mappings)
 	d.lister(domain.CloudAliyun).instances = []CertLibraryInstance{
 		{CloudCertID: "cert-race", Fingerprint: b.Fingerprint},

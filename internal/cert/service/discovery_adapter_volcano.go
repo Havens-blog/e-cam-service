@@ -31,19 +31,28 @@ func NewVolcanoDiscoveryCertAdapter(a *volcanocert.CertAdapter) DiscoveryCertAda
 	return discoveryCertAdapter{
 		cloud: discoveryCloudVolcano,
 		getChain: func(ctx context.Context, creds *sharedomain.CloudAccount, cloudCertID string) (DiscoveryCertMaterial, error) {
-			inst, err := a.GetCertificate(ctx, creds, cloudCertID)
-			return volcanoCertMaterial(inst, err)
+			// 带私钥通道：火山 certificateservice 响应携带 PrivateKey（PEM 原文，
+			// 实测标准 PKCS#1）——导入侧经校验+信封加密落库实现「导入即完整托管」
+			// （部署器期「csv 私钥不可再导出」裁决已修正，见 cloudx/volcano/cert.go）。
+			// 私钥仅在本材料字段内流转，导入侧即时加密并 Zeroize。
+			m, err := a.GetCertificateWithKey(ctx, creds, cloudCertID)
+			return volcanoCertMaterial(m, err)
 		},
 	}
 }
 
-// volcanoCertMaterial 云侧实例 → 导入材料端口形态（端口适配映射，纯函数）：
-// 火山证书库无"在库但不存在"的独立返回态（不存在即 API 错误），成功即
-// Exists；错误（含 ErrCertFiltered 过滤哨兵——revoked/非 Issued 实例）原样
-// 透传不伪造材料，调用方按通用 CERT_GET_FAILED 口径记因。
-func volcanoCertMaterial(inst volcanocert.CloudCertInstance, err error) (DiscoveryCertMaterial, error) {
+// volcanoCertMaterial 云侧证书材料（含私钥）→ 导入材料端口形态（端口适配
+// 映射，纯函数）：火山证书库无"在库但不存在"的独立返回态（不存在即 API
+// 错误），成功即 Exists；错误（含 ErrCertFiltered 过滤哨兵——revoked/非
+// Issued 实例）原样透传不伪造材料，调用方按通用 CERT_GET_FAILED 口径记因。
+// PrivateKeyPEM 仅在本材料字段内流转，导入侧即时校验+信封加密落库并 Zeroize。
+func volcanoCertMaterial(m volcanocert.CloudCertKeyMaterial, err error) (DiscoveryCertMaterial, error) {
 	if err != nil {
 		return DiscoveryCertMaterial{}, err
 	}
-	return DiscoveryCertMaterial{Exists: true, CertChainPEM: inst.CertChainPEM}, nil
+	return DiscoveryCertMaterial{
+		Exists:        true,
+		CertChainPEM:  m.CertChainPEM,
+		PrivateKeyPEM: m.PrivateKeyPEM,
+	}, nil
 }

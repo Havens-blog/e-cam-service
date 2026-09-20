@@ -297,7 +297,7 @@ func NewHarness(t *testing.T, mutate func(*Config)) *Harness {
 	for _, cloud := range CertSyncClouds {
 		adapters = append(adapters, h.materials[cloud])
 	}
-	importSvc := service.NewDiscoveryImportService(h.Sessions, certRepo, mappingRepo, h.Refs, adapters, h.accounts)
+	importSvc := service.NewDiscoveryImportService(h.Sessions, certRepo, mappingRepo, h.Refs, adapters, h.accounts, nil)
 	previewSvc := service.NewDiscoveryPreviewService(h.Snaps, h.Refs, certRepo, mappingRepo)
 
 	listerPorts := make([]service.CertLibraryLister, 0, len(h.listers))

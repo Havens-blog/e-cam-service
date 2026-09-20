@@ -83,6 +83,7 @@ type discoveryImportService struct {
 	refs     domain.CertReferenceRepository
 	adapters map[domain.Cloud]DiscoveryCertAdapter
 	accounts ScanAccountSource
+	crypto   *domain.EnvelopeCrypto // 可空：材料含私钥时用于导入即完整托管升级
 }
 
 // NewDiscoveryImportService 创建发现导入服务；adapters 为逐云证书材料端口
@@ -95,6 +96,7 @@ func NewDiscoveryImportService(
 	refs domain.CertReferenceRepository,
 	adapters []DiscoveryCertAdapter,
 	accounts ScanAccountSource,
+	crypto *domain.EnvelopeCrypto,
 ) DiscoveryImportService {
 	byCloud := make(map[domain.Cloud]DiscoveryCertAdapter, len(adapters))
 	for _, a := range adapters {
@@ -107,6 +109,7 @@ func NewDiscoveryImportService(
 		refs:     refs,
 		adapters: byCloud,
 		accounts: accounts,
+		crypto:   crypto,
 	}
 }
 
@@ -341,6 +344,49 @@ func (s *discoveryImportService) processItem(
 		return
 	}
 
+	// 6.5 材料携带私钥的云（火山等）：导入即完整托管升级——私钥经
+	// ParseCertAndKey 与证书公钥比对校验后信封加密落库，明文即时 Zeroize；
+	// 校验/加密/落库任一失败仅记日志保持 fingerprint_only（导入已成功，
+	// 升级为 best-effort，不失败条目）。
+	if keyPEM := info.PrivateKeyPEM; keyPEM != "" {
+		buf := []byte(keyPEM) // string→[]byte 独立拷贝，可安全归零
+		defer cloudx.Zeroize(buf)
+		switch {
+		case s.crypto == nil:
+			slog.Warn("cert discovery import: material carries private key but crypto not injected, keep fingerprint_only",
+				slog.String("sessionId", sessionID), slog.String("cloud", item.Cloud))
+		default:
+			if _, err := domain.ParseCertAndKey([]byte(certPEM), buf); err != nil {
+				slog.Error("cert discovery import: private key mismatch, keep fingerprint_only",
+					slog.String("sessionId", sessionID),
+					slog.String("cloud", item.Cloud), slog.String("cloudCertId", item.CloudCertID),
+					slog.Any("err", err))
+				break
+			}
+			cipher, ver, err := s.crypto.Encrypt(buf)
+			if err != nil {
+				slog.Error("cert discovery import: encrypt private key failed, keep fingerprint_only",
+					slog.String("sessionId", sessionID),
+					slog.String("cloud", item.Cloud), slog.String("cloudCertId", item.CloudCertID))
+				break
+			}
+			if err := s.certs.AttachPrivateKey(ctx, certID, &domain.EncryptedSecret{
+				Ciphertext: cipher,
+				KeyVersion: ver,
+				Algo:       domain.AlgoAES256GCM,
+			}); err != nil {
+				slog.Error("cert discovery import: attach private key failed, keep fingerprint_only",
+					slog.String("sessionId", sessionID),
+					slog.String("cloud", item.Cloud), slog.String("cloudCertId", item.CloudCertID),
+					slog.Any("err", err))
+				break
+			}
+			slog.Info("cert discovery import: attached private key, hosting=complete",
+				slog.String("sessionId", sessionID),
+				slog.String("cloud", item.Cloud), slog.String("cloudCertId", item.CloudCertID))
+		}
+	}
+
 	// 7. 占位指纹引用回填（SC-6，best-effort 补偿写）：按 (cloud,accountKey,
 	//    cloudCertId) 将仍为占位公式派生值的引用批量回填为真实指纹；filter 含
 	//    占位值构成 CAS（真实指纹引用永不被覆盖），失败仅记日志不失败条目
@@ -420,10 +466,12 @@ func (r *discoveryImportRun) accountsFor(ctx context.Context, cloud domain.Cloud
 // 证书材料端口与生产适配 shim（任务 1 四云 CertChainPEM 通道 → 导入端口）
 // ---------------------------------------------------------------------
 
-// DiscoveryCertMaterial GetCert 材料通道返回形态：在库状态 + 净化证书序列。
+// DiscoveryCertMaterial GetCert 材料通道返回形态：在库状态 + 净化证书序列
+// + 可选私钥（火山等「导入即完整托管」云填充；其余云恒空，行为不变）。
 type DiscoveryCertMaterial struct {
-	Exists       bool   // 云证书库中该 cloudCertId 是否存在
-	CertChainPEM string // 仅 CERTIFICATE 块的净化序列（叶在前 fullchain，适配层构造性净化）
+	Exists        bool   // 云证书库中该 cloudCertId 是否存在
+	CertChainPEM  string // 仅 CERTIFICATE 块的净化序列（叶在前 fullchain，适配层构造性净化）
+	PrivateKeyPEM string // 私钥 PEM 原文（仅火山等云填充；仅内存流转，导入侧即时加密落库并 Zeroize）
 }
 
 // DiscoveryCertAdapter 单云证书材料端口（发现导入专用，只读）：区别于扫描端口

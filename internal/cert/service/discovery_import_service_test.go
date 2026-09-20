@@ -132,7 +132,13 @@ func newDiscoveryImportDeps() *discoveryImportDeps {
 
 func (d *discoveryImportDeps) svc() DiscoveryImportService {
 	return NewDiscoveryImportService(d.sessions, d.certs, d.mappings, d.refs,
-		[]DiscoveryCertAdapter{d.aliyun, d.tencent, d.aws}, d.accounts)
+		[]DiscoveryCertAdapter{d.aliyun, d.tencent, d.aws}, d.accounts, nil)
+}
+
+// svcWithCrypto 注入信封加密的导入服务（材料携带私钥的云「导入即完整托管」升级路径）。
+func (d *discoveryImportDeps) svcWithCrypto(c *domain.EnvelopeCrypto) DiscoveryImportService {
+	return NewDiscoveryImportService(d.sessions, d.certs, d.mappings, d.refs,
+		[]DiscoveryCertAdapter{d.aliyun, d.tencent, d.aws}, d.accounts, c)
 }
 
 // waitForDiscoveryTerminal 轮询会话直至终态（completed/partial_failed），超时失败。
@@ -287,6 +293,69 @@ func TestDiscoveryImport_SC9_PrivateKeyNeverPersisted(t *testing.T) {
 	assert.Equal(t, b.Fingerprint, firstLeaf, "叶在前（首块即 leaf，fullchain 口径）")
 	assert.Equal(t, domain.HostingStatusFingerprintOnly, stored.HostingStatus)
 	assert.Nil(t, stored.EncryptedPrivateKey)
+}
+
+// TestDiscoveryImport_PrivateKeyUpgradeToComplete 材料携带真实私钥的云（火山）：
+// 导入即完整托管——私钥经 ParseCertAndKey 公钥比对校验后信封加密落库，
+// hosting=complete；私钥不匹配 / 未注入 crypto 时保持 fingerprint_only
+// （升级为 best-effort，不失败条目）。
+func TestDiscoveryImport_PrivateKeyUpgradeToComplete(t *testing.T) {
+	crypto := certtest.NewTestCrypto(t)
+	t.Run("匹配私钥→完整托管", func(t *testing.T) {
+		d := newDiscoveryImportDeps()
+		b := certtest.NewBundle(t, "www.key-example.com", []string{"www.key-example.com"}, nil)
+		d.aliyun.material["cert-k1"] = DiscoveryCertMaterial{
+			Exists: true, CertChainPEM: string(b.CertPEM), PrivateKeyPEM: string(b.KeyPEM),
+		}
+		sessionID, err := d.svcWithCrypto(crypto).ImportFromDiscovery(context.Background(), []DiscoveryImportItemInput{
+			{Cloud: "aliyun", AccountKey: "acct-a", CloudCertID: "cert-k1"},
+		}, "op-1")
+		require.NoError(t, err)
+		sess := waitForDiscoveryTerminal(t, d.sessions, sessionID)
+		require.Equal(t, domain.DiscoveryImportCompleted, sess.Status)
+
+		stored, err := d.certs.GetByFingerprint(context.Background(), b.Fingerprint)
+		require.NoError(t, err)
+		assert.Equal(t, domain.HostingStatusComplete, stored.HostingStatus)
+		require.NotNil(t, stored.EncryptedPrivateKey)
+		assert.Equal(t, domain.AlgoAES256GCM, stored.EncryptedPrivateKey.Algo)
+		plain, err := crypto.Decrypt(stored.EncryptedPrivateKey.Ciphertext, stored.EncryptedPrivateKey.KeyVersion)
+		require.NoError(t, err)
+		assert.Equal(t, string(b.KeyPEM), string(plain), "密文可解密回原文")
+	})
+	t.Run("私钥不匹配→保持 fingerprint_only", func(t *testing.T) {
+		d := newDiscoveryImportDeps()
+		b := certtest.NewBundle(t, "www.mismatch-example.com", []string{"www.mismatch-example.com"}, nil)
+		other := certtest.NewKeyPEM(t) // 与证书不匹配的无关私钥
+		d.aliyun.material["cert-k2"] = DiscoveryCertMaterial{
+			Exists: true, CertChainPEM: string(b.CertPEM), PrivateKeyPEM: string(other),
+		}
+		sessionID, err := d.svcWithCrypto(crypto).ImportFromDiscovery(context.Background(), []DiscoveryImportItemInput{
+			{Cloud: "aliyun", AccountKey: "acct-a", CloudCertID: "cert-k2"},
+		}, "op-1")
+		require.NoError(t, err)
+		_ = waitForDiscoveryTerminal(t, d.sessions, sessionID)
+		stored, err := d.certs.GetByFingerprint(context.Background(), b.Fingerprint)
+		require.NoError(t, err)
+		assert.Equal(t, domain.HostingStatusFingerprintOnly, stored.HostingStatus)
+		assert.Nil(t, stored.EncryptedPrivateKey)
+	})
+	t.Run("未注入 crypto→保持 fingerprint_only", func(t *testing.T) {
+		d := newDiscoveryImportDeps()
+		b := certtest.NewBundle(t, "www.nocrypto-example.com", []string{"www.nocrypto-example.com"}, nil)
+		d.aliyun.material["cert-k3"] = DiscoveryCertMaterial{
+			Exists: true, CertChainPEM: string(b.CertPEM), PrivateKeyPEM: string(b.KeyPEM),
+		}
+		sessionID, err := d.svc().ImportFromDiscovery(context.Background(), []DiscoveryImportItemInput{
+			{Cloud: "aliyun", AccountKey: "acct-a", CloudCertID: "cert-k3"},
+		}, "op-1")
+		require.NoError(t, err)
+		_ = waitForDiscoveryTerminal(t, d.sessions, sessionID)
+		stored, err := d.certs.GetByFingerprint(context.Background(), b.Fingerprint)
+		require.NoError(t, err)
+		assert.Equal(t, domain.HostingStatusFingerprintOnly, stored.HostingStatus)
+		assert.Nil(t, stored.EncryptedPrivateKey)
+	})
 }
 
 // ---------------------------------------------------------------------

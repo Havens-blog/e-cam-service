@@ -175,7 +175,7 @@ func NewHarness(t *testing.T, mutate func(*Config)) *Harness {
 	accounts := &StubAccountSource{ByCloud: cfg.Accounts, ErrByCloud: cfg.AccountErrs}
 	querySvc := service.NewReferenceQueryService(certRepo, h.Refs, h.Snaps, scan)
 	previewSvc := service.NewDiscoveryPreviewService(h.Snaps, h.Refs, certRepo, mappingRepo)
-	importSvc := service.NewDiscoveryImportService(h.sessions, certRepo, mappingRepo, h.Refs, cfg.Adapters, accounts)
+	importSvc := service.NewDiscoveryImportService(h.sessions, certRepo, mappingRepo, h.Refs, cfg.Adapters, accounts, nil)
 
 	engine := gin.New()
 	engine.Use(gin.Recovery())

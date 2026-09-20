@@ -307,7 +307,7 @@ func (d *discoveryImportTestDeps) svc(
 	refs *certtest.FakeCertReferenceRepo,
 ) service.DiscoveryImportService {
 	return service.NewDiscoveryImportService(d.sessions, certs, mappings, refs,
-		[]service.DiscoveryCertAdapter{d.aliyun}, d.accounts)
+		[]service.DiscoveryCertAdapter{d.aliyun}, d.accounts, nil)
 }
 
 // newDiscoveryImportSvcForRouter 非发现用例测试路由（cert/change/dashboard/

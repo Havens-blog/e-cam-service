@@ -247,6 +247,7 @@ func InitCertModule(
 			service.NewVolcanoDiscoveryCertAdapter(volcanocert.NewCertAdapter(logger)),
 		},
 		service.NewAccountScanSource(accounts),
+		crypto, // 火山等「材料含私钥」云：导入即完整托管升级
 	)
 	// 多云定时增量同步服务（cert-volcano-import-sync 任务 3）：调度点
 	// cert:cert-import（任务 4 接线）与手工触发端点（任务 5）共用同一服务与

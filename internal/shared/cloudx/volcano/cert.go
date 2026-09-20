@@ -192,6 +192,47 @@ func (a *CertAdapter) GetCertificate(ctx context.Context, creds *domain.CloudAcc
 	return a.getCertificate(ctx, client, id)
 }
 
+// CloudCertKeyMaterial 证书材料（含私钥）：仅「导入即完整托管」路径使用
+// （GetCertificateWithKey）。私钥为云侧返回的 PEM 原文（PKCS#1/RSA 等），
+// 仅在本类型内流转；调用方须即时信封加密落库并 Zeroize 明文，不得进入
+// 日志/错误信息/任何持久形态。
+type CloudCertKeyMaterial struct {
+	CloudCertID   string
+	CertChainPEM  string
+	PrivateKeyPEM string
+}
+
+// GetCertificateWithKey 单实例证书材料（含私钥，只读）：GetCertificate 的
+// 带私钥变体——火山 certificateservice 的 CertificateGetInstance 响应携带
+// PrivateKey（PEM 原文，实测标准 PKCS#1），使火山证书可「导入即完整托管」
+// （修正 deployer 期「csv 私钥不可再导出」的过保守裁决）。revoked/非已签发
+// 实例同 GetCertificate 返回 ErrCertFiltered。
+func (a *CertAdapter) GetCertificateWithKey(ctx context.Context, creds *domain.CloudAccount, instanceID string) (CloudCertKeyMaterial, error) {
+	if creds == nil {
+		return CloudCertKeyMaterial{}, fmt.Errorf("volcano cert get-key: nil creds")
+	}
+	id := strings.TrimSpace(instanceID)
+	if id == "" {
+		return CloudCertKeyMaterial{}, fmt.Errorf("volcano cert get-key: empty instance id")
+	}
+	client, err := a.newClient(creds)
+	if err != nil {
+		return CloudCertKeyMaterial{}, err
+	}
+	out, err := a.fetchCertificate(ctx, client, id)
+	if err != nil {
+		return CloudCertKeyMaterial{}, err
+	}
+	rawChain := concatCertChainPEM(out.CertificateDetail.Chain)
+	chainPEM := cloudx.SanitizeCertChainPEM(rawChain)
+	cloudx.Zeroize(rawChain)
+	return CloudCertKeyMaterial{
+		CloudCertID:   id,
+		CertChainPEM:  chainPEM,
+		PrivateKeyPEM: volcengine.StringValue(out.CertificateDetail.PrivateKey),
+	}, nil
+}
+
 // listPage 单页实例列举（分页参数透传 + 错误归一）
 func (a *CertAdapter) listPage(ctx context.Context, client certLibraryAPI, pageNumber int32) (*certificateservice.CertificateGetInstanceListOutput, error) {
 	out, err := client.CertificateGetInstanceListWithContext(ctx, &certificateservice.CertificateGetInstanceListInput{
@@ -228,25 +269,38 @@ func (a *CertAdapter) collectInstance(ctx context.Context, client certLibraryAPI
 	return item, true
 }
 
-// getCertificate 单实例详情与链解析（GetCertificate 与 List 枚举共用内核）
-func (a *CertAdapter) getCertificate(ctx context.Context, client certLibraryAPI, instanceID string) (CloudCertInstance, error) {
+// fetchCertificate 单实例详情拉取与形态校验（GetCertificate 与
+// GetCertificateWithKey 共用内核）：GetInstance 调用 + 空响应/过滤/详情缺失
+// 判定；通过后返回原始响应供调用方提取链（±私钥）。
+func (a *CertAdapter) fetchCertificate(ctx context.Context, client certLibraryAPI, instanceID string) (*certificateservice.CertificateGetInstanceOutput, error) {
 	out, err := client.CertificateGetInstanceWithContext(ctx, &certificateservice.CertificateGetInstanceInput{
 		InstanceId: volcengine.String(instanceID),
 	})
 	if err != nil {
-		return CloudCertInstance{}, wrapCertCloudErr("certificate_get_instance", err)
+		return nil, wrapCertCloudErr("certificate_get_instance", err)
 	}
 	if out == nil {
-		return CloudCertInstance{}, fmt.Errorf("volcano certificate_get_instance: empty response (instance %s)", instanceID)
+		return nil, fmt.Errorf("volcano certificate_get_instance: empty response (instance %s)", instanceID)
 	}
 	status := volcengine.StringValue(out.Status)
 	if certInstanceFiltered(status, volcengine.BoolValue(out.IsCertificateRevoked)) {
-		return CloudCertInstance{}, fmt.Errorf("%w: instance %s (status=%s, revoked=%t)",
+		return nil, fmt.Errorf("%w: instance %s (status=%s, revoked=%t)",
 			ErrCertFiltered, instanceID, status, volcengine.BoolValue(out.IsCertificateRevoked))
 	}
 	if out.CertificateDetail == nil {
-		return CloudCertInstance{}, fmt.Errorf("volcano certificate_get_instance: instance %s returned no certificate detail", instanceID)
+		return nil, fmt.Errorf("volcano certificate_get_instance: instance %s returned no certificate detail", instanceID)
 	}
+	return out, nil
+}
+
+// getCertificate 单实例详情与链解析（GetCertificate 与 List 枚举共用内核；
+// 私钥卫生：本路径从不读取响应 PrivateKey 字段）
+func (a *CertAdapter) getCertificate(ctx context.Context, client certLibraryAPI, instanceID string) (CloudCertInstance, error) {
+	out, err := a.fetchCertificate(ctx, client, instanceID)
+	if err != nil {
+		return CloudCertInstance{}, err
+	}
+	status := volcengine.StringValue(out.Status)
 	// 私钥卫生（Hard Rule）：证书材料仅取 Chain，经块级净化仅保留 CERTIFICATE
 	// 块（PRIVATE KEY 等非证书内容构造性丢弃）；净化前的原始字节副本（可能
 	// 携带非证书块）即刻归零。响应 PrivateKey 字段从不读取。
