@@ -1,6 +1,6 @@
 // WAF 流量诊断编排(proposal:网站被刷检测,任务 2)。
 //
-// 复用联邦聚合通道:当前窗按维度并发聚合(client_ip / user_agent / status /
+// 复用联邦聚合通道:当前窗按维度并发聚合(client_ip / user_agent / uri / status /
 // action),前一等长窗口仅 1 帧(client_ip 维度,一次聚合同时产出精确 Total
 // 与 Top client_ip —— Total 由分桶求和,不单独多跑 count 扫描),拼装
 // diagnose.DiagnoseInput 后调纯函数规则引擎判定。手动触发;单次诊断扫过的
@@ -28,6 +28,7 @@ const (
 	diagDimUserAgent = "user_agent"
 	diagDimStatus    = "status"
 	diagDimAction    = "action"
+	diagDimURI       = "uri"
 )
 
 // DiagnoseRequest WAF 流量诊断请求(字段与 AggregateRequest 对齐;窗口为
@@ -53,6 +54,7 @@ type DiagnoseResponse struct {
 	Buckets     []logquery.AggregateBucket `json:"buckets"`      // 时间分桶
 	TopIPs      []logquery.TopNItem        `json:"top_ips"`      // client_ip TopN
 	TopUAs      []logquery.TopNItem        `json:"top_uas"`      // user_agent TopN
+	TopURIs     []logquery.TopNItem        `json:"top_uris"`     // 请求量高的 URI/URL TopN
 	StatusCodes []logquery.TopNItem        `json:"status_codes"` // 状态码分布
 	Actions     []logquery.TopNItem        `json:"actions"`      // WAF 动作分布
 
@@ -119,7 +121,7 @@ func (s *FederationService) Diagnose(ctx context.Context, tenantID int64, req Di
 	return resp, nil
 }
 
-// diagnoseUncached 真实诊断编排(无缓存路径):当前窗 4 维 + 前窗 1 帧全部
+// diagnoseUncached 真实诊断编排(无缓存路径):当前窗 5 维 + 前窗 1 帧全部
 // 并发。主帧(client_ip,承载 Total/分桶/Top IP)失败才整体报错;其余维度
 // 失败仅记入 DimensionNotes(该维度判据退化);前窗失败降级不报错。
 func (s *FederationService) diagnoseUncached(ctx context.Context, tenantID int64, req DiagnoseRequest) (*DiagnoseResponse, error) {
@@ -135,8 +137,8 @@ func (s *FederationService) diagnoseUncached(ctx context.Context, tenantID int64
 	prevStart := req.StartTime - span // 前一等长窗口:[end-2*span, end-span)
 
 	var (
-		curIP, curUA, curStatus, curAction, prev                *AggregateResponse
-		curIPErr, curUAErr, curStatusErr, curActionErr, prevErr error
+		curIP, curUA, curURI, curStatus, curAction, prev                *AggregateResponse
+		curIPErr, curUAErr, curURIErr, curStatusErr, curActionErr, prevErr error
 	)
 	var g errgroup.Group
 	g.Go(func() error {
@@ -145,6 +147,10 @@ func (s *FederationService) diagnoseUncached(ctx context.Context, tenantID int64
 	})
 	g.Go(func() error {
 		curUA, curUAErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, diagDimUserAgent))
+		return nil
+	})
+	g.Go(func() error {
+		curURI, curURIErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, diagDimURI))
 		return nil
 	})
 	g.Go(func() error {
@@ -210,14 +216,15 @@ func (s *FederationService) diagnoseUncached(ctx context.Context, tenantID int64
 		Buckets:         curIP.Buckets,
 		TopIPs:          curIP.TopN,
 		TopUAs:          topNOf(curUA),
+		TopURIs:         topNOf(curURI),
 		StatusCodes:     topNOf(curStatus),
 		Actions:         topNOf(curAction),
 		Prev:            prevWin,
 		PrevError:       prevFail,
 		PrevSources:     prevSources,
 		Result:          res,
-		Sources:         mergeAggregateSources(curIP, curUA, curStatus, curAction),
-		DimensionNotes:  strings.Join(diagDimensionNotes(curUA, curUAErr, curStatus, curStatusErr, curAction, curActionErr), ";"),
+		Sources:         mergeAggregateSources(curIP, curUA, curURI, curStatus, curAction),
+		DimensionNotes:  strings.Join(diagDimensionNotes(curUA, curUAErr, curURI, curURIErr, curStatus, curStatusErr, curAction, curActionErr), ";"),
 		AggregateFrames: 2,  // 当前窗 + 前窗(成本标注;前窗失败也计一次扫描尝试)
 		Summary:         "", // AI 解读后置:模型接入前恒空串
 	}, nil
@@ -241,7 +248,7 @@ func errText(err error) string {
 
 // diagDimensionNotes 非主维度缺失说明(UA/状态码/动作;维度调用失败、全源
 // 失败或部分源不可下推时提示,UI 据此标注判据完整性)。
-func diagDimensionNotes(curUA *AggregateResponse, curUAErr error, curStatus *AggregateResponse, curStatusErr error, curAction *AggregateResponse, curActionErr error) []string {
+func diagDimensionNotes(curUA *AggregateResponse, curUAErr error, curURI *AggregateResponse, curURIErr error, curStatus *AggregateResponse, curStatusErr error, curAction *AggregateResponse, curActionErr error) []string {
 	type entry struct {
 		dim  string
 		resp *AggregateResponse
@@ -249,6 +256,7 @@ func diagDimensionNotes(curUA *AggregateResponse, curUAErr error, curStatus *Agg
 	}
 	entries := []entry{
 		{dim: diagDimUserAgent, resp: curUA, err: curUAErr},
+		{dim: diagDimURI, resp: curURI, err: curURIErr},
 		{dim: diagDimStatus, resp: curStatus, err: curStatusErr},
 		{dim: diagDimAction, resp: curAction, err: curActionErr},
 	}

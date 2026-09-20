@@ -128,6 +128,8 @@ func TestDiagnoseHappyPath(t *testing.T) {
 		[]logquery.TopNItem{topItem("1.2.3.4", 800), topItem("5.6.7.8", 200)}, 400, 600)
 	agg.results[diagKey(start, end, "user_agent")] = diagResult(
 		[]logquery.TopNItem{topItem("curl/8.0", 850), topItem("Mozilla/5.0 Chrome", 150)}, 400, 600)
+	agg.results[diagKey(start, end, "uri")] = diagResult(
+		[]logquery.TopNItem{topItem("/api/login", 600), topItem("/admin", 400)}, 400, 600)
 	agg.results[diagKey(start, end, "status")] = diagResult(
 		[]logquery.TopNItem{topItem("404", 700), topItem("200", 300)}, 400, 600)
 	agg.results[diagKey(start, end, "action")] = diagResult(
@@ -144,8 +146,12 @@ func TestDiagnoseHappyPath(t *testing.T) {
 	if resp.Total != 1000 || resp.WindowSec != span/1000 {
 		t.Errorf("total/window = %d/%d, want 1000/%d", resp.Total, resp.WindowSec, span/1000)
 	}
-	if len(resp.TopIPs) != 2 || len(resp.TopUAs) != 2 || len(resp.StatusCodes) != 2 || len(resp.Actions) != 2 || len(resp.Buckets) != 2 {
+	if len(resp.TopIPs) != 2 || len(resp.TopUAs) != 2 || len(resp.TopURIs) != 2 ||
+		len(resp.StatusCodes) != 2 || len(resp.Actions) != 2 || len(resp.Buckets) != 2 {
 		t.Errorf("dimension details incomplete: %+v", resp)
+	}
+	if resp.TopURIs[0].Name == "" || resp.TopURIs[0].Count <= 0 {
+		t.Errorf("top_uris first entry invalid: %+v", resp.TopURIs)
 	}
 	res := resp.Result
 	if res == nil {
@@ -183,10 +189,10 @@ func TestDiagnoseHappyPath(t *testing.T) {
 	if len(resp.PrevSources) != 1 {
 		t.Errorf("prev_sources = %+v, want 1 个", resp.PrevSources)
 	}
-	// 帧数:当前窗 4 维 + 前窗 1 帧(client_ip);前窗恰一次且窗口等长前移。
+	// 帧数:当前窗 5 维 + 前窗 1 帧(client_ip);前窗恰一次且窗口等长前移。
 	calls := agg.snapshot()
-	if len(calls) != 5 {
-		t.Fatalf("aggregate frames = %d, want 5(当前窗 4 维 + 前窗 1 帧)", len(calls))
+	if len(calls) != 6 {
+		t.Fatalf("aggregate frames = %d, want 6(当前窗 5 维 + 前窗 1 帧)", len(calls))
 	}
 	prevFrames := 0
 	dims := map[string]bool{}
@@ -206,7 +212,7 @@ func TestDiagnoseHappyPath(t *testing.T) {
 	if prevFrames != 1 {
 		t.Errorf("prev frames = %d, want 1(前窗仅 1 帧)", prevFrames)
 	}
-	for _, want := range []string{"client_ip", "user_agent", "status", "action"} {
+	for _, want := range []string{"client_ip", "user_agent", "uri", "status", "action"} {
 		if !dims[want] {
 			t.Errorf("current window missing dimension %s", want)
 		}
@@ -399,7 +405,7 @@ func TestDiagnoseCached(t *testing.T) {
 	if !second.Cached || second.CacheStale {
 		t.Errorf("second call cached/stale = %v/%v, want true/false", second.Cached, second.CacheStale)
 	}
-	if len(agg.snapshot()) != 5 {
-		t.Errorf("aggregate frames after 2 calls = %d, want 5(命中缓存不重放)", len(agg.snapshot()))
+	if len(agg.snapshot()) != 6 {
+		t.Errorf("aggregate frames after 2 calls = %d, want 6(命中缓存不重放)", len(agg.snapshot()))
 	}
 }
