@@ -52,7 +52,7 @@ func (h *AssetHandler) GetNASFsMetrics(ctx *gin.Context) {
 
 	resp, err := h.nasQuery.GetFsMetrics(ctx.Request.Context(), tenantID, accountID, fsID, days)
 	if err != nil {
-		respondNASQueryError(ctx, err)
+		respondQueryError(ctx, err)
 		return
 	}
 	ctx.JSON(200, Result(resp))
@@ -96,7 +96,7 @@ func (h *AssetHandler) GetNASTop(ctx *gin.Context) {
 
 	resp, err := h.nasQuery.GetTop(ctx.Request.Context(), tenantID, accountID, days, sortBy, top, page, pageSize)
 	if err != nil {
-		respondNASQueryError(ctx, err)
+		respondQueryError(ctx, err)
 		return
 	}
 	ctx.JSON(200, Result(resp))
@@ -136,9 +136,10 @@ func parseNASBound(ctx *gin.Context, name string, def, max int) (int, bool) {
 	return v, true
 }
 
-// respondNASQueryError 读取错误统一映射:越权 404(不泄露账号存在性),其余 500
-func respondNASQueryError(ctx *gin.Context, err error) {
-	if errors.Is(err, service.ErrNASAccountNotInTenant) {
+// respondQueryError 指标读取错误统一映射(NAS/OSS 共用):越权 404(不泄露账号
+// 存在性),其余 500
+func respondQueryError(ctx *gin.Context, err error) {
+	if errors.Is(err, service.ErrNASAccountNotInTenant) || errors.Is(err, service.ErrOSSAccountNotInTenant) {
 		ctx.JSON(404, ErrorResultWithMsg(errs.AccountNotFound, errs.AccountNotFound.Msg))
 		return
 	}

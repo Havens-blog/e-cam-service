@@ -147,7 +147,8 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	databaseHandler := web.NewDatabaseHandler(instanceService)
 	cdnQueryService := service.NewCDNQueryService(cloudAccountRepository, cloudxAdapterFactory, dao.NewCDNMetricDAO(db), component)
 	nasQueryService := service.NewNASQueryService(cloudAccountRepository, dao.NewNASMetricDAO(db), component)
-	assetHandler := web.NewAssetHandler(instanceService, dao.NewStatsSnapshotDAO(db), cdnQueryService, nasQueryService)
+	ossQueryService := service.NewOSSQueryService(cloudAccountRepository, dao.NewOSSMetricDAO(db), component)
+	assetHandler := web.NewAssetHandler(instanceService, dao.NewStatsSnapshotDAO(db), cdnQueryService, nasQueryService, ossQueryService)
 
 	camModule := &Module{
 		Hdl:           handler,

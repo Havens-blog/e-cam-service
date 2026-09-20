@@ -18,16 +18,18 @@ type AssetHandler struct {
 	snapshotDAO dao.StatsSnapshotDAO
 	cdnQuery    CDNCacheConfigService
 	nasQuery    NASQueryService
+	ossQuery    OSSQueryService
 	logger      *elog.Component
 }
 
 // NewAssetHandler 创建资产处理器
-func NewAssetHandler(instanceSvc service.InstanceService, snapshotDAO dao.StatsSnapshotDAO, cdnQuery CDNCacheConfigService, nasQuery NASQueryService) *AssetHandler {
+func NewAssetHandler(instanceSvc service.InstanceService, snapshotDAO dao.StatsSnapshotDAO, cdnQuery CDNCacheConfigService, nasQuery NASQueryService, ossQuery OSSQueryService) *AssetHandler {
 	return &AssetHandler{
 		instanceSvc: instanceSvc,
 		snapshotDAO: snapshotDAO,
 		cdnQuery:    cdnQuery,
 		nasQuery:    nasQuery,
+		ossQuery:    ossQuery,
 		logger:      elog.DefaultLogger,
 	}
 }
@@ -159,6 +161,8 @@ func (h *AssetHandler) registerAssetRoutes(assetsGroup *gin.RouterGroup) {
 
 	// OSS 对象存储
 	assetsGroup.GET("/oss", h.ListOSS)
+	assetsGroup.GET("/oss/metrics", h.GetOSSBucketMetrics)
+	assetsGroup.GET("/oss/top", h.GetOSSTop)
 	assetsGroup.GET("/oss/:asset_id", h.GetOSS)
 
 	// Kafka 消息队列

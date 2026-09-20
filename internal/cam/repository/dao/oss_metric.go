@@ -34,6 +34,12 @@ type OSSMetricDAO interface {
 	// 已落库的指标行数(OSS 自我健康监控用:窗口内行存在即「成功采集」证据,
 	// 与 NAS 同口径;date 字符串字典序即时间序)。
 	CountMetricsByProviders(ctx context.Context, providers []string, sinceDate string) (map[string]int64, error)
+	// ListByBucket 取指定账号+bucket_name 近 N 天单日指标,按 date 升序(趋势接口读取)。
+	// days 缺省 30、上限收敛 90(读取窗口 1~90,规格「Proposed Solution」第 5 点)。
+	ListByBucket(ctx context.Context, accountID int64, bucketName string, days int) ([]types.OSSMetric, error)
+	// ListByAccounts 取一组账号近 N 天全部指标行(Top 聚合读取,服务层按
+	// bucket_name 去重与分页)。accountIDs 为空返回空切片;days 缺省/上限同 ListByBucket。
+	ListByAccounts(ctx context.Context, accountIDs []int64, days int) ([]types.OSSMetric, error)
 }
 
 type ossMetricDAO struct {
