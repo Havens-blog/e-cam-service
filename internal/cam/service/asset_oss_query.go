@@ -307,7 +307,7 @@ func ossAggregateTop(rows []types.OSSMetric) []OSSTopItem {
 		byDate  map[string]types.OSSMetric
 	}
 	aggs := make(map[string]*bucketAgg)
-	order := make([]string, 0, len(aggs))
+	order := make([]string, 0, len(rows))
 	for _, m := range rows {
 		agg, ok := aggs[m.BucketName]
 		if !ok {
@@ -341,13 +341,9 @@ func ossAggregateTop(rows []types.OSSMetric) []OSSTopItem {
 		agg := aggs[name]
 		sort.Slice(agg.item.AccountIDs, func(i, j int) bool { return agg.item.AccountIDs[i] < agg.item.AccountIDs[j] })
 
-		// 代表行 = 最新日期的同日代表行
-		dates := make([]string, 0, len(agg.byDate))
-		for d := range agg.byDate {
-			dates = append(dates, d)
-		}
-		sort.Sort(sort.Reverse(sort.StringSlice(dates)))
-		rep := agg.byDate[dates[0]]
+		// 代表行 = 最新日期的同日代表行(dailyOSSReps 按日期升序展开,取末行)
+		reps := dailyOSSReps(agg.byDate)
+		rep := reps[len(reps)-1]
 		agg.item.Latest = OSSMetricSummary{
 			Date:        rep.Date,
 			StorageSize: floatPtr(rep.StorageSize),
