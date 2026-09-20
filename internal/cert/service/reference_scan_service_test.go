@@ -979,6 +979,43 @@ func TestAccountScanSource(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// TestAccountScanSource_VolcanoAliasNormalized 火山双别名归一：查询任一别名
+// （volcano/volcengine）均返回全部火山账号；两次别名查询各发起两个 provider 过滤。
+func TestAccountScanSource_VolcanoAliasNormalized(t *testing.T) {
+	repo := &fakeAccountRepo{accounts: []sharedomain.CloudAccount{
+		{Name: "vol-1", Provider: sharedomain.CloudProviderVolcano, Status: sharedomain.CloudAccountStatusActive},
+		{Name: "vol-2", Provider: sharedomain.CloudProviderVolcengine, Status: sharedomain.CloudAccountStatusActive},
+	}}
+	src := NewAccountScanSource(repo)
+	for _, cloud := range []domain.Cloud{
+		domain.Cloud(sharedomain.CloudProviderVolcano),
+		domain.Cloud(sharedomain.CloudProviderVolcengine),
+	} {
+		accounts, err := src.ActiveByCloud(context.Background(), cloud)
+		require.NoError(t, err)
+		require.Len(t, accounts, 2)
+		assert.Equal(t, "vol-1", accounts[0].Name)
+		assert.Equal(t, "vol-2", accounts[1].Name)
+	}
+	require.Len(t, repo.filters, 4)
+	for _, f := range repo.filters {
+		assert.Equal(t, sharedomain.CloudAccountStatusActive, f.Status)
+	}
+}
+
+// TestAccountScanSource_VolcanoAliasDedupByName 双别名同账号名只返回一次。
+func TestAccountScanSource_VolcanoAliasDedupByName(t *testing.T) {
+	repo := &fakeAccountRepo{accounts: []sharedomain.CloudAccount{
+		{Name: "dup", Provider: sharedomain.CloudProviderVolcano, Status: sharedomain.CloudAccountStatusActive},
+		{Name: "dup", Provider: sharedomain.CloudProviderVolcengine, Status: sharedomain.CloudAccountStatusActive},
+	}}
+	src := NewAccountScanSource(repo)
+	accounts, err := src.ActiveByCloud(context.Background(), domain.Cloud(sharedomain.CloudProviderVolcano))
+	require.NoError(t, err)
+	require.Len(t, accounts, 1)
+	assert.Equal(t, "dup", accounts[0].Name)
+}
+
 // fakeCRDLister dynamic client fake：按 GVR 返回列表/未命中错误。
 type fakeCRDLister struct {
 	lists  map[schema.GroupVersionResource][]unstructured.Unstructured
@@ -1125,7 +1162,7 @@ func TestManagedAlbInstances(t *testing.T) {
 	objects := []K8sObject{
 		{Namespace: "kube-system", Name: "alb-conf-main", Content: map[string]interface{}{
 			"spec": map[string]interface{}{
-				"config": map[string]interface{}{"instanceId": "alb-main-1"},
+				"config":    map[string]interface{}{"instanceId": "alb-main-1"},
 				"listeners": []interface{}{},
 			},
 		}},
@@ -1163,11 +1200,11 @@ func TestMarkManagedReferences(t *testing.T) {
 	refs := []domain.CertReference{
 		{Cloud: domain.CloudAliyun, Product: domain.ProductALB, ResourceID: "alb-main-1/lsn-abc"},
 		{Cloud: domain.CloudAliyun, Product: domain.ProductNLB, ResourceID: "alb-main-1/lsn-def"},
-		{Cloud: domain.CloudAliyun, Product: domain.ProductALB, ResourceID: "alb-other-9/lsn-xyz"},   // 未托管
-		{Cloud: domain.CloudAliyun, Product: domain.ProductCDN, ResourceID: "alb-main-1"},            // 非 ALB/NLB 产品
-		{Cloud: domain.CloudTencent, Product: domain.ProductALB, ResourceID: "alb-main-1/lsn-qqq"},   // 非阿里云
-		{Cloud: domain.CloudAliyun, Product: domain.ProductALB, ResourceID: "lsn-legacy"},            // 纯监听存量形态
-		{Product: domain.ProductCRD, ClusterID: "cluster-a", ResourceID: "alb-conf-main"},            // crd 引用不触碰
+		{Cloud: domain.CloudAliyun, Product: domain.ProductALB, ResourceID: "alb-other-9/lsn-xyz"}, // 未托管
+		{Cloud: domain.CloudAliyun, Product: domain.ProductCDN, ResourceID: "alb-main-1"},          // 非 ALB/NLB 产品
+		{Cloud: domain.CloudTencent, Product: domain.ProductALB, ResourceID: "alb-main-1/lsn-qqq"}, // 非阿里云
+		{Cloud: domain.CloudAliyun, Product: domain.ProductALB, ResourceID: "lsn-legacy"},          // 纯监听存量形态
+		{Product: domain.ProductCRD, ClusterID: "cluster-a", ResourceID: "alb-conf-main"},          // crd 引用不触碰
 	}
 	markManagedReferences(refs, managedSet)
 

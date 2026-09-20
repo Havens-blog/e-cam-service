@@ -39,7 +39,7 @@ const (
 	scriptFailure
 	scriptRateLimit
 	scriptPanic
-	scriptBlock // 阻塞直到 release 关闭（心跳观测用）
+	scriptBlock               // 阻塞直到 release 关闭（心跳观测用）
 	scriptCloudCertUnresolved // 云证书 ID 未解析（patch_crd 映射未就绪，任务 5.7 加固）
 )
 
@@ -1348,6 +1348,20 @@ func TestAccountCredentialSource(t *testing.T) {
 		assert.Equal(t, "acct-main", cred.AccountKey)
 		assert.Equal(t, "ak-123", cred.AccessKey)
 		assert.Equal(t, []byte("sk-456"), cred.Secret)
+		require.NoError(t, cred.Validate())
+	})
+	t.Run("火山双别名账号归一", func(t *testing.T) {
+		accounts := &execFakeAccountRepo{accounts: []sharedomain.CloudAccount{
+			{Name: "集团-火山云", Provider: sharedomain.CloudProviderVolcengine, Status: sharedomain.CloudAccountStatusActive,
+				AccessKeyID: "ak-v", AccessKeySecret: "sk-v"},
+		}}
+		src := NewAccountCredentialSource(accounts, nil, nil)
+		// deployer 以 volcano 标识查询 → 命中 volcengine 登记的账号
+		cred, err := src.CloudCredential(ctx, "volcano", "集团-火山云")
+		require.NoError(t, err)
+		assert.Equal(t, "volcano", cred.Cloud)
+		assert.Equal(t, "ak-v", cred.AccessKey)
+		assert.Equal(t, []byte("sk-v"), cred.Secret)
 		require.NoError(t, cred.Validate())
 	})
 	t.Run("非 active 或不存在账号拒绝", func(t *testing.T) {

@@ -226,14 +226,14 @@ type changeExecuteService struct {
 	notifier ExecuteAlertNotifier // nil=no-op
 	audit    ChangeAuditWriter    // 7.2 item_result 审计；nil=no-op
 
-	heartbeatInterval time.Duration                                    // 执行期心跳间隔（默认 30s）
-	rateLimit         ItemRateLimitPolicy                              // 项级限流退避（引擎级外层闸门）
+	heartbeatInterval time.Duration       // 执行期心跳间隔（默认 30s）
+	rateLimit         ItemRateLimitPolicy // 项级限流退避（引擎级外层闸门）
 	k8sMappingPoll    struct {
 		interval time.Duration // patch_crd 云证书映射轮询间隔（默认 3s）
 		maxWait  time.Duration // 映射等待预算上限（默认 60s）
 	}
-	now               func() time.Time                                 // 测试可注入时间源
-	sleep             func(ctx context.Context, d time.Duration) error // 测试可注入退避睡眠
+	now   func() time.Time                                 // 测试可注入时间源
+	sleep func(ctx context.Context, d time.Duration) error // 测试可注入退避睡眠
 }
 
 // NewChangeExecuteService 创建批量执行引擎。channels 为已装配执行通道实例
@@ -1094,31 +1094,34 @@ func NewAccountCredentialSource(
 }
 
 // CloudCredential 解析云账号 AK/SK 凭证（active 账号；AccountKey=账号名，
-// 3.5 扫描与 5.2 清单同口径）。
+// 3.5 扫描与 5.2 清单同口径）。火山双别名归一：任一别名（volcano/volcengine）
+// 均命中全部火山账号（见 volcanoAccountProviders 说明）。
 func (s *AccountCredentialSource) CloudCredential(ctx context.Context, cloud, accountKey string) (deployer.Credential, error) {
-	accounts, _, err := s.accounts.List(ctx, sharedomain.CloudAccountFilter{
-		Provider: sharedomain.CloudProvider(cloud),
-		Status:   sharedomain.CloudAccountStatusActive,
-	})
-	if err != nil {
-		return deployer.Credential{}, fmt.Errorf("cert: list active accounts for %s: %w", cloud, err)
-	}
-	for i := range accounts {
-		if accounts[i].Name != accountKey {
-			continue
+	for _, p := range volcanoAccountProviders(cloud) {
+		accounts, _, err := s.accounts.List(ctx, sharedomain.CloudAccountFilter{
+			Provider: p,
+			Status:   sharedomain.CloudAccountStatusActive,
+		})
+		if err != nil {
+			return deployer.Credential{}, fmt.Errorf("cert: list active accounts for %s: %w", cloud, err)
 		}
-		a := accounts[i]
-		if a.AccessKeyID == "" || a.AccessKeySecret == "" {
-			break
+		for i := range accounts {
+			if accounts[i].Name != accountKey {
+				continue
+			}
+			a := accounts[i]
+			if a.AccessKeyID == "" || a.AccessKeySecret == "" {
+				break
+			}
+			return deployer.Credential{
+				Kind:       deployer.CredentialKindCloudAK,
+				Cloud:      cloud,
+				AccountKey: accountKey,
+				AccessKey:  a.AccessKeyID,
+				Secret:     []byte(a.AccessKeySecret),
+				KeyVersion: 1, // 账号密钥体系无版本概念（区别于信封加密），审计下限
+			}, nil
 		}
-		return deployer.Credential{
-			Kind:       deployer.CredentialKindCloudAK,
-			Cloud:      cloud,
-			AccountKey: accountKey,
-			AccessKey:  a.AccessKeyID,
-			Secret:     []byte(a.AccessKeySecret),
-			KeyVersion: 1, // 账号密钥体系无版本概念（区别于信封加密），审计下限
-		}, nil
 	}
 	return deployer.Credential{}, fmt.Errorf("cert: no usable active account %q for cloud %s", accountKey, cloud)
 }

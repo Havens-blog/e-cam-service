@@ -1083,18 +1083,27 @@ func NewAccountScanSource(repo accountrepo.CloudAccountRepository) ScanAccountSo
 	return &accountScanSource{repo: repo}
 }
 
-// ActiveByCloud 返回指定云的全部 active 账号。
+// ActiveByCloud 返回指定云的全部 active 账号。火山双别名归一：查询任一别名
+// （volcano/volcengine）均返回全部火山账号（按账号名去重），见
+// volcanoAccountProviders 说明；其余云单 provider 过滤行为不变。
 func (s *accountScanSource) ActiveByCloud(ctx context.Context, cloud domain.Cloud) ([]*sharedomain.CloudAccount, error) {
-	accounts, _, err := s.repo.List(ctx, sharedomain.CloudAccountFilter{
-		Provider: sharedomain.CloudProvider(cloud),
-		Status:   sharedomain.CloudAccountStatusActive,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("cert: list active accounts for %s: %w", cloud, err)
-	}
-	out := make([]*sharedomain.CloudAccount, len(accounts))
-	for i := range accounts {
-		out[i] = &accounts[i]
+	var out []*sharedomain.CloudAccount
+	seen := make(map[string]bool)
+	for _, p := range volcanoAccountProviders(string(cloud)) {
+		accounts, _, err := s.repo.List(ctx, sharedomain.CloudAccountFilter{
+			Provider: p,
+			Status:   sharedomain.CloudAccountStatusActive,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("cert: list active accounts for %s: %w", cloud, err)
+		}
+		for i := range accounts {
+			if seen[accounts[i].Name] {
+				continue
+			}
+			seen[accounts[i].Name] = true
+			out = append(out, &accounts[i])
+		}
 	}
 	return out, nil
 }
