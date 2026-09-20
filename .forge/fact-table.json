@@ -1385,6 +1385,240 @@
       "value": "zero_exception;正常行为空串;utilization 不落库",
       "confidence": "inferred",
       "updated_at": "2026-09-19T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_METRIC_COLLECTION",
+      "source": "static",
+      "subject": "OSS 指标 mongo 集合名 (internal/cam/repository/dao/oss_metric.go:14)",
+      "kind": "signature",
+      "value": "ecam_oss_metric",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_METRIC_UNIQUE_KEY",
+      "source": "static",
+      "subject": "OSS 指标唯一键唯一索引 (internal/cam/repository/dao/oss_metric.go:55-66)",
+      "kind": "precondition",
+      "value": "(account_id, bucket_name, date) 唯一索引,NewOSSMetricDAO 创建时 Ensure;跨账号同名 bucket 各留一行",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_QC_ZERO_EXCEPTION",
+      "source": "static",
+      "subject": "storage_size=0 例外放行并打标 (internal/cam/repository/dao/oss_metric.go:88-100; internal/shared/cloudx/types/oss_metric.go:9-11)",
+      "kind": "error_code",
+      "value": "storage_size=0 → qc_status=zero_exception,放行落库不拦截不跳过;读取侧映射 data_status=zero_exception 原样暴露",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_RANGE_GATE",
+      "source": "static",
+      "subject": "非零 storage_size 数量级门禁 (internal/cam/repository/dao/oss_metric.go:74-99)",
+      "kind": "error_code",
+      "value": "非零 storage_size 越出 [1MB, 1PB] → 拒绝写入,错误携带 bucket_name 与 date;批量写时任一行越界整批拒绝",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_FIRST_WRITE_SEMANTICS",
+      "source": "static",
+      "subject": "首写生效/覆盖更新分流 (internal/cam/task/executor/sync_oss_metrics.go:346-423; internal/cam/repository/dao/oss_metric.go:139-157)",
+      "kind": "signature",
+      "value": "Date==今日行走 BulkInsertIfAbsent($setOnInsert 首写生效,已有不覆盖);更早行走 BulkUpsertMetrics($set 覆盖更新);跨账号同名 bucket 各留一行",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_TASK_TYPE",
+      "source": "static",
+      "subject": "OSS 采集任务类型 (internal/cam/task/executor/sync_oss_metrics.go:47)",
+      "kind": "signature",
+      "value": "oss:collect_metrics",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_COLLECT_DAYS_DEFAULT",
+      "source": "static",
+      "subject": "采集区间默认与上限 (internal/cam/task/executor/sync_oss_metrics.go:50-54,138-145)",
+      "kind": "signature",
+      "value": "days 默认 2(补昨日完整行+今日初态),上限 31;区间 [今日-(days-1), 今日] Asia/Shanghai 自然日",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_GATE_RESOURCE",
+      "source": "static",
+      "subject": "OSS 日闸资源类型键 (internal/cam/scheduler/daily_gate.go:33)",
+      "kind": "signature",
+      "value": "oss(与 nas/cdn 按 resource_type 分键互不干扰)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_GATE_CLAIM_CONDITION",
+      "source": "static",
+      "subject": "持久化日闸原子认领条件 (internal/cam/scheduler/auto_sync_oss_metrics.go:48-90; internal/cam/scheduler/daily_gate.go:110)",
+      "kind": "precondition",
+      "value": "TryClaim 经 findOneAndUpdate 条件 resource_type=oss AND last_date<today 更新为 today;认领成功是提交 oss:collect_metrics 的唯一前提;首次无记录视为首次认领(不回溯补采历史)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_GATE_FAILURE_SEMANTICS",
+      "source": "static",
+      "subject": "日闸写/读失败降级语义 (internal/cam/scheduler/daily_gate.go:110-191)",
+      "kind": "side_effect",
+      "value": "写失败指数退避(base<<failures 封顶)+AlertDailyGateFailure 升级告警,绝不静默跳过;读失败设 ≥5 分钟读退避窗口,窗口内不重复提交任务",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_MEM_GATE_ROLLBACK",
+      "source": "static",
+      "subject": "特性开关回滚内存闸 (internal/cam/scheduler/auto_sync_oss_metrics.go:34-45,94-132)",
+      "kind": "signature",
+      "value": "SCHEDULER_PERSISTENT_GATE_ENABLED 显式关闭 → 回滚内存闸(接受重启重复提交旧缺陷换取调度器可用,采集不中断);dailyGate 未装配时安全跳过不回退",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_ACTIVE_ACCOUNT_SCOPE",
+      "source": "static",
+      "subject": "活跃账号口径 (internal/cam/task/executor/sync_oss_metrics.go:150-153,239-263,299-306)",
+      "kind": "precondition",
+      "value": "活跃账号 = ecam_instance 中存在 ≥1 个 asset_type=oss bucket(以本地资产枚举为准,不依赖 EnableAutoSync 开关);无 bucket 账号计入 accounts_without_oss 不采集",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_CONCURRENCY_MODEL",
+      "source": "static",
+      "subject": "账号互斥+bucket 有界并发 (internal/cam/task/executor/sync_oss_metrics.go:55-59,171-209,309-338)",
+      "kind": "signature",
+      "value": "账号级互斥闸 nasAccountGate(同账号同时仅一个采集任务);bucket 有界并发 5;单厂商/单账号/单 bucket 失败只影响自身,不阻塞其余继续",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_NO_METRIC_SUPPORT_INFO",
+      "source": "static",
+      "subject": "探测不支持归类 (internal/cam/task/executor/sync_oss_metrics.go:291-297)",
+      "kind": "side_effect",
+      "value": "厂商未实现 OSSMetricQuerier → INFO 日志+整体跳过(no_metric_support),不计失败、不进 failures、不触发健康告警;与调用失败(ERROR+failures 计数)严格区分",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_FAILURES_SUMMARY",
+      "source": "static",
+      "subject": "采集 Result 汇总结构 (internal/cam/task/executor/sync_oss_metrics.go:218-228)",
+      "kind": "output_format",
+      "value": "Result 含 metrics_total/accounts/date_range/skipped_accounts/no_metric_support/accounts_without_oss/failed_buckets/failures/health_alerts;failures 元素含 provider/account_id/error_count/last_error",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_HEALTH_ALERT",
+      "source": "static",
+      "subject": "必达厂商健康告警 (internal/cam/task/executor/oss_health_monitor.go:30-105)",
+      "kind": "side_effect",
+      "value": "必达厂商(aliyun/huawei/aws)近 3 天零成功写库且实盘存在 ≥1 个 OSS bucket → AlertOSSZeroSuccess 共用告警通道;手动单账号/单厂商局部运行不判定;尽力而为厂商不触发",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_READ_ENDPOINTS",
+      "source": "static",
+      "subject": "OSS 指标读取端点 (internal/cam/web/asset_handler.go:164-165)",
+      "kind": "signature",
+      "value": "GET /api/v1/cam/assets/oss/metrics?bucket_name=&account_id=&days= ; GET /api/v1/cam/assets/oss/top?account_id=&days=&sort=&top=&page=&page_size=",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_TOP_PARAMS",
+      "source": "static",
+      "subject": "Top 接口参数边界 (internal/cam/web/asset_handler_oss_metrics.go:66-82; internal/cam/service/asset_oss_query.go:18-26)",
+      "kind": "signature",
+      "value": "sort 仅支持 storage_size|object_count(默认 storage_size,非法值 400);top 默认 10 最大 50;page 默认 1;page_size 默认 10 最大 50;服务端 normalize 收敛",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_READ_DAYS_BOUND",
+      "source": "static",
+      "subject": "读取窗口 days 边界 (internal/cam/repository/dao/oss_metric_query.go:15-29)",
+      "kind": "signature",
+      "value": "读取 days 限 1~90,缺省 30,越界服务端收敛;闭区间 [today-(days-1), today] Asia/Shanghai",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_CROSS_TENANT_404",
+      "source": "static",
+      "subject": "越权账号映射 404 (internal/cam/service/asset_oss_query.go:45-47,269-285)",
+      "kind": "error_code",
+      "value": "account_id ∉ 当前租户账号集合 → ErrOSSAccountNotInTenant,handler 映射 404 而非 403(不泄露账号存在性)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_DATA_STATUS_VALUES",
+      "source": "static",
+      "subject": "读取侧 data_status 取值 (internal/cam/service/asset_oss_query.go:29-37,129-135,186-202)",
+      "kind": "output_format",
+      "value": "data_status ∈ ok|zero_exception|missing;缺失日 storage_size/object_count 为 null 不填假值;qc_status 原样透出;响应含 latest 与 average 两类汇总",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_TOP_DEDUP",
+      "source": "static",
+      "subject": "Top 去重代表行规则 (internal/cam/service/asset_oss_query.go:209-267,300-356)",
+      "kind": "signature",
+      "value": "按 bucket_name 去重,同日内取 storage_size 最大行作代表行(「日期 desc 再容量 desc」等价实现),AccountIDs 为去重账号列表;排序值用近 N 天均值口径,绝不跨账号求和/双计",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_AVG_EXCLUDE_ZERO",
+      "source": "static",
+      "subject": "均值口径排除项 (internal/cam/service/asset_oss_query.go:385-405)",
+      "kind": "signature",
+      "value": "近 N 天均值跳过 storage_size=0 异常行与缺失日;无可用行时均值字段为 null;Top 排序时 nil 视为 -1 排尾部",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_TOP_RESPONSE",
+      "source": "static",
+      "subject": "Top 响应结构 (internal/cam/service/asset_oss_query.go:85-104)",
+      "kind": "output_format",
+      "value": "OSSTopResp{total(去重后分页分母), page, page_size, items[]};item 含 bucket_name/provider/account_id/data_status/qc_status/latest/average;页码超界返回空 items 且 total 不变",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_UTILIZATION_NOT_STORED",
+      "source": "static",
+      "subject": "utilization 不落库 (internal/shared/cloudx/types/oss_metric.go:22-23; internal/cam/repository/dao/oss_metric.go:86-87)",
+      "kind": "precondition",
+      "value": "分层大小与 utilization 均不落库;utilization 为读取侧派生语义,容量为 0 时派生须为 null 而非除零 panic/NaN",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "OSS_ASSET_SNAPSHOT_EXCLUDED",
+      "source": "static",
+      "subject": "OSS 界面唯一数据来源 (docs/features/oss-ops-insight/testing/*/journey.md 不变量;读取服务纯读指标表 internal/cam/web/asset_handler_oss_metrics.go:12-19)",
+      "kind": "precondition",
+      "value": "OSS 相关界面一律以 ecam_oss_metric 指标表为唯一数据来源;资产表 ecam_instance 的 storage_size/object_count 快照不参与展示(仅作 bucket 枚举与元数据)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-20T00:00:00Z"
     }
   ]
 }
