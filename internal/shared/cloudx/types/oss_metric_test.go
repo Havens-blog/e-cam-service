@@ -54,3 +54,22 @@ func TestOSSMetricQcStatusValues(t *testing.T) {
 		t.Fatalf("OSSMetricQcZeroException = %q, want zero_exception", OSSMetricQcZeroException)
 	}
 }
+
+// TestMBToGB MB→GB 共享换算(probe-report §1.4/遗留行动 #4:tencent StdStorage
+// 单位 MB 不是 byte):307 MB(probe 非零锚点)→ 307/1024 GB;1 MB → 1/1024 GiB
+// (写路径门禁下界);换算必须委托 BytesToGB(单一换算链,禁止复制粘贴分母)。
+func TestMBToGB(t *testing.T) {
+	if got := MBToGB(1024); got != 1 {
+		t.Fatalf("MBToGB(1024) = %v, want 1(1024 MB = 1 GiB)", got)
+	}
+	if got := MBToGB(307); got != 307.0/1024 {
+		t.Fatalf("MBToGB(307) = %v, want %v(probe 非零锚点 307 MB)", got, 307.0/1024)
+	}
+	if got := MBToGB(0); got != 0 {
+		t.Fatalf("MBToGB(0) = %v, want 0", got)
+	}
+	// 与 byte 口径区分:1 MB ≠ 1 byte 进 BytesToGB 的结果(防误用回归)
+	if MBToGB(1) == BytesToGB(1) {
+		t.Fatal("MBToGB(1) 不应等于 BytesToGB(1)(MB 与 byte 口径不同,遗留行动 #4)")
+	}
+}

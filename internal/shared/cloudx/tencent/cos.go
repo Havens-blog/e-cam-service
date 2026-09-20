@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
@@ -22,6 +23,14 @@ type COSAdapter struct {
 	accessKeySecret string
 	defaultRegion   string
 	logger          *elog.Component
+
+	// ossMonitorClients OSS 指标云监控客户端(按账号 defaultRegion)缓存(oss_metrics.go)
+	ossMonitorClients map[string]nasMonitorClient
+	// ossMonitorMu 保护 ossMonitorClients 的并发创建
+	ossMonitorMu sync.Mutex
+	// ossMetricHooks OSS 指标查询测试注入钩子(非 nil 时替代真实云监控客户端创建;
+	// 仅单测使用),见 oss_metrics.go
+	ossMetricHooks *ossMetricHooks
 }
 
 // NewCOSAdapter 创建 COS 适配器

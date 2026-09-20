@@ -38,3 +38,11 @@ type OSSMetric struct {
 	AccountID   int64   `json:"account_id" bson:"account_id"`     // 云账号 ID(唯一键组成部分:多账号同 bucket 名并存各留一行)
 	Provider    string  `json:"provider" bson:"provider"`         // 云厂商标识
 }
+
+// MBToGB 兆字节(MB,厂商监控口径,如 tencent QCE/COS StdStorage)→ GB(二进制 GiB)。
+// probe-report §1.4/遗留行动 #4 定案:tencent 容量单位是 **MB 不是 byte**,禁止把
+// MB 当 byte 直接进 BytesToGB(会缩小 1024^2 倍);本函数为厂商 MB 口径的共享换算
+// 入口,内部委托 BytesToGB(MB→byte → byte→GB 单一换算链,不在适配器内复制粘贴分母)。
+func MBToGB(mb float64) float64 {
+	return BytesToGB(mb * 1024 * 1024)
+}
