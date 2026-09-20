@@ -1,7 +1,7 @@
 ---
 feature: "oss-ops-insight"
 created: "2026-09-20"
-status: tasks
+status: completed
 mode: quick
 ---
 
