@@ -26,10 +26,11 @@ import (
 	"github.com/gotomicro/ego/core/elog"
 )
 
-// 日闸资源类型分键(nas/cdn 独立,互不覆盖——Hard Rule)
+// 日闸资源类型分键(nas/cdn/oss 独立,互不覆盖——Hard Rule)
 const (
 	GateResourceNAS = "nas"
 	GateResourceCDN = "cdn"
+	GateResourceOSS = "oss"
 )
 
 // 日闸调参默认值
