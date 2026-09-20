@@ -6,7 +6,7 @@ package aliyun
 
 import (
 	"sort"
-	"strings"
+	"strconv"
 
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -56,7 +56,9 @@ func passthroughColumn(kind mapperKind, dim string) (string, bool) {
 	return "", false
 }
 
-// indexHint 透传列不在索引集时的提示(含该 logstore 可用字段清单),
+// indexHint 透传列不在索引集时的提示:给"怎么办"多于字段清单 —— 可聚合列
+// 已由 /types 探测收敛到聚合白名单,此处保留可分析字段数即可,不再甩一坨
+// 原始列名(数十个 AkamaiSiem* 之类字段名撑爆诊断 dimension_notes/TopNSkipReason)。
 // 列可用或探测失败(keys=nil)时返回空。
 func indexHint(col string, keys []string) string {
 	if len(keys) == 0 {
@@ -67,17 +69,6 @@ func indexHint(col string, keys []string) string {
 			return "" // 已索引,可聚合
 		}
 	}
-	const maxHint = 16
-	limit := len(keys)
-	if limit > maxHint {
-		limit = maxHint
-	}
-	names := make([]string, 0, limit+1)
-	for _, k := range keys[:limit] {
-		names = append(names, k)
-	}
-	if len(keys) > maxHint {
-		names = append(names, "…")
-	}
-	return "字段 " + col + " 未开启分析索引,该源不可聚合;可用字段: " + strings.Join(names, ", ")
+	return "字段 " + col + " 未开启分析索引,该源不可聚合(其日志库已有 " + strconv.Itoa(len(keys)) +
+		" 个可分析字段);可在日志服务日志采集配置中为该字段开启分析索引后重试"
 }
