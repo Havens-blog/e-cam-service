@@ -457,6 +457,19 @@ type OSSAdapter interface {
 	ListBucketsWithFilter(ctx context.Context, region string, filter *types.OSSBucketFilter) ([]types.OSSBucket, error)
 }
 
+// OSSMetricQuerier 可选能力:按存储桶查询 OSS 单日容量/对象数指标。
+// 指标不随同步落库,由定时任务 oss:collect_metrics 按日采集;OSSAdapter
+// 实现方可按需实现本接口(探测不到可用监控 API 的厂商不实现,采集跳过)。
+// 与 NASMetricQuerier 不同:签名不带 region——OSS 是全局服务(ListBuckets 的
+// region 参数可选,各厂商实现均有 defaultRegion 回退),与 CDNMetricQuerier 同型:
+// bucket_name 全局唯一即检索键,唯一键用 bucket_name 类比 CDN 的 domain。
+type OSSMetricQuerier interface {
+	// GetOSSMetrics 查询 [startDate, endDate](含两端,YYYY-MM-DD)内该存储桶
+	// 的逐日容量/对象数指标(单位归一化与 qc_status 语义见 types.OSSMetric)。
+	// bucketName 为存储桶名称(各厂商检索键,全局唯一)。
+	GetOSSMetrics(ctx context.Context, bucketName, startDate, endDate string) ([]types.OSSMetric, error)
+}
+
 // ============================================================================
 // KafkaAdapter - Kafka消息队列适配器接口
 // ============================================================================
