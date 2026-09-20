@@ -31,7 +31,7 @@ intent: "new-feature"
 对标 CDN/NAS 指标模式(已上线验证),为 OSS 新增容量/对象数天粒度指标采集与展示。**关键差异:OSS 是全局服务**(`ListBuckets` 的 region 参数可选,各厂商实现均有 `defaultRegion` 回退),与 CDN 同型而非 NAS(地域性资源)——因此 Querier 签名**不带 region**,唯一键用 bucket_name(全局唯一)类比 CDN 的 domain:
 
 1. **OSSMetricQuerier 可选接口**(仿 `cloudx.CDNMetricQuerier`,全局服务故签名无 region):`GetOSSMetrics(ctx, bucketName, startDate, endDate) ([]types.OSSMetric, error)`。OSS 落库字段:`bucket_name / date / storage_size(GB) / object_count / qc_status`;分层大小(Standard/IA/Archive/ColdArchive)**本期不采集**(见 Out of Scope)。`OSSMetric` 唯一键 `(account_id, bucket_name, date)`——bucket_name 全局唯一,跨账号共享同名 bucket 的隔离需求与 CDN 修复后的 `(account_id, domain, date)` 同构,直接复用多账号经验。
-2. **5 厂商实现**:aliyun(CMS `acs_oss`)、huawei(CES `SYS.OBS`)、aws(CloudWatch `AWS/S3` `BucketSizeBytes`/`NumberOfObjects`)、tencent(monitor `QCE/COS`)、volcengine(cloudmonitor,指标名经探测任务确认)。**必达项:aliyun/huawei/aws 三家**(标准指标,S3 `BucketSizeBytes` 是公认标准指标);**尽力而为项:tencent/volcengine**(指标可用性待探测)。任一适配器失败只返回自身空,不阻塞全流程,但须走「失败可观测性」路径。**必达厂商选择依据(非仅实现便利)**:分组由「指标标准化程度 × 实盘容量分布」双因素决定——探测任务统计实盘容量按厂商占比;若 tencent/volcengine 任一占比 >15%:探测可用则升格为必达项纳入本期,探测不可用则显式降级为「二期补」并在发布说明承诺二期补采窗口;占比 ≤15% 维持尽力而为并记录理由。
+2. **5 厂商实现**:aliyun(CMS `acs_oss`<!-- 探测定案修正:acs_oss 实盘基本失效,现行可用为 acs_oss_dashboard,见 probe-report §1.1 与文末 Drift Verification -->)、huawei(CES `SYS.OBS`)、aws(CloudWatch `AWS/S3` `BucketSizeBytes`/`NumberOfObjects`)、tencent(monitor `QCE/COS`)、volcengine(cloudmonitor,指标名经探测任务确认)。**必达项:aliyun/huawei/aws 三家**(标准指标,S3 `BucketSizeBytes` 是公认标准指标);**尽力而为项:tencent/volcengine**(指标可用性待探测)。任一适配器失败只返回自身空,不阻塞全流程,但须走「失败可观测性」路径。**必达厂商选择依据(非仅实现便利)**:分组由「指标标准化程度 × 实盘容量分布」双因素决定——探测任务统计实盘容量按厂商占比;若 tencent/volcengine 任一占比 >15%:探测可用则升格为必达项纳入本期,探测不可用则显式降级为「二期补」并在发布说明承诺二期补采窗口;占比 ≤15% 维持尽力而为并记录理由。
 3. **OSS 指标采集执行器** `oss:collect_metrics`(仿 `sync_nas_metrics.go`):按**活跃账号**遍历 OSS bucket → 调 querier → 写入 `ecam_oss_metric`。**「活跃账号」口径 = 租户下已纳管且存在 ≥1 个 OSS bucket 的云账号**(以 `ecam_instance` 枚举为准),采集不依赖账号 EnableAutoSync 开关(与 NAS/CDN 一致,防非活跃账号下 bucket 静默漏采)。同日行**首写生效**(补缺式 upsert,当日已有行不覆盖;仅保护今日行,昨日行由次日补采覆盖更新),与 NAS 同口径(状态型日快照)。**OBS 特殊项**:华为 OBS 的 bucket 级容量指标可能不区分 region(全局聚合),探测任务确认;若为全局聚合则同一 bucket 直接按账号查询即可。
 4. **持久化日闸复用**:OSS 每日采集直接复用 NAS 已实现的 `scheduler_state` 持久化日闸(**oss 键**)+ 告警桥(SchedulerGateAlerter),原子认领/写失败退避重试/读失败 5 分钟退避/特性开关回滚(`SCHEDULER_PERSISTENT_GATE_ENABLED`)全部沿用——OSS 不需要另建机制,只需给日闸加一个 `resource_type=oss` 分支并注册采集任务。
 5. **OSS 指标读取接口**(契约,租户校验见 Non-Functional Requirements):`GET /assets/oss/metrics?bucket_name=&account_id=&days=`(单 bucket 趋势)与 `GET /assets/oss/top?account_id=&days=&sort=&top=&page=&page_size=`(账号视角 Top)。接口从鉴权上下文取 tenantID,服务端校验客户端传入的 `account_id` ∈ 该租户账号集合,越权返回 404(不泄露账号存在性);`days` 限 1~90;`sort` ∈ `storage_size|object_count`(用近 N 天均值口径);趋势与 Top 同时返回「最新一天」与「近 N 天均值」两类值。**qc_status 读取侧闭环**:写路径的 `qc_status=zero_exception`(storage_size=0 异常行)在读取响应中原样暴露并映射进 `data_status`——前端可分辨「容量为 0 是异常」而非当正常空桶。
@@ -65,7 +65,7 @@ intent: "new-feature"
 ### Constraints & Dependencies
 
 - 5 厂商监控 SDK 已在 go.mod(cloudwatch/monitor/cms/ces/cloudmonitor),无新增重依赖。
-- 厂商监控 namespace/指标名需探测任务确认(aliyun `acs_oss`、华为 `SYS.OBS`、AWS `AWS/S3` `BucketSizeBytes`、腾讯 `QCE/COS`、火山 cloudmonitor)——M1 探测是发布 gate。
+- 厂商监控 namespace/指标名需探测任务确认(aliyun `acs_oss`<!-- 探测定案修正为 `acs_oss_dashboard`,见文末 Drift Verification -->、华为 `SYS.OBS`、AWS `AWS/S3` `BucketSizeBytes`、腾讯 `QCE/COS`、火山 cloudmonitor)——M1 探测是发布 gate。
 - OSS 是全局服务,但 bucket 有 region 属性;部分厂商容量指标可能全局聚合(OBS),探测确认。
 - 复用 NAS 持久化日闸:需给日闸加 `resource_type=oss` 分支,不改既有 nas/cdn 键行为。
 
@@ -157,3 +157,25 @@ intent: "new-feature"
 ## Next Steps
 
 - Proceed to `/quick-tasks`(quick 模式,直接从 proposal 生成任务并执行,与 NAS 同管线)
+
+## Drift Verification (2026-09-20, T-quick-doc-drift)
+
+对照实际实现(commits)与测试结果逐项核对 Success Criteria,结论:**1 处文本级漂移已标注(见上方两处 SC/约束内联注),其余全项一致、无夸大**。
+
+| SC 项 | 实测/实况 | 结论 |
+|---|---|---|
+| M1 探测 + 分组决策 | probe-report §1/§3:必达三家实盘非零全过(aliyun PASS 6/6、huawei 130 bucket capacity_total 与 GetBucketStat 逐字节互证、aws 通过);tencent 探测可用但占比 ≤15% 维持尽力而为;volcengine 占比 15.58% 贴线超阈但探测不可用(订阅未开通,289 组合全 not found + 阳性对照同败)→ 按规则显式降级「二期补」 | 一致(升格/降级决策均已记录) |
+| namespace 文本口径 | 实现定案 aliyun = **`acs_oss_dashboard`**(proposal 假设的 `acs_oss` 实盘基本失效,ProbeReport §1.1);huawei `SYS.OBS`/`capacity_total`/`object_num_all` 与 tencent `QCE/COS`、aws `AWS/S3` 均按探测定案落地(aliyun/oss_metrics.go、huawei/obs_metrics.go 锚点) | **漂移,已标注**(探测 gate 预期内的修正,NAS SFS_Turbo→SYS.EFS 同型) |
+| 唯一键 + 幂等 | DAO (account_id, bucket_name, date) 唯一索引;今日行首写生效($setOnInsert)/昨日行覆盖更新;multi-account-shared-bucket 14 测试覆盖跨账号隔离 | 一致 |
+| 采集执行器 + 活跃账号 | `sync_oss_metrics.go`(oss:collect_metrics)+ auto_sync_oss_metrics.go 按 `ecam_instance` 枚举活跃账号遍历,不依赖 EnableAutoSync;Result["failures"] 计数 | 一致 |
+| 持久化日闸 oss 键 | daily_gate.go `GateResourceOSS = "oss"` 分键(nas/cdn/oss 互不覆盖);run-test 记录并发认领/退避/重启×3 各 1 条/特性开关回滚全覆盖 | 一致 |
+| 读取接口契约 | GET /assets/oss/metrics + /assets/oss/top;租户校验越权 404(ErrOSSAccountNotInTenant,handler 映射 404 不泄露存在性);days 1~90、top 默认 10 最大 50(parseNASBound);sort storage_size\|object_count 近 N 天均值口径;bucket_name 去重;缺失日 data_status=missing;qc_status 原样暴露映射 data_status | 一致 |
+| 前端 | e-cam-web `026c02f`:OssDetailDrawer 监控 tab 双轴趋势 + 列表页运营卡;数据来源统一 ecam_oss_metric 指标表(资产表快照不展示);ossMetrics.ts 纯逻辑层 + ossMetrics.test.ts | 一致 |
+| 健康监控 | oss_health_monitor.go:必达厂商连续 3 天零成功且实盘存在 bucket → AlertOSSZeroSuccess;tencent/volcano 尽力而为不参与 | 一致 |
+| 测试全绿 | 110/110(6 journey 套件,含 2 例 MONGO_DSN 门控 LiveDAO)+ DAO Live 5/5 互证(tests/results/latest.md,run-test 记录) | 一致 |
+| Out of Scope 未混入 | 分层大小不落库(types/oss.go OSSMetric 注释明示);无成本估算/region 下钻/容量阈值告警;资产表快照字段未修 | 一致 |
+| volcengine 二期补承诺 | 探测不可用降级已固化:probe-report §1.5 + volcano TOSAdapter 桩注释(空切片+nil+INFO,重试路径三步);无独立发布说明文档(特性未发布,发布说明届时引用 probe-report §1.5) | 一致(承诺载体已持久化,发布时须引用) |
+
+其余核对:Innovation/Alternatives 与实现相符(平移 CDN/NAS 模式,Querier 无 region、唯一键 bucket_name);`types.MBToGB` 为 tencent MB 口径新增共享辅助(规格「BytesToGB 共享函数」的扩展,非偏离)。
+
+本次为 quick 模式特性,docs/business-rules/ 与 docs/conventions/ 项目级 spec 目录不存在,项目级 spec 无漂移对象;git diff main...HEAD 为空(本特性 commits 已落 main,核对以任务 records/代码锚点为准)。
