@@ -20,12 +20,12 @@ var dimColumnExpr = map[mapperKind]map[string]string{
 		"client_ip": "client_ip", "uri": "uri",
 		// /types 字典键是 url(WAF 才是 uri);缺失时 url 落到透传列 → group by url
 		// 对 DCDN/ALB 报"列不存在",聚合"不支持"。补齐别名让 URL 维度/筛选可下推。
-		"url": "uri",
+		"url":        "uri",
 		"bytes_sent": "response_size", "latency_ms": "request_time",
 		"user_agent": "user_agent", "edge_node": "via_info", "request_id": "uuid",
 	},
 	kindCDNOffline: {
-		"host": "regexp_extract(RequestURL, '^(?:https?://)?([^/?]+)', 1)",
+		"host":   "regexp_extract(RequestURL, '^(?:https?://)?([^/?]+)', 1)",
 		"status": "HTTPStatus", "method": "HTTPMethod", "client_ip": "RemoteIP",
 		"url": "RequestURL", "bytes_sent": "ResponseSize", "latency_ms": "RequestTime",
 		"user_agent": "UserAgent", "referer": "Referer",
@@ -37,7 +37,9 @@ var dimColumnExpr = map[mapperKind]map[string]string{
 	},
 	kindWAF3: {
 		"host": "host", "status": "status", "method": "request_method",
-		"uri": "request_uri", "client_ip": "real_client_ip",
+		// WAF3 索引属性用的是 request_path(request_uri 未建分析与筛选键:
+		// 曾致聚合/sources 筛选下推整源失败)
+		"uri": "request_path", "client_ip": "real_client_ip",
 		"user_agent": "http_user_agent", "geo": "region",
 	},
 	kindAkamaiWAF: {
@@ -56,8 +58,8 @@ var dimColumnExpr = map[mapperKind]map[string]string{
 // 需从 hit_info 归一)——分组直接按原始列,筛选取值仍走明细逐条归一。
 var dimGroupExpr = map[mapperKind]map[string]string{
 	kindALB: {
-		"latency_ms":           "request_time * 1000",
-		"upstream_latency_ms":  "upstream_response_time * 1000",
+		"latency_ms":          "request_time * 1000",
+		"upstream_latency_ms": "upstream_response_time * 1000",
 	},
 	kindDCDN: {
 		"cache_hit": "hit_info",
@@ -101,7 +103,7 @@ var metricExpr = map[mapperKind]map[string]string{
 		"p99_latency": "approx_percentile(request_time, 0.99) * 1000",
 	},
 	// kindWAF3/kindAkamaiWAF:无 latency/bytes 指标列,仅 count
-	kindWAF3:     {"count": "count(1)"},
+	kindWAF3:      {"count": "count(1)"},
 	kindAkamaiWAF: {"count": "count(1)"},
 }
 

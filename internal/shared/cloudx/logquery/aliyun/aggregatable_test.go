@@ -38,7 +38,7 @@ func TestAggregatableFieldsFromIndexes(t *testing.T) {
 			logType: logquery.LogTypeWAF,
 			indexed: map[string]bool{
 				"host": true, "status": true, "request_method": true,
-				"request_uri": true, "real_client_ip": true, "name": true, "dhost": true,
+				"request_path": true, "real_client_ip": true, "name": true, "dhost": true,
 			},
 			want: []string{
 				"action", "client_ip", "host", "method", "rule_name", "severity", "status", "uri",
