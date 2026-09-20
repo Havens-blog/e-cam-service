@@ -189,7 +189,7 @@ type ReverseCertEntry struct {
 }
 
 // ReferenceQueryService 引用关系读取端点服务（任务 3.6）：正向分组视图、
-// 反向查询、立即扫描触发（防重）。
+// 反向查询、立即扫描触发（防重）、扫描状态（变更向导轮询）。
 type ReferenceQueryService interface {
 	// References 正向引用视图：分组引用 + 扫描元数据（lastScanAt/coverage）+
 	// referenceStatus + 盲区声明。
@@ -198,6 +198,19 @@ type ReferenceQueryService interface {
 	ReverseQuery(ctx context.Context, query string) ([]ReverseCertEntry, error)
 	// TriggerScan 触发 3.5 扫描任务；进行中返回 *ScanInProgressError（409）。
 	TriggerScan(ctx context.Context, certID string) (ScanResult, error)
+	// ScanStatus 最近引用扫描快照状态（running/done/failed + 起止时点）。
+	// 变更向导「立即扫描」后据此轮询——区别于 discovery snapshot-status
+	// （云发现快照，非清单新鲜度数据源）。
+	ScanStatus(ctx context.Context) (ScanStatusView, error)
+}
+
+// ScanStatusView 最近引用扫描快照状态（无任何快照 → HasSnapshot=false）。
+type ScanStatusView struct {
+	HasSnapshot bool
+	Status      domain.ScanStatus // running/done/failed
+	StartedAt   *time.Time
+	FinishedAt  *time.Time
+	FailReason  string
 }
 
 type referenceQueryService struct {
@@ -215,6 +228,28 @@ func NewReferenceQueryService(
 	scan ScanTriggerPort,
 ) ReferenceQueryService {
 	return &referenceQueryService{certs: certs, refs: refs, snapshots: snapshots, scan: scan}
+}
+
+// ScanStatus 最近引用扫描快照状态（snapshots.Latest 任意状态；无快照 → HasSnapshot=false）。
+func (s *referenceQueryService) ScanStatus(ctx context.Context) (ScanStatusView, error) {
+	snap, err := s.snapshots.Latest(ctx)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return ScanStatusView{HasSnapshot: false}, nil
+	}
+	if err != nil {
+		return ScanStatusView{}, fmt.Errorf("scan status: load latest snapshot: %w", err)
+	}
+	v := ScanStatusView{
+		HasSnapshot: true,
+		Status:      snap.Status,
+		FailReason:  snap.FailReason,
+	}
+	sa := snap.StartedAt
+	v.StartedAt = &sa
+	if snap.FinishedAt != nil {
+		v.FinishedAt = snap.FinishedAt
+	}
+	return v, nil
 }
 
 // ---------------------------------------------------------------------

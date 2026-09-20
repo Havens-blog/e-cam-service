@@ -24,14 +24,25 @@ func NewReferenceHandler(svc service.ReferenceQueryService) *ReferenceHandler {
 // 引用/反向/扫描均限运维工程师）：
 //
 //	GET  /api/v1/certs/reverse?domain=  反向查询（域名/资源→证书）
+//	GET  /api/v1/certs/scan/status      最近引用扫描快照状态（向导「立即扫描」轮询）
 //	GET  /api/v1/certs/:id/references   正向引用（分组+覆盖率+盲区声明）
 //	POST /api/v1/certs/:id/scan         立即扫描（防重 409 SCAN_IN_PROGRESS）
 //
-// 注意 Gin 通配顺序：/reverse 静态段先于 /:id 注册（与 ledger /stats 同理）。
+// 注意 Gin 通配顺序：静态段先于 /:id 注册（与 ledger /stats、/reverse 同理）。
 func (h *ReferenceHandler) RegisterRoutes(g *gin.RouterGroup) {
 	g.GET("/reverse", RequireRoles(RoleOpsEngineer), h.ReverseQuery)
+	g.GET("/scan/status", RequireRoles(RoleOpsEngineer), h.ScanStatus)
 	g.GET("/:id/references", RequireRoles(RoleOpsEngineer), h.References)
 	g.POST("/:id/scan", RequireRoles(RoleOpsEngineer), h.TriggerScan)
+}
+
+// ScanStatusVO 最近引用扫描快照状态响应（无快照 → hasSnapshot=false）。
+type ScanStatusVO struct {
+	HasSnapshot bool    `json:"hasSnapshot"`
+	Status      string  `json:"status,omitempty"`
+	StartedAt   *string `json:"startedAt"`
+	FinishedAt  *string `json:"finishedAt"`
+	FailReason  string  `json:"failReason,omitempty"`
 }
 
 // ReferenceItemVO 正向视图单条引用（AC 白名单字段）。
@@ -166,6 +177,19 @@ func (h *ReferenceHandler) ReverseQuery(c *gin.Context) {
 	WriteOK(c, http.StatusOK, toReverseResultVO(q, items), nil)
 }
 
+// ScanStatus GET /api/v1/certs/scan/status —— 最近引用扫描快照状态
+// （running/done/failed）。变更向导「立即扫描」后轮询此端点：done → 自动重跑
+// 预检；failed → 展示 failReason。区别于 /discovery/snapshot-status（云发现
+// 快照，非清单新鲜度数据源）。
+func (h *ReferenceHandler) ScanStatus(c *gin.Context) {
+	v, err := h.svc.ScanStatus(c.Request.Context())
+	if err != nil {
+		WriteError(c, err)
+		return
+	}
+	WriteOK(c, http.StatusOK, toScanStatusVO(v), nil)
+}
+
 // TriggerScan POST /api/v1/certs/:id/scan —— 立即扫描触发（异步：running 态 202
 // + snapshotId/startedAt；防重 409 附进行中快照信息；空范围同步失败 200 failed）。
 func (h *ReferenceHandler) TriggerScan(c *gin.Context) {
@@ -282,6 +306,18 @@ func toReverseResultVO(query string, entries []service.ReverseCertEntry) Reverse
 		})
 	}
 	return ReverseResultVO{Query: query, Count: len(items), Items: items}
+}
+
+// toScanStatusVO 服务结果 → 状态 VO（无快照时 Status/时间字段零值省略）。
+func toScanStatusVO(v service.ScanStatusView) ScanStatusVO {
+	vo := ScanStatusVO{
+		HasSnapshot: v.HasSnapshot,
+		Status:      string(v.Status),
+		FailReason:  v.FailReason,
+		StartedAt:   formatTimePtr(v.StartedAt),
+		FinishedAt:  formatTimePtr(v.FinishedAt),
+	}
+	return vo
 }
 
 // toScanResultVO 扫描结果 → VO。

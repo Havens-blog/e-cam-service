@@ -87,7 +87,7 @@ var collectionValidators = map[string]bson.M{
 		bson.A{"certFingerprint", "snapshotId", "scannedAt"},
 		bson.M{
 			"certFingerprint":       fingerprintPattern(),
-			"cloud":                 enumStr("aliyun", "tencent", "huawei", "aws", "azure"),
+			"cloud":                 enumStr("aliyun", "tencent", "huawei", "aws", "azure", "volcano", "volcengine"),
 			"product":               enumStr("cdn", "dcdn", "waf", "alb", "clb", "nlb", "crd", "cas"),
 			"clusterId":             str(),
 			"namespace":             str(),

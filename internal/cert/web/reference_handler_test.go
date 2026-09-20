@@ -406,7 +406,7 @@ func TestTriggerScanAPI(t *testing.T) {
 		id := d.seedCert(t, lfp(1), nil)
 		scan.res = service.ScanResult{
 			SnapshotID: "snap-run", Status: domain.ScanStatusRunning,
-			StartedAt:  time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC),
+			StartedAt: time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC),
 		}
 
 		w := doPost(t, engine, "/api/v1/certs/"+id+"/scan")
@@ -467,5 +467,55 @@ func TestTriggerScanAPI(t *testing.T) {
 		require.NotNil(t, env.Error)
 		assert.Equal(t, "INTERNAL_ERROR", env.Error.Code)
 		assert.False(t, env.Success)
+	})
+}
+
+// ---------------------------------------------------------------------
+// GET /api/v1/certs/scan/status 引用扫描状态（变更向导「立即扫描」轮询）
+// ---------------------------------------------------------------------
+
+func TestScanStatusAPI(t *testing.T) {
+	t.Run("no snapshot hasSnapshot=false", func(t *testing.T) {
+		engine, _, _ := newReferenceRouter(t)
+		w := doGet(t, engine, "/api/v1/certs/scan/status")
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		data := decodeData(t, w)
+		assert.Equal(t, false, data["hasSnapshot"])
+		assert.Empty(t, data["status"])
+	})
+
+	t.Run("running snapshot exposes status+startedAt", func(t *testing.T) {
+		engine, d, _ := newReferenceRouter(t)
+		d.seedRunningSnapshot(t)
+		w := doGet(t, engine, "/api/v1/certs/scan/status")
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		data := decodeData(t, w)
+		assert.Equal(t, true, data["hasSnapshot"])
+		assert.Equal(t, "running", data["status"])
+		assert.NotEmpty(t, data["startedAt"])
+	})
+
+	t.Run("failed snapshot exposes failReason", func(t *testing.T) {
+		engine, d, _ := newReferenceRouter(t)
+		ctx := context.Background()
+		id, err := d.snaps.Create(ctx, &domain.ScanSnapshot{})
+		require.NoError(t, err)
+		require.NoError(t, d.snaps.MarkFinished(ctx, id, domain.ScanStatusFailed, domain.FailReasonScanWriteFailed))
+		w := doGet(t, engine, "/api/v1/certs/scan/status")
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		data := decodeData(t, w)
+		assert.Equal(t, "failed", data["status"])
+		assert.Equal(t, "SCAN_WRITE_FAILED", data["failReason"])
+	})
+
+	t.Run("done snapshot latest wins", func(t *testing.T) {
+		engine, d, _ := newReferenceRouter(t)
+		now := time.Now()
+		d.seedDoneSnapshotAt(t, nil, now.Add(-2*time.Hour)) // 旧 done
+		d.seedRunningSnapshot(t)                             // 更新 running → Latest 取 running
+		w := doGet(t, engine, "/api/v1/certs/scan/status")
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		data := decodeData(t, w)
+		assert.Equal(t, "running", data["status"], "Latest 按 startedAt 取最新（任意状态）")
 	})
 }

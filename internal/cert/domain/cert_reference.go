@@ -15,6 +15,10 @@ const (
 	CloudHuawei  Cloud = "huawei"
 	CloudAWS     Cloud = "aws"
 	CloudAzure   Cloud = "azure"
+	// CloudVolcano 火山引擎（扫描适配器 cloud=volcano；账号 provider 可登记
+	// volcano 或 volcengine 双别名，volcanoAccountProviders 归一查询）。
+	CloudVolcano    Cloud = "volcano"
+	CloudVolcengine Cloud = "volcengine"
 )
 
 // Product 云产品枚举。对齐 schema.sql cert_references.product enum。
@@ -54,8 +58,8 @@ type CertReference struct {
 	// K8s 控制器经 CRD 声明管理（alb-ingress=ALB Ingress Controller），证书
 	// 变更须经其管理管道（AlbConfig），云 API 直接绑定会被调谐回滚。
 	// ManagedOwner 为托管资源定位 "cluster/namespace/name"（空=未托管）。
-	ManagedBy    string `bson:"managedBy,omitempty"`
-	ManagedOwner string `bson:"managedOwner,omitempty"`
-	SnapshotID            string             `bson:"snapshotId"`              // 来源扫描快照
-	ScannedAt             time.Time          `bson:"scannedAt"`               // DEFAULT=now()
+	ManagedBy    string    `bson:"managedBy,omitempty"`
+	ManagedOwner string    `bson:"managedOwner,omitempty"`
+	SnapshotID   string    `bson:"snapshotId"` // 来源扫描快照
+	ScannedAt    time.Time `bson:"scannedAt"`  // DEFAULT=now()
 }

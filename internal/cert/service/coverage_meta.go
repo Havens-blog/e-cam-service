@@ -161,6 +161,7 @@ var assetModelProductMap = map[string]domain.Product{
 // scanProviders 参与扫描的云清单（与 cert_references.cloud enum 对齐）。
 var scanProviders = []domain.Cloud{
 	domain.CloudAliyun, domain.CloudTencent, domain.CloudHuawei, domain.CloudAWS, domain.CloudAzure,
+	domain.CloudVolcano,
 }
 
 // assetRepositoryCounts AssetCountSource 生产实现：按候选 model_uid 逐项 Count

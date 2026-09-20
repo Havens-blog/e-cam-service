@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -225,11 +226,22 @@ func (s *referenceScanService) StartScanAsync(ctx context.Context) (ScanResult, 
 func (s *referenceScanService) runScanGuarded(sc scanContext) {
 	defer func() {
 		if r := recover(); r != nil {
+			slog.Error("cert scan: panic during background scan",
+				slog.String("snapshotId", sc.snapID), slog.Any("panic", r))
 			_ = s.snapshots.MarkFinished(context.Background(), sc.snapID,
 				domain.ScanStatusFailed, domain.FailReasonScanInterrupted)
 		}
 	}()
-	_, _ = s.runScan(context.Background(), sc)
+	res, err := s.runScan(context.Background(), sc)
+	if err != nil {
+		// 引用落库失败等终态错误不落库但必须留痕——此前 `_, _ =` 吞错导致
+		// SCAN_WRITE_FAILED 等故障完全不可见（仅表现为快照 failed / 向导 SCAN_STALE）。
+		slog.Error("cert scan: background scan failed",
+			slog.String("snapshotId", sc.snapID),
+			slog.String("status", string(res.Status)),
+			slog.String("failReason", res.FailReason),
+			slog.Any("err", err))
+	}
 }
 
 // scanContext 扫描运行期上下文：beginScan 收集、runScan 消费。
