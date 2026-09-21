@@ -54,13 +54,12 @@ func (s *nodeAssetService) ListNodeAssets(ctx context.Context, filter domain.Nod
 		return nil, 0, fmt.Errorf("节点不存在: %w", err)
 	}
 
-	// 根节点特殊处理: 不查 binding 表，直接查未绑定的资产作为"待分配"资源池
+	// 根节点特殊处理: 不查 binding 表，直接查未绑定的资产作为"待分配"资源池。
+	// includeChildren 时与普通节点一致走子树聚合（getBindings 的 ListByPath 路径），
+	// 口径与 GetNodeAssetSummary 统计卡对齐（仅子树内已绑定资产），否则统计卡与
+	// 列表总数不一致（列表会混入全租户未绑定资产）。
 	if node.IsRoot() && !filter.IncludeChildren {
 		return s.listUnboundAssets(ctx, filter)
-	}
-	// 根节点 + includeChildren: 返回该租户全部资产
-	if node.IsRoot() && filter.IncludeChildren {
-		return s.listAllAssets(ctx, filter)
 	}
 
 	// 1. 获取绑定列表
@@ -138,25 +137,6 @@ func (s *nodeAssetService) listUnboundAssets(ctx context.Context, filter domain.
 	total, err := s.cmdbRepo.CountUnbound(ctx, filter.TenantID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("统计未绑定资产失败: %w", err)
-	}
-
-	return s.instancesToNodeAssetVOs(instances, filter, 0), total, nil
-}
-
-// listAllAssets 查询租户全部资产 (根节点 + includeChildren)
-func (s *nodeAssetService) listAllAssets(ctx context.Context, filter domain.NodeAssetFilter) ([]domain.NodeAssetVO, int64, error) {
-	cmdbFilter := cmdbdomain.InstanceFilter{
-		TenantID: filter.TenantID,
-		Offset:   filter.Offset,
-		Limit:    filter.Limit,
-	}
-	instances, err := s.cmdbRepo.List(ctx, cmdbFilter)
-	if err != nil {
-		return nil, 0, fmt.Errorf("查询全部资产失败: %w", err)
-	}
-	total, err := s.cmdbRepo.Count(ctx, cmdbFilter)
-	if err != nil {
-		return nil, 0, fmt.Errorf("统计全部资产失败: %w", err)
 	}
 
 	return s.instancesToNodeAssetVOs(instances, filter, 0), total, nil
