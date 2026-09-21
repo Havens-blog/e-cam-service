@@ -1619,6 +1619,321 @@
       "value": "OSS 相关界面一律以 ecam_oss_metric 指标表为唯一数据来源;资产表 ecam_instance 的 storage_size/object_count 快照不参与展示(仅作 bucket 枚举与元数据)",
       "confidence": "inferred",
       "updated_at": "2026-09-20T00:00:00Z"
+    },
+    {
+      "fact_id": "DISK_ENDPOINT_METRICS",
+      "source": "static",
+      "subject": "Disk 单盘趋势读取端点",
+      "kind": "signature",
+      "value": "GET /assets/disk/metrics?disk_id=&account_id=&days= (asset_handler_disk_metrics.go:23-46)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_ENDPOINT_TOP",
+      "source": "static",
+      "subject": "Disk 账号视角 Top 读取端点",
+      "kind": "signature",
+      "value": "GET /assets/disk/top?account_id=&days=&sort=&top=&page=&page_size= (asset_handler_disk_metrics.go:50-90)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_QUERY_BOUNDS",
+      "source": "static",
+      "subject": "Disk 读取参数边界",
+      "kind": "output_format",
+      "value": "days 限 1~90 缺省 30; top 缺省 10 最大 50; page 缺省 1; page_size 缺省 10 最大 50; sort ∈ usage_percent|iops|throughput 缺省 usage_percent (asset_handler_disk_metrics.go:62-82, asset_disk_query.go:18-26, asset_handler_nas_metrics.go:27-31,115-122)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_VALIDATION_400",
+      "source": "static",
+      "subject": "Disk 读取参数校验失败响应",
+      "kind": "error_code",
+      "value": "缺 disk_id→400 FieldInvalid 缺少 disk_id; account_id 缺失/非法→400; days/top/page/page_size 越界→400; sort 非枚举→400 sort 仅支持 usage_percent|iops|throughput (asset_handler_disk_metrics.go:27-29,66-70; asset_handler_nas_metrics.go:105-122)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_CROSS_TENANT_404",
+      "source": "static",
+      "subject": "越权账号查询映射",
+      "kind": "error_code",
+      "value": "account_id 不在租户账号集合→ErrDiskAccountNotInTenant('cloud account not found'),handler 映射 404 不泄露存在性 (asset_disk_query.go:46-48,299-315)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_AUTH_CONTEXT",
+      "source": "static",
+      "subject": "读取接口租户上下文来源",
+      "kind": "precondition",
+      "value": "tenantID 取 middleware.GetTenantID(ctx),未认证由认证中间件拦截 401 (asset_handler_disk_metrics.go:24)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_RESP_METRICS_SHAPE",
+      "source": "static",
+      "subject": "趋势响应结构",
+      "kind": "output_format",
+      "value": "DiskMetricsResp{disk_id, days[]按日期升序(date,usage_percent,usage_scope,iops,throughput,data_status,qc_status), latest, average}; 缺失日各指标 null + data_status=missing (asset_disk_query.go:59-87,209-231)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_RESP_TOP_SHAPE",
+      "source": "static",
+      "subject": "Top 响应结构",
+      "kind": "output_format",
+      "value": "DiskTopResp{total(去重后磁盘总数), page, page_size, items[](disk_id,disk_name,provider,usage_scope,account_id 去重账号列表,data_status,qc_status,latest,average)} (asset_disk_query.go:89-110)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_DATA_STATUS_MAP",
+      "source": "static",
+      "subject": "qc_status→data_status 映射",
+      "kind": "output_format",
+      "value": "qc_status=zero_exception 且 usage_scope!=busy_share→data_status=zero_exception; 其余(含 busy_share 合法闲盘 0)→ok; 读取侧取值 ok|zero_exception|missing (asset_disk_query.go:29-37,139-150)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_AVG_SKIP_RULE",
+      "source": "static",
+      "subject": "近 N 天均值参与规则",
+      "kind": "output_format",
+      "value": "口径缺失 0 行(zero_exception 且非 busy_share)跳过不参与均值; busy_share 合法闲盘 0 是真数据参与; 无可用行各字段 null (asset_disk_query.go:420-442)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_TOP_DEDUP",
+      "source": "static",
+      "subject": "Top 按 disk_id 去重代表行规则",
+      "kind": "output_format",
+      "value": "同 disk_id 多账号并存按 disk_id 聚合,同日代表行取 usage_percent 最大(等价日期 desc 再使用率 desc),item.Latest=最新日期代表行,Average 按每日代表行计算,不跨账号求和/双计;去重先于分页 (asset_disk_query.go:239-297,330-390)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_SORT_AVG",
+      "source": "static",
+      "subject": "Top 排序口径",
+      "kind": "output_format",
+      "value": "三排序键统一用近 N 天均值口径,nil 视为 -1 排尾部 (asset_disk_query.go:152-174,272-281)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_EMPTY_SCOPE",
+      "source": "static",
+      "subject": "账号范围为空时 Top 空态",
+      "kind": "output_format",
+      "value": "resolveAccountScope 结果为空→返回空 items 列表与分页元数据,非错误 (asset_disk_query.go:261-263)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_COLLECTION",
+      "source": "static",
+      "subject": "Disk 指标 Mongo 集合",
+      "kind": "signature",
+      "value": "ecam_disk_metric (disk_metric.go:14)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_UK",
+      "source": "static",
+      "subject": "Disk 指标唯一索引",
+      "kind": "signature",
+      "value": "(account_id, disk_id, date) 唯一索引,含 account_id 支持共享盘多账号并存互不覆盖 (disk_metric.go:49-68)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_QC_GATE",
+      "source": "static",
+      "subject": "写路径数据质量门禁",
+      "kind": "error_code",
+      "value": "usage_percent 越出[0,100]→整批拒绝(错误含 disk_id/date,提示口径归一); iops/throughput 为负→拒绝; usage_percent=0→例外放行并强制 qc_status=zero_exception (disk_metric.go:70-103)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_FIRST_WRITE_WINS",
+      "source": "static",
+      "subject": "今日行首写生效写入",
+      "kind": "side_effect",
+      "value": "BulkInsertIfAbsent: 更新文档仅含 $setOnInsert,命中唯一键已存在行不做任何修改,仅补缺失行;空批直接返回 nil (disk_metric.go:142-160)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_PAST_OVERWRITE",
+      "source": "static",
+      "subject": "昨日行覆盖更新写入",
+      "kind": "side_effect",
+      "value": "BulkUpsertMetrics: $set 重采值覆盖(次日补采显式覆盖昨日行),ordered=false 整批可安全重放;任一行未过门禁整批拒绝 (disk_metric.go:114-136)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_COUNT_BY_PROVIDERS",
+      "source": "static",
+      "subject": "厂商写库行数统计(健康证据)",
+      "kind": "signature",
+      "value": "CountMetricsByProviders(providers, sinceDate) 逐厂商 CountDocuments{provider, date>=sinceDate} (disk_metric.go:208-224)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_LISTBY_SIGNATURES",
+      "source": "static",
+      "subject": "读取 DAO 方法",
+      "kind": "signature",
+      "value": "ListByDisk(accountID, diskID, days) 按 date 升序; ListByAccounts(accountIDs, days) Top 聚合用 (disk_metric.go:38-42)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_EXECUTOR_TASK_TYPE",
+      "source": "static",
+      "subject": "Disk 采集任务类型与参数",
+      "kind": "signature",
+      "value": "taskx.TaskType=disk:collect_metrics; params{provider?, account_id?, days?} days 缺省 2 上限 31 (sync_disk_metrics.go:48-68,139-145)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_EXECUTOR_ACCOUNT_SCOPE",
+      "source": "static",
+      "subject": "活跃账号口径与实例枚举",
+      "kind": "precondition",
+      "value": "活跃账号=ecam_instance AssetTypes=[disk] 存在 ≥1 实例,不依赖 EnableAutoSync; disk_id 取 AssetID, region 取 attributes[region]; 零实例账号跳过计入 accounts_without_disk (sync_disk_metrics.go:240-265,301-309)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_EXECUTOR_ACCOUNT_MUTEX",
+      "source": "static",
+      "subject": "账号级采集互斥",
+      "kind": "side_effect",
+      "value": "nasAccountGate.tryAcquire 失败→Warn 日志+计入 skipped_accounts 跳过,同账号不并发重复采集 (sync_disk_metrics.go:172-179)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_EXECUTOR_CONCURRENCY",
+      "source": "static",
+      "subject": "disk 有界并发与失败计数",
+      "kind": "signature",
+      "value": "单账号 disk 并发上限=nasMetricInstanceConcurrency(5); 单盘失败(查询/写库失败)计 failedDisks 不中断其余盘; 任务取消不再派发 (sync_disk_metrics.go:53-61,311-345)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_EXECUTOR_RESULTS",
+      "source": "static",
+      "subject": "采集任务 Result 结构",
+      "kind": "output_format",
+      "value": "Result{metrics_total, accounts, date_range, skipped_accounts, no_metric_support, accounts_without_disk, failed_disks, failures[{provider,account_id,error_count,last_error}], health_alerts}; progress 100 (sync_disk_metrics.go:219-231)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_QUERIER_SIGNATURE",
+      "source": "static",
+      "subject": "厂商指标查询可选能力",
+      "kind": "signature",
+      "value": "DiskMetricQuerier.GetDiskMetrics(ctx, diskID, diskName, region, startDate, endDate) ([]types.DiskMetric, error); 适配器未实现→noMetricSupport INFO 跳过不计失败 (cloudx/interfaces.go:588-602, sync_disk_metrics.go:293-299)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_EMPTY_DATE_SKIP",
+      "source": "static",
+      "subject": "空日期行跳过",
+      "kind": "side_effect",
+      "value": "适配器返回行 date 为空时跳过不入批(无法定位唯一键) (sync_disk_metrics.go:392-396)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_METRIC_FIELDS",
+      "source": "static",
+      "subject": "DiskMetric 字段与口径",
+      "kind": "output_format",
+      "value": "account_id/disk_id/date(YYYY-MM-DD Asia/Shanghai)/disk_name/usage_percent(0~100,语义由 usage_scope 标注 instance_level|busy_share|cloud_disk_level)/iops(次/秒当日均值)/throughput(MB/s,适配器边界 byte/s→MB/s 归一)/qc_status(空=正常|zero_exception)/account_id/provider (types/disk_metric.go:78-87)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_DAY_GATE_CLAIM",
+      "source": "static",
+      "subject": "disk 日闸原子认领",
+      "kind": "signature",
+      "value": "dailyGate.TryClaim(ctx, GateResourceDisk, today) findOneAndUpdate 条件 resource_type=disk AND last_date<today; 胜出提交 disk:collect_metrics days=2 (auto_sync_disk_metrics.go:49-91)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_GATE_FIRST_CLAIM",
+      "source": "static",
+      "subject": "首次认领过渡语义",
+      "kind": "precondition",
+      "value": "scheduler_state 无 disk 记录视为首次认领:认领成功触发一次当日提交,不回溯补采历史 (auto_sync_disk_metrics.go:24-25)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_GATE_WRITE_FAIL",
+      "source": "static",
+      "subject": "日闸写失败退避与告警",
+      "kind": "side_effect",
+      "value": "写失败指数退避 gateWriteBackoffBase=1min 左移,上限 gateWriteBackoffMax=5min(daily_gate.go:44-48,171-175); 认领失败 ERROR 下轮重试,不采集 (auto_sync_disk_metrics.go:54-57)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_GATE_READ_BACKOFF",
+      "source": "static",
+      "subject": "日闸读失败退避窗口",
+      "kind": "side_effect",
+      "value": "gateReadBackoffWindow=5min,读失败进入退避不热循环,恢复后正常认领 (daily_gate.go:40)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_GATE_ROLLBACK",
+      "source": "static",
+      "subject": "特性开关回滚与未装配语义",
+      "kind": "side_effect",
+      "value": "SCHEDULER_PERSISTENT_GATE_ENABLED 显式关闭→内存闸回滚(checkDiskMetricsCollectionMemory); dailyGate=nil 且开关开启→安全跳过不降级 (auto_sync_disk_metrics.go:35-47)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_GATE_SUBMIT_FAIL",
+      "source": "static",
+      "subject": "任务提交失败不回滚认领",
+      "kind": "side_effect",
+      "value": "队列 Submit 失败(队列关闭/打满)→ERROR 留痕,不回滚当日认领,今日不再重试 (auto_sync_disk_metrics.go:78-86)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
+    },
+    {
+      "fact_id": "DISK_HEALTH_CHECK",
+      "source": "static",
+      "subject": "必达厂商零成功健康判定",
+      "kind": "side_effect",
+      "value": "必达=aliyun/huawei/aws; 近 3 天(diskHealthWindowDays)零成功写库行且实盘 ≥1 disk 实例→AlertDiskZeroSuccess 升级告警(Source scheduler:disk-health:); 仅全量运行判定(指定 AccountID/Provider 跳过); 健康监控自身故障只记日志不反噬主链路 (disk_health_monitor.go:38-47,61-106)",
+      "confidence": "inferred",
+      "updated_at": "2026-09-21T13:50:00+08:00"
     }
   ]
 }
