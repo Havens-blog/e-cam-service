@@ -52,12 +52,15 @@ type CertListItemVO struct {
 }
 
 // listCertsVO 列表 data 载荷（前端 ListCertsResponse 契约：分页信息随载荷返回，
-// unwrapCertEnvelope 成功路径只取 data）。
+// unwrapCertEnvelope 成功路径只取 data）。Total=visibleTotal（默认视图隐藏
+// 「已过期且 no_refs_scanned」行后的可见总数），HiddenCount 为被隐藏行数
+// （同一过滤上下文统计）——前端不推算任何计数。
 type listCertsVO struct {
-	Items    []CertListItemVO `json:"items"`
-	Total    int64            `json:"total"`
-	Page     int              `json:"page"`
-	PageSize int              `json:"pageSize"`
+	Items       []CertListItemVO `json:"items"`
+	Total       int64            `json:"total"`
+	HiddenCount int64            `json:"hiddenCount"`
+	Page        int              `json:"page"`
+	PageSize    int              `json:"pageSize"`
 }
 
 // CertDetailVO 详情（全要素；encryptedPrivateKey 以 hasKey 布尔呈现"已加密托管"语义）。
@@ -131,6 +134,10 @@ type deleteBlockedMeta struct {
 //	hostingStatus complete | fingerprint_only
 //	daysLeft      gt30 | le30 | le14 | le7 | expired（与前端筛选器分档对齐）
 //	search        域名/SAN/指纹片段子串（不区分大小写）
+//	includeExpiredNoRefs 布尔（默认 false）：false=隐藏「已过期且
+//	                  referenceStatus=no_refs_scanned」行（保守显示
+//	                  blind_spot/未知）；true=查看全部。daysLeft=expired
+//	                  时后端强制豁免，本参数不改变该筛选语义（恒全部过期）。
 func (h *LedgerHandler) ListCerts(c *gin.Context) {
 	page, _ := strconv.Atoi(c.Query("page"))
 	pageSize, _ := strconv.Atoi(c.Query("pageSize"))
@@ -147,22 +154,35 @@ func (h *LedgerHandler) ListCerts(c *gin.Context) {
 			"daysLeft must be one of gt30, le30, le14, le7, expired")
 		return
 	}
+	includeNoRefs := false
+	if v := strings.TrimSpace(c.Query("includeExpiredNoRefs")); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			WriteAPIError(c, http.StatusBadRequest, CodeInvalidRequest,
+				"includeExpiredNoRefs must be a boolean")
+			return
+		}
+		includeNoRefs = b
+	}
 
 	res, err := h.svc.ListCerts(c.Request.Context(), service.ListCertsQuery{
-		Page:          page,
-		PageSize:      pageSize,
-		HostingStatus: status,
-		DaysLeft:      tier,
-		Search:        strings.TrimSpace(c.Query("search")),
+		Page:                 page,
+		PageSize:             pageSize,
+		HostingStatus:        status,
+		DaysLeft:             tier,
+		Search:               strings.TrimSpace(c.Query("search")),
+		IncludeExpiredNoRefs: includeNoRefs,
 	})
 	if err != nil {
 		WriteError(c, err)
 		return
 	}
-	// data 载荷携带 {items,total,page,pageSize}（前端 unwrapCertEnvelope 只取 data，
-	// 分页信息随载荷返回；meta 同步保留供通用客户端）。
+	// data 载荷携带 {items,total,hiddenCount,page,pageSize}（前端
+	// unwrapCertEnvelope 只取 data，分页信息随载荷返回；meta 同步保留供通用
+	// 客户端；hiddenCount 为被隐藏的过期无引用行数，total=visibleTotal）。
 	WriteOK(c, http.StatusOK, listCertsVO{
-		Items: toListItemVOs(res.Items), Total: res.Total, Page: res.Page, PageSize: res.PageSize,
+		Items: toListItemVOs(res.Items), Total: res.Total, HiddenCount: res.HiddenCount,
+		Page: res.Page, PageSize: res.PageSize,
 	}, pageMeta{
 		Total: res.Total, Page: res.Page, PageSize: res.PageSize,
 	})

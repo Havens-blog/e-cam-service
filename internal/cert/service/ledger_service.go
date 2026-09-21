@@ -50,6 +50,10 @@ type ListCertsQuery struct {
 	HostingStatus domain.HostingStatus // 空=不筛
 	DaysLeft      DaysLeftTier         // 空=不筛
 	Search        string               // 域名/SAN/指纹片段子串
+	// IncludeExpiredNoRefs 查看全部（前端「查看全部」切换）：true=不隐藏。
+	// false（默认）排除「已过期且 referenceStatus=no_refs_scanned」的行；
+	// daysLeft=expired 时后端强制豁免（本字段不改变该筛选语义，恒返回全部过期）。
+	IncludeExpiredNoRefs bool
 }
 
 // CertListItem 列表项（白名单字段；daysLeft/refCount 为查询时派生量）。
@@ -66,12 +70,15 @@ type CertListItem struct {
 	RefCount      int
 }
 
-// ListCertsResult 分页结果（Total 为筛选命中总数）。
+// ListCertsResult 分页结果（Total 为当前过滤上下文内可见总数 visibleTotal；
+// HiddenCount 为被默认隐藏的「已过期且 no_refs_scanned」行数，同一过滤
+// 上下文内统计——visibleTotal/行数/HiddenCount 三者闭合，前端不推算）。
 type ListCertsResult struct {
-	Items    []CertListItem
-	Total    int64
-	Page     int
-	PageSize int
+	Items       []CertListItem
+	Total       int64
+	HiddenCount int64
+	Page        int
+	PageSize    int
 }
 
 // CertDetail 详情（全要素；HasKey 布尔承载"已加密托管"语义，
@@ -149,6 +156,13 @@ func NewLedgerService(
 // ---------------------------------------------------------------------
 
 // ListCerts 服务端分页+筛选+search；refCount 取最新成功快照计数（无快照=0）。
+//
+// 默认隐藏（过滤落点说明）：referenceStatus 为 DTO 派生量，
+// 三态判定需最新成功快照+该指纹跨快照历史引用+CoverageMeta 跨集合推导，
+// 无法下推为单集合子查询——故隐藏生效时取当前筛选全量命中行（ListPage
+// limit<=0 不限，仓储序 notAfter 升序+_id 升序），在内存完成
+// 「已过期 && no_refs_scanned」排除（判定收敛于本方法一处）后重算 total
+// 并切片分页；hiddenCount 与 visibleTotal 同一过滤上下文统计返回。
 func (s *ledgerService) ListCerts(ctx context.Context, q ListCertsQuery) (ListCertsResult, error) {
 	if q.Page < 1 {
 		q.Page = 1
@@ -167,6 +181,18 @@ func (s *ledgerService) ListCerts(ctx context.Context, q ListCertsQuery) (ListCe
 		return ListCertsResult{}, err
 	}
 
+	// daysLeft=expired 后端强制豁免（看板「已过期」卡口径一致）；其余分档
+	// （le*/gt30）定义上不含过期行，隐藏与否无差。
+	if q.IncludeExpiredNoRefs || q.DaysLeft == DaysLeftExpired {
+		return s.listCertsDirect(ctx, q, filter)
+	}
+	return s.listCertsHideExpiredNoRefs(ctx, q, filter)
+}
+
+// listCertsDirect 直查路径（不隐藏）：仓储分页 + refCount 派生，HiddenCount=0。
+func (s *ledgerService) listCertsDirect(
+	ctx context.Context, q ListCertsQuery, filter domain.CertListFilter,
+) (ListCertsResult, error) {
 	certs, total, err := s.certs.ListPage(ctx, filter, (q.Page-1)*q.PageSize, q.PageSize)
 	if err != nil {
 		return ListCertsResult{}, err
@@ -182,6 +208,71 @@ func (s *ledgerService) ListCerts(ctx context.Context, q ListCertsQuery) (ListCe
 		items = append(items, toListItem(c, counts[c.Fingerprint], now))
 	}
 	return ListCertsResult{Items: items, Total: total, Page: q.Page, PageSize: q.PageSize}, nil
+}
+
+// listCertsHideExpiredNoRefs 默认隐藏路径：全量命中行内存过滤「已过期 &&
+// referenceStatus=no_refs_scanned」（三态判定复用 deriveRefStatusFor——
+// 禁止裸 refCount 判定，refCount=0 混淆 no_refs_scanned 与 blind_spot）后
+// 按仓储同序切片分页，返回 visibleTotal + hiddenCount 双口径。
+func (s *ledgerService) listCertsHideExpiredNoRefs(
+	ctx context.Context, q ListCertsQuery, filter domain.CertListFilter,
+) (ListCertsResult, error) {
+	all, _, err := s.certs.ListPage(ctx, filter, 0, 0)
+	if err != nil {
+		return ListCertsResult{}, err
+	}
+	snap, snapRefs, found, err := s.latestDoneSnapshotRefs(ctx)
+	if err != nil {
+		return ListCertsResult{}, err
+	}
+	counts := make(map[string]int, len(snapRefs))
+	for _, r := range snapRefs {
+		counts[r.CertFingerprint]++
+	}
+
+	now := time.Now()
+	visible := make([]CertListItem, 0, len(all))
+	var hidden int64
+	for _, c := range all {
+		item := toListItem(c, counts[c.Fingerprint], now)
+		// 候选=已过期且快照计数 0：仅此组合需三态判定区分 no_refs_scanned
+		// 与 blind_spot；无成功快照（found=false）视为引用状态未知 → blind_spot
+		// 保守显示；has_refs（计数>0）是风险信号恒显示。
+		if found && isExpired(c.NotAfter, now) && item.RefCount == 0 {
+			view, err := deriveRefStatusFor(c.Fingerprint, snap, snapRefs, func() ([]domain.CertReference, error) {
+				return s.refs.ListByFingerprint(ctx, c.Fingerprint)
+			})
+			if err != nil {
+				return ListCertsResult{}, err
+			}
+			if view.Status == domain.RefStatusNoRefsScanned {
+				hidden++
+				continue
+			}
+		}
+		visible = append(visible, item)
+	}
+	// 全量命中行已按仓储序（notAfter 升序、_id 升序）返回，过滤保序，直接切片
+	start := (q.Page - 1) * q.PageSize
+	if start > len(visible) {
+		start = len(visible)
+	}
+	end := start + q.PageSize
+	if end > len(visible) {
+		end = len(visible)
+	}
+	return ListCertsResult{
+		Items:       visible[start:end],
+		Total:       int64(len(visible)),
+		HiddenCount: hidden,
+		Page:        q.Page,
+		PageSize:    q.PageSize,
+	}, nil
+}
+
+// isExpired 已过期判定（与 certListFilterFor expired 档同口径：notAfter ≤ now）。
+func isExpired(notAfter, now time.Time) bool {
+	return !notAfter.After(now)
 }
 
 // certListFilterFor 查询参数 → 仓储筛选条件。
@@ -246,19 +337,29 @@ func nonNilSans(sans []string) []string {
 	return sans
 }
 
-// referenceCounts 最新成功快照各指纹引用计数（列表 refCount 数据源；
-// 无成功快照=空 map，全部 refCount=0）。
-func (s *ledgerService) referenceCounts(ctx context.Context) (map[string]int, error) {
+// latestDoneSnapshotRefs 最新成功快照及其全部引用（found=false 表示无成功
+// 快照——三态派生一律 blind_spot，引用状态未知保守显示）。
+func (s *ledgerService) latestDoneSnapshotRefs(ctx context.Context) (*domain.ScanSnapshot, []domain.CertReference, bool, error) {
 	snap, err := s.snapshots.LatestDone(ctx)
 	if errors.Is(err, mongo.ErrNoDocuments) {
-		return map[string]int{}, nil
+		return nil, nil, false, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, false, err
 	}
 	refs, err := s.refs.ListBySnapshotID(ctx, snap.ID.Hex())
 	if err != nil {
-		return nil, err
+		return nil, nil, false, err
+	}
+	return &snap, refs, true, nil
+}
+
+// referenceCounts 最新成功快照各指纹引用计数（列表 refCount 数据源；
+// 无成功快照=空 map，全部 refCount=0）。
+func (s *ledgerService) referenceCounts(ctx context.Context) (map[string]int, error) {
+	_, refs, found, err := s.latestDoneSnapshotRefs(ctx)
+	if err != nil || !found {
+		return map[string]int{}, err
 	}
 	counts := make(map[string]int, len(refs))
 	for _, r := range refs {

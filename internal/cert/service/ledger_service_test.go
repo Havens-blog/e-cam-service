@@ -483,6 +483,106 @@ func TestLedgerStatsRealtimeAndEmpty(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------
+// 台账默认隐藏无引用过期证书（visibleTotal + hiddenCount 双口径）
+// ---------------------------------------------------------------------
+
+// TestLedgerListHidesExpiredNoRefs 默认视图仅隐藏「已过期且
+// referenceStatus=no_refs_scanned」的行：has_refs（风险信号）与
+// blind_spot（扫描范围未覆盖）一律保守显示；includeExpiredNoRefs=true
+// 与 daysLeft=expired（后端强制豁免）均显示全部。
+func TestLedgerListHidesExpiredNoRefs(t *testing.T) {
+	f := newLedgerFixture(t)
+	ctx := context.Background()
+	now := time.Now()
+	expired := func(c *domain.Certificate) { c.NotAfter = now.Add(-48 * time.Hour) }
+
+	f.seedCert(t, fp(1), expired) // has_refs
+	f.seedCert(t, fp(2), expired) // no_refs_scanned（唯一可隐藏）
+	f.seedCert(t, fp(3), expired) // blind_spot（最新快照范围未覆盖其历史涉及云/产品）
+	f.seedCert(t, fp(4), nil)     // 未过期：与隐藏逻辑正交，任何情况下显示
+
+	// fp3 历史引用（旧快照 tencent/waf）→ 最新快照仅覆盖 aliyun/cdn → blind_spot
+	oldSnap := f.seedDoneSnapshot(t, -2*time.Hour, []domain.CoverageMeta{{Cloud: "tencent", Product: "waf", Covered: 1, Total: 1}})
+	f.seedRef(t, fp(3), oldSnap, domain.CloudTencent, domain.ProductWAF)
+	snapID := f.seedDoneSnapshot(t, -time.Hour, []domain.CoverageMeta{{Cloud: "aliyun", Product: "cdn", Covered: 1, Total: 1}})
+	f.seedRef(t, fp(1), snapID, domain.CloudAliyun, domain.ProductCDN)
+
+	fps := func(res ListCertsResult) []string {
+		out := make([]string, 0, len(res.Items))
+		for _, it := range res.Items {
+			out = append(out, it.Fingerprint)
+		}
+		return out
+	}
+
+	// 默认视图：no_refs_scanned 过期行被隐藏，total 与 hiddenCount 同上下文闭合
+	res, err := f.svc.ListCerts(ctx, ListCertsQuery{})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{fp(1), fp(3), fp(4)}, fps(res), "has_refs/blind_spot/未过期保守显示")
+	assert.Equal(t, int64(3), res.Total, "visibleTotal=隐藏后可见总数")
+	assert.Equal(t, int64(1), res.HiddenCount)
+	assert.Len(t, res.Items, 3)
+
+	// includeExpiredNoRefs=true（查看全部）：无隐藏
+	res, err = f.svc.ListCerts(ctx, ListCertsQuery{IncludeExpiredNoRefs: true})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{fp(1), fp(2), fp(3), fp(4)}, fps(res))
+	assert.Equal(t, int64(4), res.Total)
+	assert.Zero(t, res.HiddenCount)
+
+	// daysLeft=expired 后端强制豁免：include=false 仍返回全部过期
+	res, err = f.svc.ListCerts(ctx, ListCertsQuery{DaysLeft: DaysLeftExpired})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{fp(1), fp(2), fp(3)}, fps(res), "expired 筛选恒返回全部过期（看板口径一致）")
+	assert.Equal(t, int64(3), res.Total)
+	assert.Zero(t, res.HiddenCount)
+
+	// hiddenCount 按当前 search 上下文重算：上下文内仅剩被隐藏行 → total=0/hidden=1
+	res, err = f.svc.ListCerts(ctx, ListCertsQuery{Search: "cn-aa0002"})
+	require.NoError(t, err)
+	assert.Empty(t, res.Items)
+	assert.Zero(t, res.Total)
+	assert.Equal(t, int64(1), res.HiddenCount)
+
+	// 上下文内无被隐藏行 → hiddenCount=0
+	res, err = f.svc.ListCerts(ctx, ListCertsQuery{Search: "cn-aa0001"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{fp(1)}, fps(res))
+	assert.Zero(t, res.HiddenCount)
+
+	// 分页闭合：切片基于隐藏后的可见集
+	res, err = f.svc.ListCerts(ctx, ListCertsQuery{PageSize: 1, Page: 1})
+	require.NoError(t, err)
+	assert.Len(t, res.Items, 1)
+	assert.Equal(t, int64(3), res.Total)
+	assert.Equal(t, int64(1), res.HiddenCount)
+	res, err = f.svc.ListCerts(ctx, ListCertsQuery{PageSize: 1, Page: 3})
+	require.NoError(t, err)
+	assert.Len(t, res.Items, 1)
+	assert.Equal(t, int64(3), res.Total)
+	res, err = f.svc.ListCerts(ctx, ListCertsQuery{PageSize: 1, Page: 4})
+	require.NoError(t, err)
+	assert.Empty(t, res.Items)
+	assert.Equal(t, int64(3), res.Total, "越界页 total 不漂移")
+}
+
+// TestLedgerListExpiredNoSnapshotConservative 无成功快照 → 引用状态未知
+// （blind_spot）：过期证书保守显示，绝不隐藏。
+func TestLedgerListExpiredNoSnapshotConservative(t *testing.T) {
+	f := newLedgerFixture(t)
+	f.seedCert(t, fp(1), func(c *domain.Certificate) {
+		c.NotAfter = time.Now().Add(-48 * time.Hour)
+	})
+
+	res, err := f.svc.ListCerts(context.Background(), ListCertsQuery{})
+	require.NoError(t, err)
+	assert.Len(t, res.Items, 1)
+	assert.Equal(t, fp(1), res.Items[0].Fingerprint)
+	assert.Equal(t, int64(1), res.Total)
+	assert.Zero(t, res.HiddenCount, "引用状态未知不隐藏")
+}
+
+// ---------------------------------------------------------------------
 // 辅助
 // ---------------------------------------------------------------------
 

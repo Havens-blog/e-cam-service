@@ -210,6 +210,49 @@ func TestListCertsAPIFilters(t *testing.T) {
 	}
 }
 
+// TestListCertsAPIExcludeExpiredNoRefs 台账默认隐藏无引用过期证书：
+// 默认（不带参数）服务端隐藏「已过期且 no_refs_scanned」行并返回 hiddenCount
+// 双口径；includeExpiredNoRefs=true 显示全部；daysLeft=expired 后端强制豁免；
+// 非法布尔 → 400。
+func TestListCertsAPIExcludeExpiredNoRefs(t *testing.T) {
+	engine, d := newLedgerRouter(t)
+	now := time.Now()
+	d.seedCert(t, lfp(1), func(c *domain.Certificate) { c.NotAfter = now.Add(-48 * time.Hour) })
+	d.seedCert(t, lfp(2), func(c *domain.Certificate) { c.NotAfter = now.Add(30 * 24 * time.Hour) })
+	d.seedDoneSnapshot(t, nil) // 成功快照存在且无引用 → 过期证 no_refs_scanned
+
+	// 默认视图：过期无引用行被隐藏（服务端过滤，前端不推算计数）
+	w := doGet(t, engine, "/api/v1/certs")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	data := decodeData(t, w)
+	assert.Equal(t, float64(1), data["total"], "仅未过期证可见")
+	assert.Equal(t, float64(1), data["hiddenCount"], "hiddenCount 同响应返回")
+	items, ok := data["items"].([]any)
+	require.True(t, ok)
+	assert.Len(t, items, 1)
+
+	// 查看全部：includeExpiredNoRefs=true
+	w = doGet(t, engine, "/api/v1/certs?includeExpiredNoRefs=true")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	data = decodeData(t, w)
+	assert.Equal(t, float64(2), data["total"])
+	assert.Equal(t, float64(0), data["hiddenCount"])
+
+	// daysLeft=expired 豁免由后端强制：返回全部过期（含无引用）
+	w = doGet(t, engine, "/api/v1/certs?daysLeft=expired")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	data = decodeData(t, w)
+	assert.Equal(t, float64(1), data["total"])
+	assert.Equal(t, float64(0), data["hiddenCount"])
+
+	// 非法布尔 → 400 INVALID_REQUEST
+	w = doGet(t, engine, "/api/v1/certs?includeExpiredNoRefs=maybe")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	env := decode(t, w)
+	require.NotNil(t, env.Error)
+	assert.Equal(t, CodeInvalidRequest, env.Error.Code)
+}
+
 // ---------------------------------------------------------------------
 // AC2：GET /api/v1/certs/:id 详情
 // ---------------------------------------------------------------------
