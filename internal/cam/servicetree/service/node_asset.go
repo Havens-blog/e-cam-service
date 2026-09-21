@@ -19,12 +19,14 @@ type NodeAssetService interface {
 	GetAssetNode(ctx context.Context, tenantID int64, resourceID int64) (domain.ServiceTreeNode, error)
 	GetNodeAssetStats(ctx context.Context, tenantID int64, nodeID int64, includeChildren bool) (domain.AssetStats, error)
 	GetGlobalAssetStats(ctx context.Context, tenantID int64) (domain.AssetStats, error)
+	GetNodeAssetSummary(ctx context.Context, tenantID int64, nodeID int64) (domain.AssetSummary, error)
 }
 
 type nodeAssetService struct {
 	bindingRepo repository.BindingRepository
 	nodeRepo    repository.NodeRepository
 	cmdbRepo    cmdbrepository.InstanceRepository
+	envRepo     repository.EnvironmentRepository
 	logger      *elog.Component
 }
 
@@ -33,12 +35,14 @@ func NewNodeAssetService(
 	bindingRepo repository.BindingRepository,
 	nodeRepo repository.NodeRepository,
 	cmdbRepo cmdbrepository.InstanceRepository,
+	envRepo repository.EnvironmentRepository,
 	logger *elog.Component,
 ) NodeAssetService {
 	return &nodeAssetService{
 		bindingRepo: bindingRepo,
 		nodeRepo:    nodeRepo,
 		cmdbRepo:    cmdbRepo,
+		envRepo:     envRepo,
 		logger:      logger,
 	}
 }
@@ -371,4 +375,206 @@ func extractAssetType(modelUID string) string {
 		return modelUID[idx+1:]
 	}
 	return modelUID
+}
+
+// GetNodeAssetSummary 节点子树资产聚合统计（含自身），带环境错绑疑异检测。
+// 聚合口径：先取子树节点 ID 集合（一次路径前缀查询），再对绑定表 node_id IN
+// 一次取全部绑定（非逐节点递归），二段批量查实例明细后内存归并分布。
+func (s *nodeAssetService) GetNodeAssetSummary(ctx context.Context, tenantID int64, nodeID int64) (domain.AssetSummary, error) {
+	node, err := s.nodeRepo.GetByID(ctx, nodeID)
+	if err != nil {
+		return domain.AssetSummary{}, fmt.Errorf("节点不存在: %w", err)
+	}
+
+	// 1. 子树节点 ID 集合（含自身；ListByPath 前缀匹配含自身，此处防御性补齐）
+	subNodes, err := s.nodeRepo.ListByPath(ctx, tenantID, node.Path)
+	if err != nil {
+		return domain.AssetSummary{}, fmt.Errorf("查询子树节点失败: %w", err)
+	}
+	nodeIDs := make([]int64, 0, len(subNodes)+1)
+	seen := make(map[int64]bool, len(subNodes)+1)
+	for _, n := range subNodes {
+		if !seen[n.ID] {
+			nodeIDs = append(nodeIDs, n.ID)
+			seen[n.ID] = true
+		}
+	}
+	if !seen[nodeID] {
+		nodeIDs = append(nodeIDs, nodeID)
+	}
+
+	summary := domain.AssetSummary{
+		ByEnvironment: make(map[string]int64),
+		ByProvider:    make(map[string]int64),
+		ByType:        make(map[string]int64),
+		ByBindType:    make(map[string]int64),
+		Suspicious:    make([]domain.AssetSuspicion, 0),
+	}
+
+	// 2. 绑定表 node_id IN 一次查全部绑定（不加 limit，聚合需全量）
+	bindings, err := s.bindingRepo.ListByNodeIDs(ctx, domain.NodeIDsBindingFilter{
+		TenantID:     tenantID,
+		NodeIDs:      nodeIDs,
+		ResourceType: domain.ResourceTypeInstance,
+	})
+	if err != nil {
+		return domain.AssetSummary{}, fmt.Errorf("查询子树绑定失败: %w", err)
+	}
+	if len(bindings) == 0 {
+		return summary, nil
+	}
+
+	// 3. 二段查：批量取实例明细（命名/tag.env/provider/model_uid）
+	resourceIDs := make([]int64, 0, len(bindings))
+	for _, b := range bindings {
+		resourceIDs = append(resourceIDs, b.ResourceID)
+	}
+	instances, err := s.cmdbRepo.ListByIDs(ctx, resourceIDs)
+	if err != nil {
+		return domain.AssetSummary{}, fmt.Errorf("批量查询CMDB实例失败: %w", err)
+	}
+	instanceMap := make(map[int64]cmdbdomain.Instance, len(instances))
+	for _, inst := range instances {
+		instanceMap[inst.ID] = inst
+	}
+
+	// 4. 环境 ID → 代码映射（环境分布与错绑判定均按环境代码口径）
+	envCodeByID, err := s.loadEnvCodeMap(ctx, tenantID)
+	if err != nil {
+		return domain.AssetSummary{}, err
+	}
+
+	// 5. 内存归并聚合 + 疑异检测
+	for _, b := range bindings {
+		inst, ok := instanceMap[b.ResourceID]
+		if !ok {
+			s.logger.Warn("绑定的资源在CMDB中不存在",
+				elog.Int64("bindingID", b.ID),
+				elog.Int64("resourceID", b.ResourceID),
+			)
+			continue
+		}
+
+		summary.Total++
+		summary.ByType[extractAssetType(inst.ModelUID)]++
+		if provider := inst.GetStringAttribute("provider"); provider != "" {
+			summary.ByProvider[provider]++
+		}
+
+		envKey, boundCode := resolveEnvKey(b.EnvID, envCodeByID)
+		summary.ByEnvironment[envKey]++
+
+		bindType := b.BindType
+		if bindType == "" {
+			bindType = domain.BindTypeManual
+		}
+		summary.ByBindType[bindType]++
+
+		if reasons := detectEnvMismatch(inst.AssetName, extractTagEnv(inst), boundCode); len(reasons) > 0 {
+			summary.Suspicious = append(summary.Suspicious, domain.AssetSuspicion{
+				AssetID:      inst.AssetID,
+				AssetName:    inst.AssetName,
+				BoundEnvID:   b.EnvID,
+				BoundEnvCode: boundCode,
+				Reason:       strings.Join(reasons, "; "),
+			})
+		}
+	}
+
+	return summary, nil
+}
+
+// loadEnvCodeMap 加载租户环境 ID → 代码映射
+func (s *nodeAssetService) loadEnvCodeMap(ctx context.Context, tenantID int64) (map[int64]string, error) {
+	envs, err := s.envRepo.List(ctx, domain.EnvironmentFilter{TenantID: tenantID})
+	if err != nil {
+		return nil, fmt.Errorf("查询环境列表失败: %w", err)
+	}
+	m := make(map[int64]string, len(envs))
+	for _, e := range envs {
+		m[e.ID] = e.Code
+	}
+	return m, nil
+}
+
+// resolveEnvKey 环境分布 key：有代码用代码，未知环境回退 "env_<id>"
+func resolveEnvKey(envID int64, envCodeByID map[int64]string) (key, code string) {
+	code = envCodeByID[envID]
+	if code != "" {
+		return code, code
+	}
+	return fmt.Sprintf("env_%d", envID), ""
+}
+
+// extractTagEnv 取实例 tag.env（与 rule_engine getFieldValue "tag.env" 取值口径一致）
+func extractTagEnv(inst cmdbdomain.Instance) string {
+	tags, ok := inst.Attributes["tags"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	val, ok := tags["env"].(string)
+	if !ok {
+		return ""
+	}
+	return val
+}
+
+// envNamePatterns 资产命名模式 → 标准环境代码（二期提案：-prod-/-uat-/-test-/-dev-）
+var envNamePatterns = []struct {
+	pattern string
+	code    string
+}{
+	{"-prod-", domain.EnvCodeProd},
+	{"-uat-", domain.EnvCodeStaging}, // uat 归一化为预发
+	{"-test-", domain.EnvCodeTest},
+	{"-dev-", domain.EnvCodeDev},
+}
+
+// normalizeEnvCode 环境值归一化：小写化，uat 视作 staging
+func normalizeEnvCode(code string) string {
+	code = strings.ToLower(strings.TrimSpace(code))
+	if code == "uat" {
+		return domain.EnvCodeStaging
+	}
+	return code
+}
+
+// detectEnvMismatch 环境错绑双信号检测：资产命名模式 + tag.env 与绑定环境矛盾。
+// 仅当绑定环境代码已知且信号指向标准环境代码时判定；信号或绑定环境未知不误报。
+// 返回矛盾原因列表（只提示不改绑，调用方自行决定展示）。
+func detectEnvMismatch(assetName, tagEnv, boundCode string) []string {
+	if boundCode == "" {
+		return nil
+	}
+	bound := normalizeEnvCode(boundCode)
+
+	var reasons []string
+	if nameCode := matchNameEnvCode(assetName); nameCode != "" && nameCode != bound {
+		reasons = append(reasons, fmt.Sprintf("资产命名含 -%s- 与绑定环境 %s 矛盾", nameCode, bound))
+	}
+	tagCode := normalizeEnvCode(tagEnv)
+	if isStandardEnvCode(tagCode) && tagCode != bound {
+		reasons = append(reasons, fmt.Sprintf("tag.env=%s 与绑定环境 %s 矛盾", tagCode, bound))
+	}
+	return reasons
+}
+
+// matchNameEnvCode 命名模式匹配环境代码（大小写不敏感），无命中返回空
+func matchNameEnvCode(assetName string) string {
+	lower := strings.ToLower(assetName)
+	for _, p := range envNamePatterns {
+		if strings.Contains(lower, p.pattern) {
+			return p.code
+		}
+	}
+	return ""
+}
+
+// isStandardEnvCode 是否为标准环境代码（dev/test/staging/prod）
+func isStandardEnvCode(code string) bool {
+	switch code {
+	case domain.EnvCodeDev, domain.EnvCodeTest, domain.EnvCodeStaging, domain.EnvCodeProd:
+		return true
+	}
+	return false
 }

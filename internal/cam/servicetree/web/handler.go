@@ -56,6 +56,7 @@ func (h *Handler) RegisterBindingRoutes(rg *gin.RouterGroup) {
 	// 节点资产查询 (绑定 + CMDB 资产详情)
 	rg.GET("/nodes/:id/assets", ginx.WrapBody(h.ListNodeAssets))
 	rg.GET("/nodes/:id/assets/stats", ginx.Wrap(h.GetNodeAssetStats))
+	rg.GET("/nodes/:id/asset-summary", ginx.Wrap(h.GetNodeAssetSummary))
 	rg.GET("/assets/stats", ginx.Wrap(h.GetGlobalAssetStats))
 	rg.GET("/assets/:id/node", ginx.Wrap(h.GetAssetNode))
 }
@@ -487,6 +488,32 @@ func (h *Handler) GetGlobalAssetStats(c *gin.Context) (ginx.Result, error) {
 		ByAssetType: stats.ByAssetType,
 		ByProvider:  stats.ByProvider,
 	}}, nil
+}
+
+// GetNodeAssetSummary 节点子树资产聚合统计（含环境错绑疑异检测）
+// @Summary 查询节点子树资产聚合统计
+// @Tags 服务树
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param id path int true "节点ID"
+// @Success 200 {object} ginx.Result{data=domain.AssetSummary}
+// @Router /api/v1/cam/service-tree/nodes/{id}/asset-summary [get]
+func (h *Handler) GetNodeAssetSummary(c *gin.Context) (ginx.Result, error) {
+	tenantID := h.getTenantID(c)
+	if tenantID == 0 {
+		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
+	}
+
+	nodeID, err := h.getIDParam(c)
+	if err != nil {
+		return ginx.Result{Code: 400, Msg: "无效的节点ID"}, nil
+	}
+
+	summary, err := h.nodeAssetSvc.GetNodeAssetSummary(c.Request.Context(), tenantID, nodeID)
+	if err != nil {
+		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+	}
+
+	return ginx.Result{Data: summary}, nil
 }
 
 // GetAssetNode 查询资产所属的服务树节点
