@@ -41,13 +41,22 @@ func (p *provider) storeIndexKeys(region, project, logstore string) []string {
 }
 
 // passthroughColumn 判定"透传"自定义维度并返回其列名:维度过白名单
-// (dimColumnExpr 无映射)且本身是合法标识符时原样透传。映射列/函数表达式
-// (如 CDNOffline host 的 regexp_extract)返回 ("", false) —— 跳过索引校验。
+// (dimColumnExpr/dimGroupExpr 均无映射)且本身是合法标识符时原样透传。
+// 映射列/函数表达式(如 CDNOffline host 的 regexp_extract)返回 ("", false)
+// —— 跳过索引校验。
+//
+// 必须同时认 dimGroupExpr:cache_hit→hit_info 等重点分组维度只注册在
+// dimGroupExpr。若只认 dimColumnExpr,会把 cache_hit 当透传列,拿字面名
+// "cache_hit" 去比对 GetIndex 键(真实键是 hit_info),误报"未开启分析索引"
+// 并短路整帧聚合 —— 曾致 CDN 缓存分析对已建索引的 DCDN 源全部降级。
 func passthroughColumn(kind mapperKind, dim string) (string, bool) {
 	if dim == "" {
 		return "", false
 	}
 	if _, mapped := dimColumnExpr[kind][dim]; mapped {
+		return "", false
+	}
+	if _, mapped := dimGroupExpr[kind][dim]; mapped {
 		return "", false
 	}
 	if identifierLike(dim) {
