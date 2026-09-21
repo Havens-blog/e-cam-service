@@ -104,6 +104,13 @@ type UpdateRuleReq struct {
 	Description string                 `json:"description"`
 }
 
+// DryRunRuleReq 规则试运行请求（临时规则体，不落库）
+type DryRunRuleReq struct {
+	NodeID     int64                  `json:"node_id"`    // 可选，仅上下文信息，不参与匹配
+	EnvID      int64                  `json:"env_id"`     // 可选，提供时绑定状态按该环境口径判定
+	Conditions []domain.RuleCondition `json:"conditions"` // 与 BindingRule.Conditions 同构
+}
+
 // RuleVO 规则响应
 type RuleVO struct {
 	ID          int64                  `json:"id"`

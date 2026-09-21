@@ -25,6 +25,8 @@ type RuleEngineService interface {
 	// 规则匹配
 	MatchInstance(ctx context.Context, tenantID int64, instance domain.Instance) (*stdomain.RuleMatchResult, error)
 	ExecuteRules(ctx context.Context, tenantID int64) (int64, error)
+	// DryRunRules 规则试运行：按临时条件预览命中资产清单，只读不落库
+	DryRunRules(ctx context.Context, tenantID int64, req stdomain.DryRunRequest) (*stdomain.DryRunResult, error)
 }
 
 type ruleEngineService struct {
@@ -170,11 +172,8 @@ func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID int64) (i
 		return 0, nil
 	}
 
-	// 2. 获取所有实例
-	instances, err := s.instanceRepo.List(ctx, domain.InstanceFilter{
-		TenantID: tenantID,
-		Limit:    10000, // 分批处理大量数据时可优化
-	})
+	// 2. 获取所有实例（资产取数路径与 DryRunRules 共用）
+	instances, err := s.listTenantInstances(ctx, tenantID)
 	if err != nil {
 		return 0, fmt.Errorf("获取实例列表失败: %w", err)
 	}
@@ -255,6 +254,130 @@ func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID int64) (i
 	)
 
 	return count, nil
+}
+
+// listTenantInstances 拉取租户全部资产实例（ExecuteRules 与 DryRunRules 共用的取数路径）
+func (s *ruleEngineService) listTenantInstances(ctx context.Context, tenantID int64) ([]domain.Instance, error) {
+	return s.instanceRepo.List(ctx, domain.InstanceFilter{
+		TenantID: tenantID,
+		Limit:    10000, // 分批处理大量数据时可优化
+	})
+}
+
+// DryRunRules 规则试运行：按临时条件（不落库的规则体）预览命中资产清单。
+// 只读：不创建绑定、不改规则统计；匹配复用 matchRule/matchCondition，
+// 资产遍历复用 ExecuteRules 的取数路径，命中清单截断到 stdomain.MaxDryRunItems。
+func (s *ruleEngineService) DryRunRules(ctx context.Context, tenantID int64, req stdomain.DryRunRequest) (*stdomain.DryRunResult, error) {
+	if len(req.Conditions) == 0 {
+		return nil, stdomain.ErrRuleConditionsEmpty
+	}
+
+	instances, err := s.listTenantInstances(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("获取实例列表失败: %w", err)
+	}
+
+	// 当前绑定关系（只读查询），用于如实标注命中资产的现状（手动绑节点/规则绑节点）
+	bindings, err := s.bindingRepo.List(ctx, stdomain.BindingFilter{
+		TenantID:     tenantID,
+		ResourceType: stdomain.ResourceTypeInstance,
+		Limit:        100000,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("获取已绑定资源失败: %w", err)
+	}
+	bindingsByResource := make(map[int64][]stdomain.ResourceBinding)
+	for _, b := range bindings {
+		bindingsByResource[b.ResourceID] = append(bindingsByResource[b.ResourceID], b)
+	}
+
+	// 临时规则体仅携带条件，与 ExecuteRules 走同一套匹配实现
+	tmpRule := stdomain.BindingRule{NodeID: req.NodeID, EnvID: req.EnvID, Conditions: req.Conditions}
+
+	result := &stdomain.DryRunResult{Items: make([]stdomain.DryRunMatchItem, 0)}
+	for _, inst := range instances {
+		if !s.matchRule(inst, tmpRule) {
+			continue
+		}
+		result.Total++
+		if result.Total > stdomain.MaxDryRunItems {
+			continue // 超出上限只计数不再填充，保护响应体积
+		}
+		item := stdomain.DryRunMatchItem{
+			ResourceID: inst.ID,
+			AssetID:    inst.AssetID,
+			AssetName:  inst.AssetName,
+			Provider:   inst.GetStringAttribute("provider"),
+			Region:     inst.GetStringAttribute("region"),
+		}
+		if b, ok := currentBinding(bindingsByResource[inst.ID], req.EnvID); ok {
+			item.BindStatus = b.BindType
+			item.BoundNodeID = b.NodeID
+			item.BoundEnvID = b.EnvID
+			item.BoundRuleID = b.RuleID
+		} else {
+			item.BindStatus = stdomain.BindStatusUnbound
+		}
+		result.Items = append(result.Items, item)
+	}
+	result.Capped = result.Total > int64(len(result.Items))
+
+	s.fillBoundNodeNames(ctx, result.Items)
+	return result, nil
+}
+
+// currentBinding 取资产的当前绑定：指定环境时取该环境下的绑定（视为该环境口径的现状），
+// 否则取任一绑定（优先规则绑定）。无匹配返回 false。
+func currentBinding(bindings []stdomain.ResourceBinding, envID int64) (stdomain.ResourceBinding, bool) {
+	var fallback *stdomain.ResourceBinding
+	for i := range bindings {
+		b := &bindings[i]
+		if envID > 0 && b.EnvID != envID {
+			continue
+		}
+		if b.BindType == stdomain.BindTypeRule {
+			return *b, true
+		}
+		if fallback == nil {
+			fallback = b
+		}
+	}
+	if fallback != nil {
+		return *fallback, true
+	}
+	return stdomain.ResourceBinding{}, false
+}
+
+// fillBoundNodeNames 批量回填命中资产已绑节点名称（一次 $in 查询建映射，避免 N+1；失败仅告警不阻塞）
+func (s *ruleEngineService) fillBoundNodeNames(ctx context.Context, items []stdomain.DryRunMatchItem) {
+	idSet := make(map[int64]struct{}, len(items))
+	ids := make([]int64, 0, len(items))
+	for _, item := range items {
+		if item.BoundNodeID > 0 {
+			if _, ok := idSet[item.BoundNodeID]; !ok {
+				idSet[item.BoundNodeID] = struct{}{}
+				ids = append(ids, item.BoundNodeID)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+
+	nodes, err := s.nodeRepo.GetByIDs(ctx, ids)
+	if err != nil {
+		s.logger.Warn("批量查询命中资产已绑节点失败", elog.FieldErr(err))
+		return
+	}
+	nameByID := make(map[int64]string, len(nodes))
+	for _, n := range nodes {
+		nameByID[n.ID] = n.Name
+	}
+	for i := range items {
+		if name, ok := nameByID[items[i].BoundNodeID]; ok {
+			items[i].BoundNodeName = name
+		}
+	}
 }
 
 // matchRule 检查实例是否匹配规则

@@ -68,6 +68,7 @@ func (h *Handler) RegisterRuleRoutes(rg *gin.RouterGroup) {
 	rg.PUT("/rules/:id", ginx.WrapBody(h.UpdateRule))
 	rg.DELETE("/rules/:id", ginx.Wrap(h.DeleteRule))
 	rg.POST("/rules/execute", ginx.Wrap(h.ExecuteRules))
+	rg.POST("/rules/dry-run", ginx.WrapBody(h.DryRunRules))
 }
 
 func (h *Handler) getTenantID(c *gin.Context) int64 {
@@ -671,6 +672,34 @@ func (h *Handler) ExecuteRules(c *gin.Context) (ginx.Result, error) {
 		return ginx.Result{Code: 500, Msg: err.Error()}, nil
 	}
 	return ginx.Result{Data: count, Msg: "规则执行完成"}, nil
+}
+
+// DryRunRules 规则试运行（只读预览，不落库）
+// @Summary 规则试运行
+// @Description 按临时规则条件预览命中资产清单，含当前绑定状态（未绑/手动绑节点/规则绑节点），只读不落库
+// @Tags 服务树
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param body body DryRunRuleReq true "规则条件"
+// @Success 200 {object} ginx.Result{data=domain.DryRunResult}
+// @Router /api/v1/cam/service-tree/rules/dry-run [post]
+func (h *Handler) DryRunRules(c *gin.Context, req DryRunRuleReq) (ginx.Result, error) {
+	tenantID := h.getTenantID(c)
+	if tenantID == 0 {
+		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
+	}
+	if len(req.Conditions) == 0 {
+		return ginx.Result{Code: 400, Msg: "conditions 不能为空"}, nil
+	}
+
+	result, err := h.ruleSvc.DryRunRules(c.Request.Context(), tenantID, domain.DryRunRequest{
+		NodeID:     req.NodeID,
+		EnvID:      req.EnvID,
+		Conditions: req.Conditions,
+	})
+	if err != nil {
+		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+	}
+	return ginx.Result{Data: result}, nil
 }
 
 // toNodeVO 转换节点为 VO
