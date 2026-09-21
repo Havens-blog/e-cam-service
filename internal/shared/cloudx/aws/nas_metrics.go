@@ -8,8 +8,6 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/gotomicro/ego/core/elog"
@@ -145,18 +143,7 @@ func (a *EFSAdapter) createCWClient(ctx context.Context, region string) (cwMetri
 	if a.cwHooks != nil && a.cwHooks.cwFactory != nil {
 		return a.cwHooks.cwFactory(ctx, region)
 	}
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithRegion(region),
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			a.accessKeyID,
-			a.accessKeySecret,
-			"",
-		)),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("加载AWS配置失败: %w", err)
-	}
-	return cloudwatch.NewFromConfig(cfg), nil
+	return newCloudWatchClient(ctx, a.accessKeyID, a.accessKeySecret, region)
 }
 
 // ==================== 纯解析/聚合函数(单测覆盖) ====================

@@ -3,6 +3,7 @@ package aliyun
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
@@ -14,13 +15,24 @@ import (
 type DiskAdapter struct {
 	client *Client
 	logger *elog.Component
+
+	// accessKeyID/accessKeySecret Disk 指标路径 CMS 客户端凭证(与 client 同源)
+	accessKeyID     string
+	accessKeySecret string
+	// metricMu/metricClients Disk 指标 CMS 客户端按 region 缓存(与 NASAdapter 同型)
+	metricMu      sync.Mutex
+	metricClients map[string]cmsMetricClient
+	// diskMetricHooks Disk 指标查询测试注入钩子(非 nil 时替代真实依赖;仅单测使用)
+	diskMetricHooks *diskMetricHooks
 }
 
 // NewDiskAdapter 创建阿里云云盘适配器
 func NewDiskAdapter(accessKeyID, accessKeySecret, defaultRegion string, logger *elog.Component) *DiskAdapter {
 	return &DiskAdapter{
-		client: NewClient(accessKeyID, accessKeySecret, defaultRegion, logger),
-		logger: logger,
+		client:          NewClient(accessKeyID, accessKeySecret, defaultRegion, logger),
+		logger:          logger,
+		accessKeyID:     accessKeyID,
+		accessKeySecret: accessKeySecret,
 	}
 }
 

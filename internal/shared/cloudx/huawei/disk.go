@@ -18,6 +18,9 @@ type DiskAdapter struct {
 	accessKeySecret string
 	defaultRegion   string
 	logger          *elog.Component
+
+	// diskMetricHooks Disk 指标查询测试注入钩子(非 nil 时替代真实 CES 客户端创建;仅单测使用)
+	diskMetricHooks *diskMetricHooks
 }
 
 // NewDiskAdapter 创建华为云云盘适配器

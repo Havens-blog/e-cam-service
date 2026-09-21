@@ -19,6 +19,9 @@ type DiskAdapter struct {
 	accessKeySecret string
 	defaultRegion   string
 	logger          *elog.Component
+
+	// ebsMetricHooks Disk 指标查询测试注入钩子(非 nil 时替代真实 CloudWatch 客户端创建;仅单测使用)
+	ebsMetricHooks *cwMetricHooks
 }
 
 // NewDiskAdapter 创建AWS云盘适配器

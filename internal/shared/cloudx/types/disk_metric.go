@@ -31,6 +31,29 @@ const (
 	DiskUsageScopeBusyShare = "busy_share"
 )
 
+// BytesPerSecToMBPerSec 吞吐单位归一:byte/s → MB/s(1024 进位,与 BytesToGB
+// 同一进位口径)。各厂商 Disk 吞吐指标实盘均为 byte/s(probe-report §1.1 阿里
+// DiskRead/WriteBPS、§1.2 华为 disk_device_*_bytes_rate;AWS VolumeRead/WriteBytes
+// 为 byte/日 Sum,先按窗口秒数归一 byte/s 再经本函数换算),适配器采集边界统一
+// 调用本函数,禁止各厂商适配器复制粘贴换算(Hard Rule:单位归一化)。
+func BytesPerSecToMBPerSec(raw float64) float64 {
+	return raw / (1024 * 1024)
+}
+
+// DiskBusySharePercentFromIdle AWS 磁盘使用率派生公式(T1 探测定案,probe-report
+// §1.3/§2):usage% = (1 − VolumeIdleTime/窗口秒数) × 100,语义为「繁忙时间占比」
+// (IO busy share),非容量水位——落库必须打 DiskUsageScopeBusyShare 标注,前端与
+// 空间水位区分呈现。与探测侧 nasprobe.DiskUsagePercentFromIdle 同式(该包为探测
+// 专用,生产代码不 import,Hard Rule),生产唯一事实源是本函数。
+// 约束:window>0 且 0≤idle≤window 才可计算(否则返回 false——派生不可靠时打标
+// 缺失而非伪造,Hard Rule;不产生 NaN/Inf)。
+func DiskBusySharePercentFromIdle(idleSeconds, windowSeconds float64) (float64, bool) {
+	if windowSeconds <= 0 || idleSeconds < 0 || idleSeconds > windowSeconds {
+		return 0, false
+	}
+	return (1 - idleSeconds/windowSeconds) * 100, true
+}
+
 // DiskMetric 云硬盘单日指标(统一格式,由各厂商 DiskMetricQuerier 归一化产出)。
 //
 // 字段语义(spec:docs/proposals/disk-ops-insight/proposal.md「Proposed Solution」
