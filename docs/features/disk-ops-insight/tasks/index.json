@@ -183,7 +183,7 @@
         "8",
         "9"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "gen-journeys.md",
       "record": "records/gen-journeys.md",
       "type": "test.gen-journeys"
