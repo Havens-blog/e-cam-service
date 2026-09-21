@@ -128,6 +128,7 @@ func (h *LogQueryHandler) RegisterRoutes(g *gin.RouterGroup) {
 	g.POST("/search", h.Search)
 	g.POST("/aggregate", h.Aggregate)
 	g.POST("/diagnose", h.Diagnose)
+	g.POST("/cache-analyze", h.CacheAnalyze)
 }
 
 // Types GET /types 字段字典(逐类型并发探测可聚合字段填充白名单)。
@@ -334,6 +335,55 @@ func (h *LogQueryHandler) Diagnose(c *gin.Context) {
 		if *f == nil {
 			*f = []logquery.TopNItem{}
 		}
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": resp})
+}
+
+// cacheAnalyzeRequest POST /cache-analyze 请求体(与 diagnoseRequest 对齐 +
+// confirm;维度集由缓存分析编排固定 —— 当前窗 5 维度组 + 前窗 1 帧;仅 cdn
+// 类型开放,独立 feature flag 默认关)。
+type cacheAnalyzeRequest struct {
+	LogType    string                 `json:"log_type" binding:"required"`
+	StartTime  int64                  `json:"start_time" binding:"required"`
+	EndTime    int64                  `json:"end_time" binding:"required"`
+	Query      string                 `json:"query"`
+	Clouds     []string               `json:"clouds"`
+	AccountIDs []int64                `json:"account_ids"`
+	Resources  []string               `json:"resources"`
+	Filters    []logquery.FieldFilter `json:"filters"` // 字段筛选(AND 叠加)
+	Confirm    bool                   `json:"confirm"` // 预估扫描量超限后的人工确认
+}
+
+// CacheAnalyze POST /cache-analyze CDN 缓存分析(手动触发:当前窗 5 维度组 +
+// 前一等长窗口 1 帧聚合,规则引擎判定;仅 cdn 开放,SLB/WAF 返回明确错误;
+// feature flag LOGQUERY_CACHE_ANALYZE_ENABLED 默认关,关闭时明确报错)。
+func (h *LogQueryHandler) CacheAnalyze(c *gin.Context) {
+	var req cacheAnalyzeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "invalid request: "+err.Error())
+		return
+	}
+	tenantID, ok := tenantID(c)
+	if !ok {
+		return
+	}
+	resp, err := h.svc.CacheAnalyze(c.Request.Context(), tenantID, service.CacheAnalyzeRequest{
+		LogType:    logquery.LogType(req.LogType),
+		StartTime:  req.StartTime,
+		EndTime:    req.EndTime,
+		Query:      req.Query,
+		Clouds:     toProviders(req.Clouds),
+		AccountIDs: req.AccountIDs,
+		Resources:  req.Resources,
+		Filters:    req.Filters,
+		Confirm:    req.Confirm,
+	})
+	if err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if resp.Sources == nil {
+		resp.Sources = []service.AggregateSourceOutcome{}
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": resp})
 }

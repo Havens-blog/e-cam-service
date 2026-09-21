@@ -77,24 +77,33 @@ var dimGroupExpr = map[mapperKind]map[string]string{
 
 // metricExpr 聚合指标按 kind 编译(空=该 kind 不支持该指标)。
 // 单位对齐 mapper:ALB request_time 为秒(secondsToMs 换算),×1000 补回 ms。
+// nonhit_count(CDN 缓存分析,任务 2):未命中请求计数 —— 命中归类口径的
+// 未命中 = miss+error,SQL 侧按原始列关键字过滤(miss:含 MISS;error:含
+// ERROR),与明细层 NormalizeCacheHit 同判;DCDN hit_info 为复合值
+// ("-,WS|CHARGE|NOTLAST"),regexp_extract 取首段('|' 与 ',' 前缀)镜像
+// mapper 的 firstSegment(firstSegment(hit_info,"|"),",") 预处理,归一仍由
+// 消费侧共用 NormalizeCacheHit 完成,不另起归一路径。
 var metricExpr = map[mapperKind]map[string]string{
 	kindDCDN: {
-		"count":       "count(1)",
-		"sum_bytes":   "sum(response_size)",
-		"avg_latency": "avg(request_time)",
-		"p99_latency": "approx_percentile(request_time, 0.99)",
+		"count":        "count(1)",
+		"sum_bytes":    "sum(response_size)",
+		"avg_latency":  "avg(request_time)",
+		"p99_latency":  "approx_percentile(request_time, 0.99)",
+		"nonhit_count": "sum(case when regexp_extract(hit_info, '^[^|,]+') like '%MISS%' or regexp_extract(hit_info, '^[^|,]+') like '%ERROR%' then 1 else 0 end)",
 	},
 	kindCDNOffline: {
-		"count":       "count(1)",
-		"sum_bytes":   "sum(ResponseSize)",
-		"avg_latency": "avg(RequestTime)",
-		"p99_latency": "approx_percentile(RequestTime, 0.99)",
+		"count":        "count(1)",
+		"sum_bytes":    "sum(ResponseSize)",
+		"avg_latency":  "avg(RequestTime)",
+		"p99_latency":  "approx_percentile(RequestTime, 0.99)",
+		"nonhit_count": "sum(case when HitInfo like '%MISS%' or HitInfo like '%ERROR%' then 1 else 0 end)",
 	},
 	kindAkamaiCDN: {
-		"count":       "count(1)",
-		"sum_bytes":   "sum(bytes)",
-		"avg_latency": "avg(turnAroundTimeMSec)",
-		"p99_latency": "approx_percentile(turnAroundTimeMSec, 0.99)",
+		"count":        "count(1)",
+		"sum_bytes":    "sum(bytes)",
+		"avg_latency":  "avg(turnAroundTimeMSec)",
+		"p99_latency":  "approx_percentile(turnAroundTimeMSec, 0.99)",
+		"nonhit_count": "sum(case when cacheStatus like '%MISS%' or cacheStatus like '%ERROR%' then 1 else 0 end)",
 	},
 	kindALB: {
 		"count":       "count(1)",
@@ -233,10 +242,10 @@ func metricSQLExpr(kind mapperKind, metric string) (string, bool) {
 func metricIsCount(metric string) bool { return metric == "" || metric == "count" }
 
 // metricIsWeighted avg/p99 等非可加指标:跨源归并需按 count 加权均值;
-// count/sum_bytes 可加直接求和。
+// count/sum_bytes/nonhit_count 可加直接求和。
 func metricIsWeighted(metric string) bool {
 	switch metric {
-	case "", "count", "sum_bytes":
+	case "", "count", "sum_bytes", "nonhit_count":
 		return false
 	default:
 		return true

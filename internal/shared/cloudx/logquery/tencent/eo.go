@@ -30,11 +30,15 @@ var eoFieldMap = map[string]string{
 }
 
 // eoMetricExpr 聚合指标(CLS 分析 SQL;实测 count/sum/avg/approx_percentile 可用)。
+// nonhit_count(CDN 缓存分析,任务 2):未命中请求计数 —— 命中归类口径的
+// 未命中 = miss+error,SQL 侧按 EdgeCacheStatus 关键字过滤(含 MISS/ERROR),
+// 与明细层 NormalizeCacheHit 同判(单一映射源),不另起归一路径。
 var eoMetricExpr = map[string]string{
-	"count":       "count(*)",
-	"sum_bytes":   "sum(EdgeResponseBytes)",
-	"avg_latency": "avg(EdgeResponseTime)",
-	"p99_latency": "approx_percentile(EdgeResponseTime, 0.99)",
+	"count":        "count(*)",
+	"sum_bytes":    "sum(EdgeResponseBytes)",
+	"avg_latency":  "avg(EdgeResponseTime)",
+	"p99_latency":  "approx_percentile(EdgeResponseTime, 0.99)",
+	"nonhit_count": "sum(case when EdgeCacheStatus like '%MISS%' or EdgeCacheStatus like '%ERROR%' then 1 else 0 end)",
 }
 
 // eoDimensionExpr 分组维度编译:统一字段映射优先,否则合法标识符原样透传
