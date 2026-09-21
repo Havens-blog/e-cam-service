@@ -1,0 +1,262 @@
+{
+  "feature": "disk-ops-insight",
+  "proposal": "docs/proposals/disk-ops-insight/proposal.md",
+  "created": "2026-09-21",
+  "tasks": {
+    "1-probe-vendors": {
+      "id": "1",
+      "title": "Disk 厂商监控 API 探测:namespace/指标名实盘验证 + 使用率口径归一 + 分布定分组",
+      "priority": "P0",
+      "estimatedTime": "1d",
+      "status": "pending",
+      "file": "1-probe-vendors.md",
+      "record": "records/1-probe-vendors.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "high"
+    },
+    "2-model-dao-schema": {
+      "id": "2",
+      "title": "DiskMetric 模型 + DiskMetricQuerier 接口 + ecam_disk_metric DAO 建表",
+      "priority": "P0",
+      "estimatedTime": "1.5h",
+      "dependencies": [
+        "1"
+      ],
+      "status": "pending",
+      "file": "2-model-dao-schema.md",
+      "record": "records/2-model-dao-schema.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "medium"
+    },
+    "3-mandatory-adapters": {
+      "id": "3",
+      "title": "必达厂商 Disk 监控适配器(aliyun/huawei/aws)",
+      "priority": "P0",
+      "estimatedTime": "2.5d",
+      "dependencies": [
+        "1",
+        "2"
+      ],
+      "status": "pending",
+      "file": "3-mandatory-adapters.md",
+      "record": "records/3-mandatory-adapters.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "high"
+    },
+    "4-best-effort-adapters": {
+      "id": "4",
+      "title": "尽力而为厂商 Disk 监控适配器(tencent/volcengine)",
+      "priority": "P1",
+      "estimatedTime": "1.5d",
+      "dependencies": [
+        "1",
+        "2"
+      ],
+      "status": "pending",
+      "file": "4-best-effort-adapters.md",
+      "record": "records/4-best-effort-adapters.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "medium"
+    },
+    "5-collect-executor": {
+      "id": "5",
+      "title": "disk:collect_metrics 采集执行器(账号遍历 + 首写生效 + 注册)",
+      "priority": "P0",
+      "estimatedTime": "1.5h",
+      "dependencies": [
+        "2",
+        "3",
+        "4"
+      ],
+      "status": "pending",
+      "file": "5-collect-executor.md",
+      "record": "records/5-collect-executor.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "medium"
+    },
+    "6-observability-health": {
+      "id": "6",
+      "title": "采集失败可观测 + 自我健康监控(失败计数入 Result + 连续零成功告警)",
+      "priority": "P1",
+      "estimatedTime": "1.5h",
+      "dependencies": [
+        "5"
+      ],
+      "status": "pending",
+      "file": "6-observability-health.md",
+      "record": "records/6-observability-health.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "medium"
+    },
+    "7-persistent-gate-disk": {
+      "id": "7",
+      "title": "scheduler_state 日闸 disk 键接入 + 采集任务注册",
+      "priority": "P0",
+      "estimatedTime": "1h",
+      "dependencies": [
+        "5"
+      ],
+      "status": "pending",
+      "file": "7-persistent-gate-disk.md",
+      "record": "records/7-persistent-gate-disk.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "low"
+    },
+    "8-read-apis": {
+      "id": "8",
+      "title": "Disk 指标读取接口:单盘趋势 + Top(租户校验 + 分页 + qc_status 闭环)",
+      "priority": "P1",
+      "estimatedTime": "2h",
+      "dependencies": [
+        "2",
+        "7"
+      ],
+      "status": "pending",
+      "file": "8-read-apis.md",
+      "record": "records/8-read-apis.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "medium"
+    },
+    "9-frontend": {
+      "id": "9",
+      "title": "前端:Disk 抽屉监控 tab 趋势图 + 列表页运营卡(空态/警示/数据来源统一)",
+      "priority": "P1",
+      "estimatedTime": "2.5d",
+      "dependencies": [
+        "8"
+      ],
+      "status": "pending",
+      "file": "9-frontend.md",
+      "record": "records/9-frontend.md",
+      "surface-type": "api",
+      "type": "coding.feature",
+      "complexity": "high"
+    },
+    "clean-code": {
+      "id": "T-clean-code",
+      "title": "Simplify and Clean Code",
+      "priority": "P2",
+      "estimatedTime": "20min",
+      "dependencies": [
+        "9"
+      ],
+      "status": "pending",
+      "file": "clean-code.md",
+      "record": "records/clean-code.md",
+      "type": "code-quality.simplify"
+    },
+    "gen-contracts": {
+      "id": "T-test-gen-contracts",
+      "title": "Generate Test Contracts",
+      "priority": "P1",
+      "estimatedTime": "30-45min",
+      "dependencies": [
+        "T-test-gen-journeys"
+      ],
+      "status": "pending",
+      "file": "gen-contracts.md",
+      "record": "records/gen-contracts.md",
+      "type": "test.gen-contracts"
+    },
+    "gen-journeys": {
+      "id": "T-test-gen-journeys",
+      "title": "Generate Test Journeys",
+      "priority": "P1",
+      "estimatedTime": "20-30min",
+      "dependencies": [
+        "T-clean-code",
+        "2",
+        "3",
+        "4",
+        "7",
+        "5",
+        "1",
+        "6",
+        "8",
+        "9"
+      ],
+      "status": "pending",
+      "file": "gen-journeys.md",
+      "record": "records/gen-journeys.md",
+      "type": "test.gen-journeys"
+    },
+    "gen-test-scripts": {
+      "id": "T-test-gen-scripts",
+      "title": "Generate API Functional Test Scripts",
+      "priority": "P1",
+      "estimatedTime": "1-2h",
+      "dependencies": [
+        "T-test-gen-contracts"
+      ],
+      "status": "pending",
+      "file": "gen-test-scripts.md",
+      "record": "records/gen-test-scripts.md",
+      "surface-key": ".",
+      "surface-type": "api",
+      "type": "test.gen-scripts"
+    },
+    "quick-drift-detection": {
+      "id": "T-quick-doc-drift",
+      "title": "Detect Spec Drift",
+      "priority": "P2",
+      "estimatedTime": "15min",
+      "dependencies": [
+        "T-test-run"
+      ],
+      "status": "pending",
+      "file": "quick-drift-detection.md",
+      "record": "records/quick-drift-detection.md",
+      "type": "doc.drift"
+    },
+    "run-test": {
+      "id": "T-test-run",
+      "title": "Run API Functional Test",
+      "priority": "P1",
+      "estimatedTime": "30min-1h",
+      "dependencies": [
+        "T-test-gen-scripts"
+      ],
+      "status": "pending",
+      "file": "run-test.md",
+      "record": "records/run-test.md",
+      "surface-key": ".",
+      "surface-type": "api",
+      "type": "test.run"
+    },
+    "validate-code": {
+      "id": "T-validate-code",
+      "title": "Validate Code Quality",
+      "priority": "P2",
+      "estimatedTime": "15min",
+      "dependencies": [
+        "T-test-run"
+      ],
+      "status": "pending",
+      "file": "validate-code.md",
+      "record": "records/validate-code.md",
+      "type": "validation.code"
+    }
+  },
+  "statusEnum": [
+    "pending",
+    "in_progress",
+    "completed",
+    "blocked",
+    "suspended",
+    "skipped",
+    "rejected"
+  ],
+  "priorityEnum": [
+    "P0",
+    "P1",
+    "P2"
+  ]
+}
