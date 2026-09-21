@@ -14,6 +14,13 @@ import (
 	"github.com/gotomicro/ego/core/elog"
 )
 
+const (
+	// instanceScanBatchSize 规则引擎扫描资产的单批大小
+	instanceScanBatchSize = 5000
+	// maxScanInstances 单次执行扫描的资产上限（防御性护栏，避免异常数据量下无限翻页）
+	maxScanInstances = 500000
+)
+
 // RuleEngineService 规则引擎服务接口
 type RuleEngineService interface {
 	// 规则管理
@@ -263,12 +270,34 @@ func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID int64) (i
 	return count, nil
 }
 
-// listTenantInstances 拉取租户全部资产实例（ExecuteRules 与 DryRunRules 共用的取数路径）
+// listTenantInstances 拉取租户全部资产实例（ExecuteRules 与 DryRunRules 共用的取数路径）。
+// 分页累积取全量：原先固定 Limit 10000，租户资产超过该值时静默漏扫（2w+ 资产时每次
+// 只匹配其中 1w 条，且 DAO 排序为 ctime 倒序——非唯一键，每次同步触发扫到的切片不同，
+// 绑定数会随执行次数逐批爬升而非一次收敛）。跨批可能重复，按实例 ID 去重。
 func (s *ruleEngineService) listTenantInstances(ctx context.Context, tenantID int64) ([]domain.Instance, error) {
-	return s.instanceRepo.List(ctx, domain.InstanceFilter{
-		TenantID: tenantID,
-		Limit:    10000, // 分批处理大量数据时可优化
-	})
+	all := make([]domain.Instance, 0, instanceScanBatchSize)
+	seen := make(map[int64]bool)
+	for offset := int64(0); offset < maxScanInstances; offset += instanceScanBatchSize {
+		batch, err := s.instanceRepo.List(ctx, domain.InstanceFilter{
+			TenantID: tenantID,
+			Offset:   offset,
+			Limit:    instanceScanBatchSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, inst := range batch {
+			if seen[inst.ID] {
+				continue
+			}
+			seen[inst.ID] = true
+			all = append(all, inst)
+		}
+		if int64(len(batch)) < instanceScanBatchSize {
+			break // 末页
+		}
+	}
+	return all, nil
 }
 
 // DryRunRules 规则试运行：按临时条件（不落库的规则体）预览命中资产清单。
