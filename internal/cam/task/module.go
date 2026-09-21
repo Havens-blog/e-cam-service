@@ -139,6 +139,14 @@ func (m *Module) SetChangeTracker(t executor.ChangeTracker) {
 	}
 }
 
+// SetRuleExecutor 注入服务树规则引擎（资产同步完成后自动执行规则，nil 关闭；
+// servicetree 模块经 ioc 显式接线注入，executor 不直接 import servicetree 避免依赖环）
+func (m *Module) SetRuleExecutor(r executor.RuleAutoExecutor) {
+	if m.syncAssetsExecutor != nil {
+		m.syncAssetsExecutor.SetRuleExecutor(r)
+	}
+}
+
 // RegisterBillingExecutor 注册账单采集执行器（在成本模块初始化后调用）
 func (m *Module) RegisterBillingExecutor(
 	normalizerSvc *normalizer.NormalizerService,

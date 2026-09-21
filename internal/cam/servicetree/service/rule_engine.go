@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
@@ -27,6 +28,10 @@ type RuleEngineService interface {
 	ExecuteRules(ctx context.Context, tenantID int64) (int64, error)
 	// DryRunRules 规则试运行：按临时条件预览命中资产清单，只读不落库
 	DryRunRules(ctx context.Context, tenantID int64, req stdomain.DryRunRequest) (*stdomain.DryRunResult, error)
+
+	// ExecuteRulesAsync 异步执行规则（资产同步完成后的事件驱动挂点）：
+	// goroutine + panic recover + 超时 + 失败仅日志，不阻塞调用方；同租户 in-flight 去重
+	ExecuteRulesAsync(tenantID int64)
 }
 
 type ruleEngineService struct {
@@ -35,6 +40,9 @@ type ruleEngineService struct {
 	nodeRepo     repository.NodeRepository
 	instanceRepo camrepo.InstanceRepository
 	logger       *elog.Component
+	// asyncRunning 同租户规则异步执行 in-flight 标记（tenantID -> struct{}），
+	// 防止多次同步完成事件触发并发重复执行
+	asyncRunning sync.Map
 }
 
 // NewRuleEngineService 创建规则引擎服务
@@ -187,25 +195,25 @@ func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID int64) (i
 	if err != nil {
 		return 0, fmt.Errorf("获取已绑定资源失败: %w", err)
 	}
-	// key: "envID-resourceID"
-	boundResources := make(map[string]bool)
+	// key: resourceID（对齐 DB 资源级唯一键 tenant_id+resource_type+resource_id，dao/init.go
+	// initBindingIndexes：一个资源仅一条绑定。资源级去重同时保证两件事：
+	// 1) 幂等——重复执行（同步后自动触发/手动按钮）零重复绑定；
+	// 2) 手动优先 locked——已手动绑定（任意环境）的资产规则执行整体跳过，不会被规则覆盖）
+	boundResources := make(map[int64]bool, len(existingBindings))
 	for _, b := range existingBindings {
-		key := fmt.Sprintf("%d-%d", b.EnvID, b.ResourceID)
-		boundResources[key] = true
+		boundResources[b.ResourceID] = true
 	}
 
 	// 4. 遍历未绑定的实例，匹配规则
 	var newBindings []stdomain.ResourceBinding
 	matchCounts := make(map[int64]int64) // 规则ID -> 本次执行新增匹配绑定数
 	for _, instance := range instances {
+		// 已绑定（任意环境、manual/rule）的资产跳过：手动优先 locked + 幂等
+		if boundResources[instance.ID] {
+			continue
+		}
 		// 按优先级匹配规则
 		for _, rule := range rules {
-			// 检查该实例在该环境下是否已绑定
-			key := fmt.Sprintf("%d-%d", rule.EnvID, instance.ID)
-			if boundResources[key] {
-				continue
-			}
-
 			if s.matchRule(instance, rule) {
 				newBindings = append(newBindings, stdomain.ResourceBinding{
 					NodeID:       rule.NodeID,
@@ -217,9 +225,8 @@ func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID int64) (i
 					RuleID:       rule.ID,
 				})
 				matchCounts[rule.ID]++
-				// 标记为已绑定，避免同一实例在同一环境被多个规则绑定
-				boundResources[key] = true
-				break // 匹配到第一个规则后停止
+				boundResources[instance.ID] = true // 同批次内去重
+				break                              // 匹配到第一个规则后停止
 			}
 		}
 	}

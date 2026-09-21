@@ -52,6 +52,7 @@ type SyncAssetsExecutor struct {
 	dnsDomainColl  *mongo.Collection // DNS 域名集合 (c_dns_domain)
 	dnsRecordColl  *mongo.Collection // DNS 记录集合 (c_dns_record)
 	changeTracker  ChangeTracker     // 资产同步变更追踪（nil 不追踪，由 ioc 注入）
+	ruleExecutor   RuleAutoExecutor  // 服务树规则引擎（同步完成后自动执行规则，nil 关闭，由 ioc 注入）
 	logger         *elog.Component
 	// syncingNow 账号级同步互斥(account_id -> task_id)。
 	// 手动连点/调度器/重试会产生同一账号的多个并发同步任务,
@@ -168,6 +169,7 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 	totalSynced := 0
 	totalAccounts := len(accounts)
 	skippedAccounts := make([]string, 0)
+	syncedTenantIDs := make(map[int64]struct{}) // 本次同步实际落库的租户集合（规则引擎自动执行按租户触发）
 
 	for ai, account := range accounts {
 		// 账号级互斥:该账号已有同步任务在执行时直接跳过,不与其踩踏
@@ -270,8 +272,13 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 		}
 
 		e.releaseAccount(account.ID, t.ID)
+		syncedTenantIDs[account.TenantID] = struct{}{}
 		totalSynced += accountSynced
 	}
+
+	// 服务树规则引擎挂点（一期方案 4）：资产同步完成后自动执行规则。
+	// 仅加完成后回调，不改同步既有逻辑语义；异步 + 失败容忍，不阻塞同步返回。
+	e.triggerRulesAfterSync(syncedTenantIDs)
 
 	// 更新进度
 	e.taskRepo.UpdateProgress(ctx, t.ID, 95, "正在更新同步状态")
@@ -373,6 +380,31 @@ type ChangeTracker interface {
 // SetChangeTracker 注入资产同步变更追踪（nil 关闭追踪）
 func (e *SyncAssetsExecutor) SetChangeTracker(t ChangeTracker) {
 	e.changeTracker = t
+}
+
+// RuleAutoExecutor 服务树规则引擎异步执行接口（资产同步完成后自动执行规则的事件驱动挂点）。
+// 经 SetRuleExecutor 注入（ioc 显式接线，与 ChangeTracker 同款模式），executor 不直接
+// import servicetree，避免依赖环；实现方保证异步 + panic recover + 超时 + 失败仅日志。
+type RuleAutoExecutor interface {
+	ExecuteRulesAsync(tenantID int64)
+}
+
+// SetRuleExecutor 注入服务树规则引擎（nil 关闭同步后自动执行规则）
+func (e *SyncAssetsExecutor) SetRuleExecutor(r RuleAutoExecutor) {
+	e.ruleExecutor = r
+}
+
+// triggerRulesAfterSync 资产同步完成后按租户触发规则引擎自动执行。
+// ExecuteRulesAsync 内部异步执行并自容错（recover/超时/失败仅日志），此处调用立即返回，
+// 不阻塞同步任务收尾；规则引擎未装配（nil）时为 no-op。
+func (e *SyncAssetsExecutor) triggerRulesAfterSync(tenantIDs map[int64]struct{}) {
+	if e.ruleExecutor == nil || len(tenantIDs) == 0 {
+		return
+	}
+	for tenantID := range tenantIDs {
+		e.logger.Info("同步完成，触发规则引擎自动执行", elog.Int64("tenant_id", tenantID))
+		e.ruleExecutor.ExecuteRulesAsync(tenantID)
+	}
 }
 
 // syncItem 待同步的一条云资产：AssetID 用于差集删除，ToInstance 负责转换+upsert 由调用方闭包提供
