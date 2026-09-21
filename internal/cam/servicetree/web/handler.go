@@ -730,16 +730,23 @@ func (h *Handler) toBindingVO(binding domain.ResourceBinding) BindingVO {
 
 // toRuleVO 转换规则为 VO
 func (h *Handler) toRuleVO(rule domain.BindingRule) RuleVO {
+	var lastExecutedAt int64
+	if !rule.LastExecutedAt.IsZero() {
+		lastExecutedAt = rule.LastExecutedAt.UnixMilli()
+	}
 	return RuleVO{
-		ID:          rule.ID,
-		NodeID:      rule.NodeID,
-		EnvID:       rule.EnvID,
-		Name:        rule.Name,
-		Priority:    rule.Priority,
-		Conditions:  rule.Conditions,
-		Enabled:     rule.Enabled,
-		Description: rule.Description,
-		CreateTime:  rule.CreateTime.UnixMilli(),
-		UpdateTime:  rule.UpdateTime.UnixMilli(),
+		ID:             rule.ID,
+		NodeID:         rule.NodeID,
+		NodeName:       rule.NodeName,
+		EnvID:          rule.EnvID,
+		Name:           rule.Name,
+		Priority:       rule.Priority,
+		Conditions:     rule.Conditions,
+		Enabled:        rule.Enabled,
+		Description:    rule.Description,
+		LastExecutedAt: lastExecutedAt,
+		LastMatchCount: rule.LastMatchCount,
+		CreateTime:     rule.CreateTime.UnixMilli(),
+		UpdateTime:     rule.UpdateTime.UnixMilli(),
 	}
 }

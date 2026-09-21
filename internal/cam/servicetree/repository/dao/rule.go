@@ -30,8 +30,11 @@ type Rule struct {
 	Conditions  []RuleCondition `bson:"conditions"`
 	Enabled     bool            `bson:"enabled"`
 	Description string          `bson:"description"`
-	Ctime       int64           `bson:"ctime"`
-	Utime       int64           `bson:"utime"`
+	// 执行统计（存量文档缺字段时解码为零值，零值容忍勿 require）
+	LastExecutedAt int64 `bson:"last_executed_at"` // 毫秒时间戳，0 表示从未执行
+	LastMatchCount int64 `bson:"last_match_count"` // 最近一次执行的新增匹配绑定数
+	Ctime          int64 `bson:"ctime"`
+	Utime          int64 `bson:"utime"`
 }
 
 // RuleFilter DAO 层过滤条件
@@ -54,6 +57,8 @@ type RuleDAO interface {
 	Count(ctx context.Context, filter RuleFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByNodeID(ctx context.Context, nodeID int64) error
+	// UpdateExecutionStats 更新规则执行统计 (last_executed_at/last_match_count)
+	UpdateExecutionStats(ctx context.Context, id int64, executedAtMs int64, matchCount int64) error
 }
 
 type ruleDAO struct {
@@ -173,6 +178,27 @@ func (d *ruleDAO) DeleteByNodeID(ctx context.Context, nodeID int64) error {
 	filter := bson.M{"node_id": nodeID}
 	_, err := d.db.Collection(RuleCollection).DeleteMany(ctx, filter)
 	return err
+}
+
+// UpdateExecutionStats 更新规则执行统计
+// 仅 $set 统计字段，不触碰 utime 等业务字段（统计写入不应视为规则编辑）
+func (d *ruleDAO) UpdateExecutionStats(ctx context.Context, id int64, executedAtMs int64, matchCount int64) error {
+	filter := bson.M{"id": id}
+	update := bson.M{
+		"$set": bson.M{
+			"last_executed_at": executedAtMs,
+			"last_match_count": matchCount,
+		},
+	}
+
+	result, err := d.db.Collection(RuleCollection).UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+	return nil
 }
 
 func (d *ruleDAO) buildQuery(filter RuleFilter) bson.M {

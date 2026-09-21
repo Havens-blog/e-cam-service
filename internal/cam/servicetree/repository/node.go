@@ -15,6 +15,7 @@ type NodeRepository interface {
 	Update(ctx context.Context, node domain.ServiceTreeNode) error
 	UpdatePath(ctx context.Context, id int64, path string) error
 	GetByID(ctx context.Context, id int64) (domain.ServiceTreeNode, error)
+	GetByIDs(ctx context.Context, ids []int64) ([]domain.ServiceTreeNode, error)
 	GetByUID(ctx context.Context, tenantID int64, uid string) (domain.ServiceTreeNode, error)
 	List(ctx context.Context, filter domain.NodeFilter) ([]domain.ServiceTreeNode, error)
 	ListByPath(ctx context.Context, tenantID int64, pathPrefix string) ([]domain.ServiceTreeNode, error)
@@ -53,6 +54,20 @@ func (r *nodeRepository) GetByID(ctx context.Context, id int64) (domain.ServiceT
 		return domain.ServiceTreeNode{}, err
 	}
 	return r.toDomain(daoNode), nil
+}
+
+// GetByIDs 批量按业务 ID 查询节点
+func (r *nodeRepository) GetByIDs(ctx context.Context, ids []int64) ([]domain.ServiceTreeNode, error) {
+	daoNodes, err := r.dao.GetByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	nodes := make([]domain.ServiceTreeNode, len(daoNodes))
+	for i, daoNode := range daoNodes {
+		nodes[i] = r.toDomain(daoNode)
+	}
+	return nodes, nil
 }
 
 func (r *nodeRepository) GetByUID(ctx context.Context, tenantID int64, uid string) (domain.ServiceTreeNode, error) {

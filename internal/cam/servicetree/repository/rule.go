@@ -19,6 +19,8 @@ type RuleRepository interface {
 	Count(ctx context.Context, filter domain.RuleFilter) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByNodeID(ctx context.Context, nodeID int64) error
+	// UpdateExecutionStats 更新规则执行统计（执行时间 + 本次新增匹配数）
+	UpdateExecutionStats(ctx context.Context, id int64, executedAt time.Time, matchCount int64) error
 }
 
 type ruleRepository struct {
@@ -87,6 +89,11 @@ func (r *ruleRepository) DeleteByNodeID(ctx context.Context, nodeID int64) error
 	return r.dao.DeleteByNodeID(ctx, nodeID)
 }
 
+// UpdateExecutionStats 更新规则执行统计
+func (r *ruleRepository) UpdateExecutionStats(ctx context.Context, id int64, executedAt time.Time, matchCount int64) error {
+	return r.dao.UpdateExecutionStats(ctx, id, executedAt.UnixMilli(), matchCount)
+}
+
 func (r *ruleRepository) toDAO(rule domain.BindingRule) dao.Rule {
 	conditions := make([]dao.RuleCondition, len(rule.Conditions))
 	for i, c := range rule.Conditions {
@@ -120,18 +127,26 @@ func (r *ruleRepository) toDomain(daoRule dao.Rule) domain.BindingRule {
 		}
 	}
 
+	// 执行统计零值容忍：存量文档缺字段时毫秒时间戳为 0，映射为零值时间（从未执行）
+	var lastExecutedAt time.Time
+	if daoRule.LastExecutedAt > 0 {
+		lastExecutedAt = time.UnixMilli(daoRule.LastExecutedAt)
+	}
+
 	return domain.BindingRule{
-		ID:          daoRule.ID,
-		NodeID:      daoRule.NodeID,
-		EnvID:       daoRule.EnvID,
-		Name:        daoRule.Name,
-		TenantID:    daoRule.TenantID,
-		Priority:    daoRule.Priority,
-		Conditions:  conditions,
-		Enabled:     daoRule.Enabled,
-		Description: daoRule.Description,
-		CreateTime:  time.UnixMilli(daoRule.Ctime),
-		UpdateTime:  time.UnixMilli(daoRule.Utime),
+		ID:             daoRule.ID,
+		NodeID:         daoRule.NodeID,
+		EnvID:          daoRule.EnvID,
+		Name:           daoRule.Name,
+		TenantID:       daoRule.TenantID,
+		Priority:       daoRule.Priority,
+		Conditions:     conditions,
+		Enabled:        daoRule.Enabled,
+		Description:    daoRule.Description,
+		LastExecutedAt: lastExecutedAt,
+		LastMatchCount: daoRule.LastMatchCount,
+		CreateTime:     time.UnixMilli(daoRule.Ctime),
+		UpdateTime:     time.UnixMilli(daoRule.Utime),
 	}
 }
 

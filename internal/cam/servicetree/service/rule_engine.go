@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	camrepo "github.com/Havens-blog/e-cam-service/internal/cam/repository"
@@ -93,7 +94,40 @@ func (s *ruleEngineService) ListRules(ctx context.Context, filter stdomain.RuleF
 	if err != nil {
 		return nil, 0, err
 	}
+	s.fillNodeNames(ctx, rules)
 	return rules, total, nil
+}
+
+// fillNodeNames 批量回填目标节点名称（一次 $in 查询建映射，避免 N+1；失败仅告警不阻塞列表）
+func (s *ruleEngineService) fillNodeNames(ctx context.Context, rules []stdomain.BindingRule) {
+	idSet := make(map[int64]struct{}, len(rules))
+	ids := make([]int64, 0, len(rules))
+	for _, r := range rules {
+		if r.NodeID > 0 {
+			if _, ok := idSet[r.NodeID]; !ok {
+				idSet[r.NodeID] = struct{}{}
+				ids = append(ids, r.NodeID)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+
+	nodes, err := s.nodeRepo.GetByIDs(ctx, ids)
+	if err != nil {
+		s.logger.Warn("批量查询规则目标节点失败", elog.FieldErr(err))
+		return
+	}
+	nameByID := make(map[int64]string, len(nodes))
+	for _, n := range nodes {
+		nameByID[n.ID] = n.Name
+	}
+	for i := range rules {
+		if name, ok := nameByID[rules[i].NodeID]; ok {
+			rules[i].NodeName = name
+		}
+	}
 }
 
 // MatchInstance 匹配实例到规则
@@ -144,10 +178,6 @@ func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID int64) (i
 	if err != nil {
 		return 0, fmt.Errorf("获取实例列表失败: %w", err)
 	}
-	if len(instances) == 0 {
-		s.logger.Info("无实例数据", elog.Int64("tenantID", tenantID))
-		return 0, nil
-	}
 
 	// 3. 获取已绑定的资源ID集合 (按环境分组)
 	existingBindings, err := s.bindingRepo.List(ctx, stdomain.BindingFilter{
@@ -167,6 +197,7 @@ func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID int64) (i
 
 	// 4. 遍历未绑定的实例，匹配规则
 	var newBindings []stdomain.ResourceBinding
+	matchCounts := make(map[int64]int64) // 规则ID -> 本次执行新增匹配绑定数
 	for _, instance := range instances {
 		// 按优先级匹配规则
 		for _, rule := range rules {
@@ -186,10 +217,22 @@ func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID int64) (i
 					BindType:     stdomain.BindTypeRule,
 					RuleID:       rule.ID,
 				})
+				matchCounts[rule.ID]++
 				// 标记为已绑定，避免同一实例在同一环境被多个规则绑定
 				boundResources[key] = true
 				break // 匹配到第一个规则后停止
 			}
+		}
+	}
+
+	// 5. 执行结果落库（规则级统计：执行时间 + 本次新增匹配数，未命中的规则也记本次执行）
+	// 统计写失败仅告警，不阻塞绑定主流程
+	now := time.Now()
+	for _, rule := range rules {
+		if err := s.ruleRepo.UpdateExecutionStats(ctx, rule.ID, now, matchCounts[rule.ID]); err != nil {
+			s.logger.Warn("规则执行统计落库失败",
+				elog.Int64("ruleID", rule.ID),
+				elog.FieldErr(err))
 		}
 	}
 
@@ -198,7 +241,7 @@ func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID int64) (i
 		return 0, nil
 	}
 
-	// 5. 批量创建绑定
+	// 6. 批量创建绑定
 	count, err := s.bindingRepo.CreateBatch(ctx, newBindings)
 	if err != nil {
 		return 0, fmt.Errorf("批量创建绑定失败: %w", err)
@@ -239,6 +282,10 @@ func (s *ruleEngineService) getFieldValue(instance domain.Instance, field string
 		return instance.AssetID
 	case "model_uid":
 		return instance.ModelUID
+	case "region":
+		// region 由采集侧落入 Instance attributes（sync_* 各资产均写 attributes["region"]），
+		// 与 node_asset.go 的 GetStringAttribute("region") 取值口径一致；缺失返回空串不匹配
+		return instance.GetStringAttribute("region")
 	default:
 		// 处理 attributes.xxx 和 tag.xxx
 		if strings.HasPrefix(field, "attributes.") {

@@ -50,6 +50,7 @@ type NodeDAO interface {
 	Update(ctx context.Context, node Node) error
 	UpdatePath(ctx context.Context, id int64, path string) error
 	GetByID(ctx context.Context, id int64) (Node, error)
+	GetByIDs(ctx context.Context, ids []int64) ([]Node, error)
 	GetByUID(ctx context.Context, tenantID int64, uid string) (Node, error)
 	List(ctx context.Context, filter NodeFilter) ([]Node, error)
 	ListByPath(ctx context.Context, tenantID int64, pathPrefix string) ([]Node, error)
@@ -135,6 +136,23 @@ func (d *nodeDAO) GetByID(ctx context.Context, id int64) (Node, error) {
 	filter := bson.M{"id": id}
 	err := d.db.Collection(NodeCollection).FindOne(ctx, filter).Decode(&node)
 	return node, err
+}
+
+// GetByIDs 批量按业务 ID 查询节点（$in 一次查询，避免逐个 GetByID 的 N+1）
+func (d *nodeDAO) GetByIDs(ctx context.Context, ids []int64) ([]Node, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	filter := bson.M{"id": bson.M{"$in": ids}}
+	cursor, err := d.db.Collection(NodeCollection).Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var nodes []Node
+	err = cursor.All(ctx, &nodes)
+	return nodes, err
 }
 
 func (d *nodeDAO) GetByUID(ctx context.Context, tenantID int64, uid string) (Node, error) {

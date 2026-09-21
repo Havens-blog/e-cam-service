@@ -24,8 +24,14 @@ type BindingRule struct {
 	Conditions  []RuleCondition // 匹配条件 (AND关系)
 	Enabled     bool            // 是否启用
 	Description string          // 规则描述
-	CreateTime  time.Time
-	UpdateTime  time.Time
+	// NodeName 目标节点名称 (列表展示用，批量回填字段，不落库)
+	NodeName string
+	// LastExecutedAt 最近一次规则执行时间 (零值表示从未执行)
+	LastExecutedAt time.Time
+	// LastMatchCount 最近一次执行的新增匹配绑定数
+	LastMatchCount int64
+	CreateTime     time.Time
+	UpdateTime     time.Time
 }
 
 // RuleCondition 规则条件
