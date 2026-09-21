@@ -24,6 +24,7 @@ type Module struct {
 	syncAssetsExecutor  *executor.SyncAssetsExecutor
 	nasMetricsExecutor  *executor.SyncNASMetricsExecutor
 	ossMetricsExecutor  *executor.SyncOSSMetricsExecutor
+	diskMetricsExecutor *executor.SyncDiskMetricsExecutor
 	nasBackfillExecutor *executor.SyncNASBackfillExecutor
 }
 
@@ -73,6 +74,13 @@ func InitModule(
 	taskQueue.RegisterExecutor(ossMetricsExecutor)
 	logger.Info("OSS指标采集执行器已注册")
 
+	// 注册 Disk 指标采集执行器(每日使用率/IOPS/吞吐指标采集;今日行首写生效、
+	// 昨日行覆盖更新,disk 枚举以 ecam_instance 为准,不依赖 EnableAutoSync)
+	diskMetricDAO := dao.NewDiskMetricDAO(db)
+	diskMetricsExecutor := executor.NewSyncDiskMetricsExecutor(accountRepo, instanceRepo, diskMetricDAO, taskRepo, logger)
+	taskQueue.RegisterExecutor(diskMetricsExecutor)
+	logger.Info("Disk指标采集执行器已注册")
+
 	// 注册 NAS 历史指标回填执行器(一次性上线回填:14~90 天历史,配额节流 +
 	// 错峰窗口 01:30~06:00 + 唯一键幂等去重;命中限流挂起、次日窗口续跑)
 	nasBackfillExecutor := executor.NewSyncNASBackfillExecutor(accountRepo, instanceRepo, nasMetricDAO, taskRepo, logger)
@@ -88,6 +96,7 @@ func InitModule(
 		syncAssetsExecutor:  syncAssetsExecutor,
 		nasMetricsExecutor:  nasMetricsExecutor,
 		ossMetricsExecutor:  ossMetricsExecutor,
+		diskMetricsExecutor: diskMetricsExecutor,
 		nasBackfillExecutor: nasBackfillExecutor,
 	}, nil
 }
