@@ -36,6 +36,9 @@ type AutoSyncScheduler struct {
 	// lastOSSMetricsCollectDate OSS 内存闸日期,仅回滚模式下使用
 	// (OSS 生产走持久化日闸 oss 键,内存闸是 Hard Rule 要求的回滚退路)。
 	lastOSSMetricsCollectDate string
+	// lastDiskMetricsCollectDate Disk 内存闸日期,仅回滚模式下使用
+	// (Disk 生产走持久化日闸 disk 键,内存闸是 Hard Rule 要求的回滚退路)。
+	lastDiskMetricsCollectDate string
 	// dailyGate 持久化日闸(scheduler_state,findOneAndUpdate 原子认领):
 	// NAS/CDN/OSS 每日采集的提交入口,详见 daily_gate.go / auto_sync_nas_metrics.go。
 	dailyGate *PersistentDailyGate
@@ -146,6 +149,10 @@ func (s *AutoSyncScheduler) checkAndSync() {
 	// 每日 OSS 指标采集(持久化日闸 oss 键原子认领,与账号自动同步解耦,
 	// 详见 auto_sync_oss_metrics.go / daily_gate.go)
 	s.checkOSSMetricsCollection()
+
+	// 每日 Disk 指标采集(持久化日闸 disk 键原子认领,与账号自动同步解耦,
+	// 详见 auto_sync_disk_metrics.go / daily_gate.go)
+	s.checkDiskMetricsCollection()
 
 	// 获取所有启用自动同步的活跃账号
 	accounts, err := s.getAutoSyncAccounts(ctx)

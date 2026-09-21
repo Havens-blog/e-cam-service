@@ -13,9 +13,9 @@
 //  3. 读失败退避:≥5 分钟退避窗口再重读,防挂在分钟级调度循环上逐分钟
 //     洪泛 mongo 与任务队列。
 //
-// 资源类型分键(Hard Rule):nas/cdn 独立,互不覆盖。NAS 键 T7 接入;
-// CDN 键 T8 迁移接入,特性开关 SCHEDULER_PERSISTENT_GATE_ENABLED(默认开启)
-// 提供回滚内存闸的退路(feature_flag.go)。
+// 资源类型分键(Hard Rule):nas/cdn/oss/disk 独立,互不覆盖。NAS 键 T7 接入;
+// CDN 键 T8 迁移接入;OSS/Disk 键随各自 feature 接入,特性开关
+// SCHEDULER_PERSISTENT_GATE_ENABLED(默认开启)提供回滚内存闸的退路(feature_flag.go)。
 package scheduler
 
 import (
@@ -26,11 +26,12 @@ import (
 	"github.com/gotomicro/ego/core/elog"
 )
 
-// 日闸资源类型分键(nas/cdn/oss 独立,互不覆盖——Hard Rule)
+// 日闸资源类型分键(nas/cdn/oss/disk 独立,互不覆盖——Hard Rule)
 const (
-	GateResourceNAS = "nas"
-	GateResourceCDN = "cdn"
-	GateResourceOSS = "oss"
+	GateResourceNAS  = "nas"
+	GateResourceCDN  = "cdn"
+	GateResourceOSS  = "oss"
+	GateResourceDisk = "disk"
 )
 
 // 日闸调参默认值
