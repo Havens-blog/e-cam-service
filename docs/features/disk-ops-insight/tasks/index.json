@@ -133,7 +133,7 @@
       "dependencies": [
         "8"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "9-frontend.md",
       "record": "records/9-frontend.md",
       "surface-type": "api",
@@ -148,7 +148,7 @@
       "dependencies": [
         "9"
       ],
-      "status": "pending",
+      "status": "completed",
       "file": "clean-code.md",
       "record": "records/clean-code.md",
       "type": "code-quality.simplify"
