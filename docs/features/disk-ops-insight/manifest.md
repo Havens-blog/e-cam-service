@@ -1,7 +1,7 @@
 ---
 feature: "disk-ops-insight"
 created: "2026-09-21"
-status: tasks
+status: completed
 mode: quick
 ---
 

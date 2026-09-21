@@ -1,0 +1,23 @@
+{
+  "taskId": "T-quick-doc-drift",
+  "status": "completed",
+  "summary": "Drift-only spec scan for disk-ops-insight: docs/business-rules/ and docs/conventions/ do not exist, so there are no project-level specs to verify against feature changes; git diff main...HEAD is empty (feature commits land on main directly, scope instead taken from the feature commit union per precedent). Zero drifted/orphaned rules — nothing to fix or remove. Vocabulary index (docs/.vocabulary.md) regenerated per Step 12 and committed d993fc8 with [auto-specs] tag.",
+  "filesCreated": [],
+  "filesModified": [
+    "docs/.vocabulary.md"
+  ],
+  "referencedDocs": [
+    "docs/features/disk-ops-insight/tasks/quick-drift-detection.md",
+    "docs/features/disk-ops-insight/manifest.md",
+    "docs/.vocabulary.md"
+  ],
+  "reviewStatus": "final",
+  "docMetrics": "specsScanned: 0, drifted: 0, orphaned: 0, fixed: 0, vocabularyRegenerated: true",
+  "acceptanceCriteria": [
+    {
+      "criterion": "Spec drift detected between existing project specs and current code for disk-ops-insight",
+      "met": true
+    }
+  ],
+  "notes": "Non-interactive drift-only mode (no PRD/design-based integration needed; Steps 1-8 skipped, Steps 9-12 executed). Both spec directories absent => zero-drift outcome, Steps 10-11 auto-fix skipped; only vocabulary regeneration required a commit (docs/.vocabulary.md needed git add -f: docs/ is gitignored). Commit: d993fc8 'docs(specs): refresh vocabulary index, no spec drift found [auto-specs]'."
+}
