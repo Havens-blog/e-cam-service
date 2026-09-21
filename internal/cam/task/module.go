@@ -117,6 +117,14 @@ func (m *Module) SetOSSHealthAlerter(a executor.OSSHealthAlerter) {
 	}
 }
 
+// SetDiskHealthAlerter 注入 Disk 自我健康监控告警桥(与持久化日闸故障/NAS/OSS
+// 健康监控共用同一 schedulerGateAlerter 实现,cam/wire.go 装配;任务 6)
+func (m *Module) SetDiskHealthAlerter(a executor.DiskHealthAlerter) {
+	if m.diskMetricsExecutor != nil {
+		m.diskMetricsExecutor.SetDiskHealthAlerter(a)
+	}
+}
+
 // SetDNSCollections 设置 DNS 专用集合（在 DNS 模块初始化后调用）
 func (m *Module) SetDNSCollections(domainColl, recordColl *mongo.Collection) {
 	if m.syncAssetsExecutor != nil {

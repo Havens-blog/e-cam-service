@@ -140,3 +140,37 @@ func (a *schedulerGateAlerter) AlertOSSZeroSuccess(ctx context.Context, provider
 			elog.FieldErr(cerr))
 	}
 }
+
+// AlertDiskZeroSuccess Disk 自我健康监控升级告警:必达厂商连续 windowDays 天
+// 零成功采集、且实盘存在 ≥1 个 Disk 实例(前置已由执行器核验)。与日闸故障/
+// NAS/OSS 健康监控共用同一告警通道(同一 CreateEvent 直落库路径,勿重复造);
+// 因触发条件本身已蕴含「连续 3 天静默失效」,直接落 critical(页面级),
+// 不走 warning 逐级——语义与 AlertNASZeroSuccess/AlertOSSZeroSuccess 完全同型。
+func (a *schedulerGateAlerter) AlertDiskZeroSuccess(ctx context.Context, provider string, windowDays int, instanceCount int64) {
+	if a == nil || a.alertDAO == nil {
+		return
+	}
+	evt := alertdomain.AlertEvent{
+		Type: alertdomain.AlertTypeSyncFailure,
+		// 绕过规则匹配直接落库:告警事件必须持久可查,投递由告警通知链路接管
+		Status:   alertdomain.EventStatusPending,
+		Severity: alertdomain.SeverityCritical,
+		Title:    "Disk 指标采集连续零成功(自我健康监控)",
+		Content: map[string]any{
+			"summary": fmt.Sprintf(
+				"必达厂商 %s 已连续 %d 天零成功采集,但实盘存在 %d 个 Disk 实例",
+				provider, windowDays, instanceCount),
+			"provider":       provider,
+			"window_days":    windowDays,
+			"disk_instances": instanceCount,
+			"impact":         "该厂商 Disk 使用率/性能指标可能已静默失效,运营视图将出现数据空窗,请排查适配器/云账号凭证/厂商监控 API",
+		},
+		Source:     "scheduler:disk-health:" + provider,
+		CreateTime: time.Now(),
+	}
+	if _, cerr := a.alertDAO.CreateEvent(ctx, evt); cerr != nil {
+		elog.Error("Disk 零成功告警事件落库失败",
+			elog.String("provider", provider),
+			elog.FieldErr(cerr))
+	}
+}
