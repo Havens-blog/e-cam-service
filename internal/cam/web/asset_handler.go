@@ -19,17 +19,19 @@ type AssetHandler struct {
 	cdnQuery    CDNCacheConfigService
 	nasQuery    NASQueryService
 	ossQuery    OSSQueryService
+	diskQuery   DiskQueryService
 	logger      *elog.Component
 }
 
 // NewAssetHandler 创建资产处理器
-func NewAssetHandler(instanceSvc service.InstanceService, snapshotDAO dao.StatsSnapshotDAO, cdnQuery CDNCacheConfigService, nasQuery NASQueryService, ossQuery OSSQueryService) *AssetHandler {
+func NewAssetHandler(instanceSvc service.InstanceService, snapshotDAO dao.StatsSnapshotDAO, cdnQuery CDNCacheConfigService, nasQuery NASQueryService, ossQuery OSSQueryService, diskQuery DiskQueryService) *AssetHandler {
 	return &AssetHandler{
 		instanceSvc: instanceSvc,
 		snapshotDAO: snapshotDAO,
 		cdnQuery:    cdnQuery,
 		nasQuery:    nasQuery,
 		ossQuery:    ossQuery,
+		diskQuery:   diskQuery,
 		logger:      elog.DefaultLogger,
 	}
 }
@@ -99,6 +101,8 @@ func (h *AssetHandler) registerAssetRoutes(assetsGroup *gin.RouterGroup) {
 
 	// 云盘
 	assetsGroup.GET("/disk", h.ListDisk)
+	assetsGroup.GET("/disk/metrics", h.GetDiskMetrics)
+	assetsGroup.GET("/disk/top", h.GetDiskTop)
 	assetsGroup.GET("/disk/:asset_id", h.GetDisk)
 
 	// 快照

@@ -55,7 +55,7 @@ func newNASMetricsRouter(t *testing.T, fake *fakeNASQuery) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	h := NewAssetHandler(nil, nil, nil, fake, nil)
+	h := NewAssetHandler(nil, nil, nil, fake, nil, nil)
 	r.Use(func(c *gin.Context) {
 		c.Set(middleware.TenantIDKey, int64(7))
 		c.Next()
@@ -239,7 +239,7 @@ func ptrF(v float64) *float64 { return &v }
 func TestNASRoutes_RegisterWithoutConflict(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	h := NewAssetHandler(nil, nil, nil, &fakeNASQuery{}, nil)
+	h := NewAssetHandler(nil, nil, nil, &fakeNASQuery{}, nil, nil)
 	r.Use(func(c *gin.Context) {
 		c.Set(middleware.TenantIDKey, int64(7))
 		c.Next()

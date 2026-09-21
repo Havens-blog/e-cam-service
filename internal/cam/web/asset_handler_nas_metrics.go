@@ -139,7 +139,8 @@ func parseNASBound(ctx *gin.Context, name string, def, max int) (int, bool) {
 // respondQueryError 指标读取错误统一映射(NAS/OSS 共用):越权 404(不泄露账号
 // 存在性),其余 500
 func respondQueryError(ctx *gin.Context, err error) {
-	if errors.Is(err, service.ErrNASAccountNotInTenant) || errors.Is(err, service.ErrOSSAccountNotInTenant) {
+	if errors.Is(err, service.ErrNASAccountNotInTenant) || errors.Is(err, service.ErrOSSAccountNotInTenant) ||
+		errors.Is(err, service.ErrDiskAccountNotInTenant) {
 		ctx.JSON(404, ErrorResultWithMsg(errs.AccountNotFound, errs.AccountNotFound.Msg))
 		return
 	}

@@ -697,7 +697,7 @@ func (h *Harness) NewOSSRouter(tenantID int64) *gin.Engine {
 	// RegisterRoutesWithGroup 期望收到的已是 assets 路由组(内部直接注册
 	// /oss/metrics 等),故组前缀为 /assets,与生产 /cam/assets/* 对齐
 	group := router.Group("/assets", tenant)
-	web.NewAssetHandler(nil, nil, nil, nil, h.NewQueryService()).RegisterRoutesWithGroup(group)
+	web.NewAssetHandler(nil, nil, nil, nil, h.NewQueryService(), nil).RegisterRoutesWithGroup(group)
 	return router
 }
 

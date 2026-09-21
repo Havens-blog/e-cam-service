@@ -55,7 +55,7 @@ func newOSSMetricsRouter(t *testing.T, fake *fakeOSSQuery) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	h := NewAssetHandler(nil, nil, nil, nil, fake)
+	h := NewAssetHandler(nil, nil, nil, nil, fake, nil)
 	r.Use(func(c *gin.Context) {
 		c.Set(middleware.TenantIDKey, int64(7))
 		c.Next()
@@ -251,7 +251,7 @@ func TestGetOSSTop_ErrorMapping(t *testing.T) {
 func TestOSSRoutes_RegisterWithoutConflict(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	h := NewAssetHandler(nil, nil, nil, nil, &fakeOSSQuery{})
+	h := NewAssetHandler(nil, nil, nil, nil, &fakeOSSQuery{}, nil)
 	r.Use(func(c *gin.Context) {
 		c.Set(middleware.TenantIDKey, int64(7))
 		c.Next()
