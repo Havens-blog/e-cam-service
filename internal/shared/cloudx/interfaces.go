@@ -585,6 +585,23 @@ type DiskAdapter interface {
 	ListByInstanceID(ctx context.Context, region, instanceID string) ([]types.DiskInstance, error)
 }
 
+// DiskMetricQuerier 可选能力:按云盘查询 Disk 单日使用率/IOPS/吞吐指标。
+// 指标不随同步落库,由定时任务 disk:collect_metrics 按日采集;DiskAdapter
+// 实现方可按需实现本接口(探测不到可用监控 API 的厂商不实现,采集跳过)。
+// 与 NASMetricQuerier 同型:云硬盘是地域性资源(disk_id 绑定 region),签名
+// 带 region——对多 region 账号按「实例 → region」逐盘查询,不做全局 region
+// 推断(aws 账号 regions 配置与实盘不一致时尤须按实例真实 region,见
+// disk-ops-insight probe-report §5);与 CDNMetricQuerier/OSSMetricQuerier
+// (全局服务,签名无 region)不同。
+type DiskMetricQuerier interface {
+	// GetDiskMetrics 查询 [startDate, endDate](含两端,YYYY-MM-DD)内该云盘
+	// 的逐日使用率/IOPS/吞吐指标(单位归一、usage_scope 口径标注与 qc_status
+	// 语义见 types.DiskMetric)。diskID 为云盘 ID(各厂商检索键);diskName 为
+	// 云盘名称(展示/部分厂商检索用);region 为实例所在地域,由调用方从实例
+	// 元数据取,适配器必须按该 region 调用对应监控 API。
+	GetDiskMetrics(ctx context.Context, diskID, diskName, region, startDate, endDate string) ([]types.DiskMetric, error)
+}
+
 // ============================================================================
 // SnapshotAdapter - 磁盘快照适配器接口
 // ============================================================================
