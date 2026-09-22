@@ -30,6 +30,11 @@ func mapEntry(kind mapperKind, m logquery.LogMeta, raw map[string]string) logque
 	for k, v := range raw {
 		r[k] = v
 	}
+	// WAF 头/cookie 全量转储体量最大且只服务明细抽屉,typed 字段已从 raw
+	// (string 表)单独抽取,裁 r 不影响列表列(AWS 侧同理,含 httpRequest)。
+	if kind == kindWAF3 || kind == kindAkamaiWAF {
+		logquery.TrimRawHeaderDump(r)
+	}
 	switch kind {
 	case kindALB:
 		return mapALB(m, r, raw)

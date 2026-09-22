@@ -127,8 +127,14 @@ func TestMapWAF3Golden(t *testing.T) {
 		if e.Action != "pass" {
 			t.Errorf("sample %d: access-log action = %q, want pass", i, e.Action)
 		}
-		if len(e.Raw) != len(raw) {
-			t.Errorf("sample %d: raw not preserved", i)
+		// Raw 保留除头/cookie 转储外全部字段(裁头字段只服务明细抽屉,见 raw_trim.go)
+		for k := range raw {
+			if logquery.IsRawHeaderDumpKey(k) {
+				continue
+			}
+			if _, ok := e.Raw[k]; !ok {
+				t.Errorf("sample %d: raw key %q not preserved", i, k)
+			}
 		}
 	}
 	e, _ := mapEntry(kindWAF3, testMeta(f), f.Samples[0]).(*logquery.WAFLogEntry)

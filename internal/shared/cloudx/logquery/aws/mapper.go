@@ -46,6 +46,9 @@ func mapWAFJSON(m logquery.LogMeta, raw map[string]any) *logquery.WAFLogEntry {
 	if rid := logquery.Str(raw["httpSourceId"]); rid != "" {
 		e.Meta.ResourceID = rid // CloudFront distribution ID
 	}
+	// httpRequest 完整请求对象(含 headers/cookie)已在上方抽出 ClientIP/URI/
+	// Host/UA,裁掉只影响明细抽屉的原始 JSON,列表列不受影响。
+	logquery.TrimRawHeaderDump(raw)
 	return e
 }
 
