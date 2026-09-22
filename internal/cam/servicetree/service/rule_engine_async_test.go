@@ -55,7 +55,7 @@ func TestExecuteRulesIdempotentRepeat(t *testing.T) {
 			}, nil
 		},
 	}
-	s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo)
+	s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo, nil)
 
 	// Act: 第一轮执行创建绑定
 	count1, err := s.ExecuteRules(context.Background(), 1)
@@ -147,7 +147,7 @@ func TestExecuteRulesManualBindingPriority(t *testing.T) {
 					return []camdomain.Instance{{ID: 7, AssetName: "web-01"}}, nil
 				},
 			}
-			s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo)
+			s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo, nil)
 
 			// Act
 			count, err := s.ExecuteRules(context.Background(), 1)
@@ -193,7 +193,7 @@ func TestExecuteRulesAsync(t *testing.T) {
 				return []camdomain.Instance{{ID: 7, AssetName: "web-01"}}, nil
 			},
 		}
-		s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo)
+		s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo, nil)
 
 		start := time.Now()
 		s.ExecuteRulesAsync(1) // 应立即返回，不阻塞
@@ -213,7 +213,7 @@ func TestExecuteRulesAsync(t *testing.T) {
 				panic("模拟规则执行 panic")
 			},
 		}
-		s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, &stubBindingRepo{}, &stubInstanceRepo{})
+		s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, &stubBindingRepo{}, &stubInstanceRepo{}, nil)
 
 		s.ExecuteRulesAsync(1)
 		waitInflightClear(t, s, 3*time.Second) // panic 恢复后 in-flight 标记应被清理
@@ -246,7 +246,7 @@ func TestExecuteRulesAsync(t *testing.T) {
 				return nil, nil
 			},
 		}
-		s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo)
+		s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo, nil)
 
 		s.ExecuteRulesAsync(1)
 		<-started
@@ -266,7 +266,7 @@ func TestExecuteRulesAsync(t *testing.T) {
 				return nil, context.DeadlineExceeded
 			},
 		}
-		s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, &stubBindingRepo{}, &stubInstanceRepo{})
+		s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, &stubBindingRepo{}, &stubInstanceRepo{}, nil)
 
 		s.ExecuteRulesAsync(1) // 失败不应 panic / 不影响调用方
 		waitInflightClear(t, s, 3*time.Second)

@@ -65,7 +65,7 @@ func TestDryRunRules(t *testing.T) {
 					return nil, nil
 				},
 			}
-			s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, bindingRepo, instanceRepo)
+			s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, bindingRepo, instanceRepo, nil)
 
 			// Act
 			result, err := s.DryRunRules(context.Background(), 1, stdomain.DryRunRequest{Conditions: tt.conditions})
@@ -102,7 +102,7 @@ func TestDryRunRulesHitItemFields(t *testing.T) {
 			return nil, nil
 		},
 	}
-	s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, bindingRepo, instanceRepo)
+	s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, bindingRepo, instanceRepo, nil)
 
 	// Act
 	result, err := s.DryRunRules(context.Background(), 1, stdomain.DryRunRequest{
@@ -130,7 +130,7 @@ func TestDryRunRulesHitItemFields(t *testing.T) {
 
 // TestDryRunRulesEmptyConditions 条件为空直接拒绝（handler 层映射 400）
 func TestDryRunRulesEmptyConditions(t *testing.T) {
-	s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, &stubBindingRepo{}, &stubInstanceRepo{})
+	s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, &stubBindingRepo{}, &stubInstanceRepo{}, nil)
 
 	_, err := s.DryRunRules(context.Background(), 1, stdomain.DryRunRequest{Conditions: nil})
 	if !errors.Is(err, stdomain.ErrRuleConditionsEmpty) {
@@ -158,7 +158,7 @@ func TestDryRunRulesBindingStatus(t *testing.T) {
 			return []stdomain.ServiceTreeNode{{ID: 11, Name: "SMT订单"}}, nil
 		},
 	}
-	s := newTestRuleEngine(&stubRuleRepo{}, nodeRepo, bindingRepo, instanceRepo)
+	s := newTestRuleEngine(&stubRuleRepo{}, nodeRepo, bindingRepo, instanceRepo, nil)
 	conds := []stdomain.RuleCondition{{Field: "name", Operator: stdomain.OperatorContains, Value: "web"}}
 
 	t.Run("不限环境：标注手动绑定节点并回填节点名", func(t *testing.T) {
@@ -220,7 +220,7 @@ func TestDryRunRulesReadOnly(t *testing.T) {
 		},
 	}
 	ruleRepo := &stubRuleRepo{}
-	s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo)
+	s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo, nil)
 
 	// Act
 	_, err := s.DryRunRules(context.Background(), 1, stdomain.DryRunRequest{
@@ -260,7 +260,7 @@ func TestDryRunRulesResultCap(t *testing.T) {
 		listFn: func(ctx context.Context, filter stdomain.BindingFilter) ([]stdomain.ResourceBinding, error) {
 			return nil, nil
 		},
-	}, instanceRepo)
+	}, instanceRepo, nil)
 
 	// Act
 	result, err := s.DryRunRules(context.Background(), 1, stdomain.DryRunRequest{

@@ -419,7 +419,7 @@ func (s *nodeAssetService) GetNodeAssetSummary(ctx context.Context, tenantID int
 	}
 
 	// 4. 环境 ID → 代码映射（环境分布与错绑判定均按环境代码口径）
-	envCodeByID, err := s.loadEnvCodeMap(ctx, tenantID)
+	envCodeByID, err := loadEnvCodeMap(ctx, s.envRepo, tenantID)
 	if err != nil {
 		return domain.AssetSummary{}, err
 	}
@@ -486,75 +486,6 @@ func resolveEnvKey(envID int64, envCodeByID map[int64]string) (key, code string)
 	return fmt.Sprintf("env_%d", envID), ""
 }
 
-// extractTagEnv 取实例 tag.env（与 rule_engine getFieldValue "tag.env" 取值口径一致）
-func extractTagEnv(inst cmdbdomain.Instance) string {
-	tags, ok := inst.Attributes["tags"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	val, ok := tags["env"].(string)
-	if !ok {
-		return ""
-	}
-	return val
-}
+// 环境推断（normalizeEnvCode/matchNameEnvCode/extractTagEnv/detectEnvMismatch/
+// loadEnvCodeMap 等）已收敛至 infer_env.go 单份公共实现，绑定/改绑/概览三方共用。
 
-// envNamePatterns 资产命名模式 → 标准环境代码（二期提案：-prod-/-uat-/-test-/-dev-）
-var envNamePatterns = []struct {
-	pattern string
-	code    string
-}{
-	{"-prod-", domain.EnvCodeProd},
-	{"-uat-", domain.EnvCodeStaging}, // uat 归一化为预发
-	{"-test-", domain.EnvCodeTest},
-	{"-dev-", domain.EnvCodeDev},
-}
-
-// normalizeEnvCode 环境值归一化：小写化，uat 视作 staging
-func normalizeEnvCode(code string) string {
-	code = strings.ToLower(strings.TrimSpace(code))
-	if code == "uat" {
-		return domain.EnvCodeStaging
-	}
-	return code
-}
-
-// detectEnvMismatch 环境错绑双信号检测：资产命名模式 + tag.env 与绑定环境矛盾。
-// 仅当绑定环境代码已知且信号指向标准环境代码时判定；信号或绑定环境未知不误报。
-// 返回矛盾原因列表（只提示不改绑，调用方自行决定展示）。
-func detectEnvMismatch(assetName, tagEnv, boundCode string) []string {
-	if boundCode == "" {
-		return nil
-	}
-	bound := normalizeEnvCode(boundCode)
-
-	var reasons []string
-	if nameCode := matchNameEnvCode(assetName); nameCode != "" && nameCode != bound {
-		reasons = append(reasons, fmt.Sprintf("资产命名含 -%s- 与绑定环境 %s 矛盾", nameCode, bound))
-	}
-	tagCode := normalizeEnvCode(tagEnv)
-	if isStandardEnvCode(tagCode) && tagCode != bound {
-		reasons = append(reasons, fmt.Sprintf("tag.env=%s 与绑定环境 %s 矛盾", tagCode, bound))
-	}
-	return reasons
-}
-
-// matchNameEnvCode 命名模式匹配环境代码（大小写不敏感），无命中返回空
-func matchNameEnvCode(assetName string) string {
-	lower := strings.ToLower(assetName)
-	for _, p := range envNamePatterns {
-		if strings.Contains(lower, p.pattern) {
-			return p.code
-		}
-	}
-	return ""
-}
-
-// isStandardEnvCode 是否为标准环境代码（dev/test/staging/prod）
-func isStandardEnvCode(code string) bool {
-	switch code {
-	case domain.EnvCodeDev, domain.EnvCodeTest, domain.EnvCodeStaging, domain.EnvCodeProd:
-		return true
-	}
-	return false
-}

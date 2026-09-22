@@ -47,7 +47,7 @@ func TestPreviewRebindReprioritizedRule(t *testing.T) {
 	nodeRepo := &stubNodeRepo{getByIDsFn: func(ctx context.Context, ids []int64) ([]stdomain.ServiceTreeNode, error) {
 		return []stdomain.ServiceTreeNode{{ID: 10, Name: "SMT"}, {ID: 20, Name: "CPP"}}, nil
 	}}
-	s := newTestRuleEngine(ruleRepo, nodeRepo, bindingRepo, instanceRepo)
+	s := newTestRuleEngine(ruleRepo, nodeRepo, bindingRepo, instanceRepo, nil)
 
 	// Act
 	plan, err := s.PreviewRebind(context.Background(), 1)
@@ -82,7 +82,7 @@ func TestPreviewRebindManualLocked(t *testing.T) {
 	bindingRepo := &stubBindingRepo{listFn: func(ctx context.Context, filter stdomain.BindingFilter) ([]stdomain.ResourceBinding, error) {
 		return []stdomain.ResourceBinding{{ID: 9001, ResourceID: 1, NodeID: 10, EnvID: 100, BindType: stdomain.BindTypeManual}}, nil
 	}}
-	s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo)
+	s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo, nil)
 
 	plan, err := s.PreviewRebind(context.Background(), 1)
 	if err != nil {
@@ -105,7 +105,7 @@ func TestPreviewRebindNoChange(t *testing.T) {
 		// 已绑在 cpp 规则 (node 20, rule 101)，仍是最优
 		return []stdomain.ResourceBinding{{ID: 9001, ResourceID: 1, NodeID: 20, EnvID: 200, BindType: stdomain.BindTypeRule, RuleID: 101}}, nil
 	}}
-	s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo)
+	s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo, nil)
 
 	plan, err := s.PreviewRebind(context.Background(), 1)
 	if err != nil {
@@ -127,7 +127,7 @@ func TestPreviewRebindSkipsUnbound(t *testing.T) {
 	bindingRepo := &stubBindingRepo{listFn: func(ctx context.Context, filter stdomain.BindingFilter) ([]stdomain.ResourceBinding, error) {
 		return nil, nil
 	}}
-	s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo)
+	s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo, nil)
 
 	plan, err := s.PreviewRebind(context.Background(), 1)
 	if err != nil {
@@ -158,7 +158,7 @@ func TestApplyRebindAppliesRequestedAndSkipsOther(t *testing.T) {
 	nodeRepo := &stubNodeRepo{getByIDsFn: func(ctx context.Context, ids []int64) ([]stdomain.ServiceTreeNode, error) {
 		return nil, nil // 节点名回填失败不应影响改绑主流程
 	}}
-	s := newTestRuleEngine(ruleRepo, nodeRepo, bindingRepo, instanceRepo)
+	s := newTestRuleEngine(ruleRepo, nodeRepo, bindingRepo, instanceRepo, nil)
 
 	// Act：只申请改绑资源 1，并混入一个非候选资源 999
 	applied, err := s.ApplyRebind(context.Background(), 1, []int64{1, 999})

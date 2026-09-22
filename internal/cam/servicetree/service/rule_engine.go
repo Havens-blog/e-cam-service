@@ -51,7 +51,10 @@ type ruleEngineService struct {
 	bindingRepo  repository.BindingRepository
 	nodeRepo     repository.NodeRepository
 	instanceRepo camrepo.InstanceRepository
-	logger       *elog.Component
+	// envRepo 租户环境仓储：绑定落库时把 inferEnvCode 推断码解析成租户环境 ID
+	// （code → env_id 映射见 infer_env.go loadEnvIDByCode，uat ≡ staging 归一对齐）
+	envRepo repository.EnvironmentRepository
+	logger  *elog.Component
 	// asyncRunning 同租户规则异步执行 in-flight 标记（tenantID -> struct{}），
 	// 防止多次同步完成事件触发并发重复执行
 	asyncRunning sync.Map
@@ -63,6 +66,7 @@ func NewRuleEngineService(
 	bindingRepo repository.BindingRepository,
 	nodeRepo repository.NodeRepository,
 	instanceRepo camrepo.InstanceRepository,
+	envRepo repository.EnvironmentRepository,
 	logger *elog.Component,
 ) RuleEngineService {
 	return &ruleEngineService{
@@ -70,6 +74,7 @@ func NewRuleEngineService(
 		bindingRepo:  bindingRepo,
 		nodeRepo:     nodeRepo,
 		instanceRepo: instanceRepo,
+		envRepo:      envRepo,
 		logger:       logger,
 	}
 }

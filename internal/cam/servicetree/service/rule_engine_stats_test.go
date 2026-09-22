@@ -151,8 +151,8 @@ func (s *stubInstanceRepo) List(ctx context.Context, filter camdomain.InstanceFi
 	return s.listFn(ctx, filter)
 }
 
-func newTestRuleEngine(ruleRepo repository.RuleRepository, nodeRepo repository.NodeRepository, bindingRepo repository.BindingRepository, instanceRepo camrepo.InstanceRepository) RuleEngineService {
-	return NewRuleEngineService(ruleRepo, bindingRepo, nodeRepo, instanceRepo, elog.DefaultLogger)
+func newTestRuleEngine(ruleRepo repository.RuleRepository, nodeRepo repository.NodeRepository, bindingRepo repository.BindingRepository, instanceRepo camrepo.InstanceRepository, envRepo repository.EnvironmentRepository) RuleEngineService {
+	return NewRuleEngineService(ruleRepo, bindingRepo, nodeRepo, instanceRepo, envRepo, elog.DefaultLogger)
 }
 
 // TestListRulesFillNodeNames 一期修复①：node_name 批量回填，N+1 避免。
@@ -174,7 +174,7 @@ func TestListRulesFillNodeNames(t *testing.T) {
 			return []stdomain.ServiceTreeNode{{ID: 11, Name: "SMT订单"}}, nil
 		},
 	}
-	s := newTestRuleEngine(ruleRepo, nodeRepo, &stubBindingRepo{}, &stubInstanceRepo{})
+	s := newTestRuleEngine(ruleRepo, nodeRepo, &stubBindingRepo{}, &stubInstanceRepo{}, nil)
 
 	// Act
 	got, total, err := s.ListRules(context.Background(), stdomain.RuleFilter{TenantID: 1})
@@ -261,7 +261,7 @@ func TestExecuteRulesStatsPersistence(t *testing.T) {
 					return tt.instances, nil
 				},
 			}
-			s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo)
+			s := newTestRuleEngine(ruleRepo, &stubNodeRepo{}, bindingRepo, instanceRepo, nil)
 
 			// Act
 			count, err := s.ExecuteRules(context.Background(), 1)

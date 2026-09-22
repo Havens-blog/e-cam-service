@@ -46,7 +46,7 @@ func TestListTenantInstancesPaginatesBeyondOneBatch(t *testing.T) {
 			return nil, nil
 		},
 	}
-	s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, bindingRepo, instanceRepo)
+	s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, bindingRepo, instanceRepo, nil)
 
 	// Act
 	result, err := s.DryRunRules(context.Background(), 1, stdomain.DryRunRequest{
@@ -86,7 +86,7 @@ func TestListTenantInstancesDedupsAcrossBatches(t *testing.T) {
 			return nil, nil
 		},
 	}
-	s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, bindingRepo, instanceRepo)
+	s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, bindingRepo, instanceRepo, nil)
 
 	// Act
 	result, err := s.DryRunRules(context.Background(), 1, stdomain.DryRunRequest{
@@ -118,7 +118,7 @@ func TestListTenantInstancesSinglePageStops(t *testing.T) {
 			return nil, nil
 		},
 	}
-	s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, bindingRepo, instanceRepo)
+	s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, bindingRepo, instanceRepo, nil)
 
 	// Act
 	result, err := s.DryRunRules(context.Background(), 1, stdomain.DryRunRequest{
