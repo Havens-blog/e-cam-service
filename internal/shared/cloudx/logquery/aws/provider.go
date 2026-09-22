@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
@@ -29,6 +30,10 @@ const (
 	maxObjectBytes     = 32 << 20
 	// maxFanoutConcurrency 源级(S3 对象扫描/ACL 前缀)并发上限。
 	maxFanoutConcurrency = 16
+	// perTargetConcurrency 单源内对象下载并发:GetObject 是 S3 往返,逐对象串行
+	// 是 AWS WAF 搜索(下载阶段 ~=结果条数×单对象 RTT)数秒的主因。收尾按时间
+	// 倒序截取 limit 保持"每源最新 limit 条"语义,并发只影响速度不影响序。
+	perTargetConcurrency = 4
 )
 
 // aSource S3 源 catalog 条目。
@@ -350,7 +355,10 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 	return entries, nil
 }
 
-// scanTarget 单源扫描:列对象(最新优先)-> 逐对象下载解析,攒够 limit 即停。
+// scanTarget 单源扫描:列对象(最新优先)-> 并发下载解析 -> 时间倒序截取 limit。
+// GetObject 是 S3 往返,逐对象串行是 AWS 搜索数秒的主因;候选对象(≤
+// maxObjectsPerScan)按 perTargetConcurrency 并发下载解析,收尾统一按时间
+// 倒序截取 limit(并发不改变"每源最新 limit 条"语义,只压缩墙钟)。
 func (p *provider) scanTarget(ctx context.Context, src aSource, prefix, resource string, params logquery.SearchParams, limit int) ([]logquery.LogEntry, error) {
 	client, err := p.clientFor(src.bucket, src.region)
 	if err != nil {
@@ -370,40 +378,80 @@ func (p *provider) scanTarget(ctx context.Context, src aSource, prefix, resource
 	}
 	notBefore := time.UnixMilli(params.StartTime).Add(-src.lookback)
 	notAfter := time.UnixMilli(params.EndTime).Add(time.Hour) // 投递延迟容忍
-	var entries []logquery.LogEntry
-	scanned := 0
+
+	// 组装下载候选:最新优先 + 时间剪枝 + 上限 maxObjectsPerScan。
+	// LastModified 过旧即止(对象按最后修改≈投递序排列,其后更旧)。
+	var candidates []s3Object
 	for _, o := range objects {
-		if int64(len(entries)) >= int64(limit) || scanned >= maxObjectsPerScan {
+		if len(candidates) >= maxObjectsPerScan {
 			break
 		}
-		// 对象级时间剪枝:LastModified 过旧的不再下载(对象按最新优先排列)
 		if o.LastModified.Before(notBefore) {
 			break
 		}
 		if o.LastModified.After(notAfter) {
-			continue // 未来对象(时钟偏差),跳过不计数
+			continue // 未来对象(时钟偏差),跳过
 		}
-		body, err := getObjectBytes(ctx, client, src.bucket, o.Key, maxObjectBytes)
-		if err != nil {
-			p.logger.Warn("[logquery-aws] get object failed",
-				elog.String("key", o.Key), elog.FieldErr(err))
-			continue
-		}
-		scanned++
-		meta := logquery.LogMeta{
-			Cloud:       domain.CloudProviderAWS,
-			AccountID:   fmt.Sprintf("%d", p.account.ID),
-			AccountName: p.account.Name,
-			Region:      src.region,
-			ResourceID:  resource,
-			Source:      src.bucket + "/" + o.Key,
-		}
-		switch src.kind {
-		case "waf-json":
-			entries = append(entries, parseWAFJSONLines(meta, body, params, int64(limit)-int64(len(entries)))...)
-		case "cloudfront-tsv":
-			entries = append(entries, parseCloudFrontBody(meta, body, params, int64(limit)-int64(len(entries)))...)
-		}
+		candidates = append(candidates, o)
+	}
+
+	// 并发下载解析:worker 池按候选序(最新优先)取对象,shared collected 计数
+	// 用于"攒够 limit 即停"——但并发下载中最多 perTargetConcurrency 个对象在
+	// 途会略超取;收尾按时间倒序截取 limit 兜底。相比整批下载全部候选(每源
+	// 最多 60 对象,超取拉爆 S3),此版只在最新对象未凑满 limit 时才继续下载。
+	var collected atomic.Int64
+	jobs := make(chan s3Object)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var entries []logquery.LogEntry
+	for w := 0; w < perTargetConcurrency; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for o := range jobs {
+				if collected.Load() >= int64(limit) {
+					continue // 已达 limit,跳过后续对象(仍要消费掉 channel)
+				}
+				body, err := getObjectBytes(ctx, client, src.bucket, o.Key, maxObjectBytes)
+				if err != nil {
+					p.logger.Warn("[logquery-aws] get object failed",
+						elog.String("key", o.Key), elog.FieldErr(err))
+					continue
+				}
+				meta := logquery.LogMeta{
+					Cloud:       domain.CloudProviderAWS,
+					AccountID:   fmt.Sprintf("%d", p.account.ID),
+					AccountName: p.account.Name,
+					Region:      src.region,
+					ResourceID:  resource,
+					Source:      src.bucket + "/" + o.Key,
+				}
+				var parsed []logquery.LogEntry
+				switch src.kind {
+				case "waf-json":
+					parsed = parseWAFJSONLines(meta, body, params, int64(limit))
+				case "cloudfront-tsv":
+					parsed = parseCloudFrontBody(meta, body, params, int64(limit))
+				}
+				collected.Add(int64(len(parsed)))
+				mu.Lock()
+				entries = append(entries, parsed...)
+				mu.Unlock()
+			}
+		}()
+	}
+	for _, o := range candidates {
+		jobs <- o
+	}
+	close(jobs)
+	wg.Wait()
+
+	// 并发下载可能略超取,按时间倒序截取 limit 保持"每源最新 limit 条"语义。
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].GetTimestamp() > entries[j].GetTimestamp()
+	})
+	if len(entries) > limit {
+		entries = entries[:limit]
 	}
 	return entries, nil
 }
