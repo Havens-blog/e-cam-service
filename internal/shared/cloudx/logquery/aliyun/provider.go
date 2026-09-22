@@ -78,6 +78,11 @@ var catalog = []slsSource{
 		logstore: "", name: "CDN 离线转存", note: "CDN 离线日志转存(按转存任务)"},
 }
 
+// maxFanoutConcurrency logstore/域名扇出并发上限。混装源按域名/lb 实例扇出
+// 时逐源各发一条 SLS 检索,8 并发在数百个空 store 场景(WAF 37 域名、ALB
+// 140+ 实例)壁钟 ~20s;提高到 16 使波浪减半(单 project GetLogs QPS 仍宽松)。
+const maxFanoutConcurrency = 16
+
 // provider 阿里云 SLS 日志 provider(单账号)。
 type provider struct {
 	logType   logquery.LogType
@@ -192,11 +197,7 @@ func (p *provider) ListLogSources(ctx context.Context, account *domain.CloudAcco
 					return ls
 				})
 				hit = h
-				for _, store := range stores {
-					if strings.HasSuffix(store, "-metrics") || strings.HasSuffix(store, "-metrics-result") ||
-						store == "internal-ml-log" || strings.HasPrefix(store, "internal-") {
-						continue
-					}
+				for _, store := range filterCatalogStores(t.src.kind, stores) {
 					out = append(out, p.toSource(t.src, store, true))
 				}
 			}
@@ -397,7 +398,7 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 				}
 				return out
 			})
-			stores = filterInternalStores(ls)
+			stores = filterCatalogStores(src.kind, ls)
 		}
 		for _, ls := range stores {
 			// mixedDomains 源的资源语义是"域名"(扇出内部过滤),logstore 名
@@ -415,7 +416,7 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 	// 再按域名扇出并发查询(每域名各自凑配额,热点域名不挤占长尾);
 	// 其余类(ALB/WAF)单流本身就是单源,直接整流查询。
 	results := make([][]map[string]string, len(targets))
-	sem := make(chan struct{}, 8)
+	sem := make(chan struct{}, maxFanoutConcurrency)
 	var wg sync.WaitGroup
 	for i, tgt := range targets {
 		wg.Add(1)
@@ -513,7 +514,7 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 				}
 				return out
 			})
-			stores = filterInternalStores(ls)
+			stores = filterCatalogStores(src.kind, ls)
 		}
 		for _, ls := range stores {
 			// 与 Search 相同:混装源的资源语义是域名(拼进检索段),整 store 条目放行
@@ -544,7 +545,7 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 
 	// ---- logstore 级并发聚合(单源失败隔离) ----
 	results := make([]*logquery.AggregateResult, len(targets))
-	sem := make(chan struct{}, 8)
+	sem := make(chan struct{}, maxFanoutConcurrency)
 	var wg sync.WaitGroup
 	for i, tgt := range targets {
 		wg.Add(1)
@@ -947,7 +948,7 @@ func (p *provider) fetchCDNByDomains(ctx context.Context, src slsSource, logstor
 		perDomainQuota = 1
 	}
 	results := make([]domainResult, len(domains))
-	sem2 := make(chan struct{}, 8)
+	sem2 := make(chan struct{}, maxFanoutConcurrency)
 	var wg2 sync.WaitGroup
 	for i, d := range domains {
 		wg2.Add(1)
@@ -1021,15 +1022,40 @@ func logKey(l map[string]string) string {
 	return b.String()
 }
 
-// filterInternalStores 过滤 SLS 内部流(metrics/diagnostic/ml)。
-func filterInternalStores(stores []string) []string {
+// filterCatalogStores 动态枚举 logstore 的 kind 感知过滤:
+//   - 基础:SLS 内部流(-metrics/-metrics-result/internal-*)
+//   - ALB:混装项目(jlc-lb-log)混有 app 业务日志(-business/-tomcat-access)
+//     与 K8s 控制面流(apiserver/ccm/controlplane/kcm/scheduler);这些 store
+//     没有 alb_layer7_access_log 主题,但逐条全扫描(空 store ~350ms/条)仍会
+//     拖慢联邦查询,且污染 sources 清单。
+func filterCatalogStores(kind mapperKind, stores []string) []string {
 	out := make([]string, 0, len(stores))
 	for _, ls := range stores {
-		if strings.HasSuffix(ls, "-metrics") || strings.HasSuffix(ls, "-metrics-result") ||
-			strings.HasPrefix(ls, "internal-") {
+		if isInternalStore(ls) {
+			continue
+		}
+		if kind == kindALB && nonALBStore(ls) {
 			continue
 		}
 		out = append(out, ls)
 	}
 	return out
+}
+
+func isInternalStore(ls string) bool {
+	return strings.HasSuffix(ls, "-metrics") || strings.HasSuffix(ls, "-metrics-result") ||
+		strings.HasPrefix(ls, "internal-")
+}
+
+// nonALBStore ALB(负载均衡)类型下,混装项目里非 LB 访问日志的 app/控制面流。
+func nonALBStore(ls string) bool {
+	if strings.Contains(ls, "-business") || strings.Contains(ls, "-tomcat-access") {
+		return true
+	}
+	for _, p := range []string{"apiserver-", "ccm-", "controlplane-", "kcm-", "scheduler-"} {
+		if strings.HasPrefix(ls, p) {
+			return true
+		}
+	}
+	return false
 }

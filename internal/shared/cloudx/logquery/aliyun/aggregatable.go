@@ -50,7 +50,7 @@ func (p *provider) AggregatableFields(ctx context.Context, _ *domain.CloudAccoun
 			return out
 		})
 		count := 0
-		for _, s := range filterInternalStores(ls) {
+		for _, s := range filterCatalogStores(src.kind, ls) {
 			if count >= maxProbeStores {
 				break
 			}

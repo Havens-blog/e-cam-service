@@ -27,6 +27,8 @@ const (
 	cloudFrontLookback = 3 * time.Hour
 	maxObjectsPerScan  = 60 // 单源单轮最多下载对象数(防大窗口拉爆)
 	maxObjectBytes     = 32 << 20
+	// maxFanoutConcurrency 源级(S3 对象扫描/ACL 前缀)并发上限。
+	maxFanoutConcurrency = 16
 )
 
 // aSource S3 源 catalog 条目。
@@ -307,7 +309,7 @@ func (p *provider) Search(ctx context.Context, account *domain.CloudAccount, par
 
 	// ---- 源级并发(8 上限,单源失败隔离) ----
 	results := make([][]logquery.LogEntry, len(targets))
-	sem := make(chan struct{}, 8)
+	sem := make(chan struct{}, maxFanoutConcurrency)
 	var wg sync.WaitGroup
 	for i, tgt := range targets {
 		wg.Add(1)
