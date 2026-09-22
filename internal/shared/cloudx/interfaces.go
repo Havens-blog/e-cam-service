@@ -198,6 +198,28 @@ type RDSAdapter interface {
 	ListInstancesWithFilter(ctx context.Context, region string, filter *types.RDSInstanceFilter) ([]types.RDSInstance, error)
 }
 
+// RDSMetricQuerier 可选能力:按 RDS 实例查询单日 CPU/内存/磁盘使用率 + 连接数指标。
+// 指标不随同步落库,由定时任务 rds:collect_metrics 按日采集;RDSAdapter 实现方可
+// 按需实现本接口(探测不到可用监控 API 的厂商不实现,采集跳过——T1 探测定案:
+// 必达 aliyun/huawei/aws,volcengine 订阅未开通二期补)。
+// 与 DiskMetricQuerier/NASMetricQuerier 同型:RDS 是地域性资源(实例绑定 region),
+// 签名带 region——对多 region 账号按「实例 → region」逐实例查询,不做全局 region
+// 推断(aws 账号 regions 配置与实盘漂移时尤须按实例真实 region,probe-report §3);
+// 与 CDNMetricQuerier/OSSMetricQuerier(全局服务,签名无 region)不同。
+// 签名额外带 engine(T1 探测定案,与 NAS/Disk 的差异点):aliyun 指标名按引擎前缀
+// 分派(SQLServer_*)、huawei CES 维度键按引擎分键(rds_cluster_id /
+// postgresql_cluster_id),engine 是适配器查询分派的必经依据,非纯展示元数据
+// (probe-report §2「多引擎口径确认」)。
+type RDSMetricQuerier interface {
+	// GetRDSMetrics 查询 [startDate, endDate](含两端,YYYY-MM-DD)内该 RDS 实例
+	// 的逐日 CPU/内存/磁盘使用率 + 连接数指标(单位归一、内存字节换算与 qc_status
+	// 语义见 types.RDSMetric)。rdsID 为实例 ID(各厂商检索键);instanceName 为
+	// 实例名称(展示/部分厂商检索用);region 为实例所在地域,由调用方从实例元数据
+	// 取,适配器必须按该 region 调用对应监控 API;engine 为数据库引擎(适配器按其
+	// 分派指标名/维度键)。
+	GetRDSMetrics(ctx context.Context, rdsID, instanceName, region, engine, startDate, endDate string) ([]types.RDSMetric, error)
+}
+
 // ============================================================================
 // RedisAdapter - 云Redis适配器接口
 // ============================================================================
