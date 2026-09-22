@@ -258,6 +258,15 @@ func (p *provider) domainSourcesCached(ctx context.Context, src slsSource) ([]lo
 // 且服务重启缓存清零会反复复现。改 7d×1000 后冷启动即覆盖绝大多数活跃
 // 域名(SLS 千行日志读取仍百 ms~秒级);探查为空/失败时同步走 SQL 兜底。
 func (p *provider) enumDomains(ctx context.Context, src slsSource) []string {
+	// Akamai 自采(CEF 展开)store 体量大:raw 探查(7d×1000 反向分页)实测 ~15s
+	// 且热点集中只出 7 个域名(DCDN/WAF 同探针百 ms 级,故才用探针);而该 store
+	// 的 SQL group-by(30d,count 100)实测 ~400ms 且完整。此 kind 直接用 SQL
+	// 枚举(快且全),不再走 raw 探查。
+	if src.kind == kindAkamaiCDN || src.kind == kindAkamaiWAF {
+		if domains := p.activeDomains(ctx, src); len(domains) > 0 {
+			return domains
+		}
+	}
 	now := time.Now().UnixMilli()
 	probe, err := p.probeDomains(ctx, src, src.logstore, logquery.SearchParams{
 		StartTime: now - 7*24*3600_000,
