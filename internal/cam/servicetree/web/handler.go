@@ -70,6 +70,8 @@ func (h *Handler) RegisterRuleRoutes(rg *gin.RouterGroup) {
 	rg.DELETE("/rules/:id", ginx.Wrap(h.DeleteRule))
 	rg.POST("/rules/execute", ginx.Wrap(h.ExecuteRules))
 	rg.POST("/rules/dry-run", ginx.WrapBody(h.DryRunRules))
+	rg.POST("/rules/rebind/preview", ginx.Wrap(h.PreviewRebind))
+	rg.POST("/rules/rebind/apply", ginx.WrapBody(h.ApplyRebind))
 }
 
 func (h *Handler) getTenantID(c *gin.Context) int64 {
@@ -727,6 +729,50 @@ func (h *Handler) DryRunRules(c *gin.Context, req DryRunRuleReq) (ginx.Result, e
 		return ginx.Result{Code: 500, Msg: err.Error()}, nil
 	}
 	return ginx.Result{Data: result}, nil
+}
+
+// PreviewRebind 改绑计划预览（只读，不落库）
+// @Summary 规则改绑预览
+// @Description 重算 rule 绑定资产，返回应按更高优先级规则改绑的候选清单（manual 锁定不动）
+// @Tags 服务树
+// @Param X-Tenant-ID header string true "租户ID"
+// @Success 200 {object} ginx.Result{data=domain.RebindPlan}
+// @Router /api/v1/cam/service-tree/rules/rebind/preview [post]
+func (h *Handler) PreviewRebind(c *gin.Context) (ginx.Result, error) {
+	tenantID := h.getTenantID(c)
+	if tenantID == 0 {
+		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
+	}
+
+	plan, err := h.ruleSvc.PreviewRebind(c.Request.Context(), tenantID)
+	if err != nil {
+		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+	}
+	return ginx.Result{Data: plan}, nil
+}
+
+// ApplyRebind 确认改绑（按资源 ID 应用，manual 永锁）
+// @Summary 确认规则改绑
+// @Description 按资源 ID 应用改绑候选（重新计算目标后落库，幂等）；非候选资源自动跳过
+// @Tags 服务树
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param body body RebindApplyReq true "资源 ID 列表"
+// @Success 200 {object} ginx.Result{data=int64}
+// @Router /api/v1/cam/service-tree/rules/rebind/apply [post]
+func (h *Handler) ApplyRebind(c *gin.Context, req RebindApplyReq) (ginx.Result, error) {
+	tenantID := h.getTenantID(c)
+	if tenantID == 0 {
+		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
+	}
+	if len(req.ResourceIDs) == 0 {
+		return ginx.Result{Code: 400, Msg: "resource_ids 不能为空"}, nil
+	}
+
+	applied, err := h.ruleSvc.ApplyRebind(c.Request.Context(), tenantID, req.ResourceIDs)
+	if err != nil {
+		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+	}
+	return ginx.Result{Data: applied, Msg: "改绑完成"}, nil
 }
 
 // toNodeVO 转换节点为 VO

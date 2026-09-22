@@ -6,6 +6,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -61,6 +62,9 @@ type BindingDAO interface {
 	DeleteByNodeID(ctx context.Context, nodeID int64) error
 	DeleteByResource(ctx context.Context, tenantID int64, resourceType string, resourceID int64) error
 	DeleteByRuleID(ctx context.Context, ruleID int64) error
+	// UpdateTarget 改绑：仅更新归属三字段（node_id/env_id/rule_id）。
+	// 资源唯一索引 tenant_id+resource_type+resource_id 不含节点，故原地更新不会触发唯一冲突。
+	UpdateTarget(ctx context.Context, id int64, nodeID int64, envID int64, ruleID int64) error
 }
 
 type bindingDAO struct {
@@ -236,6 +240,26 @@ func (d *bindingDAO) DeleteByRuleID(ctx context.Context, ruleID int64) error {
 	filter := bson.M{"rule_id": ruleID}
 	_, err := d.db.Collection(BindingCollection).DeleteMany(ctx, filter)
 	return err
+}
+
+func (d *bindingDAO) UpdateTarget(ctx context.Context, id int64, nodeID int64, envID int64, ruleID int64) error {
+	filter := bson.M{"id": id}
+	update := bson.M{
+		"$set": bson.M{
+			"node_id": nodeID,
+			"env_id":  envID,
+			"rule_id": ruleID,
+		},
+	}
+
+	result, err := d.db.Collection(BindingCollection).UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+	return nil
 }
 
 func (d *bindingDAO) buildQuery(filter BindingFilter) bson.M {

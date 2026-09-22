@@ -36,6 +36,11 @@ type RuleEngineService interface {
 	// DryRunRules 规则试运行：按临时条件预览命中资产清单，只读不落库
 	DryRunRules(ctx context.Context, tenantID int64, req stdomain.DryRunRequest) (*stdomain.DryRunResult, error)
 
+	// PreviewRebind 改绑计划预览：重算 rule 绑定资产，找出应按更高优先级规则改绑的候选（只读）
+	PreviewRebind(ctx context.Context, tenantID int64) (*stdomain.RebindPlan, error)
+	// ApplyRebind 确认改绑：按资源 ID 应用改绑（manual 永锁），返回实际改绑条数
+	ApplyRebind(ctx context.Context, tenantID int64, resourceIDs []int64) (int64, error)
+
 	// ExecuteRulesAsync 异步执行规则（资产同步完成后的事件驱动挂点）：
 	// goroutine + panic recover + 超时 + 失败仅日志，不阻塞调用方；同租户 in-flight 去重
 	ExecuteRulesAsync(tenantID int64)

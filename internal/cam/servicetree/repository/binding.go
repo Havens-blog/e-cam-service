@@ -24,6 +24,9 @@ type BindingRepository interface {
 	DeleteByNodeID(ctx context.Context, nodeID int64) error
 	DeleteByResource(ctx context.Context, tenantID int64, resourceType string, resourceID int64) error
 	DeleteByRuleID(ctx context.Context, ruleID int64) error
+	// UpdateTarget 改绑：仅更新归属三字段（节点/环境/来源规则），不动 bind_type 与资源标识。
+	// 资源唯一索引为 tenant_id+resource_type+resource_id，故改绑必须原地更新而非新建。
+	UpdateTarget(ctx context.Context, id int64, nodeID int64, envID int64, ruleID int64) error
 }
 
 type bindingRepository struct {
@@ -132,6 +135,14 @@ func (r *bindingRepository) DeleteByResource(ctx context.Context, tenantID int64
 
 func (r *bindingRepository) DeleteByRuleID(ctx context.Context, ruleID int64) error {
 	return r.dao.DeleteByRuleID(ctx, ruleID)
+}
+
+func (r *bindingRepository) UpdateTarget(ctx context.Context, id int64, nodeID int64, envID int64, ruleID int64) error {
+	err := r.dao.UpdateTarget(ctx, id, nodeID, envID, ruleID)
+	if err == mongo.ErrNoDocuments {
+		return domain.ErrBindingNotFound
+	}
+	return err
 }
 
 func (r *bindingRepository) toDAO(binding domain.ResourceBinding) dao.Binding {

@@ -117,6 +117,12 @@ type stubBindingRepo struct {
 	listFn          func(ctx context.Context, filter stdomain.BindingFilter) ([]stdomain.ResourceBinding, error)
 	createBatchFn   func(ctx context.Context, bindings []stdomain.ResourceBinding) (int64, error)
 	createBatchHits int
+	updateTargetFn  func(ctx context.Context, id int64, nodeID int64, envID int64, ruleID int64) error
+	updateCalls     []bindingTargetCall
+}
+
+type bindingTargetCall struct {
+	id, nodeID, envID, ruleID int64
 }
 
 func (s *stubBindingRepo) List(ctx context.Context, filter stdomain.BindingFilter) ([]stdomain.ResourceBinding, error) {
@@ -126,6 +132,14 @@ func (s *stubBindingRepo) List(ctx context.Context, filter stdomain.BindingFilte
 func (s *stubBindingRepo) CreateBatch(ctx context.Context, bindings []stdomain.ResourceBinding) (int64, error) {
 	s.createBatchHits++
 	return s.createBatchFn(ctx, bindings)
+}
+
+func (s *stubBindingRepo) UpdateTarget(ctx context.Context, id int64, nodeID int64, envID int64, ruleID int64) error {
+	if s.updateTargetFn != nil {
+		return s.updateTargetFn(ctx, id, nodeID, envID, ruleID)
+	}
+	s.updateCalls = append(s.updateCalls, bindingTargetCall{id: id, nodeID: nodeID, envID: envID, ruleID: ruleID})
+	return nil
 }
 
 type stubInstanceRepo struct {

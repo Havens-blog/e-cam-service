@@ -111,6 +111,11 @@ type DryRunRuleReq struct {
 	Conditions []domain.RuleCondition `json:"conditions"` // 与 BindingRule.Conditions 同构
 }
 
+// RebindApplyReq 改绑确认请求（仅对列出的资源 ID 应用改绑）
+type RebindApplyReq struct {
+	ResourceIDs []int64 `json:"resource_ids"`
+}
+
 // RuleVO 规则响应
 type RuleVO struct {
 	ID          int64                  `json:"id"`
