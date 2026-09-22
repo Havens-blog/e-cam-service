@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/domain"
@@ -25,6 +26,10 @@ type TreeService interface {
 	GetTree(ctx context.Context, tenantID int64, rootID int64) (*domain.NodeWithChildren, error)
 	GetSubTree(ctx context.Context, tenantID int64, nodeID int64) ([]domain.ServiceTreeNode, error)
 	GetAncestors(ctx context.Context, nodeID int64) ([]domain.ServiceTreeNode, error)
+
+	// RebuildPaths 按 parent_id 自顶向下重算全租户节点路径，修复历史脏 path。
+	// 返回修复的节点数。幂等：path 已正确则跳过。
+	RebuildPaths(ctx context.Context, tenantID int64) (int, error)
 }
 
 type treeService struct {
@@ -87,7 +92,9 @@ func (s *treeService) CreateNode(ctx context.Context, node domain.ServiceTreeNod
 		return 0, fmt.Errorf("创建节点失败: %w", err)
 	}
 
-	// 更新节点路径
+	// 更新节点路径。Create 不回写 node.ID，必须先回填真实 ID 再 BuildPath，
+	// 否则路径中节点 ID 恒为 0，兄弟节点 path 相同，子树按路径前缀聚合会塌缩。
+	node.ID = id
 	path := node.BuildPath(parentPath)
 	if err := s.nodeRepo.UpdatePath(ctx, id, path); err != nil {
 		s.logger.Error("更新节点路径失败", elog.Int64("nodeID", id), elog.FieldErr(err))
@@ -262,6 +269,40 @@ func (s *treeService) GetTree(ctx context.Context, tenantID int64, rootID int64)
 
 	// 构建树结构
 	return s.buildTree(nodes, rootID), nil
+}
+
+// RebuildPaths 按 parent_id 自顶向下重算全租户节点路径，修复历史脏 path
+// （CreateNode 曾用未回填的 node.ID 拼路径，导致兄弟节点 path 相同、子树按
+// 路径前缀聚合塌缩——见 CreateNode 修复注释）。幂等：path 已正确则跳过。
+// 返回实际修复的节点数。
+func (s *treeService) RebuildPaths(ctx context.Context, tenantID int64) (int, error) {
+	nodes, err := s.nodeRepo.List(ctx, domain.NodeFilter{TenantID: tenantID})
+	if err != nil {
+		return 0, fmt.Errorf("查询节点列表失败: %w", err)
+	}
+
+	// 按 level 升序（父先于子），确保计算子路径时父路径已就绪
+	sort.SliceStable(nodes, func(i, j int) bool { return nodes[i].Level < nodes[j].Level })
+
+	pathByID := make(map[int64]string, len(nodes))
+	fixed := 0
+	for _, node := range nodes {
+		var want string
+		if node.ParentID > 0 {
+			want = fmt.Sprintf("%s%d/", pathByID[node.ParentID], node.ID) // 父缺失时 parentPath 为空 → /id/
+		} else {
+			want = fmt.Sprintf("/%d/", node.ID)
+		}
+		pathByID[node.ID] = want
+		if node.Path != want {
+			if err := s.nodeRepo.UpdatePath(ctx, node.ID, want); err != nil {
+				s.logger.Error("重建节点路径失败", elog.Int64("nodeID", node.ID), elog.FieldErr(err))
+				continue
+			}
+			fixed++
+		}
+	}
+	return fixed, nil
 }
 
 func (s *treeService) GetSubTree(ctx context.Context, tenantID int64, nodeID int64) ([]domain.ServiceTreeNode, error) {

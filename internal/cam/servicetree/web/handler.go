@@ -42,6 +42,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.PUT("/nodes/:id", ginx.WrapBody(h.UpdateNode))
 	rg.DELETE("/nodes/:id", ginx.Wrap(h.DeleteNode))
 	rg.PUT("/nodes/:id/move", ginx.WrapBody(h.MoveNode))
+	rg.POST("/nodes/rebuild-paths", ginx.Wrap(h.RebuildPaths))
 	rg.GET("/tree", ginx.Wrap(h.GetTree))
 }
 
@@ -773,6 +774,26 @@ func (h *Handler) ApplyRebind(c *gin.Context, req RebindApplyReq) (ginx.Result, 
 		return ginx.Result{Code: 500, Msg: err.Error()}, nil
 	}
 	return ginx.Result{Data: applied, Msg: "改绑完成"}, nil
+}
+
+// RebuildPaths 重建节点路径（修复历史脏 path，幂等）
+// @Summary 重建服务树节点路径
+// @Description 按 parent_id 自顶向下重算全租户节点路径，修复兄弟节点 path 相同的脏数据
+// @Tags 服务树
+// @Param X-Tenant-ID header string true "租户ID"
+// @Success 200 {object} ginx.Result{data=int}
+// @Router /api/v1/cam/service-tree/nodes/rebuild-paths [post]
+func (h *Handler) RebuildPaths(c *gin.Context) (ginx.Result, error) {
+	tenantID := h.getTenantID(c)
+	if tenantID == 0 {
+		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
+	}
+
+	fixed, err := h.treeSvc.RebuildPaths(c.Request.Context(), tenantID)
+	if err != nil {
+		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+	}
+	return ginx.Result{Data: fixed, Msg: "路径重建完成"}, nil
 }
 
 // toNodeVO 转换节点为 VO
