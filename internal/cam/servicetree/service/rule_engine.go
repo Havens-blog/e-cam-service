@@ -11,6 +11,7 @@ import (
 	camrepo "github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	stdomain "github.com/Havens-blog/e-cam-service/internal/cam/servicetree/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository"
+	cmdbdomain "github.com/Havens-blog/e-cam-service/internal/cmdb/domain"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -183,6 +184,26 @@ func (s *ruleEngineService) MatchInstance(ctx context.Context, tenantID int64, i
 	}, nil
 }
 
+// inferInstanceEnvCode cam 域资产的环境推断适配：cam 与 cmdb 两套 Instance 同构
+// （AssetName/Attributes 同名同义），转发到 infer_env.go 的单份实现 inferEnvCode。
+func inferInstanceEnvCode(inst domain.Instance) string {
+	return inferEnvCode(cmdbdomain.Instance{AssetName: inst.AssetName, Attributes: inst.Attributes})
+}
+
+// resolveEnvID 绑定落库的环境解析：推断码命中租户环境码映射 → 对应 env_id；
+// 推断为空（无信号/非标准码）或码未映射到租户环境 → 规则 env_id 兜底。
+// 与 inferEnvCode/loadEnvIDByCode（infer_env.go）组合成「资产推断优先、规则兜底」口径，
+// 供 ExecuteRules 与改绑重算（任务 3 rebind_plan.go）共用。
+func resolveEnvID(inferredCode string, ruleEnvID int64, envIDByCode map[string]int64) int64 {
+	if inferredCode == "" {
+		return ruleEnvID
+	}
+	if id, ok := envIDByCode[inferredCode]; ok {
+		return id
+	}
+	return ruleEnvID
+}
+
 // ExecuteRules 执行所有规则，自动绑定资源到规则指定的环境
 func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID int64) (int64, error) {
 	s.logger.Info("开始执行规则匹配", elog.Int64("tenantID", tenantID))
@@ -195,6 +216,20 @@ func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID int64) (i
 	if len(rules) == 0 {
 		s.logger.Info("无启用的规则", elog.Int64("tenantID", tenantID))
 		return 0, nil
+	}
+
+	// 1.5 加载租户环境码 → env_id 映射（一次加载，循环内查表，uat ≡ staging 归一对齐）：
+	// 绑定落库把 inferEnvCode 推断码解析成租户环境 ID。加载失败或 envRepo 未注入时
+	// 仅告警降级为空映射——全部绑定退回规则 env 兜底，行为同现状，不阻塞绑定主流程。
+	envIDByCode := make(map[string]int64)
+	if s.envRepo != nil {
+		m, err := loadEnvIDByCode(ctx, s.envRepo, tenantID)
+		if err != nil {
+			s.logger.Warn("加载租户环境码映射失败，绑定环境退回规则兜底",
+				elog.Int64("tenantID", tenantID), elog.FieldErr(err))
+		} else {
+			envIDByCode = m
+		}
 	}
 
 	// 2. 获取所有实例（资产取数路径与 DryRunRules 共用）
@@ -233,8 +268,10 @@ func (s *ruleEngineService) ExecuteRules(ctx context.Context, tenantID int64) (i
 		for _, rule := range rules {
 			if s.matchRule(instance, rule) {
 				newBindings = append(newBindings, stdomain.ResourceBinding{
-					NodeID:       rule.NodeID,
-					EnvID:        rule.EnvID,
+					NodeID: rule.NodeID,
+					// 环境按「资产推断优先、规则 env 兜底」：命名 -prod-/-uat-/… 或
+					// tag.environment 命中租户环境码 → 对应 env_id；无信号/未映射 → 规则 env
+					EnvID:        resolveEnvID(inferInstanceEnvCode(instance), rule.EnvID, envIDByCode),
 					ResourceType: stdomain.ResourceTypeInstance,
 					ResourceID:   instance.ID,
 					TenantID:     tenantID,
