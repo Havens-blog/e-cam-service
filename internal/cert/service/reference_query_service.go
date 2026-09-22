@@ -105,6 +105,27 @@ func deriveRefStatusFor(
 	return refStatusView{Status: domain.RefStatusNoRefsScanned}, nil
 }
 
+// scanSnapshotFresh 扫描新鲜度判定（阈值来源与变更清单 SCAN_STALE 同一配置：
+// thresholds.scanFreshnessHours，freshness = now - snapshot.startedAt）。
+// snapshot=nil（无成功快照）一律不新鲜；freshnessHours<=0 视作未配置（不设限）。
+func scanSnapshotFresh(snapshot *domain.ScanSnapshot, now time.Time, freshnessHours int) bool {
+	if snapshot == nil {
+		return false
+	}
+	if freshnessHours <= 0 {
+		return true
+	}
+	return now.Sub(snapshot.StartedAt) <= time.Duration(freshnessHours)*time.Hour
+}
+
+// shouldHideExpiredNoRefs 孤儿隐藏谓词单点（看板与台账隐藏口径同源，禁止裸
+// refCount 判定）：过期 且 三态=no_refs_scanned 且 快照在新鲜度阈值内。
+// has_refs 与 blind_spot（引用状态未知）恒可见；快照陈旧（可能漏掉新引用）
+// 降级为保守显示。
+func shouldHideExpiredNoRefs(view refStatusView, expired, snapFresh bool) bool {
+	return expired && snapFresh && view.Status == domain.RefStatusNoRefsScanned
+}
+
 // ScanInProgressError 409 SCAN_IN_PROGRESS（防重触发），附进行中快照信息
 // （snapshotId/startedAt，tech-design 同步错误语境）。包装 domain.ErrScanInProgress。
 type ScanInProgressError struct {

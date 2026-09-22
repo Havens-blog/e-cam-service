@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
@@ -32,34 +33,48 @@ func (h *DashboardHandler) RegisterRoutes(g *gin.RouterGroup) {
 	g.POST("/probes/scan", h.TriggerProbe)
 }
 
-// DashboardSummaryVO 看板汇总（api-handbook 到期看板契约字段）。
-type DashboardSummaryVO struct {
-	// CountsByLevel 5 个互斥分桶计数，数组序与 UI 总览卡一致：
-	// [0]=>30 天、[1]=>30 天、[2]=>14 天、[3]=>7 天、[4]=>已过期。
-	CountsByLevel        []int   `json:"countsByLevel"`
-	DiffAlertCount       int     `json:"diffAlertCount"`
-	ExemptCount          int     `json:"exemptCount"`
-	WildcardSkippedCount int     `json:"wildcardSkippedCount"`
-	RegistrationRate     float64 `json:"registrationRate"`
-	ReplaceableRate      float64 `json:"replaceableRate"`
-	FingerprintOnlyRate  float64 `json:"fingerprintOnlyRate"`
+// LevelCountVO 单档双口径计数（total=visible+hidden，与 items 同一快照计算）。
+type LevelCountVO struct {
+	Total   int `json:"total"`
+	Visible int `json:"visible"`
+	Hidden  int `json:"hidden"`
 }
 
-// DashboardItemVO 看板子域名行（Hard Rule：不含任何私钥/凭证字段）。
-// certId/fingerprint/lastProbeAt/onlineFingerprint 为探测详情抽屉字段
-// （任务 6.4 增量：抽屉线上/台账指纹比对与「查看证书详情」链接；未探测时
-// lastProbeAt=null、onlineFingerprint 空串）。
+// DashboardSummaryVO 看板汇总（api-handbook 到期看板契约字段）。
+type DashboardSummaryVO struct {
+	// CountsByLevel 5 个互斥分桶双口径计数，数组序与 UI 总览卡一致：
+	// [0]=>30 天、[1]=>30 天、[2]=>14 天、[3]=>7 天、[4]=>已过期。
+	CountsByLevel        []LevelCountVO `json:"countsByLevel"`
+	HiddenCount          int            `json:"hiddenCount"` // 全局被隐藏孤儿数（同一快照）
+	DiffAlertCount       int            `json:"diffAlertCount"`
+	ExemptCount          int            `json:"exemptCount"`
+	WildcardSkippedCount int            `json:"wildcardSkippedCount"`
+	RegistrationRate     float64        `json:"registrationRate"`
+	ReplaceableRate      float64        `json:"replaceableRate"`
+	FingerprintOnlyRate  float64        `json:"fingerprintOnlyRate"`
+}
+
+// DashboardItemVO 看板证书行（证书粒度，每证一行；Hard Rule：不含任何
+// 私钥/凭证字段）。certId/fingerprint/lastProbeAt/onlineFingerprint 为探测
+// 详情抽屉字段；probeStatus 为行内聚合徽标（最差优先序，空串=未探测）；
+// referenceStatus 行级下发（台账三态判定单点）；lastScanAt 为三态判定所用
+// 扫描快照时点（新鲜度降级时展示）。
 type DashboardItemVO struct {
-	Domain            string   `json:"domain"`
-	DaysLeft          int      `json:"daysLeft"`
+	CertID            string   `json:"certId"`            // 证书 ID（行 key + 抽屉跳转 /certs/:id）
+	Fingerprint       string   `json:"fingerprint"`       // 台账指纹
+	CommonName        string   `json:"commonName"`        // 证书 CN
+	Sans              []string `json:"sans"`              // 全部 SAN（徽标 tooltip/多 SAN 视图数据源）
+	Issuer            string   `json:"issuer"`            // 签发者
+	DaysLeft          int      `json:"daysLeft"`          // 剩余天数（已过期为负）
 	Level             string   `json:"level"`             // gt30|le30|le14|le7|expired（互斥桶，同台账筛选分档）
 	HostingType       string   `json:"hostingType"`       // complete|fingerprint_only
-	ProbeStatus       string   `json:"probeStatus"`       // 6 值枚举；空串=尚未探测
+	ReferenceStatus   string   `json:"referenceStatus"`   // has_refs|no_refs_scanned|blind_spot
 	ReferencedClouds  []string `json:"referencedClouds"`  // 所属云去重集合（K8s 记 "k8s"）
-	CertID            string   `json:"certId"`            // 归属证书 ID（抽屉跳转 /certs/:id）
-	Fingerprint       string   `json:"fingerprint"`       // 归属证书台账指纹
-	LastProbeAt       *string  `json:"lastProbeAt"`       // 最近探测时点；未探测 null
-	OnlineFingerprint string   `json:"onlineFingerprint"` // 线上指纹；不可达/跳过等无值为空串
+	ProbeStatus       string   `json:"probeStatus"`       // 行内聚合徽标；空串=未探测
+	LastProbeAt       *string  `json:"lastProbeAt"`       // SAN 内最近探测时点；未探测 null
+	OnlineFingerprint string   `json:"onlineFingerprint"` // 最差探测态 SAN 线上指纹；无值空串
+	LastScanAt        *string  `json:"lastScanAt"`        // 三态判定所用快照时点；无快照 null
+	Hidden            bool     `json:"hidden"`            // 服务端隐藏谓词命中（includeHidden=true 时下发）
 }
 
 // DashboardVO GET /dashboard 响应。
@@ -70,31 +85,43 @@ type DashboardVO struct {
 }
 
 // Dashboard GET /api/v1/certs/dashboard —— 全角色（含只读）。
+// includeHidden=true 返回全部证书行（含被隐藏孤儿）；缺省 false=服务端孤儿
+// 隐藏生效（风险维度卡激活豁免由前端以本参数重拉翻译）。
 func (h *DashboardHandler) Dashboard(c *gin.Context) {
-	view, err := h.svc.Dashboard(c.Request.Context())
+	includeHidden, _ := strconv.ParseBool(c.Query("includeHidden"))
+	view, err := h.svc.Dashboard(c.Request.Context(), includeHidden)
 	if err != nil {
 		WriteError(c, err)
 		return
 	}
-	counts := append([]int(nil), view.Summary.CountsByLevel[:]...)
+	counts := make([]LevelCountVO, len(view.Summary.CountsByLevel))
+	for i, lc := range view.Summary.CountsByLevel {
+		counts[i] = LevelCountVO{Total: lc.Total, Visible: lc.Visible, Hidden: lc.Hidden}
+	}
 	items := make([]DashboardItemVO, 0, len(view.Items))
 	for _, it := range view.Items {
 		items = append(items, DashboardItemVO{
-			Domain:            it.Domain,
+			CertID:            it.CertID,
+			Fingerprint:       it.Fingerprint,
+			CommonName:        it.CommonName,
+			Sans:              it.Sans,
+			Issuer:            it.Issuer,
 			DaysLeft:          it.DaysLeft,
 			Level:             string(it.Level),
 			HostingType:       string(it.HostingType),
-			ProbeStatus:       string(it.ProbeStatus),
+			ReferenceStatus:   string(it.ReferenceStatus),
 			ReferencedClouds:  it.ReferencedClouds,
-			CertID:            it.CertID,
-			Fingerprint:       it.Fingerprint,
+			ProbeStatus:       string(it.ProbeStatus),
 			LastProbeAt:       formatTimePtr(it.LastProbeAt),
 			OnlineFingerprint: it.OnlineFingerprint,
+			LastScanAt:        formatTimePtr(it.LastScanAt),
+			Hidden:            it.Hidden,
 		})
 	}
 	WriteOK(c, http.StatusOK, DashboardVO{
 		Summary: DashboardSummaryVO{
 			CountsByLevel:        counts,
+			HiddenCount:          view.Summary.HiddenCount,
 			DiffAlertCount:       view.Summary.DiffAlertCount,
 			ExemptCount:          view.Summary.ExemptCount,
 			WildcardSkippedCount: view.Summary.WildcardSkippedCount,

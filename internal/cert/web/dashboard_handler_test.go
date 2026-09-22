@@ -113,10 +113,15 @@ func doJSON(t *testing.T, engine *gin.Engine, method, path string, body any) *ht
 	return w
 }
 
-// dashboardVO 看板响应解码目标（字段级断言用）。
+// dashboardVO 看板响应解码目标（字段级断言用；证书粒度行 + 双口径计数）。
 type dashboardVO struct {
 	Summary struct {
-		CountsByLevel        []int   `json:"countsByLevel"`
+		CountsByLevel []struct {
+			Total   int `json:"total"`
+			Visible int `json:"visible"`
+			Hidden  int `json:"hidden"`
+		} `json:"countsByLevel"`
+		HiddenCount          int     `json:"hiddenCount"`
 		DiffAlertCount       int     `json:"diffAlertCount"`
 		ExemptCount          int     `json:"exemptCount"`
 		WildcardSkippedCount int     `json:"wildcardSkippedCount"`
@@ -125,16 +130,21 @@ type dashboardVO struct {
 		FingerprintOnlyRate  float64 `json:"fingerprintOnlyRate"`
 	} `json:"summary"`
 	Items []struct {
-		Domain            string   `json:"domain"`
+		CertID            string   `json:"certId"`
+		Fingerprint       string   `json:"fingerprint"`
+		CommonName        string   `json:"commonName"`
+		Sans              []string `json:"sans"`
+		Issuer            string   `json:"issuer"`
 		DaysLeft          int      `json:"daysLeft"`
 		Level             string   `json:"level"`
 		HostingType       string   `json:"hostingType"`
-		ProbeStatus       string   `json:"probeStatus"`
+		ReferenceStatus   string   `json:"referenceStatus"`
 		ReferencedClouds  []string `json:"referencedClouds"`
-		CertID            string   `json:"certId"`
-		Fingerprint       string   `json:"fingerprint"`
+		ProbeStatus       string   `json:"probeStatus"`
 		LastProbeAt       *string  `json:"lastProbeAt"`
 		OnlineFingerprint string   `json:"onlineFingerprint"`
+		LastScanAt        *string  `json:"lastScanAt"`
+		Hidden            bool     `json:"hidden"`
 	} `json:"items"`
 	LastInspectionAt *string `json:"lastInspectionAt"`
 }
@@ -179,9 +189,14 @@ func TestDashboard_SummaryCountsByLevel(t *testing.T) {
 	var vo dashboardVO
 	require.NoError(t, json.Unmarshal(env.Data, &vo))
 
-	// [gt30, le30, le14, le7, expired] = [1,1,1,1,1]
+	// [gt30, le30, le14, le7, expired] = [1,1,1,1,1]（无快照=全可见，hidden=0）
 	require.Len(t, vo.Summary.CountsByLevel, 5)
-	assert.Equal(t, []int{1, 1, 1, 1, 1}, vo.Summary.CountsByLevel)
+	for i, want := range []int{1, 1, 1, 1, 1} {
+		assert.Equal(t, want, vo.Summary.CountsByLevel[i].Total)
+		assert.Equal(t, want, vo.Summary.CountsByLevel[i].Visible)
+		assert.Equal(t, 0, vo.Summary.CountsByLevel[i].Hidden)
+	}
+	assert.Equal(t, 0, vo.Summary.HiddenCount)
 }
 
 // TestDashboard_RatesAndCounts 三个 rate 口径同 stats + diff/exempt/wildcard 计数。
@@ -275,7 +290,10 @@ func TestDashboard_ItemsFields(t *testing.T) {
 	require.Len(t, vo.Items, 1)
 
 	it := vo.Items[0]
-	assert.Equal(t, "web.a.example.com", it.Domain)
+	assert.Equal(t, "web.a.example.com", it.CommonName)
+	assert.Equal(t, []string{"web.a.example.com"}, it.Sans)
+	assert.NotEmpty(t, it.ReferenceStatus, "每行携带 referenceStatus")
+	assert.False(t, it.Hidden)
 	assert.Equal(t, 12, it.DaysLeft)
 	assert.Equal(t, "le14", it.Level)
 	assert.Equal(t, "complete", it.HostingType)
@@ -310,7 +328,7 @@ func TestDashboard_ItemProbeDetail(t *testing.T) {
 	require.NoError(t, json.Unmarshal(env.Data, &vo))
 	require.Len(t, vo.Items, 1)
 	it := vo.Items[0]
-	assert.Equal(t, "probe.a.example.com", it.Domain)
+	assert.Equal(t, "probe.a.example.com", it.CommonName)
 	assert.Equal(t, dfp(7), it.Fingerprint, "台账指纹=归属证书指纹")
 	require.NotNil(t, it.LastProbeAt, "已探测域 lastProbeAt 非 null")
 	assert.Equal(t, probeAt.UTC().Format(time.RFC3339), *it.LastProbeAt)
@@ -341,6 +359,36 @@ func TestDashboard_ItemsProbeStatusUnprobed(t *testing.T) {
 	assert.Empty(t, vo.Items[0].OnlineFingerprint)
 	assert.NotEmpty(t, vo.Items[0].CertID, "未探测域抽屉链接仍需 certId")
 	assert.Nil(t, vo.LastInspectionAt, "4.4 未接线时输出 null")
+}
+
+// TestDashboard_IncludeHiddenParam includeHidden 查询参数契约：缺省=false
+// 服务端隐藏生效；true 返回全部证书行（hidden=true 标注孤儿）。
+func TestDashboard_IncludeHiddenParam(t *testing.T) {
+	engine, d := newDashSettingsRouter(t, RoleViewer)
+	d.seedDashboardCert(t, dfp(1), []string{"orphan.example.com"}, -24*time.Hour, domain.HostingStatusComplete)
+	seedDoneSnapshotRefs(t, d, nil)
+
+	// 缺省：孤儿隐藏
+	w := doJSON(t, engine, http.MethodGet, "/api/v1/certs/dashboard", nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	var env envelope
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &env))
+	var vo dashboardVO
+	require.NoError(t, json.Unmarshal(env.Data, &vo))
+	assert.Empty(t, vo.Items, "默认视图不含孤儿行")
+	assert.Equal(t, 1, vo.Summary.HiddenCount)
+	assert.Equal(t, 1, vo.Summary.CountsByLevel[4].Hidden, "expired 档 hidden 分量")
+
+	// includeHidden=true：全部证书行
+	w = doJSON(t, engine, http.MethodGet, "/api/v1/certs/dashboard?includeHidden=true", nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &env))
+	var full dashboardVO
+	require.NoError(t, json.Unmarshal(env.Data, &full))
+	require.Len(t, full.Items, 1)
+	assert.True(t, full.Items[0].Hidden)
+	assert.Equal(t, "no_refs_scanned", full.Items[0].ReferenceStatus)
+	assert.NotNil(t, full.Items[0].LastScanAt)
 }
 
 // TestDashboard_AllRoles 全角色可访问（含只读查看者）。
