@@ -64,16 +64,21 @@ const (
 	NoteByteBias = "字节命中率:partial 按全命中计入,口径上偏;待源日志可折算分片命中字节后修正"
 	// NoteCacheableByte 可缓存字节口径的对齐近似(状态码字节分布不可得)。
 	NoteCacheableByte = "可缓存字节口径仅剔除 cache_hit=error 字节(状态码字节分布不可得,与可缓存请求档对齐为近似)"
+	// NoteDomainByte 域名级字节命中率口径(与域名级请求口径同判:命中字节 =
+	// 总字节 − 未命中 miss+error 字节,partial/未知计入命中;字节帧缺失置空)。
+	NoteDomainByte = "域名级字节命中率(近似):命中字节 = 总字节 − 未命中(miss+error)字节,partial/未知计入命中,与域名级请求口径一致;字节帧缺失时该列置 —"
 )
 
 // HostCacheStat 域名×cache_hit 交叉分布(单域名 cache_hit 四态计数;由聚合层
 // 产出,引擎不做二维聚合)。缺失时域名排行降级(置空 + 标注)。
 type HostCacheStat struct {
-	Host    string `json:"host"`
-	Hit     int64  `json:"hit"`
-	Partial int64  `json:"partial"`
-	Miss    int64  `json:"miss"`
-	Error   int64  `json:"error"`
+	Host       string `json:"host"`
+	Hit        int64  `json:"hit"`
+	Partial    int64  `json:"partial"`
+	Miss       int64  `json:"miss"`
+	Error      int64  `json:"error"`
+	TotalBytes int64  `json:"total_bytes,omitempty"` // 该域名全请求字节(host×sum_bytes;0=字节帧缺失)
+	MissBytes  int64  `json:"miss_bytes,omitempty"`  // 该域名未命中(miss+error)字节(host×nonhit_bytes)
 }
 
 // URIMissItem URI 未命中条目(原始 URI 可含查询串,查询串归一由引擎完成并
@@ -125,6 +130,8 @@ type DomainHitStat struct {
 	HitRate          float64 `json:"hit_rate"`           // 全请求口径 (hit+partial)/requests
 	CacheableHitRate float64 `json:"cacheable_hit_rate"` // 可缓存近似口径(仅剔除 cache_hit=error)
 	MissTrafficRatio float64 `json:"miss_traffic_ratio"` // 该域名未命中(miss+error)占全局未命中
+	ByteHitRate      float64 `json:"byte_hit_rate"`      // 域名级字节命中率(命中字节=总−未命中;总字节≤0 时不可用)
+	ByteHitAvailable bool    `json:"byte_hit_available"` // 字节帧完整(总字节>0),ByteHitRate 有效
 	Grade            string  `json:"grade"`              // good/fair/poor/unknown(域名级阈值)
 }
 
@@ -352,6 +359,7 @@ func evaluate(input *CacheAnalyzeInput, cfg *Config) *CacheAnalyzeResult {
 		res.Notes = append(res.Notes, "域名×cache_hit 交叉分布缺失,域名排行降级(仅总览命中率)")
 	} else {
 		res.DomainRanking = buildDomainRanking(input.HostStats, a.totalMiss, cfg)
+		res.Notes = append(res.Notes, NoteDomainByte)
 	}
 
 	// ---- 未命中 URI TOP(查询串归一)----
@@ -436,12 +444,22 @@ func buildDomainRanking(stats []HostCacheStat, totalMiss int64, cfg *Config) []D
 		if cDenom <= 0 {
 			gradeRate = hitRate // 可缓存分母为空回退全请求口径
 		}
+		byteHitRate, byteAvail := 0.0, s.TotalBytes > 0
+		if byteAvail {
+			hitB := s.TotalBytes - s.MissBytes
+			if hitB < 0 {
+				hitB = 0
+			}
+			byteHitRate = ratio(hitB, s.TotalBytes)
+		}
 		out = append(out, DomainHitStat{
 			Host:             s.Host,
 			Requests:         req,
 			HitRate:          hitRate,
 			CacheableHitRate: cRate,
 			MissTrafficRatio: ratio(s.Miss+s.Error, totalMiss),
+			ByteHitRate:      byteHitRate,
+			ByteHitAvailable: byteAvail,
 			Grade:            gradeFor(gradeRate, lv),
 		})
 	}

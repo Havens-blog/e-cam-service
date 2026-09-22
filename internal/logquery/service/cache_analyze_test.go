@@ -133,12 +133,23 @@ func scriptHappyCurrent(agg *cacheScriptedAggregator, start, end int64) {
 			cacheItem("a.example.com", 600, 180),
 			cacheItem("b.example.com", 400, 50),
 		}, 400, 600)
-	// 当前窗:url × nonhit_count(未命中 Top URI:含查询串与完整 URL 两种形态)
-	agg.results[cacheAggKey(start, end, "url", "nonhit_count")] = diagResult(
+	// 当前窗:host × sum_bytes(域名总字节)与 host × nonhit_bytes(域名未命中字节)
+	agg.results[cacheAggKey(start, end, "host", "sum_bytes")] = diagResult(
 		[]logquery.TopNItem{
-			cacheItem("/api/list?id=2", 300, 180),
+			cacheItem("a.example.com", 600, 10_000_000),
+			cacheItem("b.example.com", 400, 8_000_000),
+		}, 400, 600)
+	agg.results[cacheAggKey(start, end, "host", "nonhit_bytes")] = diagResult(
+		[]logquery.TopNItem{
+			cacheItem("a.example.com", 600, 4_000_000),
+			cacheItem("b.example.com", 400, 1_000_000),
+		}, 400, 600)
+	// 当前窗:uri_host × nonhit_count(未命中 Top URI,组合键 域名|路径 + 完整 URL 两形态)
+	agg.results[cacheAggKey(start, end, "uri_host", "nonhit_count")] = diagResult(
+		[]logquery.TopNItem{
+			cacheItem("a.example.com|/api/list?id=2", 300, 180),
 			cacheItem("http://a.example.com/download/pkg.tar.gz?v=2", 200, 10),
-			cacheItem("/api/list?id=3", 50, 40),
+			cacheItem("a.example.com|/api/list?id=3", 50, 40),
 		}, 400, 600)
 }
 
@@ -266,10 +277,10 @@ func TestCacheAnalyzeHappyPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// ---- 窗口帧 golden 断言:当前窗 5 次维度聚合同窗 + 前窗 1 帧 ----
+	// ---- 窗口帧 golden 断言:当前窗 7 次维度聚合同窗 + 前窗 1 帧 ----
 	calls := agg.snapshot()
-	if len(calls) != 6 {
-		t.Fatalf("聚合调用应 6 次(当前窗 5 + 前窗 1), got %d: %+v", len(calls), calls)
+	if len(calls) != 8 {
+		t.Fatalf("聚合调用应 8 次(当前窗 7 + 前窗 1), got %d: %+v", len(calls), calls)
 	}
 	curDims := map[string]bool{}
 	for _, c := range calls {
@@ -284,7 +295,7 @@ func TestCacheAnalyzeHappyPath(t *testing.T) {
 			t.Errorf("越界窗口调用: %+v", c)
 		}
 	}
-	for _, want := range []string{"cache_hit|count", "cache_hit|sum_bytes", "status|count", "host|nonhit_count", "url|nonhit_count"} {
+	for _, want := range []string{"cache_hit|count", "cache_hit|sum_bytes", "status|count", "host|nonhit_count", "host|sum_bytes", "host|nonhit_bytes", "uri_host|nonhit_count"} {
 		if !curDims[""+fmt.Sprintf("%d|%d|", start, end)+want] {
 			t.Errorf("当前窗缺少维度组 %s, calls: %+v", want, calls)
 		}
@@ -330,14 +341,17 @@ func TestCacheAnalyzeHappyPath(t *testing.T) {
 	if a.Host != "a.example.com" || a.Requests != 600 || a.HitRate != 0.7 || a.MissTrafficRatio != 180.0/230.0 {
 		t.Errorf("域名榜首 = %+v, want a.example.com 600 req rate 0.7 miss 180/230", a)
 	}
+	if !a.ByteHitAvailable || a.ByteHitRate != 0.6 {
+		t.Errorf("域名字节命中率 = %+v, want 0.6((10M-4M)/10M)", a)
+	}
 
 	// ---- 未命中 URI TOP(查询串归一 + 变体归并 + 归属域名)----
 	if len(res.MissURITop) != 2 {
 		t.Fatalf("miss_uri_top = %d 条, want 2: %+v", len(res.MissURITop), res.MissURITop)
 	}
 	uri1 := res.MissURITop[0]
-	if uri1.URI != "/api/list" || uri1.MissCount != 220 || uri1.Variants != 2 || uri1.SampleQuery != "id=2" {
-		t.Errorf("URI 榜首 = %+v, want /api/list miss 220 variants 2 sample id=2", uri1)
+	if uri1.URI != "/api/list" || uri1.MissCount != 220 || uri1.Variants != 2 || uri1.SampleQuery != "id=2" || uri1.Host != "a.example.com" {
+		t.Errorf("URI 榜首 = %+v, want /api/list miss 220 variants 2 sample id=2 归属 a.example.com", uri1)
 	}
 	uri2 := res.MissURITop[1]
 	if uri2.URI != "/download/pkg.tar.gz" || uri2.Host != "a.example.com" || uri2.MissCount != 10 {
@@ -393,15 +407,16 @@ func TestCacheAnalyzeURINormalization(t *testing.T) {
 	}{
 		{"http://a.example.com/download/pkg.tar.gz?v=2", "a.example.com", "/download/pkg.tar.gz?v=2"},
 		{"https://b.example.com/api/x?a=1&b=2", "b.example.com", "/api/x?a=1&b=2"},
+		{"datasink.jlc.com|/monitor/logs", "datasink.jlc.com", "/monitor/logs"},
 		{"/api/list?id=2", "", "/api/list?id=2"},
 	} {
-		host, path := splitURLHost(c.raw)
+		host, path := splitURIComposite(c.raw)
 		if host != c.okHost || !strings.HasSuffix(path, c.okSuffix) {
-			t.Errorf("splitURLHost(%q) = (%q,%q), want (%q, *%q)", c.raw, host, path, c.okHost, c.okSuffix)
+			t.Errorf("splitURIComposite(%q) = (%q,%q), want (%q, *%q)", c.raw, host, path, c.okHost, c.okSuffix)
 		}
 	}
 	// 无查询串完整 URL 不追加 "?"
-	host, path := splitURLHost("http://a.example.com/p")
+	host, path := splitURIComposite("http://a.example.com/p")
 	if host != "a.example.com" || path != "/p" || strings.Contains(path, "?") {
 		t.Errorf("splitURLHost 无查询串 = (%q,%q)", host, path)
 	}
@@ -419,7 +434,7 @@ func TestCacheAnalyzeDegradedDimensions(t *testing.T) {
 	agg.errs[cacheAggKey(start, end, "cache_hit", "sum_bytes")] = errors.New("bytes boom")
 	agg.errs[cacheAggKey(start, end, "status", "count")] = errors.New("status boom")
 	agg.errs[cacheAggKey(start, end, "host", "nonhit_count")] = errors.New("host boom")
-	agg.errs[cacheAggKey(start, end, "url", "nonhit_count")] = errors.New("url boom")
+	agg.errs[cacheAggKey(start, end, "uri_host", "nonhit_count")] = errors.New("url boom")
 
 	resp, err := svc.CacheAnalyze(context.Background(), 3, CacheAnalyzeRequest{
 		LogType: logquery.LogTypeCDN, StartTime: start, EndTime: end,
@@ -440,7 +455,7 @@ func TestCacheAnalyzeDegradedDimensions(t *testing.T) {
 	if res.ByteHitRate.All.Available {
 		t.Errorf("字节口径缺失应标记不可用 = %+v", res.ByteHitRate.All)
 	}
-	for _, want := range []string{"sum_bytes", "status", "host", "url"} {
+	for _, want := range []string{"sum_bytes", "status", "host", "uri_host"} {
 		if !strings.Contains(resp.DimensionNotes, want) {
 			t.Errorf("dimension_notes 应含 %s 失败说明: %q", want, resp.DimensionNotes)
 		}
@@ -635,16 +650,16 @@ func TestCacheAnalyzeParseHelpers(t *testing.T) {
 		t.Errorf("uriMisses 解析错误: %+v", items)
 	}
 
-	// splitURLHost:空串与解析失败形态
-	if host, path := splitURLHost(""); host != "" || path != "/" {
-		t.Errorf("splitURLHost(\"\") = (%q,%q), want (\"\",/)", host, path)
+	// splitURIComposite:空串与解析失败形态
+	if host, path := splitURIComposite(""); host != "" || path != "/" {
+		t.Errorf("splitURIComposite(\"\") = (%q,%q), want (\"\",/)", host, path)
 	}
-	if host, path := splitURLHost("   "); host != "" || path != "/" {
-		t.Errorf("splitURLHost(空白) = (%q,%q), want (\"\",/)", host, path)
+	if host, path := splitURIComposite("   "); host != "" || path != "/" {
+		t.Errorf("splitURIComposite(空白) = (%q,%q), want (\"\",/)", host, path)
 	}
 
 	// 维度说明:nil 响应分支(聚合无结果)。
-	notes := cacheDimensionNotes(nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	notes := cacheDimensionNotes(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if len(notes) == 0 {
 		t.Fatal("nil 响应应产出缺失说明")
 	}

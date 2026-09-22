@@ -39,6 +39,7 @@ var eoMetricExpr = map[string]string{
 	"avg_latency":  "avg(EdgeResponseTime)",
 	"p99_latency":  "approx_percentile(EdgeResponseTime, 0.99)",
 	"nonhit_count": "sum(case when EdgeCacheStatus like '%MISS%' or EdgeCacheStatus like '%ERROR%' then 1 else 0 end)",
+	"nonhit_bytes": "sum(case when EdgeCacheStatus like '%MISS%' or EdgeCacheStatus like '%ERROR%' then EdgeResponseBytes else 0 end)",
 }
 
 // eoDimensionExpr 分组维度编译:统一字段映射优先,否则合法标识符原样透传

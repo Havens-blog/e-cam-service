@@ -30,8 +30,9 @@ type TopNItem struct {
 // 不支持的源/指标显式标注)。count 全 kind 可用,其余按字段列存在性。
 // nonhit_count 为 CDN 缓存分析新增指标:未命中请求计数(cache_hit 归一
 // miss+error,归一口径沿用明细层 NormalizeCacheHit 单一映射源;仅 CDN 类
-// kind 编译,其他源显式标注不支持)。
-var AggregateMetrics = []string{"count", "sum_bytes", "avg_latency", "p99_latency", "nonhit_count"}
+// kind 编译,其他源显式标注不支持)。nonhit_bytes 为同判据的未命中字节
+// (then 1 → then 字节列),用于域名级字节命中率下钻。
+var AggregateMetrics = []string{"count", "sum_bytes", "avg_latency", "p99_latency", "nonhit_count", "nonhit_bytes"}
 
 // IsValidAggregateMetric 校验指标(空 = count)。
 func IsValidAggregateMetric(m string) bool {
@@ -45,7 +46,7 @@ func IsValidAggregateMetric(m string) bool {
 // count/sum_bytes/nonhit_count 可加直接求和。
 func MetricIsWeighted(m string) bool {
 	switch m {
-	case "", "count", "sum_bytes", "nonhit_count":
+	case "", "count", "sum_bytes", "nonhit_count", "nonhit_bytes":
 		return false
 	default:
 		return true

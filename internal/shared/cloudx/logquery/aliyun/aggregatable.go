@@ -118,7 +118,7 @@ func aggregatableFieldsFromIndexes(logType logquery.LogType, indexed map[string]
 			fields = append(fields, field)
 		}
 		for field := range dimGroupExpr[src.kind] {
-			if !seen[field] {
+			if !seen[field] && !internalDim[field] {
 				seen[field] = true
 				fields = append(fields, field)
 			}

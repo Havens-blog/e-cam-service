@@ -24,4 +24,15 @@ func TestEONonhitCountMetric(t *testing.T) {
 	if !logquery.IsValidAggregateMetric("nonhit_count") {
 		t.Error("nonhit_count 应在合法聚合指标白名单内")
 	}
+	// nonhit_bytes(域名级字节命中下钻):then 字节列 EdgeResponseBytes。
+	exprBytes, ok := eoMetricExpr["nonhit_bytes"]
+	if !ok || !strings.Contains(exprBytes, "EdgeResponseBytes") || !strings.Contains(exprBytes, "case when") {
+		t.Fatalf("eoMetricExpr nonhit_bytes 编译错误: %q (ok=%v)", exprBytes, ok)
+	}
+	if logquery.MetricIsWeighted("nonhit_bytes") {
+		t.Error("nonhit_bytes 应为可加指标")
+	}
+	if !logquery.IsValidAggregateMetric("nonhit_bytes") {
+		t.Error("nonhit_bytes 应在合法聚合指标白名单内")
+	}
 }

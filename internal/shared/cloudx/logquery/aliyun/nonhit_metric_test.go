@@ -26,6 +26,22 @@ func TestNonhitCountMetricExpr(t *testing.T) {
 	if _, ok := metricSQLExpr(kindWAF3, "nonhit_count"); ok {
 		t.Error("kindWAF3 不应支持 nonhit_count")
 	}
+	// nonhit_bytes(域名级字节命中下钻):同判据未命中字节,then 字节列。
+	dcdnBytes, ok := metricSQLExpr(kindDCDN, "nonhit_bytes")
+	if !ok || !strings.Contains(dcdnBytes, "response_size") || !strings.Contains(dcdnBytes, "%MISS%") {
+		t.Errorf("kindDCDN nonhit_bytes 编译错误: %q (ok=%v)", dcdnBytes, ok)
+	}
+	offBytes, ok := metricSQLExpr(kindCDNOffline, "nonhit_bytes")
+	if !ok || !strings.Contains(offBytes, "ResponseSize") || !strings.Contains(offBytes, "%MISS%") {
+		t.Errorf("kindCDNOffline nonhit_bytes 编译错误: %q (ok=%v)", offBytes, ok)
+	}
+	akBytes, ok := metricSQLExpr(kindAkamaiCDN, "nonhit_bytes")
+	if !ok || !strings.Contains(akBytes, "%MISS%") {
+		t.Errorf("kindAkamaiCDN nonhit_bytes 编译错误: %q (ok=%v)", akBytes, ok)
+	}
+	if metricIsWeighted("nonhit_bytes") {
+		t.Error("nonhit_bytes 应为可加指标")
+	}
 	// 可加指标:跨源归并按值求和(不加权)。
 	if metricIsWeighted("nonhit_count") {
 		t.Error("nonhit_count 应为可加指标")

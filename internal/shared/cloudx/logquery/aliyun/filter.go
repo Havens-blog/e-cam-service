@@ -63,17 +63,28 @@ var dimGroupExpr = map[mapperKind]map[string]string{
 	},
 	kindDCDN: {
 		"cache_hit": "hit_info",
+		// uri_host 组合键:域名|路径(供 URI 未命中归属域名;单维度聚合内把
+		// 域名与路径拼成一个分组键,避免 host×uri 二维交叉。域名不含 "|",引擎
+		// 按首个 "|" 拆分即无损还原 host/path)。
+		"uri_host": "concat(domain, '|', uri)",
 	},
 	kindAkamaiCDN: {
 		"cache_hit": "cacheStatus",
 	},
 	kindCDNOffline: {
 		"cache_hit": "HitInfo",
+		// 离线转存 RequestURL 本含 scheme://host/path,URI 归属域名可直接从
+		// 完整 URL 解析(与 url→RequestURL 同列,uri_host 仅作统一入口)。
+		"uri_host": "RequestURL",
 	},
 	kindAkamaiWAF: {
 		"action": "act", "severity": "severity",
 	},
 }
+
+// internalDim 内部组合维度(仅编排层 URI 归属下钻使用,不暴露到 /types 可聚合
+// 字段字典,避免用户下拉出现无中文标签的中间组合键)。
+var internalDim = map[string]bool{"uri_host": true}
 
 // metricExpr 聚合指标按 kind 编译(空=该 kind 不支持该指标)。
 // 单位对齐 mapper:ALB request_time 为秒(secondsToMs 换算),×1000 补回 ms。
@@ -90,6 +101,7 @@ var metricExpr = map[mapperKind]map[string]string{
 		"avg_latency":  "avg(request_time)",
 		"p99_latency":  "approx_percentile(request_time, 0.99)",
 		"nonhit_count": "sum(case when regexp_extract(hit_info, '^[^|,]+') like '%MISS%' or regexp_extract(hit_info, '^[^|,]+') like '%ERROR%' then 1 else 0 end)",
+		"nonhit_bytes": "sum(case when regexp_extract(hit_info, '^[^|,]+') like '%MISS%' or regexp_extract(hit_info, '^[^|,]+') like '%ERROR%' then response_size else 0 end)",
 	},
 	kindCDNOffline: {
 		"count":        "count(1)",
@@ -97,6 +109,7 @@ var metricExpr = map[mapperKind]map[string]string{
 		"avg_latency":  "avg(RequestTime)",
 		"p99_latency":  "approx_percentile(RequestTime, 0.99)",
 		"nonhit_count": "sum(case when HitInfo like '%MISS%' or HitInfo like '%ERROR%' then 1 else 0 end)",
+		"nonhit_bytes": "sum(case when HitInfo like '%MISS%' or HitInfo like '%ERROR%' then ResponseSize else 0 end)",
 	},
 	kindAkamaiCDN: {
 		"count":        "count(1)",
@@ -104,6 +117,7 @@ var metricExpr = map[mapperKind]map[string]string{
 		"avg_latency":  "avg(turnAroundTimeMSec)",
 		"p99_latency":  "approx_percentile(turnAroundTimeMSec, 0.99)",
 		"nonhit_count": "sum(case when cacheStatus like '%MISS%' or cacheStatus like '%ERROR%' then 1 else 0 end)",
+		"nonhit_bytes": "sum(case when cacheStatus like '%MISS%' or cacheStatus like '%ERROR%' then bytes else 0 end)",
 	},
 	kindALB: {
 		"count":       "count(1)",
@@ -245,7 +259,7 @@ func metricIsCount(metric string) bool { return metric == "" || metric == "count
 // count/sum_bytes/nonhit_count 可加直接求和。
 func metricIsWeighted(metric string) bool {
 	switch metric {
-	case "", "count", "sum_bytes", "nonhit_count":
+	case "", "count", "sum_bytes", "nonhit_count", "nonhit_bytes":
 		return false
 	default:
 		return true

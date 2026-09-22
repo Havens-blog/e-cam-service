@@ -174,6 +174,44 @@ func TestByteHitRates(t *testing.T) {
 	}
 }
 
+// TestDomainByteHitRate 域名级字节命中率下钻:命中字节 = 总字节 − 未命中
+// (miss+error)字节,与域名级请求口径同判;字节帧缺失(总字节 ≤0)置不可用。
+func TestDomainByteHitRate(t *testing.T) {
+	input := &CacheAnalyzeInput{
+		TotalRequests: 1000,
+		CacheHitDist:  []logquery.TopNItem{state("hit", 700), state("miss", 300)},
+		HostStats: []HostCacheStat{
+			{Host: "a.example.com", Hit: 420, Miss: 180, TotalBytes: 10_000_000, MissBytes: 4_000_000},
+			{Host: "b.example.com", Hit: 350, Miss: 50, TotalBytes: 8_000_000, MissBytes: 1_000_000},
+		},
+	}
+	res := Evaluate(input)
+	if len(res.DomainRanking) != 2 {
+		t.Fatalf("domain_ranking = %d, want 2", len(res.DomainRanking))
+	}
+	a := res.DomainRanking[0] // 请求数降序:a 600 > b 400
+	if a.Host != "a.example.com" || !a.ByteHitAvailable || !almostEqual(a.ByteHitRate, 0.6) {
+		t.Errorf("a 字节命中率 = %+v, want 0.6((10M-4M)/10M)", a)
+	}
+	b := res.DomainRanking[1]
+	if !b.ByteHitAvailable || !almostEqual(b.ByteHitRate, 0.875) {
+		t.Errorf("b 字节命中率 = %+v, want 0.875((8M-1M)/8M)", b)
+	}
+	if !containsNote(res, "域名级字节命中率") {
+		t.Errorf("Notes 缺域名级字节命中率口径标注: %v", res.Notes)
+	}
+
+	// 字节帧缺失(TotalBytes = 0)→ 不可用,不伪造。
+	res2 := Evaluate(&CacheAnalyzeInput{
+		TotalRequests: 1000,
+		CacheHitDist:  []logquery.TopNItem{state("hit", 700), state("miss", 300)},
+		HostStats:     []HostCacheStat{{Host: "a.example.com", Hit: 420, Miss: 180}},
+	})
+	if len(res2.DomainRanking) != 1 || res2.DomainRanking[0].ByteHitAvailable {
+		t.Errorf("字节帧缺失应 ByteHitAvailable=false: %+v", res2.DomainRanking)
+	}
+}
+
 // TestGradeThresholds 健康档位临界分(默认 0.90 优 / 0.80 中,含下界)与参数化。AC2
 func TestGradeThresholds(t *testing.T) {
 	cases := []struct {

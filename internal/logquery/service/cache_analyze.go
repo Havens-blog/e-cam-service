@@ -48,8 +48,10 @@ const (
 	cacheAnalyzeMaxWindowMs int64 = 24 * 60 * 60 * 1000
 	// cacheAnalyzeConfirmWindowMs 预估扫描量确认阈值:窗口超过 6h 默认拦截。
 	cacheAnalyzeConfirmWindowMs int64 = 6 * 60 * 60 * 1000
-	// cacheAnalyzeDimGroups 当前窗维度聚合组数(N ≤ 5 上限;成本口径标注)。
-	cacheAnalyzeDimGroups = 5
+	// cacheAnalyzeDimGroups 当前窗维度聚合组数(最早 proposal 定 N ≤ 5;后续
+	// "下钻补齐"新增域名级字节命中率(host×sum_bytes + host×nonhit_bytes)提至
+	// 7 组,均为单维度 group-by 扫描,仍受手动触发 + 窗口/扫描量护栏约束)。
+	cacheAnalyzeDimGroups = 7
 	// cacheAnalyzeFrames 单次分析窗口帧数(当前窗 + 前窗,恒 2)。
 	cacheAnalyzeFrames = 2
 )
@@ -177,8 +179,8 @@ func (s *FederationService) cacheAnalyzeUncached(ctx context.Context, tenantID i
 	prevStart := req.StartTime - span // 前一等长窗口:[end-2*span, end-span)
 
 	var (
-		curHit, curBytes, curStatus, curHost, curURI, prev                   *AggregateResponse
-		curHitErr, curBytesErr, curStatusErr, curHostErr, curURIErr, prevErr error
+		curHit, curBytes, curStatus, curHost, curURI, curHostBytes, curHostHitBytes, prev                         *AggregateResponse
+		curHitErr, curBytesErr, curStatusErr, curHostErr, curURIErr, curHostBytesErr, curHostHitBytesErr, prevErr error
 	)
 	var g errgroup.Group
 	g.Go(func() error { // 主帧:cache_hit 计数分布(命中率口径 + 精确总数)
@@ -197,8 +199,16 @@ func (s *FederationService) cacheAnalyzeUncached(ctx context.Context, tenantID i
 		curHost, curHostErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "host", "nonhit_count"))
 		return nil
 	})
-	g.Go(func() error { // URI 未命中(url × nonhit_count,miss 预筛:按未命中数降序 TopN)
-		curURI, curURIErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "url", "nonhit_count"))
+	g.Go(func() error { // 域名总字节(host × sum_bytes:Value=该域名全请求字节)
+		curHostBytes, curHostBytesErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "host", "sum_bytes"))
+		return nil
+	})
+	g.Go(func() error { // 域名未命中字节(host × nonhit_bytes:Value=该域名 miss+error 字节)
+		curHostHitBytes, curHostHitBytesErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "host", "nonhit_bytes"))
+		return nil
+	})
+	g.Go(func() error { // URI 未命中(uri_host × nonhit_count,组合键 域名|路径;miss 预筛)
+		curURI, curURIErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "uri_host", "nonhit_count"))
 		return nil
 	})
 	g.Go(func() error { // 前一等长窗口:cache_hit 计数分布 1 帧(趋势对比)
@@ -226,6 +236,10 @@ func (s *FederationService) cacheAnalyzeUncached(ctx context.Context, tenantID i
 	// 域名/URI 未命中分布(nonhit_count:Count=全请求,Value=未命中数;
 	// 失败/缺失由 notes 标注,引擎对空输入自动降级)。
 	hostStats := hostStatsFromMissTop(topNOf(curHost))
+	// 域名级字节命中率下钻:host×sum_bytes(总字节)与 host×nonhit_bytes(未命中
+	// 字节)同域名对齐;命中字节 = 总字节 − 未命中字节(miss+error),与域名级
+	// 请求口径一致(partial/未知计入命中)。任一字节帧缺失时域名字节列置空。
+	attachHostBytes(hostStats, hostBytesByHost(curHostBytes), hostMissBytesByHost(curHostHitBytes))
 	uriMisses := uriMissesFromMissTop(topNOf(curURI))
 
 	// 前窗对比值:cache_hit 分布(组键同样归一)。源级失败在聚合层已被隔离
@@ -269,8 +283,8 @@ func (s *FederationService) cacheAnalyzeUncached(ctx context.Context, tenantID i
 		Prev:            prevWin,
 		PrevError:       prevFail,
 		PrevSources:     prevSources,
-		Sources:         mergeAggregateSources(curHit, curBytes, curStatus, curHost, curURI),
-		DimensionNotes:  strings.Join(cacheDimensionNotes(curBytes, curBytesErr, curStatus, curStatusErr, curHost, curHostErr, curURI, curURIErr, curHit.Sources), ";"),
+		Sources:         mergeAggregateSources(curHit, curBytes, curStatus, curHost, curURI, curHostBytes, curHostHitBytes),
+		DimensionNotes:  strings.Join(cacheDimensionNotes(curBytes, curBytesErr, curStatus, curStatusErr, curHost, curHostErr, curURI, curURIErr, curHostBytes, curHostBytesErr, curHostHitBytes, curHostHitBytesErr, curHit.Sources), ";"),
 		AggregateFrames: cacheAnalyzeFrames, // 当前窗 + 前窗(成本标注;前窗失败也计一次扫描尝试)
 	}
 	// Summary 恒空:本接口不引入 LLM(硬规则),字段为 AI 解读后置占位。
@@ -328,9 +342,52 @@ func hostStatsFromMissTop(items []logquery.TopNItem) []cdncache.HostCacheStat {
 	return out
 }
 
-// uriMissesFromMissTop url×nonhit_count 聚合 → URI 未命中分布:完整 URL 形态
-// 解析归属域名(host×uri 交叉不做,域名仅从含主机的 URL 值提取,取不到置空
-// 由前端标注);查询串归一由引擎完成(剥离/排序/变体归并)。
+// hostBytesByHost host×sum_bytes → 域名→全请求字节映射(Value=字节;同主机重名
+// 取和,确定性)。
+func hostBytesByHost(resp *AggregateResponse) map[string]int64 {
+	out := make(map[string]int64)
+	for _, it := range topNOf(resp) {
+		if it.Name == "" {
+			continue
+		}
+		out[it.Name] += int64(it.Value)
+	}
+	return out
+}
+
+// hostMissBytesByHost host×nonhit_bytes → 域名→未命中(miss+error)字节映射。
+func hostMissBytesByHost(resp *AggregateResponse) map[string]int64 {
+	out := make(map[string]int64)
+	for _, it := range topNOf(resp) {
+		if it.Name == "" {
+			continue
+		}
+		out[it.Name] += int64(it.Value)
+	}
+	return out
+}
+
+// attachHostBytes 域名级字节命中率下钻:按 host 对齐总字节与未命中字节,命中
+// 字节 = 总字节 − 未命中字节(与域名级请求口径同判:partial/未知计入命中)。
+// 字节帧缺失/不完整时对应宿主 Stat.ByteHitRate 分母 ≤0,由引擎输出置空
+// (Type 层=可用/不可用),不静默伪造。
+func attachHostBytes(stats []cdncache.HostCacheStat, totalBytes, missBytes map[string]int64) {
+	for i := range stats {
+		tb, mb := totalBytes[stats[i].Host], missBytes[stats[i].Host]
+		stats[i].TotalBytes = tb
+		stats[i].MissBytes = mb
+		if mb < 0 {
+			stats[i].MissBytes = 0
+		}
+		if stats[i].MissBytes > tb {
+			stats[i].MissBytes = tb
+		}
+	}
+}
+
+// uriMissesFromMissTop uri_host×nonhit_count 聚合 → URI 未命中分布:组键为
+// 组合键「域名|路径」(DCDN concat)或完整 URL(离线转存 RequestURL),拆分后
+// 归属域名与路径;查询串归一由引擎完成(剥离/排序/变体归并)。
 func uriMissesFromMissTop(items []logquery.TopNItem) []cdncache.URIMissItem {
 	out := make([]cdncache.URIMissItem, 0, len(items))
 	for _, it := range items {
@@ -338,19 +395,23 @@ func uriMissesFromMissTop(items []logquery.TopNItem) []cdncache.URIMissItem {
 		if it.Name == "" || miss <= 0 {
 			continue
 		}
-		host, path := splitURLHost(it.Name)
+		host, path := splitURIComposite(it.Name)
 		out = append(out, cdncache.URIMissItem{URI: path, Host: host, Miss: miss})
 	}
 	return out
 }
 
-// splitURLHost 从聚合组键解析 (归属域名, 路径+查询串):仅 scheme://host/path
-// 形态可提取域名(离线转存 RequestURL 等),纯路径形态域名置空、原样返回
-// (查询串归一交由引擎)。
-func splitURLHost(raw string) (host, path string) {
+// splitURIComposite 解析 URI 聚合组键 → (归属域名, 路径+查询串):
+//   - 「域名|路径」(DCDN uri_host concat):按首个 "|" 拆分(域名不含 "|");
+//   - scheme://host/path(离线转存 RequestURL):url.Parse 提取 host;
+//   - 纯路径形态(源未开 uri_host,透传降级):域名置空、原样返回。
+func splitURIComposite(raw string) (host, path string) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
 		return "", "/"
+	}
+	if i := strings.IndexByte(s, '|'); i >= 0 {
+		return strings.TrimSpace(s[:i]), strings.TrimSpace(s[i+1:])
 	}
 	if u, err := url.Parse(s); err == nil && u.Host != "" {
 		p := u.EscapedPath()
@@ -372,6 +433,8 @@ func cacheDimensionNotes(curBytes *AggregateResponse, curBytesErr error,
 	curStatus *AggregateResponse, curStatusErr error,
 	curHost *AggregateResponse, curHostErr error,
 	curURI *AggregateResponse, curURIErr error,
+	curHostBytes *AggregateResponse, curHostBytesErr error,
+	curHostHitBytes *AggregateResponse, curHostHitBytesErr error,
 	hitSources []AggregateSourceOutcome) []string {
 	var out []string
 	// 非主维度组失败/缺失(域名排行与 URI 集中度自动降级,不整卡失败)。
@@ -383,7 +446,9 @@ func cacheDimensionNotes(curBytes *AggregateResponse, curBytesErr error,
 		{"字节口径(sum_bytes)", curBytes, curBytesErr},
 		{"status 状态码", curStatus, curStatusErr},
 		{"域名未命中(host×nonhit)", curHost, curHostErr},
-		{"URI 未命中(url×nonhit,高基数或列缺失时降级)", curURI, curURIErr},
+		{"URI 未命中(uri_host×nonhit,高基数或列缺失时降级)", curURI, curURIErr},
+		{"域名总字节(host×sum_bytes)", curHostBytes, curHostBytesErr},
+		{"域名未命中字节(host×nonhit_bytes)", curHostHitBytes, curHostHitBytesErr},
 	} {
 		switch {
 		case e.err != nil:
