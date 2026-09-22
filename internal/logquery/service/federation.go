@@ -79,6 +79,7 @@ type AggregateRequest struct {
 	Filters    []logquery.FieldFilter // 可选,字段筛选(可下推源生效,否则显式标注)
 	Dimension  string                 // 分组维度(/types 字段 key;空=kind 默认)
 	Metric     string                 // count / sum_bytes / avg_latency / p99_latency
+	TopNLimit  int                    // 分组 TopN 条数上限(0=默认 10;域名级字节对齐等需更大)
 }
 
 // AggregateSourceOutcome 单源聚合状态(不支持聚合的源显式标注,不静默缺失)。
@@ -194,6 +195,7 @@ func (s *FederationService) aggregateUncached(ctx context.Context, tenantID int6
 					Filters:   req.Filters,
 					Dimension: req.Dimension,
 					Metric:    req.Metric,
+					TopNLimit: req.TopNLimit,
 				})
 			} else if err == nil {
 				err = errAggregateUnsupported

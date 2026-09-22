@@ -54,6 +54,10 @@ const (
 	cacheAnalyzeDimGroups = 7
 	// cacheAnalyzeFrames 单次分析窗口帧数(当前窗 + 前窗,恒 2)。
 	cacheAnalyzeFrames = 2
+	// cacheAnalyzeHostTopN 域名级聚合分组条数上限:域名排行按请求数降序、字节
+	// 帧按字节降序,两种排序键下 top-8-by-请求 与 top-N-by-字节 需足够大才对齐
+	// (请求量大但字节小的 API 端点否则掉出字节 top-10,域名字节命中率列误置 —)。
+	cacheAnalyzeHostTopN = 100
 )
 
 // cacheAnalyzeEnabled feature flag 读取(默认关;"1/true/on" 开启)。
@@ -168,12 +172,12 @@ func (s *FederationService) CacheAnalyze(ctx context.Context, tenantID int64, re
 // 不报错。
 func (s *FederationService) cacheAnalyzeUncached(ctx context.Context, tenantID int64, req CacheAnalyzeRequest) (*CacheAnalyzeResponse, error) {
 	span := req.EndTime - req.StartTime
-	aggReq := func(start, end int64, dimension, metric string) AggregateRequest {
+	aggReq := func(start, end int64, dimension, metric string, topN int) AggregateRequest {
 		return AggregateRequest{
 			LogType: req.LogType, StartTime: start, EndTime: end,
 			Query: req.Query, Clouds: req.Clouds, AccountIDs: req.AccountIDs,
 			Resources: req.Resources, Filters: req.Filters,
-			Dimension: dimension, Metric: metric,
+			Dimension: dimension, Metric: metric, TopNLimit: topN,
 		}
 	}
 	prevStart := req.StartTime - span // 前一等长窗口:[end-2*span, end-span)
@@ -184,35 +188,35 @@ func (s *FederationService) cacheAnalyzeUncached(ctx context.Context, tenantID i
 	)
 	var g errgroup.Group
 	g.Go(func() error { // 主帧:cache_hit 计数分布(命中率口径 + 精确总数)
-		curHit, curHitErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "cache_hit", "count"))
+		curHit, curHitErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "cache_hit", "count", 0))
 		return nil // 维度失败不中断并发组,统一在下方裁决
 	})
 	g.Go(func() error { // 字节口径:cache_hit × sum_bytes(全请求/可缓存双字节)
-		curBytes, curBytesErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "cache_hit", "sum_bytes"))
+		curBytes, curBytesErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "cache_hit", "sum_bytes", 0))
 		return nil
 	})
 	g.Go(func() error { // 状态码分布(4xx/5xx 占比;状态×cache_hit 交叉为后续增强)
-		curStatus, curStatusErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "status", "count"))
+		curStatus, curStatusErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "status", "count", 0))
 		return nil
 	})
 	g.Go(func() error { // 域名未命中(host × nonhit_count:Count=域名全请求,Value=未命中数)
-		curHost, curHostErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "host", "nonhit_count"))
+		curHost, curHostErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "host", "nonhit_count", cacheAnalyzeHostTopN))
 		return nil
 	})
 	g.Go(func() error { // 域名总字节(host × sum_bytes:Value=该域名全请求字节)
-		curHostBytes, curHostBytesErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "host", "sum_bytes"))
+		curHostBytes, curHostBytesErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "host", "sum_bytes", cacheAnalyzeHostTopN))
 		return nil
 	})
 	g.Go(func() error { // 域名未命中字节(host × nonhit_bytes:Value=该域名 miss+error 字节)
-		curHostHitBytes, curHostHitBytesErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "host", "nonhit_bytes"))
+		curHostHitBytes, curHostHitBytesErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "host", "nonhit_bytes", cacheAnalyzeHostTopN))
 		return nil
 	})
 	g.Go(func() error { // URI 未命中(uri_host × nonhit_count,组合键 域名|路径;miss 预筛)
-		curURI, curURIErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "uri_host", "nonhit_count"))
+		curURI, curURIErr = s.Aggregate(ctx, tenantID, aggReq(req.StartTime, req.EndTime, "uri_host", "nonhit_count", 0))
 		return nil
 	})
 	g.Go(func() error { // 前一等长窗口:cache_hit 计数分布 1 帧(趋势对比)
-		prev, prevErr = s.Aggregate(ctx, tenantID, aggReq(prevStart, req.StartTime, "cache_hit", "count"))
+		prev, prevErr = s.Aggregate(ctx, tenantID, aggReq(prevStart, req.StartTime, "cache_hit", "count", 0))
 		return nil
 	})
 	_ = g.Wait()

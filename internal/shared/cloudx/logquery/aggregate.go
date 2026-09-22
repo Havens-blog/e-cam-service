@@ -42,6 +42,15 @@ func IsValidAggregateMetric(m string) bool {
 	return slices.Contains(AggregateMetrics, m)
 }
 
+// AggregateTopN TopN 分组条数上限(0=默认 10;域名级字节对齐等场景传更大,
+// 如 CDN 缓存分析域名字节命中率下钻需对齐请求数排序的域名排行)。
+func AggregateTopN(v int) int {
+	if v <= 0 {
+		return 10
+	}
+	return v
+}
+
 // MetricIsWeighted avg/p99 等非可加指标:跨源归并需按 count 加权均值;
 // count/sum_bytes/nonhit_count 可加直接求和。
 func MetricIsWeighted(m string) bool {
@@ -64,6 +73,7 @@ type AggregateParams struct {
 	Filters   []FieldFilter // 字段筛选(能下推的源编译进 SQL,不能下推的源显式标注)
 	Dimension string        // 分组维度(/types 字段 key;空=kind 默认 TopN 维度)
 	Metric    string        // count / sum_bytes / avg_latency / p99_latency(空=count)
+	TopNLimit int           // 分组 TopN 条数上限(0=默认 10;域名级字节对齐等需更大)
 }
 
 // AggregateResult 单源聚合结果。Total = 分桶求和(省一次 count 扫描)。

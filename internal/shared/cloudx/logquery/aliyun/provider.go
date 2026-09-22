@@ -611,9 +611,8 @@ func (p *provider) Aggregate(ctx context.Context, account *domain.CloudAccount, 
 			return merged.TopN[i].Value > merged.TopN[j].Value
 		})
 	}
-	const providerTopN = 10
-	if len(merged.TopN) > providerTopN {
-		merged.TopN = merged.TopN[:providerTopN]
+	if cap := logquery.AggregateTopN(params.TopNLimit); len(merged.TopN) > cap {
+		merged.TopN = merged.TopN[:cap]
 	}
 	if merged.SkipFilterReason != "" {
 		return nil, fmt.Errorf("%s", merged.SkipFilterReason)
@@ -684,9 +683,10 @@ func (p *provider) aggregateStore(ctx context.Context, src slsSource, logstore s
 		result.TopNSkipReason = "指标 " + params.Metric + " 该源不支持"
 		return result
 	}
-	topnSQL := buildAggregateTopNSQL(searchPart, dim, mExpr, 10)
+	topn := logquery.AggregateTopN(params.TopNLimit)
+	topnSQL := buildAggregateTopNSQL(searchPart, dim, mExpr, topn)
 	resp, err = client.GetLogsV2(src.project, logstore, &sls.GetLogRequest{
-		From: from, To: to, Query: topnSQL, Lines: 10,
+		From: from, To: to, Query: topnSQL, Lines: int64(topn),
 	})
 	if err != nil {
 		// 常见于自定义列名不存在或非索引列:显式标注(趋势/总数不受影响),
