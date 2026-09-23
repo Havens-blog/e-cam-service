@@ -1,0 +1,105 @@
+package volcengine
+
+import (
+	"testing"
+
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
+	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+)
+
+func TestMapAccessLog(t *testing.T) {
+	m := logquery.LogMeta{Cloud: domain.CloudProviderVolcengine, Region: "cn-guangzhou", ResourceID: "topic-x"}
+	raw := map[string]any{
+		"__time__":               "1790143079000",          // unix ms(字符串)
+		"@timestamp":             "2026-09-23T13:57:59Z",   // 兜底(此处 __time__ 优先)
+		"http_host":              "jlc.com",
+		"method":                 "GET",
+		"request_uri":            "/api/cam/xx?a=1",
+		"uri":                    "/api/cam/xx",
+		"uri_param":              "a=1",
+		"protocol":               "1.1",
+		"status":                 "200",
+		"request_length":         "1234",
+		"body_bytes_send":        "2574",
+		"request_time":           "0.012",
+		"upstream_response_time": "0.010",
+		"upstream_addr":          "10.0.0.5:8080",
+		"remote_addr":            "127.0.0.1",
+		"x_forwarded_for":        "183.29.134.73, 10.0.0.1",
+		"cdn_src_ip":             "-",
+		"upstream_trace_id":      "abc123",
+		"j_trace_id":             "xyz",
+	}
+	e := mapAccessLog(m, raw)
+	if e.Timestamp != 1790143079000 {
+		t.Errorf("timestamp = %d, want 1790143079000", e.Timestamp)
+	}
+	if e.ClientIP != "183.29.134.73" {
+		t.Errorf("client_ip = %q, want 183.29.134.73(x_forwarded_for 首段)", e.ClientIP)
+	}
+	if e.Host != "jlc.com" || e.Method != "GET" || e.URL != "/api/cam/xx?a=1" {
+		t.Errorf("host/method/url = %q/%q/%q", e.Host, e.Method, e.URL)
+	}
+	if e.Protocol != "HTTP/1.1" {
+		t.Errorf("protocol = %q, want HTTP/1.1", e.Protocol)
+	}
+	if e.Status != 200 || e.RequestLength != 1234 || e.BytesSent != 2574 {
+		t.Errorf("status/reqlen/bytes = %d/%d/%d", e.Status, e.RequestLength, e.BytesSent)
+	}
+	if e.LatencyMs != 12 || e.UpstreamLatencyMs != 10 {
+		t.Errorf("latency/upstream = %d/%d ms, want 12/10", e.LatencyMs, e.UpstreamLatencyMs)
+	}
+	if e.TargetIP != "10.0.0.5" || e.TargetPort != 8080 {
+		t.Errorf("target = %s:%d, want 10.0.0.5:8080", e.TargetIP, e.TargetPort)
+	}
+	if e.RequestID != "abc123" {
+		t.Errorf("request_id = %q, want abc123(upstream_trace_id 优先)", e.RequestID)
+	}
+}
+
+func TestMapAccessLog_Fallbacks(t *testing.T) {
+	m := logquery.LogMeta{Cloud: domain.CloudProviderVolcengine}
+	// 无 x_forwarded_for / upstream_addr / request_uri 时各回退路径
+	e := mapAccessLog(m, map[string]any{
+		"__time__":   "0", // scaleUnixToMs(0)=0
+		"http_host":  "h", "status": "302", "method": "POST",
+		"uri":      "/x", "uri_param": "b=2",
+		"protocol":  "HTTP/2", // 已带前缀不再拼
+		"remote_addr": "10.1.1.1",
+		"upstream_addr": "-",
+	})
+	if e.URL != "/x?b=2" {
+		t.Errorf("url = %q, want /x?b=2(uri+uri_param 兜底)", e.URL)
+	}
+	if e.Protocol != "HTTP/2" {
+		t.Errorf("protocol = %q, want HTTP/2(已带前缀)", e.Protocol)
+	}
+	if e.ClientIP != "10.1.1.1" {
+		t.Errorf("client_ip = %q, want 10.1.1.1(remote_addr 兜底)", e.ClientIP)
+	}
+	if e.TargetIP != "" || e.TargetPort != 0 {
+		t.Errorf("target = %s:%d, want empty(upstream=-)", e.TargetIP, e.TargetPort)
+	}
+}
+
+func TestIsEdgeAccessLog(t *testing.T) {
+	access := map[string]any{"http_host": "h", "status": "200", "method": "GET", "upstream_addr": "-"}
+	cases := []struct {
+		name string
+		raw  map[string]any
+		want bool
+	}{
+		{"www_jlc_com_https_access", access, true},
+		{"ai-mobile-web-nginx-access", access, true},
+		{"jsjlc-access-gateway-gateway-access", access, true},
+		{"fat-nacos_jlcerp_com_lb_access", access, true},
+		{"forface-model-viewer-tomcat-access", map[string]any{"http_host": "h", "status": "200", "method": "GET"}, false}, // 应用服务器访问,非边缘
+		{"x-business", map[string]any{"message": "m", "level": "info"}, false},                                         // 无访问 schema
+		{"www_jlc_com_https_error", map[string]any{"message": "err", "http_host": "h"}, false},                          // 错误日志无 status/method
+	}
+	for _, c := range cases {
+		if got := isEdgeAccessLog(c.raw, c.name); got != c.want {
+			t.Errorf("isEdgeAccessLog(%q) = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

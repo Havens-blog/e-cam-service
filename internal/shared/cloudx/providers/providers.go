@@ -37,4 +37,5 @@ import (
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery/aws"
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery/huawei"
 	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery/tencent"
+	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery/volcengine"
 )
