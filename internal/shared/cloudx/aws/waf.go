@@ -102,7 +102,7 @@ func (a *WAFAdapter) ListInstancesWithFilter(ctx context.Context, region string,
 	var allInstances []types.WAFInstance
 
 	// 获取Regional Web ACLs
-	regionalACLs, err := a.listWebACLs(ctx, client, wafv2types.ScopeRegional, region)
+	regionalACLs, err := a.listWebACLs(ctx, client, wafv2types.ScopeRegional, region, nil)
 	if err != nil {
 		a.logger.Warn("获取Regional WAF Web ACL失败", elog.FieldErr(err))
 	} else {
@@ -113,7 +113,9 @@ func (a *WAFAdapter) ListInstancesWithFilter(ctx context.Context, region string,
 	if region == "us-east-1" || region == "" {
 		cfClient, err := a.createClient(ctx, "us-east-1")
 		if err == nil {
-			cfACLs, err := a.listWebACLs(ctx, cfClient, wafv2types.ScopeCloudfront, "us-east-1")
+			// CloudFront 关联从分配侧反查(ListResourcesForWebACL 对 CF scope 不回资源)。
+			cfIndex := a.buildCloudFrontIndex(ctx)
+			cfACLs, err := a.listWebACLs(ctx, cfClient, wafv2types.ScopeCloudfront, "us-east-1", cfIndex)
 			if err != nil {
 				a.logger.Warn("获取CloudFront WAF Web ACL失败", elog.FieldErr(err))
 			} else {
@@ -139,8 +141,9 @@ func (a *WAFAdapter) ListInstancesWithFilter(ctx context.Context, region string,
 	return allInstances, nil
 }
 
-// listWebACLs 获取指定Scope的Web ACL列表
-func (a *WAFAdapter) listWebACLs(ctx context.Context, client *wafv2.Client, scope wafv2types.Scope, region string) ([]types.WAFInstance, error) {
+// listWebACLs 获取指定Scope的Web ACL列表。
+// cfIndex 仅在 CloudFront scope 使用(WebACL ARN → 分配聚合),Regional 传 nil。
+func (a *WAFAdapter) listWebACLs(ctx context.Context, client *wafv2.Client, scope wafv2types.Scope, region string, cfIndex map[string]cfResources) ([]types.WAFInstance, error) {
 	var allInstances []types.WAFInstance
 	var nextMarker *string
 
@@ -157,27 +160,53 @@ func (a *WAFAdapter) listWebACLs(ctx context.Context, client *wafv2.Client, scop
 
 		for _, acl := range output.WebACLs {
 			ruleCount := 0
-			// 获取详情以获取规则数
+			var protectedHosts, sourceIPs []string
+			// 获取详情以获取规则数,并按 scope 回捞关联资源解析为 (防护域名, 源站地址)。
 			if acl.Name != nil && acl.Id != nil {
 				detail, err := client.GetWebACL(ctx, &wafv2.GetWebACLInput{
 					Name:  acl.Name,
 					Id:    acl.Id,
 					Scope: scope,
 				})
-				if err == nil && detail.WebACL != nil {
+				if err == nil && detail.WebACL != nil && detail.WebACL.ARN != nil {
 					ruleCount = len(detail.WebACL.Rules)
+					arn := awssdk.ToString(detail.WebACL.ARN)
+					if scope == wafv2types.ScopeCloudfront {
+						// CloudFront 关联从分配侧反查(WebACLId == WebACL ARN)。
+						if r, ok := cfIndex[arn]; ok {
+							protectedHosts = append(protectedHosts, r.hosts...)
+							sourceIPs = append(sourceIPs, r.sources...)
+						}
+					} else {
+						resources, rerr := client.ListResourcesForWebACL(ctx, &wafv2.ListResourcesForWebACLInput{
+							WebACLArn: detail.WebACL.ARN,
+						})
+						if rerr != nil {
+							a.logger.Warn("获取 WebACL 关联资源失败",
+								elog.String("acl", awssdk.ToString(acl.Name)), elog.FieldErr(rerr))
+						} else if resources != nil {
+							for _, resArn := range resources.ResourceArns {
+								hosts, sources := a.resolveWAFResources(ctx, resArn, region)
+								protectedHosts = append(protectedHosts, hosts...)
+								sourceIPs = append(sourceIPs, sources...)
+							}
+						}
+					}
 				}
 			}
 
 			allInstances = append(allInstances, types.WAFInstance{
-				InstanceID:   awssdk.ToString(acl.Id),
-				InstanceName: awssdk.ToString(acl.Name),
-				Status:       "active",
-				Region:       region,
-				RuleCount:    ruleCount,
-				WAFEnabled:   true,
-				Provider:     "aws",
-				Tags:         make(map[string]string),
+				InstanceID:     awssdk.ToString(acl.Id),
+				InstanceName:   awssdk.ToString(acl.Name),
+				Status:         "active",
+				Region:         region,
+				RuleCount:      ruleCount,
+				DomainCount:    len(dedupStrings(protectedHosts)),
+				ProtectedHosts: dedupStrings(protectedHosts),
+				SourceIPs:      dedupStrings(sourceIPs),
+				WAFEnabled:     true,
+				Provider:       "aws",
+				Tags:           make(map[string]string),
 			})
 		}
 
