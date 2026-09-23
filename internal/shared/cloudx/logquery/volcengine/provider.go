@@ -220,15 +220,25 @@ func accessNamePlausible(topicName string) bool {
 }
 
 // isEdgeAccessLog 判定 topic 是否为边缘(nginx/gateway/LB)访问日志:
-//   - 访问日志 schema:http_host + status + method 三字段齐全;
-//   - 名字含 "access"(覆盖 *_access / *-nginx-access / *-gateway-access /
-//     *_lb_access / *-cache-access),但排除 "-tomcat-access"(应用服务器访问,
-//     非边缘)。-business/-error 无访问 schema,自然被排除。
+//   - 访问日志 schema:host + status 齐全;
+//   - ALB 访问日志(火山 ALB `*_lb_access`):有 loadbalancer_id/listener_id
+//     标记,**没有 method 字段**(请求整行在 request 字段);
+//   - nginx/gateway 访问日志:有 method 或 request;
+//   - 名字含 "access"(排除 tomcat-access)。
 func isEdgeAccessLog(raw map[string]any, topicName string) bool {
-	if raw["http_host"] == nil || raw["status"] == nil || raw["method"] == nil {
+	if !accessNamePlausible(topicName) {
 		return false
 	}
-	return accessNamePlausible(topicName)
+	if raw["http_host"] == nil && raw["host"] == nil {
+		return false
+	}
+	if raw["status"] == nil {
+		return false
+	}
+	if raw["loadbalancer_id"] != nil || raw["listener_id"] != nil {
+		return true // 火山 ALB 访问日志
+	}
+	return raw["method"] != nil || raw["request"] != nil // nginx/gateway
 }
 
 // kindForLogType 日志类型 → topic 分类(kind)。当前只注册 SLB,固定 "slb"。

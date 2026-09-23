@@ -82,6 +82,53 @@ func TestMapAccessLog_Fallbacks(t *testing.T) {
 	}
 }
 
+func TestMapALBAccess(t *testing.T) {
+	m := logquery.LogMeta{Cloud: domain.CloudProviderVolcengine, Region: "cn-guangzhou"}
+	raw := map[string]any{
+		"__time__":              "1790143079000",
+		"http_host":             "nacos.jlcops.com",
+		"listener_id":           "lsn-abc",
+		"loadbalancer_id":       "alb-xyz",
+		"request":               "GET /nacos/v1/cs/configs HTTP/1.1",
+		"request_id":            "req-123",
+		"protocol_type":         "http",
+		"status":                "200",
+		"request_length":        "512",
+		"bytes_sent":            "1024",
+		"request_time":          "0.015",
+		"upstream_response_time": "0.010",
+		"upstream_status":       "200",
+		"upstream_addr":         "10.0.0.8:8080",
+		"remote_addr":           "203.0.113.5",
+		"remote_port":           "44321",
+		"ssl_protocol":          "TLSv1.3",
+		"ssl_cipher":            "TLS_AES_128_GCM_SHA256",
+		"vport":                 "8080",
+	}
+	e := mapAccessLog(m, raw)
+	if e.Method != "GET" || e.URL != "/nacos/v1/cs/configs" || e.Protocol != "HTTP/1.1" {
+		t.Errorf("method/url/proto = %q/%q/%q, want parsed from request line", e.Method, e.URL, e.Protocol)
+	}
+	if e.ClientIP != "203.0.113.5" || e.ClientPort != 44321 {
+		t.Errorf("client = %s:%d, want 203.0.113.5:44321", e.ClientIP, e.ClientPort)
+	}
+	if e.Host != "nacos.jlcops.com" || e.Status != 200 || e.BytesSent != 1024 || e.RequestLength != 512 {
+		t.Errorf("host/status/bytes/reqlen = %q/%d/%d/%d", e.Host, e.Status, e.BytesSent, e.RequestLength)
+	}
+	if e.LatencyMs != 15 || e.UpstreamLatencyMs != 10 || e.UpstreamStatus != 200 {
+		t.Errorf("latency/upstream = %d/%d/%d", e.LatencyMs, e.UpstreamLatencyMs, e.UpstreamStatus)
+	}
+	if e.TLSProtocol != "TLSv1.3" || e.TLSCipher != "TLS_AES_128_GCM_SHA256" {
+		t.Errorf("tls = %q/%q", e.TLSProtocol, e.TLSCipher)
+	}
+	if e.RequestID != "req-123" || e.ListenerPort != 8080 {
+		t.Errorf("reqid/port = %q/%d", e.RequestID, e.ListenerPort)
+	}
+	if e.TargetIP != "10.0.0.8" || e.TargetPort != 8080 {
+		t.Errorf("target = %s:%d, want 10.0.0.8:8080", e.TargetIP, e.TargetPort)
+	}
+}
+
 func TestIsEdgeAccessLog(t *testing.T) {
 	access := map[string]any{"http_host": "h", "status": "200", "method": "GET", "upstream_addr": "-"}
 	cases := []struct {
@@ -93,6 +140,7 @@ func TestIsEdgeAccessLog(t *testing.T) {
 		{"ai-mobile-web-nginx-access", access, true},
 		{"jsjlc-access-gateway-gateway-access", access, true},
 		{"fat-nacos_jlcerp_com_lb_access", access, true},
+		{"prod_dayu-access-gateway_lb_access", map[string]any{"http_host": "h", "status": "200", "loadbalancer_id": "alb-x", "listener_id": "lsn-y"}, true}, // 火山 ALB 访问日志(无 method,有 loadbalancer_id)
 		{"forface-model-viewer-tomcat-access", map[string]any{"http_host": "h", "status": "200", "method": "GET"}, false}, // 应用服务器访问,非边缘
 		{"x-business", map[string]any{"message": "m", "level": "info"}, false},                                         // 无访问 schema
 		{"www_jlc_com_https_error", map[string]any{"message": "err", "http_host": "h"}, false},                          // 错误日志无 status/method

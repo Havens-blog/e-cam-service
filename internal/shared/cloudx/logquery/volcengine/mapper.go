@@ -8,17 +8,71 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
 )
 
-// mapAccessLog 火山自采 nginx/gateway 访问日志 -> SLBLogEntry。
-//
-// TLS 投递的实例访问日志(采集管道展开,字段全字符串)与阿里 ALB nginx schema
-// 同构:http_host/method/uri/request_uri/status/request_time/upstream_response_time/
-// body_bytes_send/request_length/remote_addr/x_forwarded_for/cdn_src_ip/protocol。
+// mapAccessLog 火山访问日志 -> SLBLogEntry。分两种 schema:
+//   - 火山 ALB(`*_lb_access`,有 loadbalancer_id/listener_id,无 method,请求在
+//     request 字段)→ mapALBAccess;
+//   - 自采 nginx/gateway(有 method/request_uri)→ mapNginxAccess。
+func mapAccessLog(m logquery.LogMeta, raw map[string]any) *logquery.SLBLogEntry {
+	if raw["loadbalancer_id"] != nil || raw["listener_id"] != nil {
+		return mapALBAccess(m, raw)
+	}
+	return mapNginxAccess(m, raw)
+}
+
+// mapALBAccess 火山 ALB 访问日志(schema:loadbalancer_id/listener_id/servergroup_id/
+// vip/vport/request/request_id/upstream_status/ssl_protocol/ssl_cipher…)。
+func mapALBAccess(m logquery.LogMeta, raw map[string]any) *logquery.SLBLogEntry {
+	method, uri, proto := parseRequestLine(logquery.Str(raw["request"]))
+	e := &logquery.SLBLogEntry{
+		Meta:              m,
+		Timestamp:         logquery.ParseTimeMs(firstNonEmpty(raw["__time__"], raw["@timestamp"])),
+		ClientIP:          logquery.Str(raw["remote_addr"]),
+		ClientPort:        int(logquery.Int(raw["remote_port"])),
+		Host:              logquery.Str(raw["http_host"]),
+		Method:            method,
+		URL:               uri,
+		Protocol:          proto,
+		Status:            int(logquery.Int(raw["status"])),
+		RequestLength:     logquery.Int(raw["request_length"]),
+		BytesSent:         logquery.Int(raw["bytes_sent"]),
+		LatencyMs:         secondsToMs(logquery.Str(raw["request_time"])),
+		UpstreamLatencyMs: secondsToMs(logquery.Str(raw["upstream_response_time"])),
+		UpstreamStatus:    int(logquery.Int(raw["upstream_status"])),
+		TLSProtocol:       logquery.Str(raw["ssl_protocol"]),
+		TLSCipher:         logquery.Str(raw["ssl_cipher"]),
+		RequestID:         logquery.Str(raw["request_id"]),
+		ListenerPort:      int(logquery.Int(raw["vport"])),
+		Raw:               raw,
+	}
+	if addr := logquery.Str(raw["upstream_addr"]); addr != "" && addr != "-" {
+		ip, port := splitAddr(addr)
+		e.TargetIP, e.TargetPort = ip, port
+	}
+	return e
+}
+
+// parseRequestLine 拆请求行 "GET /path HTTP/1.1" → method/uri/proto。
+func parseRequestLine(line string) (method, uri, proto string) {
+	parts := strings.Fields(strings.TrimSpace(line))
+	switch len(parts) {
+	case 3:
+		return parts[0], parts[1], parts[2]
+	case 2:
+		return parts[0], parts[1], ""
+	case 1:
+		return parts[0], "", ""
+	default:
+		return "", "", ""
+	}
+}
+
+// mapNginxAccess 火山自采 nginx/gateway 访问日志(采集管道展开,字段全字符串)。
 //
 // 时间戳:__time__(unix ms 字符串)优先,@timestamp(ISO)兜底;datetime 是节点本地
 // 时间(+0800 标签下数值与 UTC 实际不一致),不作时间戳。protocol 仅含版本("1.1"),
 // 拼 "HTTP/" 前缀对齐统一模型。request_time/upstream_response_time 为秒(字符串,
 // 可能 "0.123"),转毫秒。
-func mapAccessLog(m logquery.LogMeta, raw map[string]any) *logquery.SLBLogEntry {
+func mapNginxAccess(m logquery.LogMeta, raw map[string]any) *logquery.SLBLogEntry {
 	protocol := logquery.Str(raw["protocol"])
 	if protocol != "" && !strings.HasPrefix(protocol, "HTTP/") {
 		protocol = "HTTP/" + protocol
