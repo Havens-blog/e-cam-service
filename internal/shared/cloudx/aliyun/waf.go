@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk"
@@ -281,6 +282,12 @@ func (a *WAFAdapter) convertResourceToInstance(res defenseResource, region strin
 	httpsEnabled := len(detail.HttpsPorts) > 0
 	exclusiveIP := detail.ExclusiveIP
 
+	// 创建时间:GmtCreate 为毫秒时间戳,转 RFC3339 字符串
+	creationTime := ""
+	if res.GmtCreate > 0 {
+		creationTime = time.UnixMilli(res.GmtCreate).Format("2006-01-02T15:04:05Z")
+	}
+
 	return types.WAFInstance{
 		InstanceID:     res.Resource,
 		InstanceName:   res.Resource,
@@ -292,6 +299,7 @@ func (a *WAFAdapter) convertResourceToInstance(res defenseResource, region strin
 		Cname:          detail.Cname,
 		WAFEnabled:     wafEnabled,
 		ExclusiveIP:    exclusiveIP,
+		CreationTime:   creationTime,
 		Provider:       "aliyun",
 		Description:    fmt.Sprintf("%s https=%v", res.Description, httpsEnabled),
 		Tags:           make(map[string]string),

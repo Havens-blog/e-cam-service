@@ -165,6 +165,11 @@ func (a *WAFAdapter) convertToInstance(d *waf.DataForListDomainOutput, region st
 	ccEnabled := false
 	antiBotEnabled := false
 	status := "active"
+	// 状态映射(保守降级):SDK 的 Status 字段无公开注释,语义待 live 数据校准。
+	// 当前仅把显式 0 判为 suspended,其余(含 nil)保持 active,避免误标停用。
+	if d.Status != nil && *d.Status == 0 {
+		status = "suspended"
+	}
 
 	if d.DefenceMode != nil && *d.DefenceMode > 0 {
 		wafEnabled = true
@@ -187,6 +192,11 @@ func (a *WAFAdapter) convertToInstance(d *waf.DataForListDomainOutput, region st
 	updateTime := ""
 	if d.UpdateTime != nil {
 		updateTime = *d.UpdateTime
+	}
+	// 列表接口仅提供 UpdateTime(无 CreateTime),创建时间不留空、最近更新时间并入 Description
+	description := ""
+	if updateTime != "" {
+		description = fmt.Sprintf("updated=%s", updateTime)
 	}
 
 	// 提取源站 IP（从 BackendGroups 和 ServerIps 中提取）
@@ -225,8 +235,8 @@ func (a *WAFAdapter) convertToInstance(d *waf.DataForListDomainOutput, region st
 		WAFEnabled:     wafEnabled,
 		CCEnabled:      ccEnabled,
 		AntiBotEnabled: antiBotEnabled,
-		CreationTime:   updateTime,
 		Provider:       "volcano",
+		Description:    description,
 		Tags:           make(map[string]string),
 	}
 }

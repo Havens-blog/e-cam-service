@@ -3,6 +3,7 @@ package tencent
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/gotomicro/ego/core/elog"
@@ -147,7 +148,9 @@ func (a *WAFAdapter) listWAFDomains(ctx context.Context, region string, filter *
 		}
 
 		for _, d := range response.Response.Domains {
-			allInstances = append(allInstances, a.convertWAFDomainToInstance(d, region))
+			inst := a.convertWAFDomainToInstance(d, region)
+			a.enrichWAFDomainSources(client, d, &inst)
+			allInstances = append(allInstances, inst)
 		}
 
 		total := uint64(0)
@@ -228,12 +231,20 @@ func (a *WAFAdapter) convertWAFDomainToInstance(d *waf.DomainInfo, region string
 		wafEnabled = false
 	}
 
-	// 提取源站 IP
+	// 提取源站 IP(列表接口的 SrcList 可能精简;详情接口在 enrichWAFDomainSources 里回捞完整源站)
 	var sourceIPs []string
 	if d.SrcList != nil {
 		for _, ip := range d.SrcList {
 			if ip != nil && *ip != "" {
 				sourceIPs = append(sourceIPs, *ip)
+			}
+		}
+	}
+	// 兜底补读域名回源列表(UpstreamDomainList)——即使详情接口失败也能多回捞一层
+	if d.UpstreamDomainList != nil {
+		for _, dm := range d.UpstreamDomainList {
+			if dm != nil && *dm != "" {
+				sourceIPs = append(sourceIPs, *dm)
 			}
 		}
 	}
@@ -257,6 +268,133 @@ func (a *WAFAdapter) convertWAFDomainToInstance(d *waf.DomainInfo, region string
 		Provider:       "tencent",
 		Description:    "WAF防护域名",
 		Tags:           make(map[string]string),
+	}
+}
+
+// enrichWAFDomainSources 回捞腾讯云 WAF 域名的完整源站信息(best-effort)。
+// 列表接口 DescribeDomains 的 SrcList 可能精简;按 Edition 分派详情接口取完整源站:
+//   - sparta-waf(SaaS 型)→ DescribeDomainDetailsSaas → DomainsPartInfo(SrcList + UpstreamDomain)
+//   - clb-waf / cdc-clb-waf(CLB 型)→ DescribeDomainDetailsClb → ClbDomainsInfo(LoadBalancerSet 关联 LB)
+//
+// 详情失败/无结果时静默返回,保留列表接口已填的源站兜底。
+func (a *WAFAdapter) enrichWAFDomainSources(client *waf.Client, d *waf.DomainInfo, inst *types.WAFInstance) {
+	edition := ""
+	if d.Edition != nil {
+		edition = *d.Edition
+	}
+	req := waf.NewDescribeDomainDetailsSaasRequest()
+	req.Domain = d.Domain
+	req.DomainId = d.DomainId
+	if d.InstanceId != nil {
+		req.InstanceId = d.InstanceId
+	}
+
+	switch edition {
+	case "sparta-waf":
+		resp, err := client.DescribeDomainDetailsSaas(req)
+		if err != nil {
+			a.logger.Warn("获取腾讯云WAF SaaS域名详情失败", elog.String("domain", deref(d.Domain)), elog.FieldErr(err))
+			return
+		}
+		if resp == nil || resp.Response == nil || resp.Response.DomainsPartInfo == nil {
+			return
+		}
+		mergeSaaSSources(resp.Response.DomainsPartInfo, inst)
+	case "clb-waf", "cdc-clb-waf":
+		clbReq := waf.NewDescribeDomainDetailsClbRequest()
+		clbReq.Domain = d.Domain
+		clbReq.DomainId = d.DomainId
+		if d.InstanceId != nil {
+			clbReq.InstanceId = d.InstanceId
+		}
+		resp, err := client.DescribeDomainDetailsClb(clbReq)
+		if err != nil {
+			a.logger.Warn("获取腾讯云WAF CLB域名详情失败", elog.String("domain", deref(d.Domain)), elog.FieldErr(err))
+			return
+		}
+		if resp == nil || resp.Response == nil || resp.Response.DomainsClbPartInfo == nil {
+			return
+		}
+		mergeCLBSources(resp.Response.DomainsClbPartInfo, d, inst)
+	default:
+		// 未知 Edition(如未来新类型),不调详情接口,保留列表兜底
+		return
+	}
+}
+
+// deref 解引用 *string,空指针返回空字符串
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// mergeSaaSSources 将 SaaS 型域名详情(DomainsPartInfo)的完整源站合并进 instance。
+// SrcList = IP 回源(UpstreamType=0),UpstreamDomain = 域名回源(UpstreamType=1)。
+func mergeSaaSSources(detail *waf.DomainsPartInfo, inst *types.WAFInstance) {
+	var src []string
+	if detail.SrcList != nil {
+		for _, ip := range detail.SrcList {
+			if ip != nil && *ip != "" {
+				src = append(src, *ip)
+			}
+		}
+	}
+	if detail.UpstreamDomain != nil && *detail.UpstreamDomain != "" {
+		src = append(src, *detail.UpstreamDomain)
+	}
+	if len(src) > 0 {
+		inst.SourceIPs = src
+	}
+	if detail.Cname != nil && *detail.Cname != "" {
+		inst.Cname = *detail.Cname
+	}
+	if detail.CreateTime != nil && *detail.CreateTime != "" {
+		inst.CreationTime = *detail.CreateTime
+	}
+	// 域名回源时标注,便于运营视图分辨回源类型
+	if detail.UpstreamType != nil && *detail.UpstreamType == 1 && inst.Description == "WAF防护域名" {
+		inst.Description = "WAF防护域名 upstream_type=domain"
+	}
+}
+
+// mergeCLBSources 将 CLB 型域名详情(ClbDomainsInfo)的关联负载均衡信息合并进 instance。
+// CLB 型 WAF 的源站语义是「挂在 CLB 上」而非直连 IP,故 SourceIPs 留空、关联 LB 写入 Description。
+func mergeCLBSources(detail *waf.ClbDomainsInfo, d *waf.DomainInfo, inst *types.WAFInstance) {
+	lbs := detail.LoadBalancerSet
+	if len(lbs) == 0 {
+		// 详情无关联 LB 时,回退到列表接口的 LoadBalancerSet
+		lbs = d.LoadBalancerSet
+	}
+	if len(lbs) == 0 {
+		return
+	}
+	var parts []string
+	for _, lb := range lbs {
+		if lb == nil {
+			continue
+		}
+		name := deref(lb.LoadBalancerName)
+		id := deref(lb.LoadBalancerId)
+		listener := deref(lb.ListenerName)
+		protocol := deref(lb.Protocol)
+		desc := ""
+		if name != "" || id != "" {
+			desc = fmt.Sprintf("clb=%s(%s)", name, id)
+		}
+		if listener != "" {
+			desc = fmt.Sprintf("%s listener=%s", desc, listener)
+		}
+		if protocol != "" {
+			desc = fmt.Sprintf("%s protocol=%s", desc, protocol)
+		}
+		if desc != "" {
+			parts = append(parts, desc)
+		}
+	}
+	if len(parts) > 0 {
+		inst.Description = "WAF防护域名(CLB) " + strings.Join(parts, "; ")
 	}
 }
 
