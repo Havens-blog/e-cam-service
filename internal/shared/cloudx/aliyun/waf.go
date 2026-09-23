@@ -20,7 +20,7 @@ type WAFAdapter struct {
 	accessKeySecret string
 	defaultRegion   string
 	logger          *elog.Component
-	instanceID      string // 缓存的 WAF 实例 ID
+	instanceIDs     map[string]string // 按站点缓存 WAF 实例 ID(cn-hangzhou 中国站 / ap-southeast-1 国际站)
 }
 
 // NewWAFAdapter 创建WAF适配器
@@ -41,12 +41,21 @@ func (a *WAFAdapter) createClient(region string) (*sdk.Client, error) {
 	return sdk.NewClientWithAccessKey(region, a.accessKeyID, a.accessKeySecret)
 }
 
-// wafEndpoint 根据地域返回 WAF 3.0 API 端点
+// wafEndpoint 根据地域返回 WAF 3.0 API 端点。
+// 阿里 WAF 3.0 是全局服务,但中国站与国际站是两个独立实例/端点:
+// 仅 ap-southeast-1 走国际站,其余地域(含 cn-* / us-* / eu-*)统一走中国站 cn-hangzhou。
 func (a *WAFAdapter) wafEndpoint(region string) string {
+	return "wafopenapi." + wafSite(region) + ".aliyuncs.com"
+}
+
+// wafSite 返回 WAF 站点实际 region(中国站 cn-hangzhou / 国际站 ap-southeast-1)。
+// 与 wafEndpoint 的站点判定保持一致,供 DescribeInstance/DescribeDomainDetail 的
+// RegionId 使用——RegionId 必须与站点一致,否则实例校验失败(Waf.Instance.ValidFaild)。
+func wafSite(region string) string {
 	if region == "ap-southeast-1" || region == "" {
-		return "wafopenapi.ap-southeast-1.aliyuncs.com"
+		return "ap-southeast-1"
 	}
-	return "wafopenapi.cn-hangzhou.aliyuncs.com"
+	return "cn-hangzhou"
 }
 
 // describeDefenseResourcesResponse 阿里云 WAF 3.0 DescribeDefenseResources 响应
@@ -321,7 +330,7 @@ func (a *WAFAdapter) getDomainDetail(client *sdk.Client, region, domain string) 
 	request.Domain = a.wafEndpoint(region)
 	request.Version = "2021-10-01"
 	request.ApiName = "DescribeDomainDetail"
-	request.QueryParams["RegionId"] = region
+	request.QueryParams["RegionId"] = wafSite(region)
 	request.QueryParams["InstanceId"] = instanceID
 	request.QueryParams["Domain"] = domain
 
@@ -347,21 +356,25 @@ type describeInstanceResp struct {
 	InstanceID string `json:"InstanceId"`
 }
 
-// cachedInstanceID is no longer used — instance ID is cached on the adapter
-
-// getInstanceID 获取阿里云 WAF 实例 ID
+// getInstanceID 获取阿里云 WAF 实例 ID(按站点缓存)。
+// 中国站与国际站实例不同,须按 wafSite 分别缓存,否则跨站点域名用错实例 ID
+// → DescribeDomainDetail 报 Waf.Instance.ValidFaild。
 func (a *WAFAdapter) getInstanceID(client *sdk.Client, region string) (string, error) {
-	if a.instanceID != "" {
-		return a.instanceID, nil
+	site := wafSite(region)
+	if a.instanceIDs == nil {
+		a.instanceIDs = make(map[string]string)
+	}
+	if id, ok := a.instanceIDs[site]; ok && id != "" {
+		return id, nil
 	}
 
 	request := requests.NewCommonRequest()
 	request.Method = "POST"
 	request.Scheme = "https"
-	request.Domain = a.wafEndpoint(region)
+	request.Domain = a.wafEndpoint(site)
 	request.Version = "2021-10-01"
 	request.ApiName = "DescribeInstance"
-	request.QueryParams["RegionId"] = region
+	request.QueryParams["RegionId"] = site
 
 	response, err := client.ProcessCommonRequest(request)
 	if err != nil {
@@ -377,8 +390,8 @@ func (a *WAFAdapter) getInstanceID(client *sdk.Client, region string) (string, e
 		return "", fmt.Errorf("WAF实例ID为空")
 	}
 
-	a.instanceID = resp.InstanceID
-	return a.instanceID, nil
+	a.instanceIDs[site] = resp.InstanceID
+	return resp.InstanceID, nil
 }
 
 // extractDomainFromDetail 从 Detail JSON 中提取真实域名

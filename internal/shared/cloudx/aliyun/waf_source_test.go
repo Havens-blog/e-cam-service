@@ -36,3 +36,25 @@ func TestConvertResourceToInstanceCreationTime(t *testing.T) {
 		}
 	})
 }
+
+func TestWafSite(t *testing.T) {
+	cases := []struct {
+		name   string
+		region string
+		want   string
+	}{
+		{"国际站", "ap-southeast-1", "ap-southeast-1"},
+		{"空地域归国际站", "", "ap-southeast-1"},
+		{"中国站 cn-hangzhou", "cn-hangzhou", "cn-hangzhou"},
+		{"中国站 cn-shenzhen", "cn-shenzhen", "cn-hangzhou"},
+		{"海外资产地域归中国站", "us-east-1", "cn-hangzhou"},
+		{"海外资产地域归中国站 eu", "eu-west-1", "cn-hangzhou"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := wafSite(c.region); got != c.want {
+				t.Fatalf("wafSite(%q) = %q, want %q", c.region, got, c.want)
+			}
+		})
+	}
+}
