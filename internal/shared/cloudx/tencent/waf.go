@@ -150,6 +150,7 @@ func (a *WAFAdapter) listWAFDomains(ctx context.Context, region string, filter *
 		for _, d := range response.Response.Domains {
 			inst := a.convertWAFDomainToInstance(d, region)
 			a.enrichWAFDomainSources(client, d, &inst)
+			a.enrichWAFDomainRules(client, d, &inst)
 			allInstances = append(allInstances, inst)
 		}
 
@@ -328,6 +329,26 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// enrichWAFDomainRules 回捞域名规则数(best-effort)。
+// DescribeDomainRules 返回规则列表,规则数取其长度;规则明细列表(名称/动作/类型)
+// 属二期「防护规则列表」,当前只落计数。
+func (a *WAFAdapter) enrichWAFDomainRules(client *waf.Client, d *waf.DomainInfo, inst *types.WAFInstance) {
+	if d.Domain == nil {
+		return
+	}
+	req := waf.NewDescribeDomainRulesRequest()
+	req.Domain = d.Domain
+	resp, err := client.DescribeDomainRules(req)
+	if err != nil {
+		a.logger.Warn("获取腾讯云WAF域名规则失败", elog.String("domain", deref(d.Domain)), elog.FieldErr(err))
+		return
+	}
+	if resp == nil || resp.Response == nil {
+		return
+	}
+	inst.RuleCount = len(resp.Response.Rules)
 }
 
 // mergeSaaSSources 将 SaaS 型域名详情(DomainsPartInfo)的完整源站合并进 instance。
