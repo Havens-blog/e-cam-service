@@ -74,10 +74,10 @@ type nasAccountCollectResult struct {
 // spec「失败可观测性」：扩展 CDN skipped_providers 雏形为含错误明细的结构，
 // 让「适配器失效」与「真实无指标」在结果上可分辨(Hard Rule)。
 type nasProviderFailure struct {
-	Provider   string `json:"provider"`    // 云厂商
-	AccountID  int64  `json:"account_id"`  // 云账号 ID
-	ErrorCount int    `json:"error_count"` // 本次任务内该账号累计失败次数
-	LastError  string `json:"last_error"`  // 末次错误信息
+	Provider   string `json:"provider" bson:"provider"`       // 云厂商
+	AccountID  int64  `json:"account_id" bson:"account_id"`   // 云账号 ID
+	ErrorCount int    `json:"error_count" bson:"error_count"` // 本次任务内该账号累计失败次数
+	LastError  string `json:"last_error" bson:"last_error"`   // 末次错误信息
 }
 
 // nasAccountFailure 单账号失败累计器(并发安全)：实例采集在有界并发 goroutine
