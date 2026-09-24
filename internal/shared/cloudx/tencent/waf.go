@@ -353,6 +353,14 @@ func mergeSaaSSources(detail *waf.DomainsPartInfo, inst *types.WAFInstance) {
 	if detail.CreateTime != nil && *detail.CreateTime != "" {
 		inst.CreationTime = *detail.CreateTime
 	}
+	// 防护模式:0=观察 1=拦截(SaaS 型域名详情带 Mode,CLB 型无)
+	if detail.Mode != nil {
+		if *detail.Mode == 1 {
+			inst.ProtectionMode = "block"
+		} else {
+			inst.ProtectionMode = "observe"
+		}
+	}
 	// 域名回源时标注,便于运营视图分辨回源类型
 	if detail.UpstreamType != nil && *detail.UpstreamType == 1 && inst.Description == "WAF防护域名" {
 		inst.Description = "WAF防护域名 upstream_type=domain"

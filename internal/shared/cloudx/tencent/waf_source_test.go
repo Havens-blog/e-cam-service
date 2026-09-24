@@ -86,6 +86,24 @@ func TestMergeSaaSSources(t *testing.T) {
 			t.Fatalf("空详情不应清空源站: %v", inst.SourceIPs)
 		}
 	})
+
+	t.Run("Mode=1 映射 block", func(t *testing.T) {
+		detail := &waf.DomainsPartInfo{Mode: func() *uint64 { v := uint64(1); return &v }()}
+		inst := &types.WAFInstance{}
+		mergeSaaSSources(detail, inst)
+		if inst.ProtectionMode != "block" {
+			t.Fatalf("Mode=1 应映射 block,实际 %q", inst.ProtectionMode)
+		}
+	})
+
+	t.Run("Mode=0 映射 observe", func(t *testing.T) {
+		detail := &waf.DomainsPartInfo{Mode: func() *uint64 { v := uint64(0); return &v }()}
+		inst := &types.WAFInstance{}
+		mergeSaaSSources(detail, inst)
+		if inst.ProtectionMode != "observe" {
+			t.Fatalf("Mode=0 应映射 observe,实际 %q", inst.ProtectionMode)
+		}
+	})
 }
 
 func TestMergeCLBSources(t *testing.T) {
