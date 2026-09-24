@@ -160,6 +160,7 @@ func (a *WAFAdapter) listWebACLs(ctx context.Context, client *wafv2.Client, scop
 
 		for _, acl := range output.WebACLs {
 			ruleCount := 0
+			protectionMode := ""
 			var protectedHosts, sourceIPs []string
 			// 获取详情以获取规则数,并按 scope 回捞关联资源解析为 (防护域名, 源站地址)。
 			if acl.Name != nil && acl.Id != nil {
@@ -170,6 +171,14 @@ func (a *WAFAdapter) listWebACLs(ctx context.Context, client *wafv2.Client, scop
 				})
 				if err == nil && detail.WebACL != nil && detail.WebACL.ARN != nil {
 					ruleCount = len(detail.WebACL.Rules)
+					// 防护模式:AWS 无全局观察/拦截开关,用默认动作近似——Allow=观察(仅记录不拦截) Block=拦截
+					if detail.WebACL.DefaultAction != nil {
+						if detail.WebACL.DefaultAction.Block != nil {
+							protectionMode = "block"
+						} else {
+							protectionMode = "observe"
+						}
+					}
 					arn := awssdk.ToString(detail.WebACL.ARN)
 					if scope == wafv2types.ScopeCloudfront {
 						// CloudFront 关联从分配侧反查(WebACLId == WebACL ARN)。
@@ -204,6 +213,7 @@ func (a *WAFAdapter) listWebACLs(ctx context.Context, client *wafv2.Client, scop
 				DomainCount:    len(dedupStrings(protectedHosts)),
 				ProtectedHosts: dedupStrings(protectedHosts),
 				SourceIPs:      dedupStrings(sourceIPs),
+				ProtectionMode: protectionMode,
 				WAFEnabled:     true,
 				Provider:       "aws",
 				Tags:           make(map[string]string),

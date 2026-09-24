@@ -74,6 +74,7 @@ func (e *SyncAssetsExecutor) convertWAFToInstance(inst types.WAFInstance, accoun
 		"acl_rule_count":   inst.ACLRuleCount,
 		"cc_rule_count":    inst.CCRuleCount,
 		"rate_limit_count": inst.RateLimitCount,
+		"protection_mode":  inst.ProtectionMode,
 
 		"waf_enabled":      inst.WAFEnabled,
 		"cc_enabled":       inst.CCEnabled,

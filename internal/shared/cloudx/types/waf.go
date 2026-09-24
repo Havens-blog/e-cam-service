@@ -24,6 +24,9 @@ type WAFInstance struct {
 	CCRuleCount    int `json:"cc_rule_count"`    // CC防护规则数
 	RateLimitCount int `json:"rate_limit_count"` // 限速规则数
 
+	// 防护模式: block=拦截 / observe=观察 / off=关闭(空表示厂商不支持该语义)
+	ProtectionMode string `json:"protection_mode"`
+
 	// 防护能力
 	WAFEnabled     bool `json:"waf_enabled"`      // Web防护开关
 	CCEnabled      bool `json:"cc_enabled"`       // CC防护开关

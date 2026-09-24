@@ -181,6 +181,19 @@ func (a *WAFAdapter) convertToInstance(d *waf.DataForListDomainOutput, region st
 		antiBotEnabled = true
 	}
 
+	// 防护模式: 0=关闭 1=拦截 2=观察
+	protectionMode := ""
+	if d.DefenceMode != nil {
+		switch *d.DefenceMode {
+		case 1:
+			protectionMode = "block"
+		case 2:
+			protectionMode = "observe"
+		default:
+			protectionMode = "off"
+		}
+	}
+
 	// 统计防护域名数
 	domainCount := 0
 	var protectedHosts []string
@@ -235,6 +248,7 @@ func (a *WAFAdapter) convertToInstance(d *waf.DataForListDomainOutput, region st
 		WAFEnabled:     wafEnabled,
 		CCEnabled:      ccEnabled,
 		AntiBotEnabled: antiBotEnabled,
+		ProtectionMode: protectionMode,
 		Provider:       "volcano",
 		Description:    description,
 		Tags:           make(map[string]string),
