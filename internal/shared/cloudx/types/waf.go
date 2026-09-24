@@ -27,6 +27,9 @@ type WAFInstance struct {
 	// 防护模式: block=拦截 / observe=观察 / off=关闭(空表示厂商不支持该语义)
 	ProtectionMode string `json:"protection_mode"`
 
+	// 防护规则列表(精简摘要;厂商规则模型差异大,只取可通用归一的字段)
+	Rules []WAFRule `json:"rules,omitempty"`
+
 	// 防护能力
 	WAFEnabled     bool `json:"waf_enabled"`      // Web防护开关
 	CCEnabled      bool `json:"cc_enabled"`       // CC防护开关
@@ -54,6 +57,14 @@ type WAFInstance struct {
 	Tags        map[string]string `json:"tags"`
 	Description string            `json:"description"`
 	Provider    string            `json:"provider"` // 云厂商标识
+}
+
+// WAFRule 防护规则通用摘要(各厂商规则模型差异大,统一归一到这几个字段)。
+type WAFRule struct {
+	Name   string `json:"name"`        // 规则描述/名称
+	Type   string `json:"rule_type"`   // 规则类型(如门神/id 等,厂商原值)
+	Level  string `json:"level"`       // 威胁等级(高/中/低/观察等,厂商原值)
+	Status string `json:"status"`      // enabled/disabled(规则开关)
 }
 
 // WAFInstanceFilter WAF实例过滤条件
