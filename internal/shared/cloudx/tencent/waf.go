@@ -349,8 +349,14 @@ func (a *WAFAdapter) enrichWAFDomainRules(client *waf.Client, d *waf.DomainInfo,
 		return
 	}
 	inst.RuleCount = len(resp.Response.Rules)
-	rules := make([]types.WAFRule, 0, len(resp.Response.Rules))
-	for _, r := range resp.Response.Rules {
+	inst.Rules = convertTencentRules(resp.Response.Rules)
+}
+
+// convertTencentRules 将腾讯门神规则(Rule)统一归一到通用 WAFRule。
+// Status 语义:0=禁用,其余(含 nil)视为启用(保守,不误标)。
+func convertTencentRules(rules []*waf.Rule) []types.WAFRule {
+	out := make([]types.WAFRule, 0, len(rules))
+	for _, r := range rules {
 		if r == nil {
 			continue
 		}
@@ -358,14 +364,14 @@ func (a *WAFAdapter) enrichWAFDomainRules(client *waf.Client, d *waf.DomainInfo,
 		if r.Status != nil && *r.Status == 0 {
 			status = "disabled"
 		}
-		rules = append(rules, types.WAFRule{
+		out = append(out, types.WAFRule{
 			Name:   deref(r.Description),
 			Type:   deref(r.Type),
 			Level:  deref(r.Level),
 			Status: status,
 		})
 	}
-	inst.Rules = rules
+	return out
 }
 
 // mergeSaaSSources 将 SaaS 型域名详情(DomainsPartInfo)的完整源站合并进 instance。

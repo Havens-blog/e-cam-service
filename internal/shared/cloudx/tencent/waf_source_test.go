@@ -106,6 +106,36 @@ func TestMergeSaaSSources(t *testing.T) {
 	})
 }
 
+func TestConvertTencentRules(t *testing.T) {
+	t.Run("归一门神规则字段", func(t *testing.T) {
+		rules := []*waf.Rule{
+			{
+				Description: strPtr("SQL注入检测"),
+				Type:        strPtr("sqli"),
+				Level:       strPtr("high"),
+				Status:      func() *uint64 { v := uint64(1); return &v }(),
+			},
+			{
+				Description: strPtr("XSS检测"),
+				Type:        strPtr("xss"),
+				Level:       strPtr("medium"),
+				Status:      func() *uint64 { v := uint64(0); return &v }(),
+			},
+			nil,
+		}
+		out := convertTencentRules(rules)
+		if len(out) != 2 {
+			t.Fatalf("期望 2 条(跳过 nil),实际 %d", len(out))
+		}
+		if out[0].Name != "SQL注入检测" || out[0].Level != "high" || out[0].Status != "enabled" {
+			t.Fatalf("第 1 条映射错误: %+v", out[0])
+		}
+		if out[1].Status != "disabled" {
+			t.Fatalf("Status=0 应映射 disabled,实际 %s", out[1].Status)
+		}
+	})
+}
+
 func TestMergeCLBSources(t *testing.T) {
 	t.Run("关联 LB 写入 Description", func(t *testing.T) {
 		detail := &waf.ClbDomainsInfo{
