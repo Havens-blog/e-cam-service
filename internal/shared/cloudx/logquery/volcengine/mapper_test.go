@@ -129,25 +129,23 @@ func TestMapALBAccess(t *testing.T) {
 	}
 }
 
-func TestIsEdgeAccessLog(t *testing.T) {
-	access := map[string]any{"http_host": "h", "status": "200", "method": "GET", "upstream_addr": "-"}
+func TestIsAccessTopic(t *testing.T) {
 	cases := []struct {
 		name string
-		raw  map[string]any
 		want bool
 	}{
-		{"www_jlc_com_https_access", access, true},
-		{"ai-mobile-web-nginx-access", access, true},
-		{"jsjlc-access-gateway-gateway-access", access, true},
-		{"fat-nacos_jlcerp_com_lb_access", access, true},
-		{"prod_dayu-access-gateway_lb_access", map[string]any{"http_host": "h", "status": "200", "loadbalancer_id": "alb-x", "listener_id": "lsn-y"}, true}, // 火山 ALB 访问日志(无 method,有 loadbalancer_id)
-		{"forface-model-viewer-tomcat-access", map[string]any{"http_host": "h", "status": "200", "method": "GET"}, false}, // 应用服务器访问,非边缘
-		{"x-business", map[string]any{"message": "m", "level": "info"}, false},                                         // 无访问 schema
-		{"www_jlc_com_https_error", map[string]any{"message": "err", "http_host": "h"}, false},                          // 错误日志无 status/method
+		{"www_jlc_com_https_access", true},
+		{"ai-mobile-web-nginx-access", true},
+		{"jsjlc-access-gateway-gateway-access", true},
+		{"fat-nacos_jlcerp_com_lb_access", true},            // 火山 ALB 访问日志
+		{"prod_dayu-access-gateway-limited_lb_access", true}, // 火山 ALB(限流)
+		{"forface-model-viewer-tomcat-access", false},        // 应用服务器访问,非边缘
+		{"ai-app-core-service-business", false},              // 应用业务日志
+		{"www_jlc_com_https_error", false},                   // 错误日志
 	}
 	for _, c := range cases {
-		if got := isEdgeAccessLog(c.raw, c.name); got != c.want {
-			t.Errorf("isEdgeAccessLog(%q) = %v, want %v", c.name, got, c.want)
+		if got := isAccessTopic(c.name); got != c.want {
+			t.Errorf("isAccessTopic(%q) = %v, want %v", c.name, got, c.want)
 		}
 	}
 }
