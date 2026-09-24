@@ -353,6 +353,8 @@ func (a *WAFAdapter) enrichWAFDomainRules(client *waf.Client, d *waf.DomainInfo,
 }
 
 // convertTencentRules 将腾讯门神规则(Rule)统一归一到通用 WAFRule。
+// 门神规则是全局同一套(每域 2000+ 条、跨域 99% 同构),全量落库会产生 25w+ 冗余行,
+// 故只存预览前 maxPreviewRules 条,完整条数由 RuleCount 承载。
 // Status 语义:0=禁用,其余(含 nil)视为启用(保守,不误标)。
 func convertTencentRules(rules []*waf.Rule) []types.WAFRule {
 	out := make([]types.WAFRule, 0, len(rules))
@@ -370,9 +372,15 @@ func convertTencentRules(rules []*waf.Rule) []types.WAFRule {
 			Level:  deref(r.Level),
 			Status: status,
 		})
+		if len(out) >= maxPreviewRules {
+			break
+		}
 	}
 	return out
 }
+
+// maxPreviewRules 门神规则预览条数上限(完整条数见 RuleCount)。
+const maxPreviewRules = 100
 
 // mergeSaaSSources 将 SaaS 型域名详情(DomainsPartInfo)的完整源站合并进 instance。
 // SrcList = IP 回源(UpstreamType=0),UpstreamDomain = 域名回源(UpstreamType=1)。
