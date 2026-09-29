@@ -62,8 +62,17 @@ func (s *nodeAssetService) ListNodeAssets(ctx context.Context, filter domain.Nod
 		return s.listUnboundAssets(ctx, filter)
 	}
 
+	// type 过滤时取全量绑定：asset_type 派生自 model_uid，无法下推绑定表 DB 查询，
+	// 只能在内存过滤后再分页，total 用过滤后的精确计数；否则走 DB 分页（env 过滤
+	// 已在查询层生效，效率更高）。
+	queryFilter := filter
+	if filter.AssetType != "" {
+		queryFilter.Offset = 0
+		queryFilter.Limit = 0
+	}
+
 	// 1. 获取绑定列表
-	bindings, total, err := s.getBindings(ctx, filter)
+	bindings, total, err := s.getBindings(ctx, queryFilter)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -87,8 +96,8 @@ func (s *nodeAssetService) ListNodeAssets(ctx context.Context, filter domain.Nod
 		instanceMap[inst.ID] = inst
 	}
 
-	// 4. 组装结果，按 assetType 过滤
-	var result []domain.NodeAssetVO
+	// 4. 组装结果，按 assetType 过滤（CMDB 缺失的绑定跳过）
+	filtered := make([]domain.NodeAssetVO, 0, len(bindings))
 	for _, b := range bindings {
 		inst, ok := instanceMap[b.ResourceID]
 		if !ok {
@@ -96,17 +105,15 @@ func (s *nodeAssetService) ListNodeAssets(ctx context.Context, filter domain.Nod
 				elog.Int64("bindingID", b.ID),
 				elog.Int64("resourceID", b.ResourceID),
 			)
-			total--
 			continue
 		}
 
 		assetType := extractAssetType(inst.ModelUID)
 		if filter.AssetType != "" && assetType != filter.AssetType {
-			total--
 			continue
 		}
 
-		result = append(result, domain.NodeAssetVO{
+		filtered = append(filtered, domain.NodeAssetVO{
 			BindingID:  b.ID,
 			NodeID:     b.NodeID,
 			EnvID:      b.EnvID,
@@ -125,7 +132,32 @@ func (s *nodeAssetService) ListNodeAssets(ctx context.Context, filter domain.Nod
 		})
 	}
 
-	return result, total, nil
+	if filter.AssetType != "" {
+		// type 过滤：内存分页 + 精确 total
+		total = int64(len(filtered))
+		filtered = slicePage(filtered, filter.Offset, filter.Limit)
+	} else {
+		// 无 type 过滤（DB 已分页）：total 来自 Count，剔除本页 CMDB 缺失的绑定
+		total -= int64(len(bindings)) - int64(len(filtered))
+	}
+
+	return filtered, total, nil
+}
+
+// slicePage 内存分页（offset/limit 裁剪；limit<=0 表示不限制）
+func slicePage(vos []domain.NodeAssetVO, offset, limit int64) []domain.NodeAssetVO {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= int64(len(vos)) {
+		return []domain.NodeAssetVO{}
+	}
+	start := int(offset)
+	end := len(vos)
+	if limit > 0 && int(offset+limit) < end {
+		end = int(offset + limit)
+	}
+	return vos[start:end]
 }
 
 // listUnboundAssets 查询未绑定到任何节点的资产 (根节点的"待分配"资源池)
@@ -462,19 +494,6 @@ func (s *nodeAssetService) GetNodeAssetSummary(ctx context.Context, tenantID int
 	}
 
 	return summary, nil
-}
-
-// loadEnvCodeMap 加载租户环境 ID → 代码映射
-func (s *nodeAssetService) loadEnvCodeMap(ctx context.Context, tenantID int64) (map[int64]string, error) {
-	envs, err := s.envRepo.List(ctx, domain.EnvironmentFilter{TenantID: tenantID})
-	if err != nil {
-		return nil, fmt.Errorf("查询环境列表失败: %w", err)
-	}
-	m := make(map[int64]string, len(envs))
-	for _, e := range envs {
-		m[e.ID] = e.Code
-	}
-	return m, nil
 }
 
 // resolveEnvKey 环境分布 key：有代码用代码，未知环境回退 "env_<id>"
