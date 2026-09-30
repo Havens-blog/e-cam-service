@@ -28,6 +28,7 @@ import (
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
+	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aliyun"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
 	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
@@ -53,7 +54,9 @@ type SyncAssetsExecutor struct {
 	dnsRecordColl  *mongo.Collection // DNS 记录集合 (c_dns_record)
 	changeTracker  ChangeTracker     // 资产同步变更追踪（nil 不追踪，由 ioc 注入）
 	ruleExecutor   RuleAutoExecutor  // 服务树规则引擎（同步完成后自动执行规则，nil 关闭，由 ioc 注入）
-	logger         *elog.Component
+	// resourceGroupNames 阿里云资源组 ID -> 名称 映射（账号级补采，同步时写入 attributes.resource_group_name）
+	resourceGroupNames map[string]string
+	logger             *elog.Component
 	// syncingNow 账号级同步互斥(account_id -> task_id)。
 	// 手动连点/调度器/重试会产生同一账号的多个并发同步任务,
 	// 全量同步互相踩踏浪费厂商 API 配额且更慢,故同账号同时只放行一个任务。
@@ -219,6 +222,17 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 				}
 			}
 			regions = filteredRegions
+		}
+
+		// 阿里云资源组名称补采：账号级一次拉取，随后在 diffAndUpsert 集中写入各资产
+		e.resourceGroupNames = nil
+		if account.Provider == domain.CloudProviderAliyun {
+			names, rgErr := aliyun.ListResourceGroupNames(&account)
+			if rgErr != nil {
+				e.logger.Warn("拉取阿里云资源组名称失败", elog.FieldErr(rgErr))
+			} else {
+				e.resourceGroupNames = names
+			}
 		}
 
 		// 同步该账号的所有地域资产
@@ -457,6 +471,7 @@ func (e *SyncAssetsExecutor) diffAndUpsert(
 			e.logger.Error("转换实例失败", elog.String("asset_id", it.AssetID), elog.FieldErr(convErr))
 			continue
 		}
+		e.enrichResourceGroupName(&instance)
 		// 变更追踪（可选注入）：有旧实例才记录，失败不影响同步
 		if e.changeTracker != nil {
 			e.trackChange(ctx, instance)
@@ -469,6 +484,25 @@ func (e *SyncAssetsExecutor) diffAndUpsert(
 	}
 
 	return synced, deleted, nil
+}
+
+// enrichResourceGroupName 阿里云资源组名称补采：把资源组 ID（resource_group_id，或部分阿里云
+// 资产类型映射到 project_id）反查成可读名称，写入 attributes.resource_group_name，供服务树规则
+// 按名称枚举/匹配。未命中（非阿里云/无资源组映射）不动任何字段。
+func (e *SyncAssetsExecutor) enrichResourceGroupName(instance *camdomain.Instance) {
+	if len(e.resourceGroupNames) == 0 || instance.Attributes == nil {
+		return
+	}
+	for _, key := range []string{"resource_group_id", "project_id"} {
+		id, ok := instance.Attributes[key].(string)
+		if !ok || id == "" {
+			continue
+		}
+		if name, ok := e.resourceGroupNames[id]; ok {
+			instance.Attributes["resource_group_name"] = name
+			return
+		}
+	}
 }
 
 // trackChange 查询旧实例并记录变更（同步来源，语义与已删除的 asset_sync trackAndUpsert 一致）
