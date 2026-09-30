@@ -93,7 +93,8 @@ func (m *mockNodeRepo) InitIndexes(_ context.Context) error {
 
 // mockEdgeRepo implements repository.EdgeRepository for testing
 type mockEdgeRepo struct {
-	edges []domain.TopoEdge
+	edges                   []domain.TopoEdge
+	activateResolvableCalls []int64
 }
 
 func newMockEdgeRepo() *mockEdgeRepo {
@@ -147,6 +148,11 @@ func (m *mockEdgeRepo) UpdatePendingEdges(_ context.Context, _ int64, _ string) 
 }
 
 func (m *mockEdgeRepo) CountPending(_ context.Context, _ int64) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockEdgeRepo) ActivateResolvablePendingEdges(_ context.Context, tenantID int64) (int64, error) {
+	m.activateResolvableCalls = append(m.activateResolvableCalls, tenantID)
 	return 0, nil
 }
 

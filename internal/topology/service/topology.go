@@ -47,6 +47,9 @@ func NewTopologyService(
 
 // GetBusinessTopology 获取业务链路拓扑
 func (s *topologyService) GetBusinessTopology(ctx context.Context, params domain.TopologyQueryParams) (*domain.TopoGraph, error) {
+	// 0. 查询前自愈：激活所有目标节点已存在的 pending 边
+	s.activateResolvablePending(ctx, params.TenantID)
+
 	// 0. 强制刷新：清除该域名的 LiveBuilder 缓存数据，强制重新从云 API 构建
 	if params.Refresh && params.Domain != "" {
 		s.clearLiveBuilderCache(ctx, params.TenantID, params.Domain)
@@ -429,6 +432,17 @@ func (s *topologyService) tenantBrokenCount(ctx context.Context, tenantID int64)
 		return 0
 	}
 	return computeBrokenCount(nodes, edges)
+}
+
+// activateResolvablePending 激活所有目标节点已存在的 pending 边（幂等自愈）。
+// 失败不阻塞拓扑查询。
+func (s *topologyService) activateResolvablePending(ctx context.Context, tenantID int64) {
+	if s.edgeRepo == nil {
+		return
+	}
+	if _, err := s.edgeRepo.ActivateResolvablePendingEdges(ctx, tenantID); err != nil {
+		_ = err // 激活失败仅忽略，不影响返回
+	}
 }
 
 // filterByDomain 按域名筛选子图：从指定 DNS 节点出发，BFS 找到所有可达节点和边

@@ -222,3 +222,68 @@ func (d *EdgeDAO) InitIndexes(ctx context.Context) error {
 	_, err := d.col().Indexes().CreateMany(ctx, indexes)
 	return err
 }
+
+// ActivateResolvablePendingEdges 将所有目标节点已存在的 pending 边激活为 active。
+// 分两步：先取租户节点 ID 集，再按 target_id 批量更新。返回激活的边数。
+func (d *EdgeDAO) ActivateResolvablePendingEdges(ctx context.Context, tenantID int64) (int64, error) {
+	nodeIDs, err := d.collectNodeIDs(ctx, tenantID)
+	if err != nil {
+		return 0, err
+	}
+	if len(nodeIDs) == 0 {
+		return 0, nil
+	}
+
+	var total int64
+	for _, chunk := range chunkStrings(nodeIDs, 1000) {
+		res, err := d.col().UpdateMany(ctx,
+			bson.M{"tenant_id": tenantID, "status": domain.EdgeStatusPending, "target_id": bson.M{"$in": chunk}},
+			bson.M{"$set": bson.M{"status": domain.EdgeStatusActive, "updated_at": time.Now()}},
+		)
+		if err != nil {
+			return total, err
+		}
+		total += res.ModifiedCount
+	}
+	return total, nil
+}
+
+// collectNodeIDs 收集租户全部节点 ID（仅投影 _id）。
+func (d *EdgeDAO) collectNodeIDs(ctx context.Context, tenantID int64) ([]string, error) {
+	cursor, err := d.db.Collection(TopoNodesCollection).Find(ctx,
+		bson.M{"tenant_id": tenantID},
+		options.Find().SetProjection(bson.M{"_id": 1}),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var ids []string
+	for cursor.Next(ctx) {
+		var doc struct {
+			ID string `bson:"_id"`
+		}
+		if err := cursor.Decode(&doc); err != nil {
+			return nil, err
+		}
+		ids = append(ids, doc.ID)
+	}
+	return ids, cursor.Err()
+}
+
+// chunkStrings 将字符串切片按 size 分块，避免单个 $in 过大。
+func chunkStrings(items []string, size int) [][]string {
+	if len(items) == 0 {
+		return nil
+	}
+	var chunks [][]string
+	for i := 0; i < len(items); i += size {
+		end := i + size
+		if end > len(items) {
+			end = len(items)
+		}
+		chunks = append(chunks, items[i:end])
+	}
+	return chunks
+}
