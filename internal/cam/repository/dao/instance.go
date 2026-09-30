@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
@@ -417,7 +418,9 @@ func (d *instanceDAO) ListAssetIDsByModelUID(ctx context.Context, tenantID int64
 }
 
 // Search 统一搜索实例
-// 支持按关键词搜索 asset_id, asset_name, ip 地址等
+// 支持按关键词搜索 asset_id, asset_name, ip 地址等。
+// 关键词命中时按相关性排序（精确ID > 精确名 > ID前缀 > 名前缀 > ID包含 > 名包含 > 其它字段），
+// 同分按 utime 倒序；避免短关键词下目标实例被单纯按更新时间倒序挤出前 N（截断发生在相关性排序之后）。
 func (d *instanceDAO) Search(ctx context.Context, filter SearchFilter) ([]Instance, int64, error) {
 	query := d.buildSearchQuery(filter)
 
@@ -427,19 +430,32 @@ func (d *instanceDAO) Search(ctx context.Context, filter SearchFilter) ([]Instan
 		return nil, 0, err
 	}
 
-	// 查询数据
-	opts := options.Find()
-	if filter.Offset > 0 {
-		opts.SetSkip(filter.Offset)
-	}
 	limit := filter.Limit
 	if limit <= 0 {
 		limit = 20
 	}
-	opts.SetLimit(limit)
-	opts.SetSort(bson.M{"utime": -1}) // 按更新时间倒序
 
-	cursor, err := d.db.Collection(InstanceCollection).Find(ctx, query, opts)
+	pipeline := mongo.Pipeline{bson.D{{Key: "$match", Value: query}}}
+
+	// 相关性排序：无关键词时保持原 utime 倒序
+	if filter.Keyword != "" {
+		pipeline = append(pipeline, bson.D{{Key: "$addFields", Value: bson.D{
+			{Key: "_score", Value: relevanceScoreExpr(filter.Keyword)},
+		}}})
+		pipeline = append(pipeline, bson.D{{Key: "$sort", Value: bson.D{
+			{Key: "_score", Value: 1},
+			{Key: "utime", Value: -1},
+		}}})
+	} else {
+		pipeline = append(pipeline, bson.D{{Key: "$sort", Value: bson.D{{Key: "utime", Value: -1}}}})
+	}
+
+	if filter.Offset > 0 {
+		pipeline = append(pipeline, bson.D{{Key: "$skip", Value: filter.Offset}})
+	}
+	pipeline = append(pipeline, bson.D{{Key: "$limit", Value: limit}})
+
+	cursor, err := d.db.Collection(InstanceCollection).Aggregate(ctx, pipeline)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -448,6 +464,48 @@ func (d *instanceDAO) Search(ctx context.Context, filter SearchFilter) ([]Instan
 	var instances []Instance
 	err = cursor.All(ctx, &instances)
 	return instances, total, err
+}
+
+// relevanceScoreExpr 构建关键词相关性评分表达式（$switch）。
+// 分值越小越靠前：精确ID(0) < 精确名(1) < ID前缀(2) < 名前缀(3) < ID包含(4) < 名包含(5) < 其它字段命中(6)。
+// 用 $toLower + $indexOfCP 实现大小写不敏感的等值/前缀/包含判定，避免正则转义。
+func relevanceScoreExpr(keyword string) bson.D {
+	kw := strings.ToLower(keyword)
+
+	// lower：字段统一转小写（asset_id/asset_name 恒为字符串，安全）
+	lower := func(field string) bson.D {
+		return bson.D{{Key: "$toLower", Value: field}}
+	}
+	eq := func(field string) bson.D {
+		return bson.D{{Key: "$eq", Value: bson.A{lower(field), kw}}}
+	}
+	prefix := func(field string) bson.D {
+		return bson.D{{Key: "$eq", Value: bson.A{
+			bson.D{{Key: "$indexOfCP", Value: bson.A{lower(field), kw}}},
+			0,
+		}}}
+	}
+	contains := func(field string) bson.D {
+		return bson.D{{Key: "$ne", Value: bson.A{
+			bson.D{{Key: "$indexOfCP", Value: bson.A{lower(field), kw}}},
+			-1,
+		}}}
+	}
+	branch := func(score int, cond bson.D) bson.D {
+		return bson.D{{Key: "case", Value: cond}, {Key: "then", Value: score}}
+	}
+
+	return bson.D{{Key: "$switch", Value: bson.D{
+		{Key: "branches", Value: bson.A{
+			branch(0, eq("$asset_id")),
+			branch(1, eq("$asset_name")),
+			branch(2, prefix("$asset_id")),
+			branch(3, prefix("$asset_name")),
+			branch(4, contains("$asset_id")),
+			branch(5, contains("$asset_name")),
+		}},
+		{Key: "default", Value: 6},
+	}}}
 }
 
 // buildSearchQuery 构建搜索查询条件

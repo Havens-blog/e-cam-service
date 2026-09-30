@@ -127,3 +127,80 @@ func TestBuildSearchQueryAssetTypes(t *testing.T) {
 		}
 	}
 }
+
+// TestRelevanceScoreExpr 锁定相关性评分表达式结构：
+// 6 个分支按 精确ID<精确名<ID前缀<名前缀<ID包含<名包含 排序，default 为 6；
+// 关键词统一转小写（等值分支的常量值必须是小写）。
+func TestRelevanceScoreExpr(t *testing.T) {
+	expr := relevanceScoreExpr("K8S")
+
+	if len(expr) != 1 || expr[0].Key != "$switch" {
+		t.Fatalf("want single $switch, got %#v", expr)
+	}
+	sw, ok := expr[0].Value.(bson.D)
+	if !ok {
+		t.Fatalf("$switch value not bson.D: %T", expr[0].Value)
+	}
+
+	var branches bson.A
+	var deflt any
+	for _, e := range sw {
+		switch e.Key {
+		case "branches":
+			branches = e.Value.(bson.A)
+		case "default":
+			deflt = e.Value
+		}
+	}
+	if len(branches) != 6 {
+		t.Fatalf("want 6 branches, got %d", len(branches))
+	}
+	if deflt != 6 {
+		t.Fatalf("want default 6, got %v", deflt)
+	}
+
+	// 分支 then 值必须按 0..5 递增（相关性降序）
+	for i, b := range branches {
+		br, ok := b.(bson.D)
+		if !ok {
+			t.Fatalf("branch %d not bson.D: %T", i, b)
+		}
+		for _, e := range br {
+			if e.Key == "then" && e.Value != i {
+				t.Fatalf("branch %d then = %v, want %d", i, e.Value, i)
+			}
+		}
+	}
+
+	// 等值分支的关键词比较值必须已小写
+	hasLowerKw := false
+	var containsLower func(v any) bool
+	containsLower = func(v any) bool {
+		switch x := v.(type) {
+		case string:
+			return x == "k8s"
+		case bson.A:
+			for _, it := range x {
+				if containsLower(it) {
+					return true
+				}
+			}
+		case bson.D:
+			for _, e := range x {
+				if containsLower(e.Value) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	for _, b := range branches {
+		if containsLower(b) {
+			hasLowerKw = true
+			break
+		}
+	}
+	if !hasLowerKw {
+		t.Fatalf("relevanceScoreExpr 未内嵌小写关键词 \"k8s\"，ToLower 疑似失效")
+	}
+}
