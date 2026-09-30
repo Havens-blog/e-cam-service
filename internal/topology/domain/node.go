@@ -27,6 +27,15 @@ const (
 	NodeTypeS3             = "s3"
 	NodeTypeExternal       = "external"
 	NodeTypeUnknown        = "unknown"
+	NodeTypeNLB            = "nlb"
+	NodeTypeCLB            = "clb"
+	NodeTypeENI            = "eni"
+	NodeTypeMongoDB        = "mongodb"
+	NodeTypeVPC            = "vpc"
+	NodeTypeEIP            = "eip"
+	NodeTypeNAS            = "nas"
+	NodeTypeKafka          = "kafka"
+	NodeTypeElasticsearch  = "elasticsearch"
 )
 
 // 资源分类常量
@@ -79,6 +88,9 @@ var ValidNodeTypes = map[string]bool{
 	NodeTypeK8sDeployment: true, NodeTypeK8sStatefulSet: true,
 	NodeTypeECS: true, NodeTypeRDS: true, NodeTypeRedis: true,
 	NodeTypeOSS: true, NodeTypeS3: true, NodeTypeExternal: true, NodeTypeUnknown: true,
+	NodeTypeNLB: true, NodeTypeCLB: true, NodeTypeENI: true, NodeTypeMongoDB: true,
+	NodeTypeVPC: true, NodeTypeEIP: true, NodeTypeNAS: true, NodeTypeKafka: true,
+	NodeTypeElasticsearch: true,
 }
 
 // ValidCategories 所有合法的资源分类

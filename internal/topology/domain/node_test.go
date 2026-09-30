@@ -97,3 +97,11 @@ func TestTopoNode_Validate_APMSource(t *testing.T) {
 	err := node.Validate()
 	assert.NoError(t, err, "TopoNode with source_collector 'apm' should pass validation")
 }
+
+func TestTopoNode_Validate_ExtendedTypes(t *testing.T) {
+	extended := []string{"nlb", "clb", "eni", "mongodb", "vpc", "eip", "nas", "kafka", "elasticsearch"}
+	for _, typ := range extended {
+		n := TopoNode{ID: "n-" + typ, Name: "node", Type: typ, Category: CategoryNetwork, TenantID: 1}
+		assert.NoError(t, n.Validate(), "type %s should validate", typ)
+	}
+}
