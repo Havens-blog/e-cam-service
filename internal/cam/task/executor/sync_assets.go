@@ -232,6 +232,7 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 				e.logger.Warn("拉取阿里云资源组名称失败", elog.FieldErr(rgErr))
 			} else {
 				e.resourceGroupNames = names
+				e.logger.Info("拉取阿里云资源组名称成功", elog.Int("count", len(names)))
 			}
 		}
 

@@ -26,6 +26,7 @@ func ListResourceGroupNames(account *domain.CloudAccount) (map[string]string, er
 	request.Scheme = "https"
 	request.PageSize = requests.NewInteger(100)
 
+	collected := 0
 	for page := 1; ; page++ {
 		request.PageNumber = requests.NewInteger(page)
 		resp, err := client.ListResourceGroups(request)
@@ -34,6 +35,7 @@ func ListResourceGroupNames(account *domain.CloudAccount) (map[string]string, er
 		}
 
 		groups := resp.ResourceGroups.ResourceGroup
+		collected += len(groups)
 		for _, rg := range groups {
 			name := rg.Name
 			if name == "" {
@@ -44,7 +46,9 @@ func ListResourceGroupNames(account *domain.CloudAccount) (map[string]string, er
 			}
 		}
 
-		if len(groups) < 100 || page*100 >= resp.TotalCount {
+		// 末页判定：空页，或已收齐 TotalCount（阿里云 list 接口 TotalCount 可信）。
+		// 不以「返回条数 < 请求的 PageSize」判末页——API 可能缩小页大小，会漏翻。
+		if len(groups) == 0 || (resp.TotalCount > 0 && collected >= resp.TotalCount) {
 			break
 		}
 	}
