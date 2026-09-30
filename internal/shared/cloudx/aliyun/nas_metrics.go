@@ -165,7 +165,12 @@ func (a *NASAdapter) resolveUserID() (string, error) {
 		return a.metricHooks.resolveUserID()
 	}
 	a.userIDOnce.Do(func() {
-		client, err := sts.NewClientWithAccessKey("cn-hangzhou", a.accessKeyID, a.accessKeySecret)
+		// STS 必须走 https:NewClientWithAccessKey 简写默认 Scheme=HTTP,
+		// 会被网关拒 InvalidProtocol.NeedSsl;此处与 createCMSClient/GetECSClient 同款显式 https。
+		credential := credentials.NewAccessKeyCredential(a.accessKeyID, a.accessKeySecret)
+		config := sdk.NewConfig()
+		config.Scheme = "https"
+		client, err := sts.NewClientWithOptions("cn-hangzhou", config, credential)
 		if err != nil {
 			a.userIDErr = fmt.Errorf("创建STS客户端失败: %w", err)
 			return
