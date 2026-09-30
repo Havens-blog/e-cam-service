@@ -8,6 +8,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/topology/domain"
 	"github.com/Havens-blog/e-cam-service/internal/topology/repository"
+	"github.com/gotomicro/ego/core/elog"
 )
 
 // TopologyService 拓扑服务接口
@@ -47,6 +48,9 @@ func NewTopologyService(
 
 // GetBusinessTopology 获取业务链路拓扑
 func (s *topologyService) GetBusinessTopology(ctx context.Context, params domain.TopologyQueryParams) (*domain.TopoGraph, error) {
+	// 0. 查询前自愈：激活所有目标节点已存在的 pending 边
+	s.activateResolvablePending(ctx, params.TenantID)
+
 	// 0. 强制刷新：清除该域名的 LiveBuilder 缓存数据，强制重新从云 API 构建
 	if params.Refresh && params.Domain != "" {
 		s.clearLiveBuilderCache(ctx, params.TenantID, params.Domain)
@@ -77,6 +81,9 @@ func (s *topologyService) GetBusinessTopology(ctx context.Context, params domain
 	if err != nil {
 		return nil, fmt.Errorf("failed to query nodes: %w", err)
 	}
+
+	// 租户级断链数（与视图筛选无关），所有返回路径共用
+	brokenCount := s.tenantBrokenCount(ctx, params.TenantID)
 
 	// 3. 检查当前查询的域名是否已有 DNS 入口节点。如果没有，用 LiveBuilder 构建并持久化
 	hasDomainEntry := false
@@ -155,7 +162,7 @@ func (s *topologyService) GetBusinessTopology(ctx context.Context, params domain
 			if params.Domain != "" {
 				dbNodes, edges = s.filterByDomain(dbNodes, edges, params.Domain)
 			}
-			stats := s.computeStats(dbNodes, edges)
+			stats := s.computeStats(dbNodes, edges, brokenCount)
 			return &domain.TopoGraph{Nodes: dbNodes, Edges: edges, Stats: stats}, nil
 		}
 	}
@@ -167,7 +174,7 @@ func (s *topologyService) GetBusinessTopology(ctx context.Context, params domain
 		return &domain.TopoGraph{
 			Nodes: []domain.TopoNode{},
 			Edges: []domain.TopoEdge{},
-			Stats: domain.TopoStats{},
+			Stats: domain.TopoStats{BrokenCount: brokenCount},
 		}, nil
 	}
 
@@ -209,7 +216,7 @@ func (s *topologyService) GetBusinessTopology(ctx context.Context, params domain
 	}
 
 	// 8. 计算统计信息
-	stats := s.computeStats(nodes, edges)
+	stats := s.computeStats(nodes, edges, brokenCount)
 
 	return &domain.TopoGraph{
 		Nodes: nodes,
@@ -406,17 +413,40 @@ func (s *topologyService) GetStats(ctx context.Context, tenantID int64) (*domain
 	if err != nil {
 		return nil, err
 	}
-	pendingCount, err := s.edgeRepo.CountPending(ctx, tenantID)
-	if err != nil {
-		return nil, err
-	}
 
 	return &domain.TopoStats{
 		NodeCount:   int(nodeCount),
 		EdgeCount:   int(edgeCount),
 		DomainCount: len(dnsNodes),
-		BrokenCount: int(pendingCount), // 简化：pending 边数作为断链数
+		BrokenCount: s.tenantBrokenCount(ctx, tenantID),
 	}, nil
+}
+
+// tenantBrokenCount 计算租户级断链边数（与视图 provider/type/source_collector 筛选无关）。
+// 读取失败时返回 0 并记告警（避免把数据库故障伪装成「无断链」的清白假象）。
+func (s *topologyService) tenantBrokenCount(ctx context.Context, tenantID int64) int {
+	nodes, err := s.nodeRepo.Find(ctx, domain.NodeFilter{TenantID: tenantID})
+	if err != nil {
+		elog.DefaultLogger.Warn("tenantBrokenCount: query nodes failed", elog.FieldErr(err), elog.Int64("tenant_id", tenantID))
+		return 0
+	}
+	edges, err := s.edgeRepo.Find(ctx, domain.EdgeFilter{TenantID: tenantID})
+	if err != nil {
+		elog.DefaultLogger.Warn("tenantBrokenCount: query edges failed", elog.FieldErr(err), elog.Int64("tenant_id", tenantID))
+		return 0
+	}
+	return computeBrokenCount(nodes, edges)
+}
+
+// activateResolvablePending 激活所有目标节点已存在的 pending 边（幂等自愈）。
+// 失败不阻塞拓扑查询，仅记告警。
+func (s *topologyService) activateResolvablePending(ctx context.Context, tenantID int64) {
+	if s.edgeRepo == nil {
+		return
+	}
+	if _, err := s.edgeRepo.ActivateResolvablePendingEdges(ctx, tenantID); err != nil {
+		elog.DefaultLogger.Warn("activate resolvable pending edges failed", elog.FieldErr(err), elog.Int64("tenant_id", tenantID))
+	}
 }
 
 // filterByDomain 按域名筛选子图：从指定 DNS 节点出发，BFS 找到所有可达节点和边
@@ -650,11 +680,12 @@ func (s *topologyService) clearLiveBuilderCache(ctx context.Context, tenantID in
 	}
 }
 
-// computeStats 计算统计信息
-func (s *topologyService) computeStats(nodes []domain.TopoNode, edges []domain.TopoEdge) domain.TopoStats {
+// computeStats 计算统计信息（brokenCount 由调用方传入，来自租户级 tenantBrokenCount，与视图筛选无关）
+func (s *topologyService) computeStats(nodes []domain.TopoNode, edges []domain.TopoEdge, brokenCount int) domain.TopoStats {
 	stats := domain.TopoStats{
-		NodeCount: len(nodes),
-		EdgeCount: len(edges),
+		NodeCount:   len(nodes),
+		EdgeCount:   len(edges),
+		BrokenCount: brokenCount,
 	}
 
 	for _, n := range nodes {
@@ -665,9 +696,6 @@ func (s *topologyService) computeStats(nodes []domain.TopoNode, edges []domain.T
 			stats.MaxDepth = n.DagDepth
 		}
 	}
-
-	// 断链检测
-	stats.BrokenCount = s.builder.DetectBrokenLinks(nodes, edges)
 
 	return stats
 }

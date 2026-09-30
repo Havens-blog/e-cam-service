@@ -78,16 +78,6 @@ func TestTopoNode_Validate(t *testing.T) {
 	}
 }
 
-func TestTopoNode_IsBidirectional(t *testing.T) {
-	assert.True(t, (&TopoNode{Type: NodeTypeSLB}).IsBidirectional())
-	assert.True(t, (&TopoNode{Type: NodeTypeGateway}).IsBidirectional())
-	assert.True(t, (&TopoNode{Type: NodeTypeWAF}).IsBidirectional())
-	assert.True(t, (&TopoNode{Type: NodeTypeCDN}).IsBidirectional())
-	assert.False(t, (&TopoNode{Type: NodeTypeECS}).IsBidirectional())
-	assert.False(t, (&TopoNode{Type: NodeTypeRDS}).IsBidirectional())
-	assert.False(t, (&TopoNode{Type: NodeTypeDNSRecord}).IsBidirectional())
-}
-
 func TestTopoNode_IsDNSEntry(t *testing.T) {
 	assert.True(t, (&TopoNode{Type: NodeTypeDNSRecord}).IsDNSEntry())
 	assert.False(t, (&TopoNode{Type: NodeTypeCDN}).IsDNSEntry())
@@ -106,4 +96,12 @@ func TestTopoNode_Validate_APMSource(t *testing.T) {
 	}
 	err := node.Validate()
 	assert.NoError(t, err, "TopoNode with source_collector 'apm' should pass validation")
+}
+
+func TestTopoNode_Validate_ExtendedTypes(t *testing.T) {
+	extended := []string{"nlb", "clb", "eni", "mongodb", "vpc", "eip", "nas", "kafka", "elasticsearch"}
+	for _, typ := range extended {
+		n := TopoNode{ID: "n-" + typ, Name: "node", Type: typ, Category: CategoryNetwork, TenantID: 1}
+		assert.NoError(t, n.Validate(), "type %s should validate", typ)
+	}
 }

@@ -27,6 +27,15 @@ const (
 	NodeTypeS3             = "s3"
 	NodeTypeExternal       = "external"
 	NodeTypeUnknown        = "unknown"
+	NodeTypeNLB            = "nlb"
+	NodeTypeCLB            = "clb"
+	NodeTypeENI            = "eni"
+	NodeTypeMongoDB        = "mongodb"
+	NodeTypeVPC            = "vpc"
+	NodeTypeEIP            = "eip"
+	NodeTypeNAS            = "nas"
+	NodeTypeKafka          = "kafka"
+	NodeTypeElasticsearch  = "elasticsearch"
 )
 
 // 资源分类常量
@@ -79,6 +88,9 @@ var ValidNodeTypes = map[string]bool{
 	NodeTypeK8sDeployment: true, NodeTypeK8sStatefulSet: true,
 	NodeTypeECS: true, NodeTypeRDS: true, NodeTypeRedis: true,
 	NodeTypeOSS: true, NodeTypeS3: true, NodeTypeExternal: true, NodeTypeUnknown: true,
+	NodeTypeNLB: true, NodeTypeCLB: true, NodeTypeENI: true, NodeTypeMongoDB: true,
+	NodeTypeVPC: true, NodeTypeEIP: true, NodeTypeNAS: true, NodeTypeKafka: true,
+	NodeTypeElasticsearch: true,
 }
 
 // ValidCategories 所有合法的资源分类
@@ -104,13 +116,6 @@ var ValidSourceCollectors = map[string]bool{
 	SourceCloudAPI: true, SourceK8sAPI: true, SourceDeclaration: true,
 	SourceLog: true, SourceManual: true, SourceDNSAPI: true,
 	SourceAPM: true,
-}
-
-// BidirectionalNodeTypes 通常应具有双向连接的节点类型（用于断链检测）
-var BidirectionalNodeTypes = map[string]bool{
-	NodeTypeSLB: true, NodeTypeALB: true, NodeTypeELB: true,
-	NodeTypeGateway: true, NodeTypeK8sIngress: true, NodeTypeWAF: true,
-	NodeTypeCDN: true,
 }
 
 // TopoNode 拓扑节点领域模型
@@ -153,11 +158,6 @@ func (n *TopoNode) Validate() error {
 		return fmt.Errorf("tenant_id is required")
 	}
 	return nil
-}
-
-// IsBidirectional 判断该节点类型是否通常应具有双向连接
-func (n *TopoNode) IsBidirectional() bool {
-	return BidirectionalNodeTypes[n.Type]
 }
 
 // IsDNSEntry 判断是否为 DNS 入口节点

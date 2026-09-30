@@ -70,6 +70,7 @@ func (g *DefaultDeclarationGenerator) Generate(
 
 	now := time.Now().Format(time.RFC3339)
 	var declarations []LinkDeclaration
+	emitted := make(map[string]bool, len(nameMapping)) // nodeID → 已生成节点声明
 
 	for callerName, callees := range callerGroups {
 		callerNodeID, ok := nameMapping[callerName]
@@ -122,10 +123,7 @@ func (g *DefaultDeclarationGenerator) Generate(
 			})
 		}
 
-		if len(links) == 0 {
-			continue
-		}
-
+		emitted[callerNodeID] = true
 		declarations = append(declarations, LinkDeclaration{
 			Source:    "arms-apm",
 			Collector: "api",
@@ -136,6 +134,26 @@ func (g *DefaultDeclarationGenerator) Generate(
 				Category: "container",
 			},
 			Links:    links,
+			TenantID: g.tenantID,
+		})
+	}
+
+	// 为 callee-only（从未作为 caller 出现）的映射服务补叶子节点声明，
+	// 使其落地为节点，避免指向它的边永久 pending 悬空。
+	for _, nodeID := range nameMapping {
+		if emitted[nodeID] {
+			continue
+		}
+		emitted[nodeID] = true
+		declarations = append(declarations, LinkDeclaration{
+			Source:    "arms-apm",
+			Collector: "api",
+			Node: DeclarationNode{
+				ID:       nodeID,
+				Name:     extractDeploymentName(nodeID),
+				Type:     "k8s_deployment",
+				Category: "container",
+			},
 			TenantID: g.tenantID,
 		})
 	}

@@ -63,7 +63,11 @@ func (m *mockNodeRepo) FindByIDs(_ context.Context, ids []string) ([]domain.Topo
 }
 
 func (m *mockNodeRepo) Find(_ context.Context, _ domain.NodeFilter) ([]domain.TopoNode, error) {
-	return nil, nil
+	result := make([]domain.TopoNode, 0, len(m.nodes))
+	for _, n := range m.nodes {
+		result = append(result, n)
+	}
+	return result, nil
 }
 
 func (m *mockNodeRepo) Count(_ context.Context, _ domain.NodeFilter) (int64, error) {
@@ -89,7 +93,8 @@ func (m *mockNodeRepo) InitIndexes(_ context.Context) error {
 
 // mockEdgeRepo implements repository.EdgeRepository for testing
 type mockEdgeRepo struct {
-	edges []domain.TopoEdge
+	edges                   []domain.TopoEdge
+	activateResolvableCalls []int64
 }
 
 func newMockEdgeRepo() *mockEdgeRepo {
@@ -143,6 +148,11 @@ func (m *mockEdgeRepo) UpdatePendingEdges(_ context.Context, _ int64, _ string) 
 }
 
 func (m *mockEdgeRepo) CountPending(_ context.Context, _ int64) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockEdgeRepo) ActivateResolvablePendingEdges(_ context.Context, tenantID int64) (int64, error) {
+	m.activateResolvableCalls = append(m.activateResolvableCalls, tenantID)
 	return 0, nil
 }
 

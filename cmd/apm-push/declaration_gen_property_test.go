@@ -163,3 +163,60 @@ func TestProperty3_UnmappedServicesSkipped(t *testing.T) {
 		}
 	})
 }
+
+func TestGenerate_CalleeOnlyServicesGetLeafNodes(t *testing.T) {
+	g := NewDefaultDeclarationGenerator("tenant-x")
+	nameMapping := map[string]string{
+		"prod_a": "svc-a",
+		"prod_b": "svc-b", // callee-only
+		"prod_c": "svc-c", // callee-only, 无任何出边
+	}
+	deps := []ServiceDependency{
+		{CallerServiceName: "prod_a", CalleeServiceName: "prod_b", QPS: 1, LatencyP99: 2, ErrorRate: 0},
+		{CallerServiceName: "prod_a", CalleeServiceName: "prod_c", QPS: 1, LatencyP99: 2, ErrorRate: 0},
+	}
+
+	decls := g.Generate(deps, nameMapping, nil, nil)
+
+	nodeLinks := map[string]int{}
+	for _, d := range decls {
+		nodeLinks[d.Node.ID] = len(d.Links)
+	}
+	if _, ok := nodeLinks["svc-b"]; !ok {
+		t.Fatalf("callee-only service svc-b must get a node declaration; got %v", nodeLinks)
+	}
+	if _, ok := nodeLinks["svc-c"]; !ok {
+		t.Fatalf("callee-only service svc-c must get a node declaration; got %v", nodeLinks)
+	}
+	if nodeLinks["svc-b"] != 0 || nodeLinks["svc-c"] != 0 {
+		t.Fatalf("leaf declarations must have zero links; got %v", nodeLinks)
+	}
+	if nodeLinks["svc-a"] != 2 {
+		t.Fatalf("caller svc-a must keep its outgoing links; got %d", nodeLinks["svc-a"])
+	}
+}
+
+func TestGenerate_SameNodeIDNotDuplicated(t *testing.T) {
+	g := NewDefaultDeclarationGenerator("tenant-x")
+	// prod_x 与 staging_x 映射到同一节点 ID（环境前缀被剥掉）
+	nameMapping := map[string]string{
+		"prod_a":    "svc-a",
+		"staging_a": "svc-a",
+		"prod_b":    "svc-b",
+	}
+	deps := []ServiceDependency{
+		{CallerServiceName: "prod_a", CalleeServiceName: "staging_a", QPS: 1, LatencyP99: 2, ErrorRate: 0},
+	}
+
+	decls := g.Generate(deps, nameMapping, nil, nil)
+
+	count := 0
+	for _, d := range decls {
+		if d.Node.ID == "svc-a" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("node svc-a must appear in exactly one declaration, got %d", count)
+	}
+}

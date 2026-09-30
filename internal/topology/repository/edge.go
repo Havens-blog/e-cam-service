@@ -33,6 +33,8 @@ type EdgeRepository interface {
 	UpdatePendingEdges(ctx context.Context, tenantID int64, targetID string) (int64, error)
 	// CountPending 统计 pending 状态的边数量
 	CountPending(ctx context.Context, tenantID int64) (int64, error)
+	// ActivateResolvablePendingEdges 将目标节点已存在的 pending 边批量激活
+	ActivateResolvablePendingEdges(ctx context.Context, tenantID int64) (int64, error)
 	// InitIndexes 初始化索引
 	InitIndexes(ctx context.Context) error
 }
@@ -93,6 +95,10 @@ func (r *edgeRepository) UpdatePendingEdges(ctx context.Context, tenantID int64,
 
 func (r *edgeRepository) CountPending(ctx context.Context, tenantID int64) (int64, error) {
 	return r.dao.CountPending(ctx, tenantID)
+}
+
+func (r *edgeRepository) ActivateResolvablePendingEdges(ctx context.Context, tenantID int64) (int64, error) {
+	return r.dao.ActivateResolvablePendingEdges(ctx, tenantID)
 }
 
 func (r *edgeRepository) InitIndexes(ctx context.Context) error {

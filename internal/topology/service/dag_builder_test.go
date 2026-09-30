@@ -156,59 +156,49 @@ func TestDagBuilder_ComputeDepths_PendingEdgesSkipped(t *testing.T) {
 	assert.Equal(t, 0, nodes[2].DagDepth) // not reached via active edges
 }
 
-func TestDagBuilder_DetectBrokenLinks(t *testing.T) {
+func TestDagBuilder_DetectBrokenLinks_DanglingEdges(t *testing.T) {
 	builder := NewDagBuilder()
 
-	t.Run("no broken links", func(t *testing.T) {
+	t.Run("no dangling edges", func(t *testing.T) {
 		nodes := []domain.TopoNode{
+			{ID: "dns-1", Type: domain.NodeTypeDNSRecord},
 			{ID: "slb-1", Type: domain.NodeTypeSLB},
 		}
 		edges := []domain.TopoEdge{
 			{ID: "e1", SourceID: "dns-1", TargetID: "slb-1", Status: domain.EdgeStatusActive},
-			{ID: "e2", SourceID: "slb-1", TargetID: "svc-1", Status: domain.EdgeStatusActive},
 		}
 		assert.Equal(t, 0, builder.DetectBrokenLinks(nodes, edges))
 	})
 
-	t.Run("SLB with only inbound", func(t *testing.T) {
+	t.Run("unidirectional leaf is NOT broken", func(t *testing.T) {
+		// SLB 只有入边：不再是断链（原启发式误报，现已移除）
 		nodes := []domain.TopoNode{
+			{ID: "dns-1", Type: domain.NodeTypeDNSRecord},
 			{ID: "slb-1", Type: domain.NodeTypeSLB},
 		}
 		edges := []domain.TopoEdge{
 			{ID: "e1", SourceID: "dns-1", TargetID: "slb-1", Status: domain.EdgeStatusActive},
-			// no outbound from slb-1
 		}
-		assert.Equal(t, 1, builder.DetectBrokenLinks(nodes, edges))
+		assert.Equal(t, 0, builder.DetectBrokenLinks(nodes, edges))
 	})
 
-	t.Run("gateway with only outbound", func(t *testing.T) {
+	t.Run("pending edge with missing target is broken", func(t *testing.T) {
 		nodes := []domain.TopoNode{
-			{ID: "gw-1", Type: domain.NodeTypeGateway},
+			{ID: "a", Type: domain.NodeTypeK8sDeployment},
 		}
-		edges := []domain.TopoEdge{
-			{ID: "e1", SourceID: "gw-1", TargetID: "svc-1", Status: domain.EdgeStatusActive},
-			// no inbound to gw-1
-		}
-		assert.Equal(t, 1, builder.DetectBrokenLinks(nodes, edges))
-	})
-
-	t.Run("pending edges count as broken", func(t *testing.T) {
-		nodes := []domain.TopoNode{}
 		edges := []domain.TopoEdge{
 			{ID: "e1", SourceID: "a", TargetID: "b", Status: domain.EdgeStatusPending},
-			{ID: "e2", SourceID: "c", TargetID: "d", Status: domain.EdgeStatusPending},
 		}
-		assert.Equal(t, 2, builder.DetectBrokenLinks(nodes, edges))
+		assert.Equal(t, 1, builder.DetectBrokenLinks(nodes, edges))
 	})
 
-	t.Run("non-bidirectional node not counted", func(t *testing.T) {
+	t.Run("active edge with missing target is broken", func(t *testing.T) {
 		nodes := []domain.TopoNode{
-			{ID: "rds-1", Type: domain.NodeTypeRDS}, // RDS is not bidirectional
+			{ID: "a", Type: domain.NodeTypeK8sDeployment},
 		}
 		edges := []domain.TopoEdge{
-			{ID: "e1", SourceID: "dep-1", TargetID: "rds-1", Status: domain.EdgeStatusActive},
-			// RDS only has inbound, but it's not a bidirectional type, so not broken
+			{ID: "e1", SourceID: "a", TargetID: "b", Status: domain.EdgeStatusActive},
 		}
-		assert.Equal(t, 0, builder.DetectBrokenLinks(nodes, edges))
+		assert.Equal(t, 1, builder.DetectBrokenLinks(nodes, edges))
 	})
 }
