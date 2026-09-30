@@ -8,9 +8,21 @@ import (
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/resourcemanager"
 )
 
-// ListResourceGroupNames 拉取阿里云账号下全部资源组，返回 ID -> 名称 映射。
+// formatGroupName 合成可读资源组名称：有中文显示名（备注）且与代码名不同 → 「代码（中文）」；
+// 否则退化为代码名（中文名缺失或与代码相同时）。Name 为空时直接降级到中文名。
+func formatGroupName(name, displayName string) string {
+	if name == "" {
+		return displayName
+	}
+	if displayName == "" || displayName == name {
+		return name
+	}
+	return name + "（" + displayName + "）"
+}
+
+// ListResourceGroupNames 拉取阿里云账号下全部资源组，返回 ID -> 合成名称 映射。
 // 资源组为账号级（不区分地域），数量通常很少（<100），单页 100 兜底翻页。
-// 名称优先取 Name，为空时降级 DisplayName；结果供资产同步写入 attributes.resource_group_name。
+// 名称按 formatGroupName 合成（代码 + 中文备注）；结果供资产同步写入 attributes.resource_group_name。
 func ListResourceGroupNames(account *domain.CloudAccount) (map[string]string, error) {
 	if account == nil {
 		return nil, fmt.Errorf("账号不能为空")
@@ -37,11 +49,10 @@ func ListResourceGroupNames(account *domain.CloudAccount) (map[string]string, er
 		groups := resp.ResourceGroups.ResourceGroup
 		collected += len(groups)
 		for _, rg := range groups {
-			name := rg.Name
-			if name == "" {
-				name = rg.DisplayName
+			if rg.Id == "" {
+				continue
 			}
-			if rg.Id != "" && name != "" {
+			if name := formatGroupName(rg.Name, rg.DisplayName); name != "" {
 				result[rg.Id] = name
 			}
 		}
