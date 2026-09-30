@@ -23,6 +23,7 @@ func ListResourceGroupNames(account *domain.CloudAccount) (map[string]string, er
 
 	result := make(map[string]string)
 	request := resourcemanager.CreateListResourceGroupsRequest()
+	request.Scheme = "https"
 	request.PageSize = requests.NewInteger(100)
 
 	for page := 1; ; page++ {
