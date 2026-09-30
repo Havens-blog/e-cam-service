@@ -119,6 +119,8 @@ type stubBindingRepo struct {
 	createBatchHits int
 	updateTargetFn  func(ctx context.Context, id int64, nodeID int64, envID int64, ruleID int64) error
 	updateCalls     []bindingTargetCall
+	countByRuleIDsFn func(ctx context.Context, ruleIDs []int64) (map[int64]int64, error)
+	deleteByRuleIDFn func(ctx context.Context, ruleID int64) (int64, error)
 }
 
 type bindingTargetCall struct {
@@ -140,6 +142,20 @@ func (s *stubBindingRepo) UpdateTarget(ctx context.Context, id int64, nodeID int
 	}
 	s.updateCalls = append(s.updateCalls, bindingTargetCall{id: id, nodeID: nodeID, envID: envID, ruleID: ruleID})
 	return nil
+}
+
+func (s *stubBindingRepo) CountByRuleIDs(ctx context.Context, ruleIDs []int64) (map[int64]int64, error) {
+	if s.countByRuleIDsFn != nil {
+		return s.countByRuleIDsFn(ctx, ruleIDs)
+	}
+	return map[int64]int64{}, nil
+}
+
+func (s *stubBindingRepo) DeleteByRuleID(ctx context.Context, ruleID int64) (int64, error) {
+	if s.deleteByRuleIDFn != nil {
+		return s.deleteByRuleIDFn(ctx, ruleID)
+	}
+	return 0, nil
 }
 
 type stubInstanceRepo struct {
@@ -195,6 +211,63 @@ func TestListRulesFillNodeNames(t *testing.T) {
 	}
 	if got[2].NodeName != "" {
 		t.Errorf("不存在节点的 node_name 应为空, got %q", got[2].NodeName)
+	}
+}
+
+// TestListRulesFillBindingCounts 批量回填规则当前绑定资源数。
+func TestListRulesFillBindingCounts(t *testing.T) {
+	rules := []stdomain.BindingRule{
+		{ID: 1, Name: "r1"},
+		{ID: 2, Name: "r2"},
+		{ID: 3, Name: "r3"},
+	}
+	ruleRepo := &stubRuleRepo{
+		listFn: func(ctx context.Context, filter stdomain.RuleFilter) ([]stdomain.BindingRule, error) {
+			return rules, nil
+		},
+		countFn: func(ctx context.Context, filter stdomain.RuleFilter) (int64, error) { return 3, nil },
+	}
+	nodeRepo := &stubNodeRepo{
+		getByIDsFn: func(ctx context.Context, ids []int64) ([]stdomain.ServiceTreeNode, error) {
+			return nil, nil
+		},
+	}
+	bindingRepo := &stubBindingRepo{
+		countByRuleIDsFn: func(ctx context.Context, ruleIDs []int64) (map[int64]int64, error) {
+			// r1 绑定 5 个、r3 绑定 2 个、r2 无绑定不在返回里
+			return map[int64]int64{1: 5, 3: 2}, nil
+		},
+	}
+	s := newTestRuleEngine(ruleRepo, nodeRepo, bindingRepo, &stubInstanceRepo{}, nil)
+
+	got, _, err := s.ListRules(context.Background(), stdomain.RuleFilter{TenantID: 1})
+	if err != nil {
+		t.Fatalf("ListRules() error = %v", err)
+	}
+	if got[0].BindingCount != 5 || got[1].BindingCount != 0 || got[2].BindingCount != 2 {
+		t.Errorf("binding_count 回填错误: %d, %d, %d, want 5, 0, 2",
+			got[0].BindingCount, got[1].BindingCount, got[2].BindingCount)
+	}
+}
+
+// TestUnbindRuleResources 解绑规则名下所有绑定但保留规则，返回解绑条数。
+func TestUnbindRuleResources(t *testing.T) {
+	bindingRepo := &stubBindingRepo{
+		deleteByRuleIDFn: func(ctx context.Context, ruleID int64) (int64, error) {
+			if ruleID != 1 {
+				t.Errorf("ruleID = %d, want 1", ruleID)
+			}
+			return 7, nil
+		},
+	}
+	s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, bindingRepo, &stubInstanceRepo{}, nil)
+
+	count, err := s.UnbindRuleResources(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("UnbindRuleResources() error = %v", err)
+	}
+	if count != 7 {
+		t.Errorf("count = %d, want 7", count)
 	}
 }
 

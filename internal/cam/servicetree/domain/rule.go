@@ -26,6 +26,8 @@ type BindingRule struct {
 	Description string          // 规则描述
 	// NodeName 目标节点名称 (列表展示用，批量回填字段，不落库)
 	NodeName string
+	// BindingCount 当前该规则绑定的资源总数 (列表展示用，批量回填字段，不落库)
+	BindingCount int64
 	// LastExecutedAt 最近一次规则执行时间 (零值表示从未执行)
 	LastExecutedAt time.Time
 	// LastMatchCount 最近一次执行的新增匹配绑定数

@@ -130,8 +130,10 @@ type RuleVO struct {
 	// 执行统计（last_executed_at 毫秒时间戳，0 表示从未执行）
 	LastExecutedAt int64 `json:"last_executed_at"`
 	LastMatchCount int64 `json:"last_match_count"`
-	CreateTime     int64 `json:"create_time"`
-	UpdateTime     int64 `json:"update_time"`
+	// BindingCount 当前该规则绑定的资源总数
+	BindingCount int64 `json:"binding_count"`
+	CreateTime   int64 `json:"create_time"`
+	UpdateTime   int64 `json:"update_time"`
 }
 
 // ListNodeReq 节点列表请求

@@ -69,6 +69,7 @@ func (h *Handler) RegisterRuleRoutes(rg *gin.RouterGroup) {
 	rg.GET("/rules/:id", ginx.Wrap(h.GetRule))
 	rg.PUT("/rules/:id", ginx.WrapBody(h.UpdateRule))
 	rg.DELETE("/rules/:id", ginx.Wrap(h.DeleteRule))
+	rg.POST("/rules/:id/unbind", ginx.Wrap(h.UnbindRule))
 	rg.POST("/rules/execute", ginx.Wrap(h.ExecuteRules))
 	rg.POST("/rules/dry-run", ginx.WrapBody(h.DryRunRules))
 	rg.POST("/rules/rebind/preview", ginx.Wrap(h.PreviewRebind))
@@ -648,6 +649,25 @@ func (h *Handler) DeleteRule(c *gin.Context) (ginx.Result, error) {
 	return ginx.Result{Msg: "删除成功"}, nil
 }
 
+// UnbindRule 解绑规则名下所有绑定（保留规则本身，不删除）
+// @Summary 解绑规则绑定资源
+// @Tags 服务树
+// @Param id path int true "规则ID"
+// @Success 200 {object} ginx.Result{data=int64}
+// @Router /api/v1/cam/service-tree/rules/{id}/unbind [post]
+func (h *Handler) UnbindRule(c *gin.Context) (ginx.Result, error) {
+	id, err := h.getIDParam(c)
+	if err != nil {
+		return ginx.Result{Code: 400, Msg: "无效的规则ID"}, nil
+	}
+
+	count, err := h.ruleSvc.UnbindRuleResources(c.Request.Context(), id)
+	if err != nil {
+		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+	}
+	return ginx.Result{Data: count, Msg: "解绑完成"}, nil
+}
+
 // ListRules 获取规则列表
 // @Summary 获取规则列表
 // @Tags 服务树
@@ -869,6 +889,7 @@ func (h *Handler) toRuleVO(rule domain.BindingRule) RuleVO {
 		Description:    rule.Description,
 		LastExecutedAt: lastExecutedAt,
 		LastMatchCount: rule.LastMatchCount,
+		BindingCount:   rule.BindingCount,
 		CreateTime:     rule.CreateTime.UnixMilli(),
 		UpdateTime:     rule.UpdateTime.UnixMilli(),
 	}

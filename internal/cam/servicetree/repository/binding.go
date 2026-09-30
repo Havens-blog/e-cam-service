@@ -20,10 +20,11 @@ type BindingRepository interface {
 	Count(ctx context.Context, filter domain.BindingFilter) (int64, error)
 	CountByNodeID(ctx context.Context, nodeID int64) (int64, error)
 	CountByNodeIDs(ctx context.Context, filter domain.NodeIDsBindingFilter) (int64, error)
+	CountByRuleIDs(ctx context.Context, ruleIDs []int64) (map[int64]int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByNodeID(ctx context.Context, nodeID int64) error
 	DeleteByResource(ctx context.Context, tenantID int64, resourceType string, resourceID int64) error
-	DeleteByRuleID(ctx context.Context, ruleID int64) error
+	DeleteByRuleID(ctx context.Context, ruleID int64) (int64, error)
 	// UpdateTarget 改绑：仅更新归属三字段（节点/环境/来源规则），不动 bind_type 与资源标识。
 	// 资源唯一索引为 tenant_id+resource_type+resource_id，故改绑必须原地更新而非新建。
 	UpdateTarget(ctx context.Context, id int64, nodeID int64, envID int64, ruleID int64) error
@@ -93,6 +94,10 @@ func (r *bindingRepository) CountByNodeID(ctx context.Context, nodeID int64) (in
 	return r.dao.CountByNodeID(ctx, nodeID)
 }
 
+func (r *bindingRepository) CountByRuleIDs(ctx context.Context, ruleIDs []int64) (map[int64]int64, error) {
+	return r.dao.CountByRuleIDs(ctx, ruleIDs)
+}
+
 func (r *bindingRepository) ListByNodeIDs(ctx context.Context, filter domain.NodeIDsBindingFilter) ([]domain.ResourceBinding, error) {
 	daoBindings, err := r.dao.ListByNodeIDs(ctx, dao.NodeIDsBindingFilter{
 		TenantID:     filter.TenantID,
@@ -133,7 +138,7 @@ func (r *bindingRepository) DeleteByResource(ctx context.Context, tenantID int64
 	return r.dao.DeleteByResource(ctx, tenantID, resourceType, resourceID)
 }
 
-func (r *bindingRepository) DeleteByRuleID(ctx context.Context, ruleID int64) error {
+func (r *bindingRepository) DeleteByRuleID(ctx context.Context, ruleID int64) (int64, error) {
 	return r.dao.DeleteByRuleID(ctx, ruleID)
 }
 

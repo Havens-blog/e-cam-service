@@ -28,6 +28,8 @@ type RuleEngineService interface {
 	CreateRule(ctx context.Context, rule stdomain.BindingRule) (int64, error)
 	UpdateRule(ctx context.Context, rule stdomain.BindingRule) error
 	DeleteRule(ctx context.Context, id int64) error
+	// UnbindRuleResources 解绑规则名下所有绑定（保留规则本身），返回解绑条数
+	UnbindRuleResources(ctx context.Context, ruleID int64) (int64, error)
 	GetRule(ctx context.Context, id int64) (stdomain.BindingRule, error)
 	ListRules(ctx context.Context, filter stdomain.RuleFilter) ([]stdomain.BindingRule, int64, error)
 
@@ -103,10 +105,16 @@ func (s *ruleEngineService) UpdateRule(ctx context.Context, rule stdomain.Bindin
 
 func (s *ruleEngineService) DeleteRule(ctx context.Context, id int64) error {
 	// 删除规则关联的绑定
-	if err := s.bindingRepo.DeleteByRuleID(ctx, id); err != nil {
+	if _, err := s.bindingRepo.DeleteByRuleID(ctx, id); err != nil {
 		s.logger.Warn("删除规则关联绑定失败", elog.Int64("ruleID", id), elog.FieldErr(err))
 	}
 	return s.ruleRepo.Delete(ctx, id)
+}
+
+// UnbindRuleResources 解绑规则名下所有绑定（保留规则本身，不改规则启用状态）。
+// 解绑后资源回到「未绑定」，若规则仍启用且条件仍命中，下次执行会被重新绑回。
+func (s *ruleEngineService) UnbindRuleResources(ctx context.Context, ruleID int64) (int64, error) {
+	return s.bindingRepo.DeleteByRuleID(ctx, ruleID)
 }
 
 func (s *ruleEngineService) GetRule(ctx context.Context, id int64) (stdomain.BindingRule, error) {
@@ -123,6 +131,7 @@ func (s *ruleEngineService) ListRules(ctx context.Context, filter stdomain.RuleF
 		return nil, 0, err
 	}
 	s.fillNodeNames(ctx, rules)
+	s.fillBindingCounts(ctx, rules)
 	return rules, total, nil
 }
 
@@ -155,6 +164,28 @@ func (s *ruleEngineService) fillNodeNames(ctx context.Context, rules []stdomain.
 		if name, ok := nameByID[rules[i].NodeID]; ok {
 			rules[i].NodeName = name
 		}
+	}
+}
+
+// fillBindingCounts 批量回填规则当前绑定资源数（一次 $in + $group 聚合避免 N+1，失败仅告警不阻塞列表）
+func (s *ruleEngineService) fillBindingCounts(ctx context.Context, rules []stdomain.BindingRule) {
+	if len(rules) == 0 {
+		return
+	}
+	ids := make([]int64, 0, len(rules))
+	for _, r := range rules {
+		if r.ID > 0 {
+			ids = append(ids, r.ID)
+		}
+	}
+
+	counts, err := s.bindingRepo.CountByRuleIDs(ctx, ids)
+	if err != nil {
+		s.logger.Warn("批量查询规则绑定数失败", elog.FieldErr(err))
+		return
+	}
+	for i := range rules {
+		rules[i].BindingCount = counts[rules[i].ID]
 	}
 }
 

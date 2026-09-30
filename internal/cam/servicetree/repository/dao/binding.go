@@ -58,10 +58,12 @@ type BindingDAO interface {
 	Count(ctx context.Context, filter BindingFilter) (int64, error)
 	CountByNodeID(ctx context.Context, nodeID int64) (int64, error)
 	CountByNodeIDs(ctx context.Context, filter NodeIDsBindingFilter) (int64, error)
+	// CountByRuleIDs 按规则批量统计绑定数（$in + $group 聚合，一次查询，返回 ruleID -> count）
+	CountByRuleIDs(ctx context.Context, ruleIDs []int64) (map[int64]int64, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteByNodeID(ctx context.Context, nodeID int64) error
 	DeleteByResource(ctx context.Context, tenantID int64, resourceType string, resourceID int64) error
-	DeleteByRuleID(ctx context.Context, ruleID int64) error
+	DeleteByRuleID(ctx context.Context, ruleID int64) (int64, error)
 	// UpdateTarget 改绑：仅更新归属三字段（node_id/env_id/rule_id）。
 	// 资源唯一索引 tenant_id+resource_type+resource_id 不含节点，故原地更新不会触发唯一冲突。
 	UpdateTarget(ctx context.Context, id int64, nodeID int64, envID int64, ruleID int64) error
@@ -198,6 +200,36 @@ func (d *bindingDAO) CountByNodeIDs(ctx context.Context, filter NodeIDsBindingFi
 	return d.db.Collection(BindingCollection).CountDocuments(ctx, query)
 }
 
+func (d *bindingDAO) CountByRuleIDs(ctx context.Context, ruleIDs []int64) (map[int64]int64, error) {
+	result := make(map[int64]int64, len(ruleIDs))
+	if len(ruleIDs) == 0 {
+		return result, nil
+	}
+
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"rule_id": bson.M{"$in": ruleIDs}}}},
+		{{Key: "$group", Value: bson.M{"_id": "$rule_id", "count": bson.M{"$sum": 1}}}},
+	}
+	cursor, err := d.db.Collection(BindingCollection).Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	type aggRow struct {
+		ID    int64 `bson:"_id"`
+		Count int64 `bson:"count"`
+	}
+	var rows []aggRow
+	if err := cursor.All(ctx, &rows); err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		result[r.ID] = r.Count
+	}
+	return result, nil
+}
+
 func (d *bindingDAO) buildNodeIDsQuery(filter NodeIDsBindingFilter) bson.M {
 	query := bson.M{
 		"node_id": bson.M{"$in": filter.NodeIDs},
@@ -236,10 +268,13 @@ func (d *bindingDAO) DeleteByResource(ctx context.Context, tenantID int64, resou
 	return err
 }
 
-func (d *bindingDAO) DeleteByRuleID(ctx context.Context, ruleID int64) error {
+func (d *bindingDAO) DeleteByRuleID(ctx context.Context, ruleID int64) (int64, error) {
 	filter := bson.M{"rule_id": ruleID}
-	_, err := d.db.Collection(BindingCollection).DeleteMany(ctx, filter)
-	return err
+	result, err := d.db.Collection(BindingCollection).DeleteMany(ctx, filter)
+	if err != nil {
+		return 0, err
+	}
+	return result.DeletedCount, nil
 }
 
 func (d *bindingDAO) UpdateTarget(ctx context.Context, id int64, nodeID int64, envID int64, ruleID int64) error {
