@@ -106,13 +106,6 @@ var ValidSourceCollectors = map[string]bool{
 	SourceAPM: true,
 }
 
-// BidirectionalNodeTypes 通常应具有双向连接的节点类型（用于断链检测）
-var BidirectionalNodeTypes = map[string]bool{
-	NodeTypeSLB: true, NodeTypeALB: true, NodeTypeELB: true,
-	NodeTypeGateway: true, NodeTypeK8sIngress: true, NodeTypeWAF: true,
-	NodeTypeCDN: true,
-}
-
 // TopoNode 拓扑节点领域模型
 type TopoNode struct {
 	ID              string                 `bson:"_id" json:"id"`
@@ -153,11 +146,6 @@ func (n *TopoNode) Validate() error {
 		return fmt.Errorf("tenant_id is required")
 	}
 	return nil
-}
-
-// IsBidirectional 判断该节点类型是否通常应具有双向连接
-func (n *TopoNode) IsBidirectional() bool {
-	return BidirectionalNodeTypes[n.Type]
 }
 
 // IsDNSEntry 判断是否为 DNS 入口节点

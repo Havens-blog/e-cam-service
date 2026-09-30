@@ -101,36 +101,27 @@ func (b *DagBuilder) ComputeDepths(nodes []domain.TopoNode, edges []domain.TopoE
 	}
 }
 
-// DetectBrokenLinks 检测断链节点数量
-// 断链条件：
-// 1. 双向类型节点（网关/LB/CDN/WAF）仅有入边或仅有出边
-// 2. pending 状态的边
+// DetectBrokenLinks 统计断链边数：source 或 target 端点不在节点集内的边即断链。
+// pending 边计入（其 target 尚未注册）。不再使用「双向类型只有单侧边」启发式。
 func (b *DagBuilder) DetectBrokenLinks(nodes []domain.TopoNode, edges []domain.TopoEdge) int {
-	brokenCount := 0
+	return computeBrokenCount(nodes, edges)
+}
 
-	// 统计每个节点的入边和出边数量
-	inCount := make(map[string]int)
-	outCount := make(map[string]int)
-	for _, e := range edges {
-		if e.Status == domain.EdgeStatusPending {
-			brokenCount++
-			continue
-		}
-		outCount[e.SourceID]++
-		inCount[e.TargetID]++
-	}
-
-	// 检查双向类型节点是否仅有单向连线
+// computeBrokenCount 悬空边计数：source_id 或 target_id 不在 nodes 内的边数（含 pending）。
+func computeBrokenCount(nodes []domain.TopoNode, edges []domain.TopoEdge) int {
+	nodeIDs := make(map[string]struct{}, len(nodes))
 	for _, n := range nodes {
-		if !n.IsBidirectional() {
+		nodeIDs[n.ID] = struct{}{}
+	}
+	broken := 0
+	for _, e := range edges {
+		if _, ok := nodeIDs[e.SourceID]; !ok {
+			broken++
 			continue
 		}
-		hasIn := inCount[n.ID] > 0
-		hasOut := outCount[n.ID] > 0
-		if (hasIn && !hasOut) || (!hasIn && hasOut) {
-			brokenCount++
+		if _, ok := nodeIDs[e.TargetID]; !ok {
+			broken++
 		}
 	}
-
-	return brokenCount
+	return broken
 }

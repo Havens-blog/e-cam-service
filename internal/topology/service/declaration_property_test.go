@@ -63,7 +63,11 @@ func (m *mockNodeRepo) FindByIDs(_ context.Context, ids []string) ([]domain.Topo
 }
 
 func (m *mockNodeRepo) Find(_ context.Context, _ domain.NodeFilter) ([]domain.TopoNode, error) {
-	return nil, nil
+	result := make([]domain.TopoNode, 0, len(m.nodes))
+	for _, n := range m.nodes {
+		result = append(result, n)
+	}
+	return result, nil
 }
 
 func (m *mockNodeRepo) Count(_ context.Context, _ domain.NodeFilter) (int64, error) {

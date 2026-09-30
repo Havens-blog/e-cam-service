@@ -78,16 +78,6 @@ func TestTopoNode_Validate(t *testing.T) {
 	}
 }
 
-func TestTopoNode_IsBidirectional(t *testing.T) {
-	assert.True(t, (&TopoNode{Type: NodeTypeSLB}).IsBidirectional())
-	assert.True(t, (&TopoNode{Type: NodeTypeGateway}).IsBidirectional())
-	assert.True(t, (&TopoNode{Type: NodeTypeWAF}).IsBidirectional())
-	assert.True(t, (&TopoNode{Type: NodeTypeCDN}).IsBidirectional())
-	assert.False(t, (&TopoNode{Type: NodeTypeECS}).IsBidirectional())
-	assert.False(t, (&TopoNode{Type: NodeTypeRDS}).IsBidirectional())
-	assert.False(t, (&TopoNode{Type: NodeTypeDNSRecord}).IsBidirectional())
-}
-
 func TestTopoNode_IsDNSEntry(t *testing.T) {
 	assert.True(t, (&TopoNode{Type: NodeTypeDNSRecord}).IsDNSEntry())
 	assert.False(t, (&TopoNode{Type: NodeTypeCDN}).IsDNSEntry())
