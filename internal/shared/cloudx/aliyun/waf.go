@@ -78,18 +78,6 @@ type defenseResource struct {
 	Detail          json.RawMessage `json:"Detail"` // 详情（JSON 字符串）
 }
 
-// defenseResourceDetail 防护对象详情
-type defenseResourceDetail struct {
-	Cname            string   `json:"Cname"`
-	HttpPorts        []int    `json:"HttpPorts"`
-	HttpsPorts       []int    `json:"HttpsPorts"`
-	Http2Ports       []int    `json:"Http2Ports"`
-	ExclusiveIP      bool     `json:"ExclusiveIp"`
-	IPV6Status       int      `json:"Ipv6Status"`
-	ProtectionStatus int      `json:"ProtectionStatus"` // 0=关闭 1=开启
-	Origins          []string `json:"Origins"`
-}
-
 // describeDomainDetailResponse 阿里云 WAF 3.0 DescribeDomainDetail 响应
 // 注意：Redirect、Cname、Domain 等都是顶层字段，不是嵌套在 Domain 对象里
 type describeDomainDetailResponse struct {
@@ -257,40 +245,15 @@ func (a *WAFAdapter) ListInstancesWithFilter(ctx context.Context, region string,
 	return allInstances, nil
 }
 
-// convertResourceToInstance 将阿里云 WAF 防护对象转换为通用 WAFInstance
+// convertResourceToInstance 将阿里云 WAF 防护对象转换为通用 WAFInstance。
+//
+// 字段来源说明(实盘 probe 确认):
+//   - DescribeDefenseResources 的 Detail 仅含 {"domain","product"},没有
+//     ProtectionStatus/Origins/Cname/HttpsPorts/ExclusiveIp 等字段;
+//   - 列表 API 只列出已接入的防护对象,故 Status 恒为 active、WAFEnabled 恒 true;
+//   - 源站(SourceIPs)/Cname 由 ListInstancesWithFilter 循环内调 DescribeDomainDetail
+//     回填;独享IP(ExclusiveIP)阿里云 WAF 3.0 无可靠信号,暂不填充(默认 false)。
 func (a *WAFAdapter) convertResourceToInstance(res defenseResource, region string) types.WAFInstance {
-	// 解析 Detail JSON
-	var detail defenseResourceDetail
-	if len(res.Detail) > 0 {
-		// Detail 可能是 JSON 字符串或 JSON 对象
-		var detailStr string
-		if err := json.Unmarshal(res.Detail, &detailStr); err == nil {
-			// Detail 是 JSON 字符串，需要二次解析
-			_ = json.Unmarshal([]byte(detailStr), &detail)
-		} else {
-			// Detail 是 JSON 对象
-			_ = json.Unmarshal(res.Detail, &detail)
-		}
-		// 打印前3个域名的 Detail 原始内容，帮助调试
-		if false { // 调试完成，关闭详细日志
-			a.logger.Info("阿里云WAF防护对象Detail",
-				elog.String("resource", res.Resource),
-				elog.String("detail_raw", string(res.Detail)),
-				elog.Any("parsed_origins", detail.Origins),
-				elog.String("parsed_cname", detail.Cname))
-		}
-	}
-
-	// DescribeDefenseResources 的 Detail 实际只返回 {"domain","product"}(实盘
-	// probe 已确认),没有 ProtectionStatus 等字段;列表 API 只列出已接入的防护对象,
-	// 故状态恒为 active。此前 ProtectionStatus==0→suspended 因字段恒缺把全部域名
-	// 误标「暂停」(回归自 7d4629c)。
-	status := "active"
-	wafEnabled := true
-
-	httpsEnabled := len(detail.HttpsPorts) > 0
-	exclusiveIP := detail.ExclusiveIP
-
 	// 创建时间:GmtCreate 为毫秒时间戳,转 RFC3339 字符串
 	creationTime := ""
 	if res.GmtCreate > 0 {
@@ -300,17 +263,14 @@ func (a *WAFAdapter) convertResourceToInstance(res defenseResource, region strin
 	return types.WAFInstance{
 		InstanceID:     res.Resource,
 		InstanceName:   res.Resource,
-		Status:         status,
+		Status:         "active",
 		Region:         region,
 		DomainCount:    1,
 		ProtectedHosts: []string{res.Resource},
-		SourceIPs:      detail.Origins,
-		Cname:          detail.Cname,
-		WAFEnabled:     wafEnabled,
-		ExclusiveIP:    exclusiveIP,
+		WAFEnabled:     true,
 		CreationTime:   creationTime,
 		Provider:       "aliyun",
-		Description:    fmt.Sprintf("%s https=%v", res.Description, httpsEnabled),
+		Description:    res.Description,
 		Tags:           make(map[string]string),
 	}
 }
