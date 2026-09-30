@@ -271,6 +271,51 @@ func TestUnbindRuleResources(t *testing.T) {
 	}
 }
 
+// TestListFieldValues 条件字段去重枚举：region/model_uid/tag.* 去重排序，
+// name/asset_id 等非枚举字段返回空。
+func TestListFieldValues(t *testing.T) {
+	instances := []camdomain.Instance{
+		{ID: 1, ModelUID: "aliyun_ecs", Attributes: map[string]any{"region": "cn-hangzhou", "tags": map[string]any{"environment": "prod"}}},
+		{ID: 2, ModelUID: "aliyun_rds", Attributes: map[string]any{"region": "cn-beijing", "tags": map[string]any{"environment": "dev"}}},
+		{ID: 3, ModelUID: "aliyun_ecs", Attributes: map[string]any{"region": "cn-hangzhou", "tags": map[string]any{"environment": "prod"}}}, // 重复
+		{ID: 4, ModelUID: "huawei_ecs", Attributes: map[string]any{"region": "cn-south"}},
+	}
+	instanceRepo := &stubInstanceRepo{
+		listFn: func(ctx context.Context, filter camdomain.InstanceFilter) ([]camdomain.Instance, error) {
+			return instances, nil
+		},
+	}
+	s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, &stubBindingRepo{}, instanceRepo, nil)
+
+	assertEqual := func(t *testing.T, field string, want []string) {
+		t.Helper()
+		got, err := s.ListFieldValues(context.Background(), 1, field)
+		if err != nil {
+			t.Fatalf("ListFieldValues(%q) error = %v", field, err)
+		}
+		if len(got) != len(want) {
+			t.Fatalf("%s len = %d, want %d (got %v)", field, len(got), len(want), got)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("%s got[%d] = %q, want %q (got %v)", field, i, got[i], want[i], got)
+			}
+		}
+	}
+
+	assertEqual(t, "region", []string{"cn-beijing", "cn-hangzhou", "cn-south"})
+	assertEqual(t, "model_uid", []string{"aliyun_ecs", "aliyun_rds", "huawei_ecs"})
+	assertEqual(t, "tag.environment", []string{"dev", "prod"})
+
+	// 非枚举字段：直接返回空，不扫描
+	for _, field := range []string{"name", "asset_id"} {
+		got, _ := s.ListFieldValues(context.Background(), 1, field)
+		if len(got) != 0 {
+			t.Errorf("%s 应返回空, got %v", field, got)
+		}
+	}
+}
+
 // TestExecuteRulesStatsPersistence 一期修复③：执行结果（匹配数/执行时间）规则级落库。
 func TestExecuteRulesStatsPersistence(t *testing.T) {
 	rule := stdomain.BindingRule{

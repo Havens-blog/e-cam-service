@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +31,8 @@ type RuleEngineService interface {
 	DeleteRule(ctx context.Context, id int64) error
 	// UnbindRuleResources 解绑规则名下所有绑定（保留规则本身），返回解绑条数
 	UnbindRuleResources(ctx context.Context, ruleID int64) (int64, error)
+	// ListFieldValues 返回字段在租户资产中的去重值（规则条件值下拉枚举用）
+	ListFieldValues(ctx context.Context, tenantID int64, field string) ([]string, error)
 	GetRule(ctx context.Context, id int64) (stdomain.BindingRule, error)
 	ListRules(ctx context.Context, filter stdomain.RuleFilter) ([]stdomain.BindingRule, int64, error)
 
@@ -115,6 +118,50 @@ func (s *ruleEngineService) DeleteRule(ctx context.Context, id int64) error {
 // 解绑后资源回到「未绑定」，若规则仍启用且条件仍命中，下次执行会被重新绑回。
 func (s *ruleEngineService) UnbindRuleResources(ctx context.Context, ruleID int64) (int64, error) {
 	return s.bindingRepo.DeleteByRuleID(ctx, ruleID)
+}
+
+// maxFieldValues 单字段枚举值上限（超过则截断，避免下拉吞掉过多选项）
+const maxFieldValues = 200
+
+// ListFieldValues 返回指定字段在租户资产中的去重值（规则条件值下拉枚举用）。
+// 仅支持枚举型字段：region / model_uid / attributes.* / tag.*；name、asset_id 逐资源唯一，返回空。
+// 复用 getFieldValue 取值，保证枚举与规则实际匹配口径一致。
+func (s *ruleEngineService) ListFieldValues(ctx context.Context, tenantID int64, field string) ([]string, error) {
+	if !isEnumerableField(field) {
+		return nil, nil
+	}
+
+	instances, err := s.listTenantInstances(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]struct{})
+	values := make([]string, 0)
+	for _, inst := range instances {
+		v := s.getFieldValue(inst, field)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		values = append(values, v)
+		if len(values) >= maxFieldValues {
+			break
+		}
+	}
+	sort.Strings(values)
+	return values, nil
+}
+
+// isEnumerableField 判断字段是否适合下拉枚举。
+// region/model_uid 为内置枚举；attributes.*/tag.* 为资产属性/标签枚举。
+// name/asset_id 逐资源唯一，不适合枚举（返回 false 不做全量扫描）。
+func isEnumerableField(field string) bool {
+	return field == "region" || field == "model_uid" ||
+		strings.HasPrefix(field, "attributes.") || strings.HasPrefix(field, "tag.")
 }
 
 func (s *ruleEngineService) GetRule(ctx context.Context, id int64) (stdomain.BindingRule, error) {

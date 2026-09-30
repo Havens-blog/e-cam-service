@@ -70,6 +70,7 @@ func (h *Handler) RegisterRuleRoutes(rg *gin.RouterGroup) {
 	rg.PUT("/rules/:id", ginx.WrapBody(h.UpdateRule))
 	rg.DELETE("/rules/:id", ginx.Wrap(h.DeleteRule))
 	rg.POST("/rules/:id/unbind", ginx.Wrap(h.UnbindRule))
+	rg.GET("/rules/field-values", ginx.Wrap(h.ListRuleFieldValues))
 	rg.POST("/rules/execute", ginx.Wrap(h.ExecuteRules))
 	rg.POST("/rules/dry-run", ginx.WrapBody(h.DryRunRules))
 	rg.POST("/rules/rebind/preview", ginx.Wrap(h.PreviewRebind))
@@ -666,6 +667,32 @@ func (h *Handler) UnbindRule(c *gin.Context) (ginx.Result, error) {
 		return ginx.Result{Code: 500, Msg: err.Error()}, nil
 	}
 	return ginx.Result{Data: count, Msg: "解绑完成"}, nil
+}
+
+// ListRuleFieldValues 获取规则条件字段的去重值（下拉枚举）
+// @Summary 规则条件字段枚举
+// @Description 返回指定字段在租户资产中的去重值，用于规则条件值的下拉选择
+// @Tags 服务树
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param field query string true "字段（region/model_uid/attributes.xxx/tag.xxx）"
+// @Success 200 {object} ginx.Result{data=[]string}
+// @Router /api/v1/cam/service-tree/rules/field-values [get]
+func (h *Handler) ListRuleFieldValues(c *gin.Context) (ginx.Result, error) {
+	tenantID := h.getTenantID(c)
+	if tenantID == 0 {
+		return ginx.Result{Code: 400, Msg: "租户ID不能为空"}, nil
+	}
+
+	field := c.Query("field")
+	if field == "" {
+		return ginx.Result{Code: 400, Msg: "field 不能为空"}, nil
+	}
+
+	values, err := h.ruleSvc.ListFieldValues(c.Request.Context(), tenantID, field)
+	if err != nil {
+		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+	}
+	return ginx.Result{Data: values}, nil
 }
 
 // ListRules 获取规则列表
