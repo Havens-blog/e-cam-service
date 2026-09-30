@@ -8,6 +8,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/topology/domain"
 	"github.com/Havens-blog/e-cam-service/internal/topology/repository"
+	"github.com/gotomicro/ego/core/elog"
 )
 
 // TopologyService 拓扑服务接口
@@ -422,26 +423,29 @@ func (s *topologyService) GetStats(ctx context.Context, tenantID int64) (*domain
 }
 
 // tenantBrokenCount 计算租户级断链边数（与视图 provider/type/source_collector 筛选无关）。
+// 读取失败时返回 0 并记告警（避免把数据库故障伪装成「无断链」的清白假象）。
 func (s *topologyService) tenantBrokenCount(ctx context.Context, tenantID int64) int {
 	nodes, err := s.nodeRepo.Find(ctx, domain.NodeFilter{TenantID: tenantID})
 	if err != nil {
+		elog.DefaultLogger.Warn("tenantBrokenCount: query nodes failed", elog.FieldErr(err), elog.Int64("tenant_id", tenantID))
 		return 0
 	}
 	edges, err := s.edgeRepo.Find(ctx, domain.EdgeFilter{TenantID: tenantID})
 	if err != nil {
+		elog.DefaultLogger.Warn("tenantBrokenCount: query edges failed", elog.FieldErr(err), elog.Int64("tenant_id", tenantID))
 		return 0
 	}
 	return computeBrokenCount(nodes, edges)
 }
 
 // activateResolvablePending 激活所有目标节点已存在的 pending 边（幂等自愈）。
-// 失败不阻塞拓扑查询。
+// 失败不阻塞拓扑查询，仅记告警。
 func (s *topologyService) activateResolvablePending(ctx context.Context, tenantID int64) {
 	if s.edgeRepo == nil {
 		return
 	}
 	if _, err := s.edgeRepo.ActivateResolvablePendingEdges(ctx, tenantID); err != nil {
-		_ = err // 激活失败仅忽略，不影响返回
+		elog.DefaultLogger.Warn("activate resolvable pending edges failed", elog.FieldErr(err), elog.Int64("tenant_id", tenantID))
 	}
 }
 
