@@ -281,12 +281,12 @@ func (a *WAFAdapter) convertResourceToInstance(res defenseResource, region strin
 		}
 	}
 
+	// DescribeDefenseResources 的 Detail 实际只返回 {"domain","product"}(实盘
+	// probe 已确认),没有 ProtectionStatus 等字段;列表 API 只列出已接入的防护对象,
+	// 故状态恒为 active。此前 ProtectionStatus==0→suspended 因字段恒缺把全部域名
+	// 误标「暂停」(回归自 7d4629c)。
 	status := "active"
 	wafEnabled := true
-	if detail.ProtectionStatus == 0 {
-		status = "suspended"
-		wafEnabled = false
-	}
 
 	httpsEnabled := len(detail.HttpsPorts) > 0
 	exclusiveIP := detail.ExclusiveIP
