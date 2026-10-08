@@ -57,11 +57,12 @@ type SyncAssetsExecutor struct {
 	// resourceGroupNames 阿里云资源组 ID -> 名称 映射（账号级补采，同步时写入 attributes.resource_group_name）
 	resourceGroupNames map[string]string
 	logger             *elog.Component
-	// syncingNow 账号级同步互斥(account_id -> task_id)。
-	// 手动连点/调度器/重试会产生同一账号的多个并发同步任务,
-	// 全量同步互相踩踏浪费厂商 API 配额且更慢,故同账号同时只放行一个任务。
+	// syncingNow 资产类型级同步互斥("account_id:asset_type" -> task_id)。
+	// 手动连点/调度器/重试会产生同一账号同一资产类型的并发同步任务,互相踩踏
+	// 浪费厂商 API 配额且更慢,故同账号同类型只放行一个任务;不同资产类型互不
+	// 阻塞(全量同步跑 OSS/RDS 时,WAF 类型锁空闲,手动 WAF 同步可立即进入)。
 	syncMu     sync.Mutex
-	syncingNow map[int64]string
+	syncingNow map[string]string
 }
 
 // NewSyncAssetsExecutor 创建同步资产任务执行器
@@ -79,28 +80,36 @@ func NewSyncAssetsExecutor(
 		cloudxFactory:  cloudx.NewAdapterFactory(logger),
 		taskRepo:       taskRepo,
 		logger:         logger,
-		syncingNow:     make(map[int64]string),
+		syncingNow:     make(map[string]string),
 	}
 }
 
-// tryAcquireAccount 占用账号同步权;已被其他任务持有返回 false(持有者自身幂等)。
-func (e *SyncAssetsExecutor) tryAcquireAccount(accountID int64, taskID string) bool {
+// tryAcquireAccount 占用「账号×资产类型」同步权;已被其他任务持有返回 false
+// (持有者自身幂等)。同账号不同资产类型互不阻塞。
+func (e *SyncAssetsExecutor) tryAcquireAccount(accountID int64, assetType, taskID string) bool {
+	key := assetLockKey(accountID, assetType)
 	e.syncMu.Lock()
 	defer e.syncMu.Unlock()
-	if owner, busy := e.syncingNow[accountID]; busy && owner != taskID {
+	if owner, busy := e.syncingNow[key]; busy && owner != taskID {
 		return false
 	}
-	e.syncingNow[accountID] = taskID
+	e.syncingNow[key] = taskID
 	return true
 }
 
-// releaseAccount 释放账号同步权(仅持有者可释放)。
-func (e *SyncAssetsExecutor) releaseAccount(accountID int64, taskID string) {
+// releaseAccount 释放「账号×资产类型」同步权(仅持有者可释放)。
+func (e *SyncAssetsExecutor) releaseAccount(accountID int64, assetType, taskID string) {
+	key := assetLockKey(accountID, assetType)
 	e.syncMu.Lock()
 	defer e.syncMu.Unlock()
-	if owner, busy := e.syncingNow[accountID]; busy && owner == taskID {
-		delete(e.syncingNow, accountID)
+	if owner, busy := e.syncingNow[key]; busy && owner == taskID {
+		delete(e.syncingNow, key)
 	}
+}
+
+// assetLockKey 账号 × 资产类型的互斥键。
+func assetLockKey(accountID int64, assetType string) string {
+	return fmt.Sprintf("%d:%s", accountID, assetType)
 }
 
 // GetType 获取任务类型
@@ -172,26 +181,13 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 	totalSynced := 0
 	totalAccounts := len(accounts)
 	skippedAccounts := make([]string, 0)
+	lockedTypes := make([]string, 0)            // "账号@资产类型" 被并发锁跳过的明细(结果透明化)
 	syncedTenantIDs := make(map[int64]struct{}) // 本次同步实际落库的租户集合（规则引擎自动执行按租户触发）
 
 	for ai, account := range accounts {
-		// 账号级互斥:该账号已有同步任务在执行时直接跳过,不与其踩踏
-		if !e.tryAcquireAccount(account.ID, t.ID) {
-			e.logger.Warn("该账号已有同步任务在执行,本任务跳过该账号",
-				elog.String("account", account.Name),
-				elog.Int64("account_id", account.ID),
-				elog.String("task_id", t.ID))
-			skippedAccounts = append(skippedAccounts, account.Name)
-			continue
-		}
-
-		// panic 兜底释放:syncRegionAssets/syncDNS 若 panic,循环中断直接回卷 Execute,
-		// 下方正常路径的 releaseAccount 来不及执行;此处 defer 保证账号锁必然归还,
-		// 避免残留脏锁导致该账号后续所有同步被互斥跳过。account.ID 先落局部变量,
-		// 规避旧版 Go range 循环变量共享导致 defer 释放错账号。
-		accountID := account.ID
-		defer e.releaseAccount(accountID, t.ID)
-
+		// 互斥改为「账号×资产类型」级,锁在 syncRegionAssets/syncDNS 内部按资产类型
+		// 获取释放(闭包 + defer 兜底);此处账号级 setup(适配器/地域/资源组名)为幂等
+		// 只读,无需粗锁。
 		accountProgress := 20 + (ai*70)/totalAccounts
 		e.taskRepo.UpdateProgress(ctx, t.ID, accountProgress,
 			fmt.Sprintf("正在同步账号 %s (%d/%d)", account.Name, ai+1, totalAccounts))
@@ -202,7 +198,6 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 			e.logger.Error("创建适配器失败",
 				elog.String("account", account.Name),
 				elog.FieldErr(err))
-			e.releaseAccount(account.ID, t.ID)
 			continue
 		}
 
@@ -212,7 +207,6 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 			e.logger.Error("获取地域列表失败",
 				elog.String("account", account.Name),
 				elog.FieldErr(err))
-			e.releaseAccount(account.ID, t.ID)
 			continue
 		}
 
@@ -243,8 +237,9 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 			}
 		}
 
-		// 同步该账号的所有地域资产
+		// 同步该账号的所有地域资产(按资产类型互斥;被锁跳过的类型在此汇总)
 		accountSynced := 0
+		accountLocked := false
 		totalRegions := len(regions)
 		for i, region := range regions {
 			regionProgress := accountProgress + (i*70/totalAccounts)/totalRegions
@@ -254,7 +249,7 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 			e.taskRepo.UpdateProgress(ctx, t.ID, regionProgress,
 				fmt.Sprintf("账号 %s: 正在同步地域 %s (%d/%d)", account.Name, region.ID, i+1, totalRegions))
 
-			synced, err := e.syncRegionAssets(ctx, adapter, &account, region.ID, params.AssetTypes)
+			synced, skippedTypes, err := e.syncRegionAssets(ctx, adapter, &account, region.ID, params.AssetTypes, t.ID)
 			if err != nil {
 				e.logger.Error("同步地域资产失败",
 					elog.String("account", account.Name),
@@ -263,15 +258,30 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 				continue
 			}
 			accountSynced += synced
+			if len(skippedTypes) > 0 {
+				accountLocked = true
+				for _, st := range skippedTypes {
+					lockedTypes = append(lockedTypes, account.Name+"@"+st)
+				}
+			}
 		}
 
-		// DNS 是全局服务，在账号级别同步（不按地域）
+		// DNS 是全局服务，在账号级别同步（不按地域），按资产类型 dns 走互斥锁
 		expandedTypes := expandAssetTypes(params.AssetTypes)
 		for _, at := range expandedTypes {
 			if at == "dns" {
+				if !e.tryAcquireAccount(account.ID, dnsAssetType, t.ID) {
+					e.logger.Warn("该账号 DNS 已有同步任务在执行,本任务跳过",
+						elog.String("account", account.Name),
+						elog.String("task_id", t.ID))
+					accountLocked = true
+					lockedTypes = append(lockedTypes, account.Name+"@"+dnsAssetType)
+					break
+				}
 				cloudxAdapter, cloudxErr := e.cloudxFactory.CreateAdapter(&account)
 				if cloudxErr != nil {
 					e.logger.Error("创建cloudx适配器失败(DNS)", elog.FieldErr(cloudxErr))
+					e.releaseAccount(account.ID, dnsAssetType, t.ID)
 					break
 				}
 				synced, err := e.syncDNS(ctx, cloudxAdapter, &account)
@@ -282,6 +292,7 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 				} else {
 					accountSynced += synced
 				}
+				e.releaseAccount(account.ID, dnsAssetType, t.ID)
 				break
 			}
 		}
@@ -293,9 +304,13 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 				elog.FieldErr(err))
 		}
 
-		e.releaseAccount(account.ID, t.ID)
-		syncedTenantIDs[account.TenantID] = struct{}{}
-		totalSynced += accountSynced
+		if accountSynced > 0 {
+			syncedTenantIDs[account.TenantID] = struct{}{}
+			totalSynced += accountSynced
+		} else if accountLocked {
+			// 本任务在该账号上所有要同步的资产类型锁均被其他任务持有,记整账号跳过
+			skippedAccounts = append(skippedAccounts, account.Name)
+		}
 	}
 
 	// 服务树规则引擎挂点（一期方案 4）：资产同步完成后自动执行规则。
@@ -309,9 +324,10 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 	result := SyncAssetsResult{
 		TotalCount: totalSynced,
 		Details: map[string]any{
-			"accounts_synced":  totalAccounts - len(skippedAccounts),
-			"accounts_skipped": skippedAccounts,
-			"asset_types":      params.AssetTypes,
+			"accounts_synced":    totalAccounts - len(skippedAccounts),
+			"accounts_skipped":   skippedAccounts,
+			"locked_asset_types": lockedTypes,
+			"asset_types":        params.AssetTypes,
 		},
 	}
 
@@ -550,13 +566,15 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 	account *domain.CloudAccount,
 	region string,
 	assetTypes []string,
-) (int, error) {
+	taskID string,
+) (int, []string, error) {
 	totalSynced := 0
+	var skippedTypes []string
 
 	// 展开资产类型（支持 database -> rds, redis, mongodb）
 	expandedTypes := expandAssetTypes(assetTypes)
 
-	// 获取 cloudx 适配器用于数据库资源同步
+	// 获取 cloudx 适配器用于数据库资源同步（跨资产类型懒加载复用）
 	var cloudxAdapter cloudx.CloudAdapter
 	var cloudxErr error
 
@@ -566,41 +584,55 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 			continue
 		}
 
-		// 计算型资源（ECS）使用 asset 适配器，无需 cloudx
-		if entry, ok := assetSyncFns[assetType]; ok {
-			synced, err := entry.fn(e, ctx, adapter, account, region)
+		// 每个资产类型独立互斥:同一账号同一类型只放行一个任务,不同类型互不阻塞。
+		// 闭包 + defer 保证锁在闭包内任何 return 路径都必然归还。
+		func() {
+			if !e.tryAcquireAccount(account.ID, assetType, taskID) {
+				e.logger.Warn("该资产类型已有同步任务在执行,本任务跳过",
+					elog.String("account", account.Name),
+					elog.String("asset_type", assetType),
+					elog.String("task_id", taskID))
+				skippedTypes = append(skippedTypes, assetType)
+				return
+			}
+			defer e.releaseAccount(account.ID, assetType, taskID)
+
+			// 计算型资源（ECS）使用 asset 适配器，无需 cloudx
+			if entry, ok := assetSyncFns[assetType]; ok {
+				synced, err := entry.fn(e, ctx, adapter, account, region)
+				if err != nil {
+					e.logger.Error(entry.label, elog.String("region", region), elog.FieldErr(err))
+					return
+				}
+				totalSynced += synced
+				return
+			}
+
+			entry, ok := cloudxSyncFns[assetType]
+			if !ok {
+				// 未注册类型不触碰工厂，直接告警（与旧 switch default 行为一致）
+				e.logger.Warn("不支持的资源类型", elog.String("asset_type", assetType))
+				return
+			}
+
+			// 其余资源懒加载 cloudx 适配器（创建失败/不可用时跳过本类型）
+			if cloudxAdapter == nil && cloudxErr == nil {
+				cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
+				if cloudxErr != nil {
+					e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
+				}
+			}
+			if cloudxAdapter == nil {
+				return
+			}
+			synced, err := entry.fn(e, ctx, cloudxAdapter, account, region)
 			if err != nil {
 				e.logger.Error(entry.label, elog.String("region", region), elog.FieldErr(err))
-				continue
+				return
 			}
 			totalSynced += synced
-			continue
-		}
-
-		entry, ok := cloudxSyncFns[assetType]
-		if !ok {
-			// 未注册类型不触碰工厂，直接告警（与旧 switch default 行为一致）
-			e.logger.Warn("不支持的资源类型", elog.String("asset_type", assetType))
-			continue
-		}
-
-		// 其余资源懒加载 cloudx 适配器（创建失败/不可用时跳过本类型）
-		if cloudxAdapter == nil && cloudxErr == nil {
-			cloudxAdapter, cloudxErr = e.cloudxFactory.CreateAdapter(account)
-			if cloudxErr != nil {
-				e.logger.Error("创建cloudx适配器失败", elog.FieldErr(cloudxErr))
-			}
-		}
-		if cloudxAdapter == nil {
-			continue
-		}
-		synced, err := entry.fn(e, ctx, cloudxAdapter, account, region)
-		if err != nil {
-			e.logger.Error(entry.label, elog.String("region", region), elog.FieldErr(err))
-			continue
-		}
-		totalSynced += synced
+		}()
 	}
 
-	return totalSynced, nil
+	return totalSynced, skippedTypes, nil
 }

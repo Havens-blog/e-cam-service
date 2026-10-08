@@ -439,6 +439,7 @@ func newTestExecutor(instanceRepo *mockInstanceRepo) *SyncAssetsExecutor {
 	return &SyncAssetsExecutor{
 		instanceRepo: instanceRepo,
 		logger:       testLogger(),
+		syncingNow:   make(map[string]string),
 	}
 }
 

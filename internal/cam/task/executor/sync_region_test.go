@@ -1460,7 +1460,7 @@ func TestSyncRegionAssets_SingleType_RDS(t *testing.T) {
 		Return([]string{}, nil)
 
 	executor := newTestExecutor(instanceRepo)
-	synced, err := executor.syncRegionAssets(c, assetAdpt, account, "cn-hangzhou", []string{"ecs"})
+	synced, _, err := executor.syncRegionAssets(c, assetAdpt, account, "cn-hangzhou", []string{"ecs"}, "test-task")
 	require.NoError(t, err)
 	assert.Equal(t, 1, synced)
 }
@@ -1469,7 +1469,7 @@ func TestSyncRegionAssets_UnsupportedType(t *testing.T) {
 	assetAdpt := new(mockAssetAdapter)
 	executor := newTestExecutor(nil)
 
-	synced, err := executor.syncRegionAssets(ctx(), assetAdpt, testAccount(), "cn-hangzhou", []string{"unknown_type"})
+	synced, _, err := executor.syncRegionAssets(ctx(), assetAdpt, testAccount(), "cn-hangzhou", []string{"unknown_type"}, "test-task")
 	require.NoError(t, err)
 	assert.Equal(t, 0, synced)
 }
@@ -1490,7 +1490,7 @@ func TestSyncRegionAssets_ExpandedTypes(t *testing.T) {
 
 	executor := newTestExecutor(instanceRepo)
 	// Only test ECS type (cloudx types need cloudxFactory which is nil)
-	synced, err := executor.syncRegionAssets(c, assetAdpt, account, "cn-hangzhou", []string{"ecs"})
+	synced, _, err := executor.syncRegionAssets(c, assetAdpt, account, "cn-hangzhou", []string{"ecs"}, "test-task")
 	require.NoError(t, err)
 	assert.Equal(t, 2, synced)
 }
@@ -1506,7 +1506,7 @@ func TestSyncRegionAssets_ECSError_ContinuesOthers(t *testing.T) {
 
 	executor := newTestExecutor(instanceRepo)
 	// ECS fails but syncRegionAssets continues (logs error, doesn't return)
-	synced, err := executor.syncRegionAssets(c, assetAdpt, account, "cn-hangzhou", []string{"ecs"})
+	synced, _, err := executor.syncRegionAssets(c, assetAdpt, account, "cn-hangzhou", []string{"ecs"}, "test-task")
 	require.NoError(t, err)
 	assert.Equal(t, 0, synced)
 }
