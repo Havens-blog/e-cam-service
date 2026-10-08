@@ -185,6 +185,13 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 			continue
 		}
 
+		// panic 兜底释放:syncRegionAssets/syncDNS 若 panic,循环中断直接回卷 Execute,
+		// 下方正常路径的 releaseAccount 来不及执行;此处 defer 保证账号锁必然归还,
+		// 避免残留脏锁导致该账号后续所有同步被互斥跳过。account.ID 先落局部变量,
+		// 规避旧版 Go range 循环变量共享导致 defer 释放错账号。
+		accountID := account.ID
+		defer e.releaseAccount(accountID, t.ID)
+
 		accountProgress := 20 + (ai*70)/totalAccounts
 		e.taskRepo.UpdateProgress(ctx, t.ID, accountProgress,
 			fmt.Sprintf("正在同步账号 %s (%d/%d)", account.Name, ai+1, totalAccounts))
