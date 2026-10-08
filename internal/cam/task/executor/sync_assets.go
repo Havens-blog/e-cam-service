@@ -53,10 +53,8 @@ type SyncAssetsExecutor struct {
 	dnsDomainColl  *mongo.Collection // DNS 域名集合 (c_dns_domain)
 	dnsRecordColl  *mongo.Collection // DNS 记录集合 (c_dns_record)
 	changeTracker  ChangeTracker     // 资产同步变更追踪（nil 不追踪，由 ioc 注入）
-	ruleExecutor   RuleAutoExecutor  // 服务树规则引擎（同步完成后自动执行规则，nil 关闭，由 ioc 注入）
-	// resourceGroupNames 阿里云资源组 ID -> 名称 映射（账号级补采，同步时写入 attributes.resource_group_name）
-	resourceGroupNames map[string]string
-	logger             *elog.Component
+	ruleExecutor   RuleAutoExecutor // 服务树规则引擎（同步完成后自动执行规则，nil 关闭，由 ioc 注入）
+	logger         *elog.Component
 	// syncingNow 资产类型级同步互斥("account_id:asset_type" -> task_id)。
 	// 手动连点/调度器/重试会产生同一账号同一资产类型的并发同步任务,互相踩踏
 	// 浪费厂商 API 配额且更慢,故同账号同类型只放行一个任务;不同资产类型互不
@@ -225,17 +223,20 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 			regions = filteredRegions
 		}
 
-		// 阿里云资源组名称补采：账号级一次拉取，随后在 diffAndUpsert 集中写入各资产
-		e.resourceGroupNames = nil
+		// 阿里云资源组名称补采：账号级一次拉取，经 context 传到 diffAndUpsert 写入各资产。
+		// 不落执行器共享字段——同步按「账号×资产类型」并发，共享字段会被不同账号的 nil/名称
+		// 相互覆盖，曾致 resource_group_name 被漏写清空。
+		var resourceGroupNames map[string]string
 		if account.Provider == domain.CloudProviderAliyun {
 			names, rgErr := aliyun.ListResourceGroupNames(&account)
 			if rgErr != nil {
 				e.logger.Warn("拉取阿里云资源组名称失败", elog.FieldErr(rgErr))
 			} else {
-				e.resourceGroupNames = names
+				resourceGroupNames = names
 				e.logger.Info("拉取阿里云资源组名称成功", elog.Int("count", len(names)))
 			}
 		}
+		syncCtx := context.WithValue(ctx, resourceGroupNamesKey{}, resourceGroupNames)
 
 		// 同步该账号的所有地域资产(按资产类型互斥;被锁跳过的类型在此汇总)
 		accountSynced := 0
@@ -249,7 +250,7 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 			e.taskRepo.UpdateProgress(ctx, t.ID, regionProgress,
 				fmt.Sprintf("账号 %s: 正在同步地域 %s (%d/%d)", account.Name, region.ID, i+1, totalRegions))
 
-			synced, skippedTypes, err := e.syncRegionAssets(ctx, adapter, &account, region.ID, params.AssetTypes, t.ID)
+			synced, skippedTypes, err := e.syncRegionAssets(syncCtx, adapter, &account, region.ID, params.AssetTypes, t.ID)
 			if err != nil {
 				e.logger.Error("同步地域资产失败",
 					elog.String("account", account.Name),
@@ -451,6 +452,16 @@ type syncItem struct {
 	ToInstance func() (camdomain.Instance, error)
 }
 
+// resourceGroupNamesKey 阿里云资源组名称映射的 context 键。
+// 用 context 而非执行器共享字段传递：同步按「账号×资产类型」并发执行，
+// 共享字段会被不同账号的 nil/名称相互覆盖，曾致 resource_group_name 被漏写清空。
+type resourceGroupNamesKey struct{}
+
+func resourceGroupNamesFromCtx(ctx context.Context) map[string]string {
+	names, _ := ctx.Value(resourceGroupNamesKey{}).(map[string]string)
+	return names
+}
+
 // diffAndUpsert 通用"对比本地 → 删除过期 → 新增/更新"（同步收敛 Phase 2 S5）。
 // 各 syncRegion<X> 构建 []syncItem 后调用本方法，消除 19 份逐文件复制。
 // 语义与既有实现一致：ListAssetIDsByRegion 失败按空本地处理；删除失败仅记日志不阻断；
@@ -495,7 +506,7 @@ func (e *SyncAssetsExecutor) diffAndUpsert(
 			e.logger.Error("转换实例失败", elog.String("asset_id", it.AssetID), elog.FieldErr(convErr))
 			continue
 		}
-		e.enrichResourceGroupName(&instance)
+		e.enrichResourceGroupName(&instance, resourceGroupNamesFromCtx(ctx))
 		// 变更追踪（可选注入）：有旧实例才记录，失败不影响同步
 		if e.changeTracker != nil {
 			e.trackChange(ctx, instance)
@@ -513,8 +524,8 @@ func (e *SyncAssetsExecutor) diffAndUpsert(
 // enrichResourceGroupName 阿里云资源组名称补采：把资源组 ID（resource_group_id，或部分阿里云
 // 资产类型映射到 project_id）反查成可读名称，写入 attributes.resource_group_name，供服务树规则
 // 按名称枚举/匹配。未命中（非阿里云/无资源组映射）不动任何字段。
-func (e *SyncAssetsExecutor) enrichResourceGroupName(instance *camdomain.Instance) {
-	if len(e.resourceGroupNames) == 0 || instance.Attributes == nil {
+func (e *SyncAssetsExecutor) enrichResourceGroupName(instance *camdomain.Instance, resourceGroupNames map[string]string) {
+	if len(resourceGroupNames) == 0 || instance.Attributes == nil {
 		return
 	}
 	for _, key := range []string{"resource_group_id", "project_id"} {
@@ -522,7 +533,7 @@ func (e *SyncAssetsExecutor) enrichResourceGroupName(instance *camdomain.Instanc
 		if !ok || id == "" {
 			continue
 		}
-		if name, ok := e.resourceGroupNames[id]; ok {
+		if name, ok := resourceGroupNames[id]; ok {
 			instance.Attributes["resource_group_name"] = name
 			return
 		}
