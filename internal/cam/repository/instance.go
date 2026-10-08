@@ -23,6 +23,8 @@ type InstanceRepository interface {
 	DeleteByAssetIDs(ctx context.Context, tenantID int64, modelUID string, assetIDs []string) (int64, error)
 	ListAssetIDsByRegion(ctx context.Context, tenantID int64, modelUID string, accountID int64, region string) ([]string, error)
 	ListAssetIDsByModelUID(ctx context.Context, tenantID int64, modelUID string, accountID int64) ([]string, error)
+	// DistinctAttribute 返回租户下某属性点路径的去重值（规则条件枚举专用）。
+	DistinctAttribute(ctx context.Context, tenantID int64, path string) ([]string, error)
 	Upsert(ctx context.Context, instance domain.Instance) error
 	Search(ctx context.Context, filter domain.SearchFilter) ([]domain.Instance, int64, error)
 }
@@ -126,6 +128,11 @@ func (r *instanceRepository) ListAssetIDsByRegion(ctx context.Context, tenantID 
 // ListAssetIDsByModelUID 获取指定模型的所有 AssetID 列表（不按地域过滤，用于 OSS 等全局资源）
 func (r *instanceRepository) ListAssetIDsByModelUID(ctx context.Context, tenantID int64, modelUID string, accountID int64) ([]string, error) {
 	return r.dao.ListAssetIDsByModelUID(ctx, tenantID, modelUID, accountID)
+}
+
+// DistinctAttribute 返回租户下某属性点路径的去重值。
+func (r *instanceRepository) DistinctAttribute(ctx context.Context, tenantID int64, path string) ([]string, error) {
+	return r.dao.DistinctAttribute(ctx, tenantID, path)
 }
 
 // toDAO 领域模型转DAO模型

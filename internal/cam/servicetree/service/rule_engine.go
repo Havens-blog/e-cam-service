@@ -125,43 +125,40 @@ const maxFieldValues = 200
 
 // ListFieldValues 返回指定字段在租户资产中的去重值（规则条件值下拉枚举用）。
 // 仅支持枚举型字段：region / model_uid / attributes.* / tag.*；name、asset_id 逐资源唯一，返回空。
-// 复用 getFieldValue 取值，保证枚举与规则实际匹配口径一致。
+// 走仓储层 Mongo distinct（非全量拉资产），2w+ 资产时避免 4s+ 的扫描延迟。
 func (s *ruleEngineService) ListFieldValues(ctx context.Context, tenantID int64, field string) ([]string, error) {
-	if !isEnumerableField(field) {
+	path := fieldToAttributePath(field)
+	if path == "" {
 		return nil, nil
 	}
 
-	instances, err := s.listTenantInstances(ctx, tenantID)
+	values, err := s.instanceRepo.DistinctAttribute(ctx, tenantID, path)
 	if err != nil {
 		return nil, err
 	}
-
-	seen := make(map[string]struct{})
-	values := make([]string, 0)
-	for _, inst := range instances {
-		v := s.getFieldValue(inst, field)
-		if v == "" {
-			continue
-		}
-		if _, ok := seen[v]; ok {
-			continue
-		}
-		seen[v] = struct{}{}
-		values = append(values, v)
-		if len(values) >= maxFieldValues {
-			break
-		}
+	if len(values) > maxFieldValues {
+		values = values[:maxFieldValues]
 	}
 	sort.Strings(values)
 	return values, nil
 }
 
-// isEnumerableField 判断字段是否适合下拉枚举。
-// region/model_uid 为内置枚举；attributes.*/tag.* 为资产属性/标签枚举。
-// name/asset_id 逐资源唯一，不适合枚举（返回 false 不做全量扫描）。
-func isEnumerableField(field string) bool {
-	return field == "region" || field == "model_uid" ||
-		strings.HasPrefix(field, "attributes.") || strings.HasPrefix(field, "tag.")
+// fieldToAttributePath 把规则条件字段映射为资产属性在 Mongo 里的点路径。
+// name/asset_id 等逐资源唯一的字段不具枚举意义，返回空串。
+func fieldToAttributePath(field string) string {
+	switch field {
+	case "region":
+		return "attributes.region"
+	case "model_uid":
+		return "model_uid"
+	}
+	if strings.HasPrefix(field, "attributes.") {
+		return field
+	}
+	if strings.HasPrefix(field, "tag.") {
+		return "attributes.tags." + strings.TrimPrefix(field, "tag.")
+	}
+	return ""
 }
 
 func (s *ruleEngineService) GetRule(ctx context.Context, id int64) (stdomain.BindingRule, error) {

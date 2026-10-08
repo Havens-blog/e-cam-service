@@ -139,6 +139,11 @@ func (m *mockInstanceRepo) ListAssetIDsByModelUID(ctx context.Context, tenantID 
 	return args.Get(0).([]string), args.Error(1)
 }
 
+func (m *mockInstanceRepo) DistinctAttribute(ctx context.Context, tenantID int64, path string) ([]string, error) {
+	args := m.Called(ctx, tenantID, path)
+	return args.Get(0).([]string), args.Error(1)
+}
+
 func (m *mockInstanceRepo) Upsert(ctx context.Context, instance camdomain.Instance) error {
 	args := m.Called(ctx, instance)
 	return args.Error(0)

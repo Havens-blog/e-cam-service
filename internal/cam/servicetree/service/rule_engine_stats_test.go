@@ -160,11 +160,19 @@ func (s *stubBindingRepo) DeleteByRuleID(ctx context.Context, ruleID int64) (int
 
 type stubInstanceRepo struct {
 	camrepo.InstanceRepository
-	listFn func(ctx context.Context, filter camdomain.InstanceFilter) ([]camdomain.Instance, error)
+	listFn     func(ctx context.Context, filter camdomain.InstanceFilter) ([]camdomain.Instance, error)
+	distinctFn func(ctx context.Context, tenantID int64, path string) ([]string, error)
 }
 
 func (s *stubInstanceRepo) List(ctx context.Context, filter camdomain.InstanceFilter) ([]camdomain.Instance, error) {
 	return s.listFn(ctx, filter)
+}
+
+func (s *stubInstanceRepo) DistinctAttribute(ctx context.Context, tenantID int64, path string) ([]string, error) {
+	if s.distinctFn != nil {
+		return s.distinctFn(ctx, tenantID, path)
+	}
+	return nil, nil
 }
 
 func newTestRuleEngine(ruleRepo repository.RuleRepository, nodeRepo repository.NodeRepository, bindingRepo repository.BindingRepository, instanceRepo camrepo.InstanceRepository, envRepo repository.EnvironmentRepository) RuleEngineService {
@@ -271,18 +279,22 @@ func TestUnbindRuleResources(t *testing.T) {
 	}
 }
 
-// TestListFieldValues 条件字段去重枚举：region/model_uid/tag.* 去重排序，
-// name/asset_id 等非枚举字段返回空。
+// TestListFieldValues 条件字段去重枚举：仓储 distinct 已去重，服务层排序+截断；
+// name/asset_id 等非枚举字段返回空，且不触达仓储。
 func TestListFieldValues(t *testing.T) {
-	instances := []camdomain.Instance{
-		{ID: 1, ModelUID: "aliyun_ecs", Attributes: map[string]any{"region": "cn-hangzhou", "tags": map[string]any{"environment": "prod"}}},
-		{ID: 2, ModelUID: "aliyun_rds", Attributes: map[string]any{"region": "cn-beijing", "tags": map[string]any{"environment": "dev"}}},
-		{ID: 3, ModelUID: "aliyun_ecs", Attributes: map[string]any{"region": "cn-hangzhou", "tags": map[string]any{"environment": "prod"}}}, // 重复
-		{ID: 4, ModelUID: "huawei_ecs", Attributes: map[string]any{"region": "cn-south"}},
-	}
+	var distinctCalls []string
 	instanceRepo := &stubInstanceRepo{
-		listFn: func(ctx context.Context, filter camdomain.InstanceFilter) ([]camdomain.Instance, error) {
-			return instances, nil
+		distinctFn: func(ctx context.Context, tenantID int64, path string) ([]string, error) {
+			distinctCalls = append(distinctCalls, path)
+			switch path {
+			case "attributes.region":
+				return []string{"cn-hangzhou", "cn-beijing", "cn-south"}, nil
+			case "model_uid":
+				return []string{"aliyun_ecs", "aliyun_rds", "huawei_ecs"}, nil
+			case "attributes.tags.environment":
+				return []string{"prod", "dev"}, nil
+			}
+			return nil, nil
 		},
 	}
 	s := newTestRuleEngine(&stubRuleRepo{}, &stubNodeRepo{}, &stubBindingRepo{}, instanceRepo, nil)
@@ -307,11 +319,37 @@ func TestListFieldValues(t *testing.T) {
 	assertEqual(t, "model_uid", []string{"aliyun_ecs", "aliyun_rds", "huawei_ecs"})
 	assertEqual(t, "tag.environment", []string{"dev", "prod"})
 
-	// 非枚举字段：直接返回空，不扫描
+	// 非枚举字段：直接返回空，不查仓储
+	before := len(distinctCalls)
 	for _, field := range []string{"name", "asset_id"} {
 		got, _ := s.ListFieldValues(context.Background(), 1, field)
 		if len(got) != 0 {
 			t.Errorf("%s 应返回空, got %v", field, got)
+		}
+	}
+	if len(distinctCalls) != before {
+		t.Errorf("非枚举字段不应触达仓储 distinct, calls=%v", distinctCalls)
+	}
+}
+
+// TestFieldToAttributePath 规则条件字段 → Mongo 属性点路径映射。
+func TestFieldToAttributePath(t *testing.T) {
+	cases := []struct {
+		field string
+		want  string
+	}{
+		{"region", "attributes.region"},
+		{"model_uid", "model_uid"},
+		{"attributes.resource_group_name", "attributes.resource_group_name"},
+		{"attributes.project_id", "attributes.project_id"},
+		{"tag.env", "attributes.tags.env"},
+		{"name", ""},
+		{"asset_id", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := fieldToAttributePath(c.field); got != c.want {
+			t.Errorf("fieldToAttributePath(%q) = %q, want %q", c.field, got, c.want)
 		}
 	}
 }

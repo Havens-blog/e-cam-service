@@ -63,6 +63,8 @@ type InstanceDAO interface {
 	DeleteByAssetIDs(ctx context.Context, tenantID int64, modelUID string, assetIDs []string) (int64, error)
 	ListAssetIDsByRegion(ctx context.Context, tenantID int64, modelUID string, accountID int64, region string) ([]string, error)
 	ListAssetIDsByModelUID(ctx context.Context, tenantID int64, modelUID string, accountID int64) ([]string, error)
+	// DistinctAttribute 返回租户下某属性点路径的去重字符串值（规则条件枚举专用）。
+	DistinctAttribute(ctx context.Context, tenantID int64, path string) ([]string, error)
 	Upsert(ctx context.Context, instance Instance) error
 	Search(ctx context.Context, filter SearchFilter) ([]Instance, int64, error)
 }
@@ -195,6 +197,23 @@ func (d *instanceDAO) List(ctx context.Context, filter InstanceFilter) ([]Instan
 	var instances []Instance
 	err = cursor.All(ctx, &instances)
 	return instances, err
+}
+
+// DistinctAttribute 返回租户下某属性点路径的去重字符串值。
+// 走 Mongo distinct 聚合，避免规则枚举时把全量资产文档拉回内存（2w+ 资产时 ListFieldValues 曾 4s+）。
+// 仅保留字符串类型且非空的值（与 getFieldValue 取值口径一致）。
+func (d *instanceDAO) DistinctAttribute(ctx context.Context, tenantID int64, path string) ([]string, error) {
+	vals, err := d.db.Collection(InstanceCollection).Distinct(ctx, path, bson.M{"tenant_id": tenantID})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]string, 0, len(vals))
+	for _, v := range vals {
+		if s, ok := v.(string); ok && s != "" {
+			result = append(result, s)
+		}
+	}
+	return result, nil
 }
 
 // Count 统计实例数量
