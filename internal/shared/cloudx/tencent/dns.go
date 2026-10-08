@@ -121,7 +121,7 @@ func (a *DNSAdapter) ListDomains(ctx context.Context) ([]types.DNSDomain, error)
 }
 
 // ListRecords 查询域名下解析记录列表
-func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DNSRecord, error) {
+func (a *DNSAdapter) ListRecords(ctx context.Context, domain types.DNSDomain) ([]types.DNSRecord, error) {
 	client, err := a.createClient()
 	if err != nil {
 		return nil, fmt.Errorf("tencent: create DNSPod client failed: %w", err)
@@ -133,7 +133,7 @@ func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DN
 
 	for {
 		request := dnspod.NewDescribeRecordListRequest()
-		request.Domain = common.StringPtr(domain)
+		request.Domain = common.StringPtr(domain.DomainName)
 		request.Offset = common.Uint64Ptr(offset)
 		request.Limit = common.Uint64Ptr(limit)
 
@@ -144,7 +144,7 @@ func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DN
 			return e
 		})
 		if err != nil {
-			return nil, fmt.Errorf("tencent: list records for %s failed: %w", domain, err)
+			return nil, fmt.Errorf("tencent: list records for %s failed: %w", domain.DomainName, err)
 		}
 
 		if response.Response.RecordList == nil || len(response.Response.RecordList) == 0 {
@@ -167,7 +167,7 @@ func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DN
 
 			allRecords = append(allRecords, types.DNSRecord{
 				RecordID: recordID,
-				Domain:   domain,
+				Domain:   domain.DomainName,
 				RR:       ptrStr(r.Name),
 				Type:     ptrStr(r.Type),
 				Value:    ptrStr(r.Value),

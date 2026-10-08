@@ -19,7 +19,7 @@ import (
 // mockDNSAdapter 模拟 DNS 适配器，用于测试接口契约
 type mockDNSAdapter struct {
 	listDomainsFunc func(ctx context.Context) ([]types.DNSDomain, error)
-	listRecordsFunc func(ctx context.Context, domain string) ([]types.DNSRecord, error)
+	listRecordsFunc func(ctx context.Context, domain types.DNSDomain) ([]types.DNSRecord, error)
 	getRecordFunc   func(ctx context.Context, domain, recordID string) (*types.DNSRecord, error)
 	createRecordFn  func(ctx context.Context, domain string, req types.CreateDNSRecordRequest) (*types.DNSRecord, error)
 	updateRecordFn  func(ctx context.Context, domain, recordID string, req types.UpdateDNSRecordRequest) (*types.DNSRecord, error)
@@ -33,7 +33,7 @@ func (m *mockDNSAdapter) ListDomains(ctx context.Context) ([]types.DNSDomain, er
 	return nil, nil
 }
 
-func (m *mockDNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DNSRecord, error) {
+func (m *mockDNSAdapter) ListRecords(ctx context.Context, domain types.DNSDomain) ([]types.DNSRecord, error) {
 	if m.listRecordsFunc != nil {
 		return m.listRecordsFunc(ctx, domain)
 	}
@@ -95,16 +95,16 @@ func TestDNSAdapter_ListDomains_Normal(t *testing.T) {
 
 func TestDNSAdapter_ListRecords_Normal(t *testing.T) {
 	adapter := &mockDNSAdapter{
-		listRecordsFunc: func(ctx context.Context, domain string) ([]types.DNSRecord, error) {
-			assert.Equal(t, "example.com", domain)
+		listRecordsFunc: func(ctx context.Context, domain types.DNSDomain) ([]types.DNSRecord, error) {
+			assert.Equal(t, "example.com", domain.DomainName)
 			return []types.DNSRecord{
-				{RecordID: "r1", Domain: domain, RR: "www", Type: "A", Value: "1.2.3.4", TTL: 600, Status: "enable"},
-				{RecordID: "r2", Domain: domain, RR: "mail", Type: "MX", Value: "mail.example.com", TTL: 300, Priority: 10, Status: "enable"},
+				{RecordID: "r1", Domain: domain.DomainName, RR: "www", Type: "A", Value: "1.2.3.4", TTL: 600, Status: "enable"},
+				{RecordID: "r2", Domain: domain.DomainName, RR: "mail", Type: "MX", Value: "mail.example.com", TTL: 300, Priority: 10, Status: "enable"},
 			}, nil
 		},
 	}
 
-	records, err := adapter.ListRecords(context.Background(), "example.com")
+	records, err := adapter.ListRecords(context.Background(), types.DNSDomain{DomainName: "example.com"})
 	require.NoError(t, err)
 	assert.Len(t, records, 2)
 	assert.Equal(t, "www", records[0].RR)
@@ -359,12 +359,12 @@ func TestDNSAdapter_ListDomains_Empty(t *testing.T) {
 
 func TestDNSAdapter_ListRecords_Empty(t *testing.T) {
 	adapter := &mockDNSAdapter{
-		listRecordsFunc: func(ctx context.Context, domain string) ([]types.DNSRecord, error) {
+		listRecordsFunc: func(ctx context.Context, _ types.DNSDomain) ([]types.DNSRecord, error) {
 			return []types.DNSRecord{}, nil
 		},
 	}
 
-	records, err := adapter.ListRecords(context.Background(), "example.com")
+	records, err := adapter.ListRecords(context.Background(), types.DNSDomain{DomainName: "example.com"})
 	assert.NoError(t, err)
 	assert.Empty(t, records)
 }

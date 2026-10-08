@@ -143,7 +143,7 @@ func (a *DNSAdapter) ListDomains(ctx context.Context) ([]types.DNSDomain, error)
 }
 
 // ListRecords 查询域名下解析记录列表
-func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DNSRecord, error) {
+func (a *DNSAdapter) ListRecords(ctx context.Context, domain types.DNSDomain) ([]types.DNSRecord, error) {
 	client, err := a.createClient()
 	if err != nil {
 		return nil, fmt.Errorf("huawei: create DNS client failed: %w", err)
@@ -154,7 +154,7 @@ func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DN
 
 	for {
 		request := &dnsmodel.ShowRecordSetByZoneRequest{
-			ZoneId: domain,
+			ZoneId: domain.DomainID,
 			Marker: marker,
 		}
 
@@ -165,7 +165,7 @@ func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DN
 			return e
 		})
 		if err != nil {
-			return nil, fmt.Errorf("huawei: list record sets for zone %s failed: %w", domain, err)
+			return nil, fmt.Errorf("huawei: list record sets for zone %s failed: %w", domain.DomainID, err)
 		}
 
 		if response.Recordsets == nil {
@@ -184,7 +184,7 @@ func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DN
 				for _, val := range *rs.Records {
 					allRecords = append(allRecords, types.DNSRecord{
 						RecordID: safeStr(rs.Id),
-						Domain:   domain,
+						Domain:   domain.DomainName,
 						RR:       rr,
 						Type:     recordType,
 						Value:    val,

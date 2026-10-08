@@ -117,14 +117,15 @@ func (a *DNSAdapter) ListDomains(ctx context.Context) ([]types.DNSDomain, error)
 }
 
 // ListRecords 查询域名下解析记录列表
-func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DNSRecord, error) {
+func (a *DNSAdapter) ListRecords(ctx context.Context, domain types.DNSDomain) ([]types.DNSRecord, error) {
 	client, err := a.createClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("aws: create Route53 client failed: %w", err)
 	}
 
-	// domain 在 Route53 中就是 HostedZoneId
-	hostedZoneID := domain
+	// ListRecords 的 domain 携带 DomainName(域名) 与 DomainID(HostedZoneId);
+	// Route53 查询走 HostedZoneId,记录归属写回域名名。
+	hostedZoneID := domain.DomainID
 
 	var allRecords []types.DNSRecord
 	var nextName *string
@@ -169,7 +170,7 @@ func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DN
 				for i, record := range rrs.ResourceRecords {
 					allRecords = append(allRecords, types.DNSRecord{
 						RecordID: fmt.Sprintf("%s_%s_%d", name, recordType, i),
-						Domain:   hostedZoneID,
+						Domain:   domain.DomainName,
 						RR:       rr,
 						Type:     recordType,
 						Value:    awssdk.ToString(record.Value),
@@ -184,7 +185,7 @@ func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DN
 			if rrs.AliasTarget != nil {
 				allRecords = append(allRecords, types.DNSRecord{
 					RecordID: fmt.Sprintf("%s_%s_alias", name, recordType),
-					Domain:   hostedZoneID,
+					Domain:   domain.DomainName,
 					RR:       rr,
 					Type:     recordType,
 					Value:    awssdk.ToString(rrs.AliasTarget.DNSName),
@@ -210,7 +211,7 @@ func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DN
 
 // GetRecord 查询单条解析记录详情
 func (a *DNSAdapter) GetRecord(ctx context.Context, domain, recordID string) (*types.DNSRecord, error) {
-	records, err := a.ListRecords(ctx, domain)
+	records, err := a.ListRecords(ctx, types.DNSDomain{DomainID: domain})
 	if err != nil {
 		return nil, err
 	}

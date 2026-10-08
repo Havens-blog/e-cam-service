@@ -103,7 +103,7 @@ func (a *DNSAdapter) ListDomains(ctx context.Context) ([]types.DNSDomain, error)
 }
 
 // ListRecords 查询域名下解析记录列表
-func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DNSRecord, error) {
+func (a *DNSAdapter) ListRecords(ctx context.Context, domain types.DNSDomain) ([]types.DNSRecord, error) {
 	client, err := a.createClient()
 	if err != nil {
 		return nil, fmt.Errorf("aliyun: create DNS client failed: %w", err)
@@ -115,7 +115,7 @@ func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DN
 
 	for {
 		request := alidns.CreateDescribeDomainRecordsRequest()
-		request.DomainName = domain
+		request.DomainName = domain.DomainName
 		request.PageNumber = requests.NewInteger(pageNumber)
 		request.PageSize = requests.NewInteger(pageSize)
 
@@ -126,13 +126,13 @@ func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DN
 			return e
 		})
 		if err != nil {
-			return nil, fmt.Errorf("aliyun: list DNS records for %s failed: %w", domain, err)
+			return nil, fmt.Errorf("aliyun: list DNS records for %s failed: %w", domain.DomainName, err)
 		}
 
 		for _, r := range response.DomainRecords.Record {
 			allRecords = append(allRecords, types.DNSRecord{
 				RecordID: r.RecordId,
-				Domain:   domain,
+				Domain:   domain.DomainName,
 				RR:       r.RR,
 				Type:     r.Type,
 				Value:    r.Value,

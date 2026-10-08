@@ -81,7 +81,7 @@ func (a *DNSAdapter) ListDomains(ctx context.Context) ([]types.DNSDomain, error)
 }
 
 // ListRecords 查询域名下解析记录列表
-func (a *DNSAdapter) ListRecords(ctx context.Context, domain string) ([]types.DNSRecord, error) {
+func (a *DNSAdapter) ListRecords(ctx context.Context, domain types.DNSDomain) ([]types.DNSRecord, error) {
 	_, err := a.createSession()
 	if err != nil {
 		return nil, fmt.Errorf("volcano: create session failed: %w", err)

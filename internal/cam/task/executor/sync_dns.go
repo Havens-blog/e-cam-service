@@ -73,7 +73,7 @@ func (e *SyncAssetsExecutor) syncDNS(
 		synced++
 
 		// 2. 同步该域名下的解析记录
-		records, err := dnsAdapter.ListRecords(ctx, d.DomainName)
+		records, err := dnsAdapter.ListRecords(ctx, d)
 		if err != nil {
 			e.logger.Error("获取DNS记录失败", elog.String("domain", d.DomainName), elog.FieldErr(err))
 			continue

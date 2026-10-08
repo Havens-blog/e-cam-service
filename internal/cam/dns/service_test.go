@@ -63,7 +63,7 @@ func (m *mockDNSAdapter) ListDomains(_ context.Context) ([]types.DNSDomain, erro
 	return m.domains, m.listDomainsErr
 }
 
-func (m *mockDNSAdapter) ListRecords(_ context.Context, _ string) ([]types.DNSRecord, error) {
+func (m *mockDNSAdapter) ListRecords(_ context.Context, _ types.DNSDomain) ([]types.DNSRecord, error) {
 	return m.records, m.listRecordsErr
 }
 

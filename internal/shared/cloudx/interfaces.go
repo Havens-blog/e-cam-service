@@ -735,8 +735,10 @@ type DNSAdapter interface {
 	// ListDomains 查询托管域名列表
 	ListDomains(ctx context.Context) ([]types.DNSDomain, error)
 
-	// ListRecords 查询域名下解析记录列表
-	ListRecords(ctx context.Context, domain string) ([]types.DNSRecord, error)
+	// ListRecords 查询域名下解析记录列表。
+	// domain 同时携带域名名(DomainName)与厂商 zone 标识(DomainID):
+	// 腾讯 DNSPod / 阿里 AliDNS 按 DomainName 查询;AWS Route53 / 华为云按 DomainID 查询。
+	ListRecords(ctx context.Context, domain types.DNSDomain) ([]types.DNSRecord, error)
 
 	// GetRecord 查询单条解析记录详情
 	GetRecord(ctx context.Context, domain, recordID string) (*types.DNSRecord, error)
