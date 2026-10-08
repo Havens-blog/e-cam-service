@@ -13,12 +13,18 @@ import (
 
 func now() time.Time { return time.Now() }
 
+// testFingerprint 生成 64 位 hex 测试指纹。前 2 位为 seed 的唯一十六进制
+// 标记、余 62 位以 'f' 填充；标记至少含一个非 'f' 字符，保证不同 seed 的
+// 任意子串互不碰撞——修复 (seed+i)%16 纯旋转周期导致 testFingerprint(1)[:10]
+// 命中全部旋转指纹的问题。
 func testFingerprint(seed byte) string {
 	fp := make([]byte, 64)
-	hexDigits := "0123456789abcdef"
 	for i := range fp {
-		fp[i] = hexDigits[(int(seed)+i)%16]
+		fp[i] = 'f'
 	}
+	hexDigits := "0123456789abcdef"
+	fp[0] = hexDigits[(int(seed)>>4)&0xf]
+	fp[1] = hexDigits[int(seed)&0xf]
 	return string(fp)
 }
 

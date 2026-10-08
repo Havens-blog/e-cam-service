@@ -8,6 +8,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/pkg/mongox"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -24,8 +25,11 @@ func NewCertificateRepository(db *mongox.Mongo) domain.CertificateRepository {
 }
 
 // Create 写入证书；fingerprint 唯一冲突（uk_fingerprint）返回 ErrDuplicateFingerprint。
-// DEFAULT 填充：createdAt=now、expiryAlertLevel=none。
+// DEFAULT 填充：_id=ObjectID（客户端生成，便于调用方读回）、createdAt=now、expiryAlertLevel=none。
 func (r *certificateRepository) Create(ctx context.Context, cert *domain.Certificate) error {
+	if cert.ID.IsZero() {
+		cert.ID = primitive.NewObjectID()
+	}
 	if cert.CreatedAt.IsZero() {
 		cert.CreatedAt = time.Now()
 	}
