@@ -1,11 +1,10 @@
-﻿//go:build wireinject
+//go:build wireinject
 
 package servicetree
 
 import (
 	camrepo "github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/adapter"
-	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/port"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/service"
@@ -30,10 +29,10 @@ var ProviderSet = wire.NewSet(
 	repository.NewRuleRepository,
 	repository.NewEnvironmentRepository,
 
-	// Port Adapter（CMDB 解耦层）
-	// 当前使用本地适配器（进程内调用），未来可替换为 HTTP/gRPC 客户端
-	adapter.NewLocalCMDBAdapter,
-	wire.Bind(new(port.CMDBPort), new(*adapter.LocalCMDBAdapter)),
+	// Port Adapter（CMDB 解耦层，配置驱动的拆分开关）
+	// NewCMDBPort 按 cmdb.remote_url 配置选择本地/远程实现，返回 port.CMDBPort 接口，
+	// 无需 wire.Bind。配了远程地址即走 HTTP 调用独立 e-cmdb-service。
+	adapter.NewCMDBPort,
 
 	// Service
 	service.NewTreeService,
