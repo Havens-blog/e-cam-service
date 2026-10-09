@@ -24,9 +24,9 @@ func InitApp() (*App, error) {
 	cmdable := InitRedis()
 	provider := InitSessionProvider(cmdable)
 	v := InitGinMiddlewares()
-	psdk := InitPolicySDK()
+	sdk := InitPolicySDK()
 	syncer := InitPermSyncer()
-	providers := InitProviders()
+	v2 := InitProviders()
 	mongo := InitMongoDB()
 	module := InitAuditModule(mongo)
 	auditMiddleware := InitAuditMiddleware(module)
@@ -34,7 +34,7 @@ func InitApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	v2 := endpointModule.Hdl
+	handler := endpointModule.Hdl
 	alertModule := InitAlertModule(mongo)
 	camModule, err := cam.InitModuleWithIAM(mongo, cmdable, alertModule)
 	if err != nil {
@@ -49,11 +49,7 @@ func InitApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	engine := InitWebServer(provider, v, psdk, syncer, providers, auditMiddleware, module, v2, camModule, cmdbModule, alertModule, mongo, certModule, logqueryModule)
-	// 资产同步变更追踪注入（同步收敛 Phase 2 S3a）：wire 不支持无返回值副作用调用，故在此显式接线
-	WireChangeTracker(camModule, module)
-	// 服务树规则引擎注入（资产同步完成后自动执行规则，一期方案 4）：同 WireChangeTracker 显式接线
-	WireRuleExecutor(camModule)
+	engine := InitWebServer(provider, v, sdk, syncer, v2, auditMiddleware, module, handler, camModule, cmdbModule, alertModule, mongo, certModule, logqueryModule)
 	v3 := InitJobs(camModule, certModule)
 	app := &App{
 		Logger:         logger,

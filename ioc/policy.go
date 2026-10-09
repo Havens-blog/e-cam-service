@@ -1,8 +1,10 @@
 package ioc
 
 import (
-	"github.com/Duke1616/eiam/pkg/web/capability"
-	"github.com/Duke1616/eiam/pkg/web/sdk"
+	"github.com/Havens-blog/e-iam/pkg/web/capability"
+	syncerpkg "github.com/Havens-blog/e-iam/pkg/web/capability/syncer"
+	"github.com/Havens-blog/e-iam/pkg/web/capability/syncer/http"
+	"github.com/Havens-blog/e-iam/pkg/web/sdk"
 )
 
 // InitPolicySDK eiam 远程鉴权 SDK（细粒度授权 CheckAPI）。
@@ -15,8 +17,8 @@ func InitPolicySDK() *sdk.SDK {
 // InitPermSyncer 端点资产上报器。
 // 读 policy.discovery_url（自动补 /api/v1/discovery/sync）；Sync 内部以
 // sync.Once 启动 30s 全量 tick 协程，首调即触发首轮上报。
-func InitPermSyncer() capability.Syncer {
-	return capability.NewSyncer(capability.NewHttpReporter())
+func InitPermSyncer() syncerpkg.Syncer {
+	return syncerpkg.New(http.New())
 }
 
 // InitProviders 额外权限点提供者。
