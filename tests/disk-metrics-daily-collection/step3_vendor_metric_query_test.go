@@ -1,4 +1,4 @@
-// @feature disk-ops-insight @api-functional
+﻿// @feature disk-ops-insight @api-functional
 //
 // Contract disk-metrics-daily-collection step-3-vendor-metric-query: per-vendor
 // region-scoped metric queries with executor-side AccountID/Provider backfill
@@ -16,7 +16,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-cam-service/tests/disktest"
 	"github.com/Havens-blog/e-cam-service/tests/nastest"
 	"github.com/stretchr/testify/require"

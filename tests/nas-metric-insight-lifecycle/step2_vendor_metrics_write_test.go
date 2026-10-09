@@ -1,4 +1,4 @@
-// @feature nas-ops-insight @api-functional
+﻿// @feature nas-ops-insight @api-functional
 //
 // Contract step-2-vendor-metrics-write: 厂商指标按 GB 口径落库 — vendor byte
 // values converted at the collect boundary land as capacity/used_capacity GB
@@ -15,7 +15,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-cam-service/tests/nastest"
 	"github.com/stretchr/testify/require"
 )

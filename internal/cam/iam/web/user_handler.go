@@ -1,10 +1,10 @@
-package web
+﻿package web
 
 import (
 	"strconv"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/service"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"

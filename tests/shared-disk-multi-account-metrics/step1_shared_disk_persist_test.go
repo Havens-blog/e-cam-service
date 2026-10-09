@@ -1,4 +1,4 @@
-// @feature disk-ops-insight @api-functional
+﻿// @feature disk-ops-insight @api-functional
 //
 // Contract shared-disk-multi-account-metrics step-1-shared-disk-persist: the
 // shared disk persists as two independent rows ( one per account ), an
@@ -15,7 +15,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-cam-service/tests/disktest"
 	"github.com/Havens-blog/e-cam-service/tests/nastest"
 	"github.com/stretchr/testify/require"

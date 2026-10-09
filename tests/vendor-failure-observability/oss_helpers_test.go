@@ -1,4 +1,4 @@
-// @feature oss-ops-insight @api-functional
+﻿// @feature oss-ops-insight @api-functional
 //
 // Journey fixtures for the oss-ops-insight vendor-failure-observability
 // contract tests ( co-located with the nas-ops-insight suite of the same
@@ -13,7 +13,7 @@ package vendor_failure_observability
 import (
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/Havens-blog/e-cam-service/tests/nastest"
 	"github.com/Havens-blog/e-cam-service/tests/osstest"
 	"github.com/stretchr/testify/require"

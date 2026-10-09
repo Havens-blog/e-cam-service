@@ -1,4 +1,4 @@
-package web
+﻿package web
 
 import (
 	"net/http"
@@ -6,7 +6,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/topology/service"
-	"github.com/Havens-blog/e-cam-service/pkg/ginx"
+	"github.com/Havens-blog/e-common-go/ginx"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )

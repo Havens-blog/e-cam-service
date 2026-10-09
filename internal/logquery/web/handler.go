@@ -1,4 +1,4 @@
-// Package web 日志查询 HTTP 面(Phase 1.4,plan.md §4.5)。
+﻿// Package web 日志查询 HTTP 面(Phase 1.4,plan.md §4.5)。
 //
 // 接口:types(字段字典)/ sources(日志源清单)/ search(联邦查询)/
 // aggregate(窗口聚合)/ diagnose(WAF 流量诊断,手动触发)。
@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/logquery/service"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/logquery"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 )
@@ -91,6 +91,22 @@ var logTypes = []typeMeta{
 	},
 	{
 		Type: logquery.LogTypeSLB, Label: "负载均衡访问日志", MaxWindowDays: 3,
+		Fields: append(fixedFields(),
+			FieldDef{Key: "client_ip", Label: "客户端 IP"},
+			FieldDef{Key: "method", Label: "方法"},
+			FieldDef{Key: "url", Label: "URL"},
+			FieldDef{Key: "host", Label: "域名"},
+			FieldDef{Key: "status", Label: "状态码"},
+			FieldDef{Key: "target_ip", Label: "后端 IP"},
+			FieldDef{Key: "latency_ms", Label: "总耗时(ms)"},
+			FieldDef{Key: "upstream_latency_ms", Label: "后端耗时(ms)"},
+			FieldDef{Key: "upstream_status", Label: "后端状态"},
+			FieldDef{Key: "bytes_sent", Label: "下行字节"},
+			FieldDef{Key: "tls_protocol", Label: "TLS"},
+		),
+	},
+	{
+		Type: logquery.LogTypeAccess, Label: "源站访问日志", MaxWindowDays: 3,
 		Fields: append(fixedFields(),
 			FieldDef{Key: "client_ip", Label: "客户端 IP"},
 			FieldDef{Key: "method", Label: "方法"},

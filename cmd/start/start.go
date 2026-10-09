@@ -1,10 +1,10 @@
-package start
+﻿package start
 
 import (
 	"fmt"
 
 	"github.com/Havens-blog/e-cam-service/ioc"
-	"github.com/Havens-blog/e-cam-service/pkg/crypto"
+	"github.com/Havens-blog/e-common-go/crypto"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/gotomicro/ego/task/ecron"
 	"github.com/spf13/cobra"

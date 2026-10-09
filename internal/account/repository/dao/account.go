@@ -1,12 +1,12 @@
-// Package dao 云账号数据访问层
+﻿// Package dao 云账号数据访问层
 package dao
 
 import (
 	"context"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )

@@ -1,7 +1,7 @@
-package service
+﻿package service
 
 import (
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // volcanoAccountProviders 火山双别名归一：cloudx/volcano 以 volcano/volcengine

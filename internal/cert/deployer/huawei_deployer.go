@@ -1,4 +1,4 @@
-// huawei_deployer.go 华为云 CloudDeployer 实现（cert-multicloud-deployers 任务 1）。
+﻿// huawei_deployer.go 华为云 CloudDeployer 实现（cert-multicloud-deployers 任务 1）。
 //
 // 分层定位：将 cloudx 华为云完整证书五方法适配（CertAdapter，SDK 单次调用
 // 封装）组装为 deployer 层 CloudDeployer 端口实例，经 5.3 CloudAPIChannel
@@ -30,8 +30,8 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/huawei"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // huaweiCertAPI 华为云完整证书适配窄接口（*huawei.CertAdapter 天然满足；测试

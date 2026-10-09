@@ -1,4 +1,4 @@
-package web
+﻿package web
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

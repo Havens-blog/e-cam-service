@@ -1,12 +1,12 @@
-package normalizer
+﻿package normalizer
 
 import (
 	"context"
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/billing"
-	shareddomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/billing"
+	shareddomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/assert"
 )

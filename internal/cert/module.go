@@ -1,4 +1,4 @@
-// Package cert 证书管理功能域（SSL 证书统一托管与更换）。
+﻿// Package cert 证书管理功能域（SSL 证书统一托管与更换）。
 //
 // 本文件为域模块装配入口（任务 7.1）：repository/service/deployer/scheduler/web
 // 全量装配，经 ioc/cert.go 注入 Wire（Layer Placement：与 internal/cam 平级）。
@@ -22,15 +22,15 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
 	"github.com/Havens-blog/e-cam-service/internal/cert/web"
-	aliyuncert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aliyun"
-	awscert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
-	azurecert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/azure"
-	huaweicert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
-	tencentcert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/tencent"
-	volcanocert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/volcano"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	aliyuncert "github.com/Havens-blog/e-cloudx-sdk/aliyun"
+	awscert "github.com/Havens-blog/e-cloudx-sdk/aws"
+	azurecert "github.com/Havens-blog/e-cloudx-sdk/azure"
+	huaweicert "github.com/Havens-blog/e-cloudx-sdk/huawei"
+	tencentcert "github.com/Havens-blog/e-cloudx-sdk/tencent"
+	volcanocert "github.com/Havens-blog/e-cloudx-sdk/volcano"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/mongox"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/spf13/viper"

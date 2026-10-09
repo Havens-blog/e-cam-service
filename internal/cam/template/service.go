@@ -1,4 +1,4 @@
-package template
+﻿package template
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/mongo"
 )

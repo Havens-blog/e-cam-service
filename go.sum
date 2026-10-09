@@ -36,6 +36,10 @@ github.com/BurntSushi/toml v1.1.0 h1:ksErzDEI1khOiGPgpwuI7x2ebx/uXQNw7xJpn9Eq1+I
 github.com/BurntSushi/toml v1.1.0/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
 github.com/DataDog/datadog-go v3.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
+github.com/Havens-blog/e-cloudx-sdk v0.1.0 h1:aah3kHAlkfeMzoTyS7q0HgLW5I4A3tP/pf0wq6ffL4A=
+github.com/Havens-blog/e-cloudx-sdk v0.1.0/go.mod h1:dvl4aexfr4z6xCAJCSznLqUdqR18gdLtWYA/SfKEN3w=
+github.com/Havens-blog/e-common-go v0.1.0 h1:3gNbzFcY0xBY+okkJTI+KO06B/zOJmIyn9S9IsIR9gA=
+github.com/Havens-blog/e-common-go v0.1.0/go.mod h1:ndkP6J/pqVB11QtFLafpkxZ0Aj7c81IPSqhGZeHc0rc=
 github.com/Havens-blog/e-iam v0.0.27 h1:ugwROgmU0Sp5Y5PHiBdvsRZo7mSf0LeXVgV/ORzuGBQ=
 github.com/Havens-blog/e-iam v0.0.27/go.mod h1:ikqP8kr6XUeJ55UHGDH4B+qp5e22qHFjK3iGBUs0CTw=
 github.com/HdrHistogram/hdrhistogram-go v1.1.0/go.mod h1:yDgFjdqOqDEKOvasDdhWNXYg9BVp4O+o5f6V/ehm6Oo=
@@ -511,8 +515,8 @@ github.com/gorilla/securecookie v1.1.2/go.mod h1:NfCASbcHqRSY+3a8tlWJwsQap2VX5pw
 github.com/gorilla/sessions v1.2.1/go.mod h1:dk2InVEVJ0sfLlnXv9EAgkf6ecYs/i80K/zI+bUmuGM=
 github.com/gorilla/sessions v1.4.0 h1:kpIYOp/oi6MG/p5PgxApU8srsSw9tuFbt46Lt7auzqQ=
 github.com/gorilla/sessions v1.4.0/go.mod h1:FLWm50oby91+hl7p/wRxDth9bWSuk0qVL2emc7lT5ik=
-github.com/gotomicro/ego v1.2.6 h1:xauA5RohxyD6BlgTr5CuSJc4902lv7ipbvMr3xxJFyg=
-github.com/gotomicro/ego v1.2.6/go.mod h1:MCrlqX3xjsO+F5+V4pF8b4gpsZw4d/7j5oVR/e2LVtg=
+github.com/gotomicro/ego v1.2.7 h1:RDYsU848Y2sFX6h+YW4rgePweaw2VrnbzbW5gaKxfik=
+github.com/gotomicro/ego v1.2.7/go.mod h1:MCrlqX3xjsO+F5+V4pF8b4gpsZw4d/7j5oVR/e2LVtg=
 github.com/gotomicro/logrotate v0.0.0-20211108034117-46d53eedc960 h1:vp5ls3l11a1XCaU3pJUBV85PwRW47qybqdYEIWCGLIo=
 github.com/gotomicro/logrotate v0.0.0-20211108034117-46d53eedc960/go.mod h1:jKlh8i9m79fE8HAO28kYLN70l87bb7olTLuX/Blex/U=
 github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0/go.mod h1:8NvIoxWQoOIhqOTXgfV/d3M/q6VIi02HzZEHgUlZvzk=
@@ -1471,8 +1475,8 @@ k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738 h1:M3sRQVHv7vB20Xc2ybTt7ODCeFj6J
 k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
 mvdan.cc/sh/v3 v3.10.0 h1:v9z7N1DLZ7owyLM/SXZQkBSXcwr2IGMm2LY2pmhVXj4=
 mvdan.cc/sh/v3 v3.10.0/go.mod h1:z/mSSVyLFGZzqb3ZIKojjyqIx/xbmz/UHdCSv9HmqXY=
-pgregory.net/rapid v1.2.0 h1:keKAYRcjm+e1F0oAuU5F5+YPAWcyxNNRK2wud503Gnk=
-pgregory.net/rapid v1.2.0/go.mod h1:PY5XlDGj0+V1FCq0o192FdRhpKHGTRIWBgqjDBTrq04=
+pgregory.net/rapid v1.3.0 h1:vBvO0VSqti75J1jjYqpgPNBLKMd1+gxa9fYo7vk/Exc=
+pgregory.net/rapid v1.3.0/go.mod h1:dPlE4OBBxgXPqkP79flB6sJL1dx5azpI7HQ9MY9Z7uk=
 rsc.io/binaryregexp v0.2.0/go.mod h1:qTv7/COck+e2FymRvadv62gMdZztPaShugOCi3I+8D8=
 rsc.io/pdf v0.1.1/go.mod h1:n8OzWcQ6Sp37PL01nO98y4iUCRdTGarVfzxY20ICaU4=
 rsc.io/quote/v3 v3.1.0/go.mod h1:yEA65RcK8LyAZtP9Kv3t0HmxON59tX3rD+tICJqUlj0=

@@ -1,4 +1,4 @@
-package tag
+﻿package tag
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	shareddomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	shareddomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/stretchr/testify/assert"
 	"go.mongodb.org/mongo-driver/mongo"
 	"pgregory.net/rapid"

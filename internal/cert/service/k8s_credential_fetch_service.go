@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 
 	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
 	certdomain "github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/cs"
 )

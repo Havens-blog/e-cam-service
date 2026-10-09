@@ -1,4 +1,4 @@
-// aliyun_deployer.go 阿里云 CloudDeployer 实现（任务 5.4）。
+﻿// aliyun_deployer.go 阿里云 CloudDeployer 实现（任务 5.4）。
 //
 // 分层定位：将 3.1 cloudx 阿里云证书五方法适配（CertAdapter，SDK 单次调用
 // 封装）组装为 deployer 层 CloudDeployer 端口实例，经 5.3 CloudAPIChannel
@@ -27,9 +27,9 @@ import (
 	sdkerrors "github.com/aliyun/alibaba-cloud-sdk-go/sdk/errors"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aliyun"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-cloudx-sdk/aliyun"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // aliyunCertAPI 3.1 CertAdapter 窄接口（*aliyun.CertAdapter 天然满足；测试注入

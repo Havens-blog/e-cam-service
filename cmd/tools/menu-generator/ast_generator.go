@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"bytes"
@@ -93,7 +93,7 @@ func generateMenuFile(menus []MenuData) *ast.File {
 		Tok: token.IMPORT,
 		Specs: []ast.Spec{
 			&ast.ImportSpec{
-				Path: &ast.BasicLit{Kind: token.STRING, Value: `"github.com/Havens-blog/e-cam-service/pkg/menu"`},
+				Path: &ast.BasicLit{Kind: token.STRING, Value: `"github.com/Havens-blog/e-common-go/menu"`},
 			},
 		},
 	}

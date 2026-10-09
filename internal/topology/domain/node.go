@@ -1,10 +1,10 @@
-package domain
+﻿package domain
 
 import (
 	"fmt"
 	"time"
 
-	shareddomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	shareddomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // 资源类型常量

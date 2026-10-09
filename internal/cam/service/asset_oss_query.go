@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gotomicro/ego/core/elog"
 )
 

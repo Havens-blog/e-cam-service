@@ -1,11 +1,11 @@
-package scheduler
+﻿package scheduler
 
 import (
 	"context"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/google/uuid"
 	"github.com/gotomicro/ego/core/elog"
 )

@@ -1,8 +1,8 @@
-package web
+﻿package web
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cmdb/errs"
-	"github.com/Havens-blog/e-cam-service/pkg/ginx"
+	"github.com/Havens-blog/e-common-go/ginx"
 )
 
 // Result 统一响应结果

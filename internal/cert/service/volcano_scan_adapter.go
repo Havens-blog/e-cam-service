@@ -1,4 +1,4 @@
-// volcano_scan_adapter.go 火山引擎引用扫描适配器（cert-volcano-deployer 任务 3）：
+﻿// volcano_scan_adapter.go 火山引擎引用扫描适配器（cert-volcano-deployer 任务 3）：
 // 四产品（CDN/WAF/ALB/NLB）资源证书引用 → CloudScanAdapter 只读端口，接入
 // reference_scan_service 五云扫描管线（第 6 云）。
 //
@@ -45,8 +45,8 @@ import (
 	"github.com/volcengine/volcengine-go-sdk/volcengine/session"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	volcanocert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/volcano"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	volcanocert "github.com/Havens-blog/e-cloudx-sdk/volcano"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // ---------------------------------------------------------------------

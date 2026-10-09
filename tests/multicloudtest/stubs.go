@@ -1,4 +1,4 @@
-// @feature cert-multicloud-deployers @api-functional
+﻿// @feature cert-multicloud-deployers @api-functional
 //
 // Cloud-port stubs for the cert-multicloud-deployers API-functional harness.
 // The three per-cloud adapter stubs satisfy the unexported deployer adapter
@@ -21,10 +21,10 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/deployer"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	awscloud "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
-	azurecloud "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/azure"
-	huaweicloud "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	awscloud "github.com/Havens-blog/e-cloudx-sdk/aws"
+	azurecloud "github.com/Havens-blog/e-cloudx-sdk/azure"
+	huaweicloud "github.com/Havens-blog/e-cloudx-sdk/huawei"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 

@@ -1,4 +1,4 @@
-// 文件：sync_registry.go
+﻿// 文件：sync_registry.go
 //
 // 作用：syncRegionAssets 的资源类型 → 同步函数派发表（同步收敛 Phase 2 S5 表驱动重构）。
 // 将原先 syncRegionAssets 内 20-case 的 switch 收敛为两张注册表：
@@ -15,9 +15,9 @@ package executor
 import (
 	"context"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-cloudx-sdk/asset"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // dnsAssetType DNS 资源类型：全局服务，不在地域级同步（账号级处理，见 Execute 中的 syncDNS）。

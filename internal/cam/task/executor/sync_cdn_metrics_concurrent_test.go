@@ -1,4 +1,4 @@
-// Package executor CDN 指标采集执行器域名有界并发 + 攒批批量写用例
+﻿// Package executor CDN 指标采集执行器域名有界并发 + 攒批批量写用例
 //
 // 文件：internal/cam/task/executor/sync_cdn_metrics_concurrent_test.go
 //
@@ -20,10 +20,10 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/taskx"
 )
 
 // ==================== 既有 mock 的批量路径扩展(不改原文件) ====================

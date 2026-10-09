@@ -1,4 +1,4 @@
-// Package repository 云账号仓储层
+﻿// Package repository 云账号仓储层
 package repository
 
 import (
@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/account/repository/dao"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
-	"github.com/Havens-blog/e-cam-service/pkg/crypto"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/crypto"
 )
 
 // CloudAccountRepository 云账号仓储接口

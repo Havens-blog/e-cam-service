@@ -1,11 +1,11 @@
-package service
+﻿package service
 
 import (
 	"context"
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
+	"github.com/Havens-blog/e-cloudx-sdk/asset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )

@@ -1,4 +1,4 @@
-// Package executor NAS 任务执行器共用构件(每日采集与历史回填共享)。
+﻿// Package executor NAS 任务执行器共用构件(每日采集与历史回填共享)。
 //
 // 文件：internal/cam/task/executor/nas_account_gate.go
 //
@@ -15,7 +15,7 @@ import (
 	"sync"
 
 	camrepository "github.com/Havens-blog/e-cam-service/internal/cam/repository"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // nasAccountGate NAS 执行器共用的账号级互斥闸(嵌入两个执行器):

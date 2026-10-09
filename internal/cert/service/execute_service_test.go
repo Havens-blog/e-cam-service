@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -13,9 +13,9 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/deployer"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

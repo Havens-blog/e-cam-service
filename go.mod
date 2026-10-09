@@ -3,36 +3,11 @@ module github.com/Havens-blog/e-cam-service
 go 1.25.5
 
 require (
+	github.com/Havens-blog/e-cloudx-sdk v0.1.0
+	github.com/Havens-blog/e-common-go v0.1.0
 	github.com/Havens-blog/e-iam v0.0.27
-	github.com/alibabacloud-go/alikafka-20190916/v3 v3.16.0
-	github.com/alibabacloud-go/darabonba-openapi/v2 v2.1.13
-	github.com/alibabacloud-go/elasticsearch-20170613/v4 v4.1.0
-	github.com/alibabacloud-go/nas-20170626/v3 v3.5.2
-	github.com/alibabacloud-go/tea v1.4.0
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/aliyun/alibaba-cloud-sdk-go v1.63.107
-	github.com/aliyun/aliyun-log-go-sdk v0.1.127
-	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
-	github.com/aws/aws-sdk-go-v2 v1.41.5
-	github.com/aws/aws-sdk-go-v2/config v1.32.7
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.7
-	github.com/aws/aws-sdk-go-v2/service/acm v1.38.0
-	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.60.2
-	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.45.2
-	github.com/aws/aws-sdk-go-v2/service/costexplorer v1.63.4
-	github.com/aws/aws-sdk-go-v2/service/docdb v1.48.9
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.281.0
-	github.com/aws/aws-sdk-go-v2/service/efs v1.41.10
-	github.com/aws/aws-sdk-go-v2/service/elasticache v1.51.9
-	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.43.8
-	github.com/aws/aws-sdk-go-v2/service/iam v1.50.2
-	github.com/aws/aws-sdk-go-v2/service/kafka v1.46.7
-	github.com/aws/aws-sdk-go-v2/service/opensearch v1.57.1
-	github.com/aws/aws-sdk-go-v2/service/rds v1.114.0
-	github.com/aws/aws-sdk-go-v2/service/route53 v1.62.5
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.96.0
-	github.com/aws/aws-sdk-go-v2/service/wafv2 v1.71.1
-	github.com/aws/smithy-go v1.24.2
 	github.com/ecodeclub/ekit v0.0.10
 	github.com/ecodeclub/ginx v0.0.3-0.20250724125208-2ec06fc61450
 	github.com/fatih/color v1.18.0
@@ -41,9 +16,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.7.0
-	github.com/gotomicro/ego v1.2.6
-	github.com/huaweicloud/huaweicloud-sdk-go-obs v3.25.9+incompatible
-	github.com/huaweicloud/huaweicloud-sdk-go-v3 v0.1.213
+	github.com/gotomicro/ego v1.2.7
 	github.com/mark3labs/mcp-go v0.49.0
 	github.com/purpleclay/gitz v0.11.2
 	github.com/redis/go-redis/v9 v9.18.0
@@ -54,62 +27,66 @@ require (
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.3.0
 	github.com/swaggo/swag v1.16.6
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/billing v1.3.42
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cam v1.1.48
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cbs v1.3.40
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cdb v1.3.40
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cdn v1.3.36
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cfs v1.3.38
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ckafka v1.3.16
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/clb v1.1.55
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cls v1.3.54
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.182
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.3.30
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/dnspod v1.3.64
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/es v1.3.44
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/mongodb v1.3.40
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/monitor v1.3.182
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/redis v1.3.36
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/teo v1.3.82
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc v1.3.40
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/waf v1.3.52
-	github.com/tencentyun/cos-go-sdk-v5 v0.7.72
-	github.com/volcengine/ve-tos-golang-sdk/v2 v2.9.0
-	github.com/volcengine/volc-sdk-golang v1.0.257
 	github.com/volcengine/volcengine-go-sdk v1.2.9
 	go.mongodb.org/mongo-driver v1.17.4
 	go.uber.org/zap v1.27.0
 	golang.org/x/sync v0.22.0
-	golang.org/x/time v0.15.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	k8s.io/apimachinery v0.33.4
 	k8s.io/client-go v0.33.4
-	pgregory.net/rapid v1.2.0
+	pgregory.net/rapid v1.3.0
 )
 
 require (
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/alibabacloud-go/alibabacloud-gateway-spi v0.0.5 // indirect
+	github.com/alibabacloud-go/alikafka-20190916/v3 v3.16.0 // indirect
+	github.com/alibabacloud-go/darabonba-openapi/v2 v2.1.13 // indirect
 	github.com/alibabacloud-go/debug v1.0.1 // indirect
+	github.com/alibabacloud-go/elasticsearch-20170613/v4 v4.1.0 // indirect
 	github.com/alibabacloud-go/endpoint-util v1.1.0 // indirect
+	github.com/alibabacloud-go/nas-20170626/v3 v3.5.2 // indirect
 	github.com/alibabacloud-go/openapi-util v0.1.1 // indirect
+	github.com/alibabacloud-go/tea v1.4.0 // indirect
 	github.com/alibabacloud-go/tea-utils/v2 v2.0.7 // indirect
 	github.com/alicebob/gopher-json v0.0.0-20230218143504-906a9b012302 // indirect
+	github.com/aliyun/aliyun-log-go-sdk v0.1.127 // indirect
+	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible // indirect
 	github.com/aliyun/credentials-go v1.4.5 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.41.5 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.4 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.32.7 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.7 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.17 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.21 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.17 // indirect
+	github.com/aws/aws-sdk-go-v2/service/acm v1.38.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.60.2 // indirect
+	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.45.2 // indirect
+	github.com/aws/aws-sdk-go-v2/service/costexplorer v1.63.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/docdb v1.48.9 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.281.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/efs v1.41.10 // indirect
+	github.com/aws/aws-sdk-go-v2/service/elasticache v1.51.9 // indirect
+	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.43.8 // indirect
+	github.com/aws/aws-sdk-go-v2/service/iam v1.50.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.8 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.17 // indirect
+	github.com/aws/aws-sdk-go-v2/service/kafka v1.46.7 // indirect
+	github.com/aws/aws-sdk-go-v2/service/opensearch v1.57.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/rds v1.114.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/route53 v1.62.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.96.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.13 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.6 // indirect
+	github.com/aws/aws-sdk-go-v2/service/wafv2 v1.71.1 // indirect
+	github.com/aws/smithy-go v1.24.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boj/redistore v1.4.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
@@ -163,6 +140,8 @@ require (
 	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/gorilla/sessions v1.4.0 // indirect
 	github.com/gotomicro/logrotate v0.0.0-20211108034117-46d53eedc960 // indirect
+	github.com/huaweicloud/huaweicloud-sdk-go-obs v3.25.9+incompatible // indirect
+	github.com/huaweicloud/huaweicloud-sdk-go-v3 v0.1.213 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
@@ -200,9 +179,31 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/billing v1.3.42 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cam v1.1.48 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cbs v1.3.40 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cdb v1.3.40 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cdn v1.3.36 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cfs v1.3.38 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ckafka v1.3.16 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/clb v1.1.55 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cls v1.3.54 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.182 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.3.30 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/dnspod v1.3.64 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/es v1.3.44 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/mongodb v1.3.40 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/monitor v1.3.182 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/redis v1.3.36 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/teo v1.3.82 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc v1.3.40 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/waf v1.3.52 // indirect
+	github.com/tencentyun/cos-go-sdk-v5 v0.7.72 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
+	github.com/volcengine/ve-tos-golang-sdk/v2 v2.9.0 // indirect
+	github.com/volcengine/volc-sdk-golang v1.0.257 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.2.0 // indirect
@@ -227,6 +228,7 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.48.0 // indirect
 	google.golang.org/grpc v1.79.3 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect

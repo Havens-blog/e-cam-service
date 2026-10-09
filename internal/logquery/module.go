@@ -1,4 +1,4 @@
-// Package logquery 多云统一日志查询功能域(Phase 1)。
+﻿// Package logquery 多云统一日志查询功能域(Phase 1)。
 //
 // 装配入口(照 internal/cert/module.go 模式):service(联邦编排)+ web(三接口)。
 // 只读域:无 repository(Phase A 不落库,ADR D1);云账号凭证经
@@ -14,7 +14,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/logquery/web"
 
 	// 云 provider 注册:统一经 import manifest 触发(新增云在 providers 包补一行)
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/providers"
+	_ "github.com/Havens-blog/e-cloudx-sdk/providers"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"

@@ -1,4 +1,4 @@
-// @feature cert-multicloud-deployers @api-functional
+﻿// @feature cert-multicloud-deployers @api-functional
 //
 // Contracts: rollback-restore-old-cert / Step 1 — 对已完成替换的条目发起回滚;
 // Step 2 — GetCert 校验旧云证书仍有效.
@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	huaweicloud "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
+	huaweicloud "github.com/Havens-blog/e-cloudx-sdk/huawei"
 	"github.com/Havens-blog/e-cam-service/tests/multicloudtest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

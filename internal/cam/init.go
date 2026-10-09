@@ -1,4 +1,4 @@
-package cam
+﻿package cam
 
 import (
 	"context"
@@ -27,15 +27,15 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/template"
 	cmdbrepository "github.com/Havens-blog/e-cam-service/internal/cmdb/repository"
 	cmdbdao "github.com/Havens-blog/e-cam-service/internal/cmdb/repository/dao"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	shareddomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	shareddomain "github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/mongox"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/redis/go-redis/v9"
 
 	// 厂商注册统一入口（import manifest）：资产/计费/日志/IAM 四张注册表一并触发
-	_ "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/providers"
+	_ "github.com/Havens-blog/e-cloudx-sdk/providers"
 
 )
 

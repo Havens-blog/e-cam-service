@@ -1,4 +1,4 @@
-package template
+﻿package template
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gotomicro/ego/core/elog"
 )
 

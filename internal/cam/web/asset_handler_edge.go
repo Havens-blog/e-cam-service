@@ -1,4 +1,4 @@
-package web
+﻿package web
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"

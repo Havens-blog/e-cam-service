@@ -1,4 +1,4 @@
-package web
+﻿package web
 
 import (
 	"bytes"
@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/logquery/service"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/logquery"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 )

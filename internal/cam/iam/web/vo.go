@@ -1,7 +1,7 @@
-package web
+﻿package web
 
 import (
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // CreateUserVO 创建用户请求VO

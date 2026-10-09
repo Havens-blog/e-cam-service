@@ -1,10 +1,10 @@
-package servicetree
+﻿package servicetree
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/web"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/gin-gonic/gin"
 )
 

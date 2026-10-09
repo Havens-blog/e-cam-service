@@ -1,6 +1,6 @@
-package task
+﻿package task
 
-import "github.com/Havens-blog/e-cam-service/pkg/taskx"
+import "github.com/Havens-blog/e-common-go/taskx"
 
 // 定义 CAM 模块的任务类型
 const (

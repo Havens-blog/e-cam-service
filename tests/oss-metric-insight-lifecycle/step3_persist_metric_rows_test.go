@@ -1,4 +1,4 @@
-// @feature oss-ops-insight @api-functional
+﻿// @feature oss-ops-insight @api-functional
 //
 // Contract step-3-persist-metric-rows: 指标行落库(唯一键 upsert 首写生效) —
 // today rows insert-if-absent, yesterday rows are overwritten by the next-day
@@ -15,7 +15,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-cam-service/tests/nastest"
 	"github.com/Havens-blog/e-cam-service/tests/osstest"
 	"github.com/stretchr/testify/require"

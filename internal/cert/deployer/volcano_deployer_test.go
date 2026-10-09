@@ -1,4 +1,4 @@
-package deployer
+﻿package deployer
 
 import (
 	"context"
@@ -16,8 +16,8 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	volcanosdkalb "github.com/volcengine/volcengine-go-sdk/service/alb"
 	volcanosdkcdn "github.com/volcengine/volcengine-go-sdk/service/cdn"
 	volcanosdkcsv "github.com/volcengine/volcengine-go-sdk/service/certificateservice"

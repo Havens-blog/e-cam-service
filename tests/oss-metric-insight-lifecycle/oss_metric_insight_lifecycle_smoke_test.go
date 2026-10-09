@@ -1,4 +1,4 @@
-// @feature oss-ops-insight @api-functional
+﻿// @feature oss-ops-insight @api-functional
 //
 // Journey smoke: full golden path in sequence — gate claim → task submit →
 // collect → persist → bucket trend read → Top read. Only happy-path outcomes;
@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-cam-service/tests/nastest"
 	"github.com/Havens-blog/e-cam-service/tests/osstest"
 	"github.com/stretchr/testify/require"

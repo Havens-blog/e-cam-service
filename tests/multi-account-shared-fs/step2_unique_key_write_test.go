@@ -1,4 +1,4 @@
-// @feature nas-ops-insight @api-functional
+﻿// @feature nas-ops-insight @api-functional
 //
 // Contract step-2-unique-key-write: 唯一键各行独立落库 — the (account_id,
 // fs_id, date) unique key keeps one row per account with no overwrite/merge
@@ -14,7 +14,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-cam-service/tests/nastest"
 	"github.com/stretchr/testify/require"
 )

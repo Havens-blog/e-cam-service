@@ -1,4 +1,4 @@
-// @feature nas-ops-insight @api-functional
+﻿// @feature nas-ops-insight @api-functional
 //
 // Journey fixtures for daily-metrics-collection contract tests: the
 // persistent daily gate, the collect executor and a real taskx.Queue wired
@@ -15,7 +15,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/Havens-blog/e-cam-service/tests/nastest"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/require"

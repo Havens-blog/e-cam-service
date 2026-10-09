@@ -1,4 +1,4 @@
-// @feature cert-volcano-import-sync @api-functional
+﻿// @feature cert-volcano-import-sync @api-functional
 //
 // Package synctest provides the hermetic API-functional test harness for the
 // cert-volcano-import-sync feature ( journeys under tests/<journey>/ ).
@@ -57,7 +57,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
 	"github.com/Havens-blog/e-cam-service/internal/cert/web"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"

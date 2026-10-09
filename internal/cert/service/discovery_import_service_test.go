@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -14,13 +14,13 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	aliyuncert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aliyun"
-	awsdiscover "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
-	azurediscover "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/azure"
-	huaweidiscover "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
-	tencentcert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/tencent"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	aliyuncert "github.com/Havens-blog/e-cloudx-sdk/aliyun"
+	awsdiscover "github.com/Havens-blog/e-cloudx-sdk/aws"
+	azurediscover "github.com/Havens-blog/e-cloudx-sdk/azure"
+	huaweidiscover "github.com/Havens-blog/e-cloudx-sdk/huawei"
+	tencentcert "github.com/Havens-blog/e-cloudx-sdk/tencent"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

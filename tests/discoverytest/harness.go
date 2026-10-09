@@ -1,4 +1,4 @@
-// @feature cert-cloud-discovery-import @api-functional
+﻿// @feature cert-cloud-discovery-import @api-functional
 //
 // Package discoverytest provides the hermetic API-functional test harness for
 // the cert-cloud-discovery-import feature ( journeys under tests/<journey>/ ).
@@ -38,7 +38,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
 	"github.com/Havens-blog/e-cam-service/internal/cert/web"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"

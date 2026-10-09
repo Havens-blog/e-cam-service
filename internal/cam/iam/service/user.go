@@ -8,8 +8,8 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	iamrepo "github.com/Havens-blog/e-cam-service/internal/cam/iam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/iam"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gotomicro/ego/core/elog"
 	"go.mongodb.org/mongo-driver/mongo"
 )

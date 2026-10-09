@@ -1,10 +1,10 @@
-package dictionary
+﻿package dictionary
 
 import (
 	"context"
 	"log"
 
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 )
 
 // SeedType 种子字典类型定义

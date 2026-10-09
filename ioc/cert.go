@@ -1,4 +1,4 @@
-package ioc
+﻿package ioc
 
 import (
 	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
@@ -12,8 +12,8 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cert/scheduler"
 	certservice "github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/mongox"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/gotomicro/ego/task/ecron"
 )

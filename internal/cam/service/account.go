@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -7,10 +7,10 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-cloudx-sdk/asset"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/google/uuid"
 	"github.com/gotomicro/ego/core/elog"
 )

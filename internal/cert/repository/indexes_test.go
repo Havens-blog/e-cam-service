@@ -1,10 +1,10 @@
-package repository
+﻿package repository
 
 import (
 	"context"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"

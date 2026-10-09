@@ -1,4 +1,4 @@
-// @feature cert-multicloud-deployers @api-functional
+﻿// @feature cert-multicloud-deployers @api-functional
 //
 // Contract: multicloud-cert-replacement / Step 3 — 上传段——证书上传至各云证书库.
 // Outcomes under test: success, upload-rate-limited-retry, crash-before-bind-recovery.
@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
+	"github.com/Havens-blog/e-cloudx-sdk"
 	"github.com/Havens-blog/e-cam-service/tests/multicloudtest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

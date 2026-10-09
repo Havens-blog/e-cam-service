@@ -1,4 +1,4 @@
-package dao
+﻿package dao
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"

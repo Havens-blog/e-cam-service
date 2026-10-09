@@ -1,4 +1,4 @@
-// aws_deployer.go AWS CloudDeployer 实现（cert-multicloud-deployers 任务 2）。
+﻿// aws_deployer.go AWS CloudDeployer 实现（cert-multicloud-deployers 任务 2）。
 //
 // 分层定位：将 cloudx AWS 完整证书五方法适配（CertAdapter，SDK 单次调用封装）
 // 组装为 deployer 层 CloudDeployer 端口实例，经 5.3 CloudAPIChannel 两段式编排
@@ -34,8 +34,8 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/aws"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // awsCertAPI AWS 完整证书适配窄接口（*aws.CertAdapter 天然满足；测试注入

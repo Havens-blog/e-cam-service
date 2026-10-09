@@ -1,12 +1,12 @@
-package web
+﻿package web
 
 import (
 	"strconv"
 
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
-	"github.com/Havens-blog/e-cam-service/pkg/ginx"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/ginx"
 	"github.com/gin-gonic/gin"
 )
 

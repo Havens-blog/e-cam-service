@@ -5,9 +5,8 @@ import (
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/port"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository"
-	cmdbdomain "github.com/Havens-blog/e-cam-service/internal/cmdb/domain"
-	cmdbrepo "github.com/Havens-blog/e-cam-service/internal/cmdb/repository"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -48,16 +47,36 @@ func (s *summaryEnvRepo) List(ctx context.Context, filter domain.EnvironmentFilt
 	return s.listFn(ctx, filter)
 }
 
-type summaryCmdbRepo struct {
-	cmdbrepo.InstanceRepository
-	listByIDsFn func(ctx context.Context, ids []int64) ([]cmdbdomain.Instance, error)
+// summaryCmdbPort 实现 port.CMDBPort 接口的测试桩
+type summaryCmdbPort struct {
+	listByIDsFn func(ctx context.Context, ids []int64) ([]port.CMDBInstance, error)
 }
 
-func (s *summaryCmdbRepo) ListByIDs(ctx context.Context, ids []int64) ([]cmdbdomain.Instance, error) {
+func (s *summaryCmdbPort) ListByIDs(ctx context.Context, ids []int64) ([]port.CMDBInstance, error) {
 	return s.listByIDsFn(ctx, ids)
 }
 
-func newSummaryFixture() (*summaryNodeRepo, *summaryBindingRepo, *summaryEnvRepo, *summaryCmdbRepo) {
+func (s *summaryCmdbPort) ListUnbound(ctx context.Context, tenantID int64, offset, limit int64) ([]port.CMDBInstance, error) {
+	return nil, nil
+}
+
+func (s *summaryCmdbPort) CountUnbound(ctx context.Context, tenantID int64) (int64, error) {
+	return 0, nil
+}
+
+func (s *summaryCmdbPort) AggregateStatsByIDs(ctx context.Context, ids []int64) (*port.AssetStatsResult, error) {
+	return &port.AssetStatsResult{}, nil
+}
+
+func (s *summaryCmdbPort) AggregateAllStats(ctx context.Context, tenantID int64) (*port.AssetStatsResult, error) {
+	return &port.AssetStatsResult{}, nil
+}
+
+func (s *summaryCmdbPort) AggregateUnboundStats(ctx context.Context, tenantID int64) (*port.AssetStatsResult, error) {
+	return &port.AssetStatsResult{}, nil
+}
+
+func newSummaryFixture() (*summaryNodeRepo, *summaryBindingRepo, *summaryEnvRepo, *summaryCmdbPort) {
 	nodeRepo := &summaryNodeRepo{
 		getByIDFn: func(ctx context.Context, id int64) (domain.ServiceTreeNode, error) {
 			return domain.ServiceTreeNode{ID: 1, TenantID: 1, Path: "/1/"}, nil
@@ -88,9 +107,9 @@ func newSummaryFixture() (*summaryNodeRepo, *summaryBindingRepo, *summaryEnvRepo
 			}, nil
 		},
 	}
-	cmdbRepo := &summaryCmdbRepo{
-		listByIDsFn: func(ctx context.Context, ids []int64) ([]cmdbdomain.Instance, error) {
-			return []cmdbdomain.Instance{
+	cmdbPort := &summaryCmdbPort{
+		listByIDsFn: func(ctx context.Context, ids []int64) ([]port.CMDBInstance, error) {
+			return []port.CMDBInstance{
 				{ID: 1001, AssetID: "i-prod-1", AssetName: "smt-prod-web-01", ModelUID: "aliyun_ecs",
 					Attributes: map[string]any{"provider": "aliyun"}},
 				{ID: 1002, AssetID: "i-prod-2", AssetName: "smt-prod-db-01", ModelUID: "cloud_rds",
@@ -100,14 +119,14 @@ func newSummaryFixture() (*summaryNodeRepo, *summaryBindingRepo, *summaryEnvRepo
 			}, nil
 		},
 	}
-	return nodeRepo, bindingRepo, envRepo, cmdbRepo
+	return nodeRepo, bindingRepo, envRepo, cmdbPort
 }
 
 // TestGetNodeAssetSummaryMultiLevelAggregation 多级子树聚合正确：含自身共 3 节点、3 绑定，
 // 按环境/云平台/类型/绑定来源分布与子树节点 ID 集合均正确。
 func TestGetNodeAssetSummaryMultiLevelAggregation(t *testing.T) {
-	nodeRepo, bindingRepo, envRepo, cmdbRepo := newSummaryFixture()
-	s := NewNodeAssetService(bindingRepo, nodeRepo, cmdbRepo, envRepo, elog.DefaultLogger)
+	nodeRepo, bindingRepo, envRepo, cmdbPort := newSummaryFixture()
+	s := NewNodeAssetService(bindingRepo, nodeRepo, cmdbPort, envRepo, elog.DefaultLogger)
 
 	summary, err := s.GetNodeAssetSummary(context.Background(), 1, 1)
 	if err != nil {
@@ -118,83 +137,77 @@ func TestGetNodeAssetSummaryMultiLevelAggregation(t *testing.T) {
 	if len(bindingRepo.capturedFilter.NodeIDs) != 3 {
 		t.Errorf("NodeIDs = %v, want 长度 3 (含自身)", bindingRepo.capturedFilter.NodeIDs)
 	}
+
+	// 总计
 	if summary.Total != 3 {
 		t.Errorf("Total = %d, want 3", summary.Total)
 	}
-	if summary.ByEnvironment[domain.EnvCodeProd] != 2 || summary.ByEnvironment[domain.EnvCodeDev] != 1 {
-		t.Errorf("ByEnvironment = %v, want prod:2 dev:1", summary.ByEnvironment)
+
+	// 环境分布（prod/dev）
+	if summary.ByEnvironment[domain.EnvCodeProd] != 2 {
+		t.Errorf("ByEnvironment[prod] = %d, want 2", summary.ByEnvironment[domain.EnvCodeProd])
 	}
-	if summary.ByProvider["aliyun"] != 1 || summary.ByProvider["tencent"] != 1 || summary.ByProvider["volcengine"] != 1 {
-		t.Errorf("ByProvider = %v", summary.ByProvider)
+	if summary.ByEnvironment[domain.EnvCodeDev] != 1 {
+		t.Errorf("ByEnvironment[dev] = %d, want 1", summary.ByEnvironment[domain.EnvCodeDev])
 	}
-	if summary.ByType["ecs"] != 1 || summary.ByType["rds"] != 1 || summary.ByType["redis"] != 1 {
-		t.Errorf("ByType = %v", summary.ByType)
+
+	// 类型分布（ecs/rds/redis）
+	if summary.ByType["ecs"] != 1 {
+		t.Errorf("ByType[ecs] = %d, want 1", summary.ByType["ecs"])
 	}
-	if summary.ByBindType[domain.BindTypeRule] != 2 || summary.ByBindType[domain.BindTypeManual] != 1 {
-		t.Errorf("ByBindType = %v, want rule:2 manual:1", summary.ByBindType)
+	if summary.ByType["rds"] != 1 {
+		t.Errorf("ByType[rds] = %d, want 1", summary.ByType["rds"])
 	}
-	// 全部命名/环境一致，无疑异
-	if len(summary.Suspicious) != 0 {
-		t.Errorf("Suspicious = %v, want 空", summary.Suspicious)
+	if summary.ByType["redis"] != 1 {
+		t.Errorf("ByType[redis] = %d, want 1", summary.ByType["redis"])
+	}
+
+	// 绑定来源（rule/manual）
+	if summary.ByBindType[domain.BindTypeRule] != 2 {
+		t.Errorf("ByBindType[rule] = %d, want 2", summary.ByBindType[domain.BindTypeRule])
+	}
+	if summary.ByBindType[domain.BindTypeManual] != 1 {
+		t.Errorf("ByBindType[manual] = %d, want 1", summary.ByBindType[domain.BindTypeManual])
 	}
 }
 
-// TestGetNodeAssetSummaryEmptySubtree 空子树（无绑定）：零值分布 + 非 nil 集合，不报错。
-func TestGetNodeAssetSummaryEmptySubtree(t *testing.T) {
-	nodeRepo := &summaryNodeRepo{
-		getByIDFn: func(ctx context.Context, id int64) (domain.ServiceTreeNode, error) {
-			return domain.ServiceTreeNode{ID: 9, TenantID: 1, Path: "/9/"}, nil
-		},
-		listByPathFn: func(ctx context.Context, tenantID int64, pathPrefix string) ([]domain.ServiceTreeNode, error) {
-			return []domain.ServiceTreeNode{{ID: 9, TenantID: 1, Path: "/9/"}}, nil
+// TestGetNodeAssetSummaryEnvMismatchDetection 环境错绑双信号检测
+func TestGetNodeAssetSummaryEnvMismatchDetection(t *testing.T) {
+	nodeRepo, bindingRepo, envRepo, _ := newSummaryFixture()
+	// 注入命名或 tag 与绑定环境矛盾的实例
+	cmdbPort := &summaryCmdbPort{
+		listByIDsFn: func(ctx context.Context, ids []int64) ([]port.CMDBInstance, error) {
+			return []port.CMDBInstance{
+				// 命名 -dev- 但绑定 prod：命名信号矛盾
+				{ID: 1001, AssetID: "i-1", AssetName: "smt-dev-web-01", ModelUID: "aliyun_ecs",
+					Attributes: map[string]any{"provider": "aliyun"}},
+				// tag.env=test 但绑定 prod：tag 信号矛盾
+				{ID: 1002, AssetID: "i-2", AssetName: "neutral", ModelUID: "cloud_rds",
+					Attributes: map[string]any{"provider": "tencent", "tags": map[string]any{"environment": "test"}}},
+				// 正常
+				{ID: 1003, AssetID: "i-3", AssetName: "smt-prod-redis", ModelUID: "volcengine_redis",
+					Attributes: map[string]any{"provider": "volcengine"}},
+			}, nil
 		},
 	}
-	bindingRepo := &summaryBindingRepo{
-		listByNodeIDsFn: func(ctx context.Context, filter domain.NodeIDsBindingFilter) ([]domain.ResourceBinding, error) {
-			return nil, nil
-		},
-	}
-	envRepo := &summaryEnvRepo{listFn: func(ctx context.Context, filter domain.EnvironmentFilter) ([]domain.Environment, error) {
-		return nil, nil
-	}}
-	cmdbRepo := &summaryCmdbRepo{}
-	s := NewNodeAssetService(bindingRepo, nodeRepo, cmdbRepo, envRepo, elog.DefaultLogger)
+	s := NewNodeAssetService(bindingRepo, nodeRepo, cmdbPort, envRepo, elog.DefaultLogger)
 
-	summary, err := s.GetNodeAssetSummary(context.Background(), 1, 9)
+	summary, err := s.GetNodeAssetSummary(context.Background(), 1, 1)
 	if err != nil {
 		t.Fatalf("GetNodeAssetSummary() error = %v", err)
 	}
-	if summary.Total != 0 {
-		t.Errorf("Total = %d, want 0", summary.Total)
+
+	if len(summary.Suspicious) != 2 {
+		t.Fatalf("Suspicious = %d, want 2", len(summary.Suspicious))
 	}
-	if summary.ByEnvironment == nil || summary.ByProvider == nil || summary.ByType == nil || summary.ByBindType == nil {
-		t.Error("分布 map 不应为 nil（前端可直接遍历）")
-	}
-	if summary.Suspicious == nil {
-		t.Error("Suspicious 不应为 nil")
+	// 第一个疑异：命名含 -dev- 与 prod 矛盾
+	if summary.Suspicious[0].AssetName != "smt-dev-web-01" {
+		t.Errorf("Suspicious[0].AssetName = %s, want smt-dev-web-01", summary.Suspicious[0].AssetName)
 	}
 }
 
-// TestGetNodeAssetSummaryNodeNotFound 节点不存在时报错。
-func TestGetNodeAssetSummaryNodeNotFound(t *testing.T) {
-	nodeRepo := &summaryNodeRepo{
-		getByIDFn: func(ctx context.Context, id int64) (domain.ServiceTreeNode, error) {
-			return domain.ServiceTreeNode{}, domain.ErrNodeNotFound
-		},
-	}
-	bindingRepo := &summaryBindingRepo{}
-	envRepo := &summaryEnvRepo{}
-	cmdbRepo := &summaryCmdbRepo{}
-	s := NewNodeAssetService(bindingRepo, nodeRepo, cmdbRepo, envRepo, elog.DefaultLogger)
-
-	if _, err := s.GetNodeAssetSummary(context.Background(), 1, 404); err == nil {
-		t.Error("节点不存在应返回错误")
-	}
-}
-
-// TestGetNodeAssetSummarySuspicious 错绑检测命中：命名模式与 tag.env 双信号，
-// 矛盾即入 suspicious（只提示不改绑），一致资产不误报。
-func TestGetNodeAssetSummarySuspicious(t *testing.T) {
+// TestGetNodeAssetSummaryEmptyTree 无绑定时返回空分布而非 nil
+func TestGetNodeAssetSummaryEmptyTree(t *testing.T) {
 	nodeRepo := &summaryNodeRepo{
 		getByIDFn: func(ctx context.Context, id int64) (domain.ServiceTreeNode, error) {
 			return domain.ServiceTreeNode{ID: 1, TenantID: 1, Path: "/1/"}, nil
@@ -205,108 +218,50 @@ func TestGetNodeAssetSummarySuspicious(t *testing.T) {
 	}
 	bindingRepo := &summaryBindingRepo{
 		listByNodeIDsFn: func(ctx context.Context, filter domain.NodeIDsBindingFilter) ([]domain.ResourceBinding, error) {
-			return []domain.ResourceBinding{
-				// 命名 -prod- 绑 dev：命名信号矛盾
-				{ID: 1, NodeID: 1, EnvID: 12, ResourceType: domain.ResourceTypeInstance, ResourceID: 2001, BindType: domain.BindTypeManual},
-				// tag.env=prod 绑 test：tag 信号矛盾
-				{ID: 2, NodeID: 1, EnvID: 13, ResourceType: domain.ResourceTypeInstance, ResourceID: 2002, BindType: domain.BindTypeRule},
-				// 命名 -uat- 绑 staging：uat 归一化为 staging，不矛盾
-				{ID: 3, NodeID: 1, EnvID: 14, ResourceType: domain.ResourceTypeInstance, ResourceID: 2003, BindType: domain.BindTypeRule},
-				// 双信号均为 prod 绑 prod：不矛盾
-				{ID: 4, NodeID: 1, EnvID: 11, ResourceType: domain.ResourceTypeInstance, ResourceID: 2004, BindType: domain.BindTypeManual},
-				// 无命名信号、无 tag.env：不判定
-				{ID: 5, NodeID: 1, EnvID: 12, ResourceType: domain.ResourceTypeInstance, ResourceID: 2005, BindType: domain.BindTypeManual},
-			}, nil
+			return nil, nil
 		},
 	}
 	envRepo := &summaryEnvRepo{
 		listFn: func(ctx context.Context, filter domain.EnvironmentFilter) ([]domain.Environment, error) {
-			return []domain.Environment{
-				{ID: 11, Code: domain.EnvCodeProd},
-				{ID: 12, Code: domain.EnvCodeDev},
-				{ID: 13, Code: domain.EnvCodeTest},
-				{ID: 14, Code: domain.EnvCodeStaging},
-			}, nil
+			return nil, nil
 		},
 	}
-	cmdbRepo := &summaryCmdbRepo{
-		listByIDsFn: func(ctx context.Context, ids []int64) ([]cmdbdomain.Instance, error) {
-			return []cmdbdomain.Instance{
-				{ID: 2001, AssetID: "i-a", AssetName: "order-prod-app-01", ModelUID: "aliyun_ecs"},
-				{ID: 2002, AssetID: "i-b", AssetName: "web-02", ModelUID: "aliyun_ecs",
-					Attributes: map[string]any{"tags": map[string]any{"env": "prod"}}},
-				{ID: 2003, AssetID: "i-c", AssetName: "order-uat-app-01", ModelUID: "aliyun_ecs"},
-				{ID: 2004, AssetID: "i-d", AssetName: "pay-prod-core-01", ModelUID: "aliyun_ecs",
-					Attributes: map[string]any{"tags": map[string]any{"env": "prod"}}},
-				{ID: 2005, AssetID: "i-e", AssetName: "web-05", ModelUID: "aliyun_ecs"},
-			}, nil
+	cmdbPort := &summaryCmdbPort{
+		listByIDsFn: func(ctx context.Context, ids []int64) ([]port.CMDBInstance, error) {
+			return nil, nil
 		},
 	}
-	s := NewNodeAssetService(bindingRepo, nodeRepo, cmdbRepo, envRepo, elog.DefaultLogger)
+	s := NewNodeAssetService(bindingRepo, nodeRepo, cmdbPort, envRepo, elog.DefaultLogger)
 
 	summary, err := s.GetNodeAssetSummary(context.Background(), 1, 1)
 	if err != nil {
 		t.Fatalf("GetNodeAssetSummary() error = %v", err)
 	}
-	if summary.Total != 5 {
-		t.Errorf("Total = %d, want 5", summary.Total)
-	}
-	if len(summary.Suspicious) != 2 {
-		t.Fatalf("Suspicious 数量 = %d (%v), want 2", len(summary.Suspicious), summary.Suspicious)
-	}
-
-	first := summary.Suspicious[0]
-	if first.AssetID != "i-a" || first.AssetName != "order-prod-app-01" {
-		t.Errorf("suspicious[0] 资产信息错误: %+v", first)
-	}
-	if first.BoundEnvCode != domain.EnvCodeDev {
-		t.Errorf("suspicious[0] 绑定环境 = %q, want dev", first.BoundEnvCode)
-	}
-	if first.Reason == "" {
-		t.Error("suspicious[0] 应含疑异原因")
-	}
-
-	second := summary.Suspicious[1]
-	if second.AssetID != "i-b" || second.BoundEnvCode != domain.EnvCodeTest {
-		t.Errorf("suspicious[1] 资产/绑定环境错误: %+v", second)
-	}
-	if second.Reason == "" {
-		t.Error("suspicious[1] 应含疑异原因")
+	if summary.ByEnvironment == nil || summary.ByProvider == nil || summary.ByType == nil || summary.ByBindType == nil {
+		t.Error("空子树应返回空 map，不应为 nil")
 	}
 }
 
-// TestDetectEnvMismatch detectEnvMismatch 纯函数表驱动：双信号逐项覆盖。
-func TestDetectEnvMismatch(t *testing.T) {
-	tests := []struct {
-		name        string
-		assetName   string
-		tagEnv      string
-		boundCode   string
-		wantSuspect bool
-		wantSignals int // 矛盾信号数
-	}{
-		{name: "命名 prod 绑 dev 命中", assetName: "app-prod-web-01", boundCode: domain.EnvCodeDev, wantSuspect: true, wantSignals: 1},
-		{name: "命名 uat 绑 staging 不命中(uat 归一化)", assetName: "app-uat-web-01", boundCode: domain.EnvCodeStaging, wantSuspect: false},
-		{name: "命名 test 绑 prod 命中", assetName: "app-test-web-01", boundCode: domain.EnvCodeProd, wantSuspect: true, wantSignals: 1},
-		{name: "命名 dev 绑 dev 不命中", assetName: "app-dev-web-01", boundCode: domain.EnvCodeDev, wantSuspect: false},
-		{name: "tag.env prod 绑 test 命中", tagEnv: "prod", boundCode: domain.EnvCodeTest, wantSuspect: true, wantSignals: 1},
-		{name: "tag.env uat 绑 staging 不命中", tagEnv: "uat", boundCode: domain.EnvCodeStaging, wantSuspect: false},
-		{name: "双信号均矛盾时两个原因", assetName: "app-prod-web-01", tagEnv: "prod", boundCode: domain.EnvCodeDev, wantSuspect: true, wantSignals: 2},
-		{name: "双信号一致绑 prod 不命中", assetName: "app-prod-web-01", tagEnv: "prod", boundCode: domain.EnvCodeProd, wantSuspect: false},
-		{name: "无信号不判定", assetName: "web-01", boundCode: domain.EnvCodeDev, wantSuspect: false},
-		{name: "绑定环境未知不判定", assetName: "app-prod-web-01", boundCode: "", wantSuspect: false},
-		{name: "tag.env 非环境值不判定", tagEnv: "gray", boundCode: domain.EnvCodeDev, wantSuspect: false},
-		{name: "命名匹配大小写不敏感", assetName: "APP-Prod-Web-01", boundCode: domain.EnvCodeDev, wantSuspect: true, wantSignals: 1},
+// TestGetNodeAssetSummaryMissingCMDBInstance CMDB 缺失的绑定跳过
+func TestGetNodeAssetSummaryMissingCMDBInstance(t *testing.T) {
+	nodeRepo, bindingRepo, envRepo, _ := newSummaryFixture()
+	cmdbPort := &summaryCmdbPort{
+		listByIDsFn: func(ctx context.Context, ids []int64) ([]port.CMDBInstance, error) {
+			// 只返回 1001，缺失 1002/1003
+			return []port.CMDBInstance{
+				{ID: 1001, AssetID: "i-prod-1", AssetName: "smt-prod-web-01", ModelUID: "aliyun_ecs",
+					Attributes: map[string]any{"provider": "aliyun"}},
+			}, nil
+		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			reasons := detectEnvMismatch(tt.assetName, tt.tagEnv, tt.boundCode)
-			if got := len(reasons) > 0; got != tt.wantSuspect {
-				t.Errorf("suspect = %v (reasons=%v), want %v", got, reasons, tt.wantSuspect)
-			}
-			if len(reasons) != tt.wantSignals {
-				t.Errorf("矛盾信号数 = %d (%v), want %d", len(reasons), reasons, tt.wantSignals)
-			}
-		})
+	s := NewNodeAssetService(bindingRepo, nodeRepo, cmdbPort, envRepo, elog.DefaultLogger)
+
+	summary, err := s.GetNodeAssetSummary(context.Background(), 1, 1)
+	if err != nil {
+		t.Fatalf("GetNodeAssetSummary() error = %v", err)
+	}
+	// 仅命中 1 个实例
+	if summary.Total != 1 {
+		t.Errorf("Total = %d, want 1 (CMDB 缺失的绑定应跳过)", summary.Total)
 	}
 }

@@ -1,4 +1,4 @@
-// CDN 缓存分析编排(proposal:cdn-cache-analysis,任务 2)。
+﻿// CDN 缓存分析编排(proposal:cdn-cache-analysis,任务 2)。
 //
 // 镜像 WAF 诊断编排骨架:当前窗按维度组并发聚合(cache_hit 计数分布 /
 // cache_hit×sum_bytes 字节口径 / status 状态码 / host×nonhit_count 域名未命中 /
@@ -34,8 +34,8 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/logquery/cdncache"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/logquery"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gotomicro/ego/core/elog"
 	"golang.org/x/sync/errgroup"
 )

@@ -1,8 +1,8 @@
-package repository
+﻿package repository
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 )
 
 // Repositories cert 域全部仓储的聚合装配体（ioc/module 装配便捷入口）。

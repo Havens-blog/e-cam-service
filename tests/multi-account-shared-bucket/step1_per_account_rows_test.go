@@ -1,4 +1,4 @@
-// @feature oss-ops-insight @api-functional
+﻿// @feature oss-ops-insight @api-functional
 //
 // Contract step-1-per-account-rows: 三账号同名 bucket 同日各留一行 — per
 // account isolation under the (account_id, bucket_name, date) unique key,
@@ -15,7 +15,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-cam-service/tests/nastest"
 	"github.com/Havens-blog/e-cam-service/tests/osstest"
 	"github.com/stretchr/testify/require"

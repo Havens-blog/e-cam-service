@@ -1,4 +1,4 @@
-// Package mcp 提供基于 Model Context Protocol 的多云资产管理 MCP Server
+﻿// Package mcp 提供基于 Model Context Protocol 的多云资产管理 MCP Server
 package mcp
 
 import (
@@ -14,8 +14,8 @@ import (
 	camrepository "github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	camdao "github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	camservice "github.com/Havens-blog/e-cam-service/internal/cam/service"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/mongo"

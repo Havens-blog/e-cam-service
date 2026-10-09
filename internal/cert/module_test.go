@@ -1,4 +1,4 @@
-package cert
+﻿package cert
 
 import (
 	"context"
@@ -16,8 +16,8 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/mongox"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 	"go.mongodb.org/mongo-driver/mongo"

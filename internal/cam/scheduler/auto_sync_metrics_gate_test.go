@@ -1,4 +1,4 @@
-package scheduler
+﻿package scheduler
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/taskx"
 )
 
 // T8 CDN 迁移持久化日闸 + 值回归 + 特性开关回滚(spec/proposal「CDN 迁移回归

@@ -1,4 +1,4 @@
-package executor
+﻿package executor
 
 import (
 	"context"
@@ -12,8 +12,8 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/normalizer"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/billing"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-cloudx-sdk/billing"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/redis/go-redis/v9"
 )

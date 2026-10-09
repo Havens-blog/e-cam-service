@@ -1,4 +1,4 @@
-// @feature cert-volcano-deployer @api-functional
+﻿// @feature cert-volcano-deployer @api-functional
 //
 // Journey fixtures for the volcano-cert-replacement contract tests: the
 // volcano two-phase / verify-window / rollback / orphan-closure journeys
@@ -19,7 +19,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/deployer"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/tests/multicloudtest"
 	"github.com/stretchr/testify/require"
 )

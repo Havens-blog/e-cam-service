@@ -1,4 +1,4 @@
-package ioc
+﻿package ioc
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/logquery"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/topology"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"

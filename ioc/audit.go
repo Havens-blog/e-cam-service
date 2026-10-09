@@ -1,10 +1,10 @@
-package ioc
+﻿package ioc
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/audit"
 	"github.com/Havens-blog/e-cam-service/internal/cam"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/gotomicro/ego/core/elog"
 )
 
