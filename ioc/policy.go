@@ -17,13 +17,13 @@ func InitPolicySDK() *sdk.SDK {
 // InitPermSyncer 端点资产上报器。
 // 读 policy.discovery_url（自动补 /api/v1/discovery/sync）；Sync 内部以
 // sync.Once 启动 30s 全量 tick 协程，首调即触发首轮上报。
-func InitPermSyncer() syncerpkg.Syncer {
+func InitPermSyncer() syncerpkg.ISyncer {
 	return syncerpkg.New(http.New())
 }
 
 // InitProviders 额外权限点提供者。
 // 当前依赖 handler 侧 capability.IRegistry 的全局自动收集（NewRegistry 所在
 // 包被 import 即上报），暂无额外 Provider；后续按域补充时在此返回。
-func InitProviders() []capability.PermissionProvider {
+func InitProviders() []capability.IPermissionProvider {
 	return nil
 }

@@ -1,13 +1,10 @@
-﻿package ioc
+package ioc
 
 import (
 	"context"
 	"strings"
 	"time"
 
-	"github.com/Havens-blog/e-iam/pkg/web/capability"
-	syncerpkg "github.com/Havens-blog/e-iam/pkg/web/capability/syncer"
-	"github.com/Havens-blog/e-iam/pkg/web/sdk"
 	_ "github.com/Havens-blog/e-cam-service/docs" // 导入生成的文档
 	"github.com/Havens-blog/e-cam-service/internal/alert"
 	"github.com/Havens-blog/e-cam-service/internal/audit"
@@ -19,6 +16,9 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/topology"
 	"github.com/Havens-blog/e-common-go/mongox"
+	"github.com/Havens-blog/e-iam/pkg/web/capability"
+	syncerpkg "github.com/Havens-blog/e-iam/pkg/web/capability/syncer"
+	"github.com/Havens-blog/e-iam/pkg/web/sdk"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -28,7 +28,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, psdk *sdk.SDK, syncer syncerpkg.Syncer, providers []capability.PermissionProvider, auditMdl *middleware.AuditMiddleware, auditModule *audit.Module, endpointHdl *endpoint.Handler, camModule *cam.Module, cmdbModule *cmdb.Module, alertModule *alert.Module, db *mongox.Mongo, certModule *cert.Module, logQueryModule *logquery.Module) *gin.Engine {
+func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, psdk *sdk.SDK, syncer syncerpkg.ISyncer, providers []capability.IPermissionProvider, auditMdl *middleware.AuditMiddleware, auditModule *audit.Module, endpointHdl *endpoint.Handler, camModule *cam.Module, cmdbModule *cmdb.Module, alertModule *alert.Module, db *mongox.Mongo, certModule *cert.Module, logQueryModule *logquery.Module) *gin.Engine {
 	logger := elog.DefaultLogger
 	logger.Info("开始初始化Web服务器")
 	session.SetDefaultProvider(sp)
