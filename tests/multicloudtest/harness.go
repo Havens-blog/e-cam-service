@@ -1,4 +1,4 @@
-// @feature cert-multicloud-deployers @api-functional
+﻿// @feature cert-multicloud-deployers @api-functional
 //
 // Package multicloudtest provides the hermetic API-functional test harness
 // for the cert-multicloud-deployers feature ( journeys under
@@ -52,9 +52,9 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
 	"github.com/Havens-blog/e-cam-service/internal/cert/web"
-	awscloud "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
-	azurecloud "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/azure"
-	huaweicloud "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
+	awscloud "github.com/Havens-blog/e-cloudx-sdk/aws"
+	azurecloud "github.com/Havens-blog/e-cloudx-sdk/azure"
+	huaweicloud "github.com/Havens-blog/e-cloudx-sdk/huawei"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"

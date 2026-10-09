@@ -1,4 +1,4 @@
-// @feature disk-ops-insight @api-functional
+﻿// @feature disk-ops-insight @api-functional
 //
 // Journey fixtures for shared-disk-multi-account-metrics contract tests: two
 // accounts sharing one disk_id, per-account queriers with independent fault
@@ -12,7 +12,7 @@ package shared_disk_multi_account_metrics
 import (
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-cam-service/tests/disktest"
 	"github.com/stretchr/testify/require"
 )

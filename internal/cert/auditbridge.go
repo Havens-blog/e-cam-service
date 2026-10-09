@@ -1,4 +1,4 @@
-// Package cert 证书管理功能域。
+﻿// Package cert 证书管理功能域。
 //
 // 本文件为 cert 域审计桥（任务 7.2）：5.8 RollbackAuditRecorder、
 // 5.9 OrphanCleanupRecorder、5.10 VerifyWindowRecorder、5.11 读端口
@@ -17,7 +17,7 @@ import (
 	auditdao "github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
 	auditservice "github.com/Havens-blog/e-cam-service/internal/audit/service"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/gotomicro/ego/core/elog"
 )
 

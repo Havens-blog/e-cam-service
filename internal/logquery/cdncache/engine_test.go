@@ -1,4 +1,4 @@
-package cdncache
+﻿package cdncache
 
 import (
 	"encoding/json"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
+	"github.com/Havens-blog/e-cloudx-sdk/logquery"
 )
 
 // state 构造 cache_hit 计数分布条目。

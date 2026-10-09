@@ -1,4 +1,4 @@
-package executor
+﻿package executor
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"time"
 
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/taskx"
 )
 
 // ==================== 任务 6:Disk 自我健康监控 测试 ====================

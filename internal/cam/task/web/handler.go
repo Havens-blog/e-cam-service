@@ -1,4 +1,4 @@
-package web
+﻿package web
 
 import (
 	"strconv"
@@ -6,8 +6,8 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task"
 	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
-	"github.com/Havens-blog/e-cam-service/pkg/ginx"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/ginx"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gin-gonic/gin"
 )
 

@@ -1,4 +1,4 @@
-package executor
+﻿package executor
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

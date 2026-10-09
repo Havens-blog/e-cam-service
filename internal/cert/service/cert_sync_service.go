@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	volcanocert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/volcano"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	volcanocert "github.com/Havens-blog/e-cloudx-sdk/volcano"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 

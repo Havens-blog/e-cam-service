@@ -1,10 +1,10 @@
-package ioc
+﻿package ioc
 
 import (
 	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
 	accountdao "github.com/Havens-blog/e-cam-service/internal/account/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/logquery"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/gotomicro/ego/core/elog"
 )
 

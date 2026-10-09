@@ -1,4 +1,4 @@
-//go:build wireinject
+﻿//go:build wireinject
 
 package endpoint
 
@@ -9,7 +9,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/endpoint/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint/service"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint/web"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/google/wire"
 )
 

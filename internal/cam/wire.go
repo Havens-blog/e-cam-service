@@ -1,4 +1,4 @@
-package cam
+﻿package cam
 
 import (
 	"sync"
@@ -13,10 +13,10 @@ import (
 	taskweb "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-cloudx-sdk/asset"
+	"github.com/Havens-blog/e-common-go/mongox"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -150,7 +150,10 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	nasQueryService := service.NewNASQueryService(cloudAccountRepository, dao.NewNASMetricDAO(db), component)
 	ossQueryService := service.NewOSSQueryService(cloudAccountRepository, dao.NewOSSMetricDAO(db), component)
 	diskQueryService := service.NewDiskQueryService(cloudAccountRepository, dao.NewDiskMetricDAO(db), component)
-	assetHandler := web.NewAssetHandler(instanceService, dao.NewStatsSnapshotDAO(db), cdnQueryService, nasQueryService, ossQueryService, diskQueryService)
+	// RDS 指标读取:租户校验依赖账号仓储,停用态甄别依赖实例仓储
+	// (assets/rds/metrics 的 zero_exception 甄别),指标仅读本地 DAO。
+	rdsQueryService := service.NewRDSQueryService(cloudAccountRepository, instanceRepository, dao.NewRDSMetricDAO(db), component)
+	assetHandler := web.NewAssetHandler(instanceService, dao.NewStatsSnapshotDAO(db), cdnQueryService, nasQueryService, ossQueryService, diskQueryService).SetRDSQueryService(rdsQueryService)
 
 	camModule := &Module{
 		Hdl:           handler,

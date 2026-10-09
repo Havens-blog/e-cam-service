@@ -1,8 +1,8 @@
-package ioc
+﻿package ioc
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 )
 
 func InitEndpointService(db *mongox.Mongo) endpoint.Service {

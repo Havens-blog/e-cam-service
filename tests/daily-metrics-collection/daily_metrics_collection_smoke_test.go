@@ -1,4 +1,4 @@
-// @feature nas-ops-insight @api-functional
+﻿// @feature nas-ops-insight @api-functional
 //
 // Journey smoke: daily-metrics-collection happy path — persistent gate claims
 // the day, exactly one nas:collect_metrics(days=2) task is submitted, the
@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-cam-service/tests/nastest"
 	"github.com/stretchr/testify/require"
 )

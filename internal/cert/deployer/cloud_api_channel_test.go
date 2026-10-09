@@ -1,4 +1,4 @@
-package deployer
+﻿package deployer
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
+	"github.com/Havens-blog/e-cloudx-sdk"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -1,4 +1,4 @@
-package scheduler
+﻿package scheduler
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/taskx"
 )
 
 // NAS 每日采集接入单测(spec AC「NAS 每日采集接入」):

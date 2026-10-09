@@ -1,4 +1,4 @@
-// Package cdncache CDN 缓存命中率规则引擎(proposal:cdn-cache-analysis)。
+﻿// Package cdncache CDN 缓存命中率规则引擎(proposal:cdn-cache-analysis)。
 //
 // 纯函数、零 I/O:输入为现有联邦聚合通道可产出的结构(cache_hit 分布、
 // status 分布、sum_bytes 双口径、域名×cache_hit 交叉、URI 未命中分布)+
@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
+	"github.com/Havens-blog/e-cloudx-sdk/logquery"
 )
 
 // 健康档位(优/中/差;数据不足为 unknown)。

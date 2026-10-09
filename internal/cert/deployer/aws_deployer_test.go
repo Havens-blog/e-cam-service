@@ -1,4 +1,4 @@
-// aws_deployer_test.go AWS CloudDeployer 单元测试：fake ACM 适配覆盖五方法 ×
+﻿// aws_deployer_test.go AWS CloudDeployer 单元测试：fake ACM 适配覆盖五方法 ×
 // 三产品（含上传 CDN 口径、限流退避有界、ListReferences 指纹三级解析、经
 // CloudAPIChannel 端到端两段式与绑定失败补偿）（cert-multicloud-deployers 任务 2）。
 package deployer
@@ -17,9 +17,9 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-cloudx-sdk/aws"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // awsTestARN 构造指定地域的 ACM 证书 ARN（测试用上传产物形态）

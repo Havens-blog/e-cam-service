@@ -1,4 +1,4 @@
-// Package service 联邦日志查询编排(Phase 1.4,plan.md §4.4)。
+﻿// Package service 联邦日志查询编排(Phase 1.4,plan.md §4.4)。
 //
 // 职责:解析租户内活跃云账号 -> 按 (cloud, logType) 构造 provider ->
 // 并发 fan-out -> 归并排序 -> 截断。单源失败/超时隔离,不阻塞其他源
@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/logquery"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gotomicro/ego/core/elog"
 	"golang.org/x/sync/errgroup"
 )

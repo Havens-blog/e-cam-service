@@ -1,4 +1,4 @@
-// @feature cert-cloud-discovery-import @api-functional
+﻿// @feature cert-cloud-discovery-import @api-functional
 //
 // Contract: docs/features/cert-cloud-discovery-import/testing/placeholder-fingerprint-backfill/contracts/step-4-backfill-references.md
 // SKIP_EVAL_GATE: generated without eval-contract verification. Review with extra scrutiny.
@@ -13,7 +13,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/tests/discoverytest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -1,8 +1,8 @@
-package web
+﻿package web
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
-	shareddomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	shareddomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // ==================== 响应结构体 ====================

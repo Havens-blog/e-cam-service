@@ -6,10 +6,8 @@ import (
 	"strings"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/port"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository"
-	cmdbdomain "github.com/Havens-blog/e-cam-service/internal/cmdb/domain"
-	cmdbrepository "github.com/Havens-blog/e-cam-service/internal/cmdb/repository"
-	cmdbdao "github.com/Havens-blog/e-cam-service/internal/cmdb/repository/dao"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -25,7 +23,7 @@ type NodeAssetService interface {
 type nodeAssetService struct {
 	bindingRepo repository.BindingRepository
 	nodeRepo    repository.NodeRepository
-	cmdbRepo    cmdbrepository.InstanceRepository
+	cmdbPort    port.CMDBPort // 使用端口接口替代直接依赖
 	envRepo     repository.EnvironmentRepository
 	logger      *elog.Component
 }
@@ -34,14 +32,14 @@ type nodeAssetService struct {
 func NewNodeAssetService(
 	bindingRepo repository.BindingRepository,
 	nodeRepo repository.NodeRepository,
-	cmdbRepo cmdbrepository.InstanceRepository,
+	cmdbPort port.CMDBPort, // 接收端口接口
 	envRepo repository.EnvironmentRepository,
 	logger *elog.Component,
 ) NodeAssetService {
 	return &nodeAssetService{
 		bindingRepo: bindingRepo,
 		nodeRepo:    nodeRepo,
-		cmdbRepo:    cmdbRepo,
+		cmdbPort:    cmdbPort,
 		envRepo:     envRepo,
 		logger:      logger,
 	}
@@ -85,13 +83,13 @@ func (s *nodeAssetService) ListNodeAssets(ctx context.Context, filter domain.Nod
 	for i, b := range bindings {
 		resourceIDs[i] = b.ResourceID
 	}
-	instances, err := s.cmdbRepo.ListByIDs(ctx, resourceIDs)
+	instances, err := s.cmdbPort.ListByIDs(ctx, resourceIDs)
 	if err != nil {
 		return nil, 0, fmt.Errorf("批量查询CMDB实例失败: %w", err)
 	}
 
 	// 3. 构建 ID → Instance 映射
-	instanceMap := make(map[int64]cmdbdomain.Instance, len(instances))
+	instanceMap := make(map[int64]port.CMDBInstance, len(instances))
 	for _, inst := range instances {
 		instanceMap[inst.ID] = inst
 	}
@@ -162,11 +160,11 @@ func slicePage(vos []domain.NodeAssetVO, offset, limit int64) []domain.NodeAsset
 
 // listUnboundAssets 查询未绑定到任何节点的资产 (根节点的"待分配"资源池)
 func (s *nodeAssetService) listUnboundAssets(ctx context.Context, filter domain.NodeAssetFilter) ([]domain.NodeAssetVO, int64, error) {
-	instances, err := s.cmdbRepo.ListUnbound(ctx, filter.TenantID, filter.Offset, filter.Limit)
+	instances, err := s.cmdbPort.ListUnbound(ctx, filter.TenantID, filter.Offset, filter.Limit)
 	if err != nil {
 		return nil, 0, fmt.Errorf("查询未绑定资产失败: %w", err)
 	}
-	total, err := s.cmdbRepo.CountUnbound(ctx, filter.TenantID)
+	total, err := s.cmdbPort.CountUnbound(ctx, filter.TenantID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("统计未绑定资产失败: %w", err)
 	}
@@ -175,7 +173,7 @@ func (s *nodeAssetService) listUnboundAssets(ctx context.Context, filter domain.
 }
 
 // instancesToNodeAssetVOs 将 CMDB 实例列表转换为 NodeAssetVO (无 binding 信息)
-func (s *nodeAssetService) instancesToNodeAssetVOs(instances []cmdbdomain.Instance, filter domain.NodeAssetFilter, nodeID int64) []domain.NodeAssetVO {
+func (s *nodeAssetService) instancesToNodeAssetVOs(instances []port.CMDBInstance, filter domain.NodeAssetFilter, nodeID int64) []domain.NodeAssetVO {
 	var result []domain.NodeAssetVO
 	for _, inst := range instances {
 		assetType := extractAssetType(inst.ModelUID)
@@ -215,17 +213,17 @@ func (s *nodeAssetService) GetNodeAssetStats(ctx context.Context, tenantID int64
 		return domain.AssetStats{}, fmt.Errorf("节点不存在: %w", err)
 	}
 
-	var result *cmdbdao.AssetStatsResult
+	var result *port.AssetStatsResult
 
 	if node.IsRoot() && !includeChildren {
 		// 根节点: 聚合统计未绑定资产
-		result, err = s.cmdbRepo.AggregateUnboundStats(ctx, tenantID)
+		result, err = s.cmdbPort.AggregateUnboundStats(ctx, tenantID)
 		if err != nil {
 			return domain.AssetStats{}, fmt.Errorf("统计未绑定资产失败: %w", err)
 		}
 	} else if node.IsRoot() && includeChildren {
 		// 根节点 + 子节点: 聚合统计全部资产
-		result, err = s.cmdbRepo.AggregateAllStats(ctx, tenantID)
+		result, err = s.cmdbPort.AggregateAllStats(ctx, tenantID)
 		if err != nil {
 			return domain.AssetStats{}, fmt.Errorf("统计全部资产失败: %w", err)
 		}
@@ -250,7 +248,7 @@ func (s *nodeAssetService) GetNodeAssetStats(ctx context.Context, tenantID int64
 		for i, b := range bindings {
 			resourceIDs[i] = b.ResourceID
 		}
-		result, err = s.cmdbRepo.AggregateStatsByIDs(ctx, resourceIDs)
+		result, err = s.cmdbPort.AggregateStatsByIDs(ctx, resourceIDs)
 		if err != nil {
 			return domain.AssetStats{}, fmt.Errorf("聚合统计资产失败: %w", err)
 		}
@@ -276,7 +274,7 @@ func (s *nodeAssetService) GetNodeAssetStats(ctx context.Context, tenantID int64
 
 // GetGlobalAssetStats 全局资产统计（不区分节点，按产品类别聚合）
 func (s *nodeAssetService) GetGlobalAssetStats(ctx context.Context, tenantID int64) (domain.AssetStats, error) {
-	result, err := s.cmdbRepo.AggregateAllStats(ctx, tenantID)
+	result, err := s.cmdbPort.AggregateAllStats(ctx, tenantID)
 	if err != nil {
 		return domain.AssetStats{}, fmt.Errorf("统计全局资产失败: %w", err)
 	}
@@ -441,11 +439,11 @@ func (s *nodeAssetService) GetNodeAssetSummary(ctx context.Context, tenantID int
 	for _, b := range bindings {
 		resourceIDs = append(resourceIDs, b.ResourceID)
 	}
-	instances, err := s.cmdbRepo.ListByIDs(ctx, resourceIDs)
+	instances, err := s.cmdbPort.ListByIDs(ctx, resourceIDs)
 	if err != nil {
 		return domain.AssetSummary{}, fmt.Errorf("批量查询CMDB实例失败: %w", err)
 	}
-	instanceMap := make(map[int64]cmdbdomain.Instance, len(instances))
+	instanceMap := make(map[int64]port.CMDBInstance, len(instances))
 	for _, inst := range instances {
 		instanceMap[inst.ID] = inst
 	}
@@ -482,7 +480,7 @@ func (s *nodeAssetService) GetNodeAssetSummary(ctx context.Context, tenantID int
 		}
 		summary.ByBindType[bindType]++
 
-		if reasons := detectEnvMismatch(inst.AssetName, extractTagEnv(inst), boundCode); len(reasons) > 0 {
+		if reasons := detectEnvMismatch(inst.AssetName, extractTagEnvFromInstance(inst), boundCode); len(reasons) > 0 {
 			summary.Suspicious = append(summary.Suspicious, domain.AssetSuspicion{
 				AssetID:      inst.AssetID,
 				AssetName:    inst.AssetName,
@@ -505,6 +503,22 @@ func resolveEnvKey(envID int64, envCodeByID map[int64]string) (key, code string)
 	return fmt.Sprintf("env_%d", envID), ""
 }
 
-// 环境推断（normalizeEnvCode/matchNameEnvCode/extractTagEnv/detectEnvMismatch/
-// loadEnvCodeMap 等）已收敛至 infer_env.go 单份公共实现，绑定/改绑/概览三方共用。
+// extractTagEnvFromInstance 从 port.CMDBInstance 提取 tag env
+func extractTagEnvFromInstance(inst port.CMDBInstance) string {
+	// 尝试从 attributes.tags 中获取 env 标签
+	if tags, ok := inst.Attributes["tags"].(map[string]interface{}); ok {
+		if env, ok := tags["env"].(string); ok {
+			return env
+		}
+		if env, ok := tags["Env"].(string); ok {
+			return env
+		}
+		if env, ok := tags["ENV"].(string); ok {
+			return env
+		}
+	}
+	return ""
+}
 
+// 环境推断（normalizeEnvCode/matchNameEnvCode/detectEnvMismatch/
+// loadEnvCodeMap 等）已收敛至 infer_env.go 单份公共实现，绑定/改绑/概览三方共用。

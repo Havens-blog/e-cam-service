@@ -1,4 +1,4 @@
-package task
+﻿package task
 
 import (
 	"context"
@@ -9,9 +9,9 @@ import (
 	camrepository "github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-cloudx-sdk/asset"
+	"github.com/Havens-blog/e-common-go/mongox"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -25,6 +25,7 @@ type Module struct {
 	nasMetricsExecutor  *executor.SyncNASMetricsExecutor
 	ossMetricsExecutor  *executor.SyncOSSMetricsExecutor
 	diskMetricsExecutor *executor.SyncDiskMetricsExecutor
+	rdsMetricsExecutor  *executor.SyncRDSMetricsExecutor
 	nasBackfillExecutor *executor.SyncNASBackfillExecutor
 }
 
@@ -81,6 +82,14 @@ func InitModule(
 	taskQueue.RegisterExecutor(diskMetricsExecutor)
 	logger.Info("Disk指标采集执行器已注册")
 
+	// 注册 RDS 指标采集执行器(每日 CPU/内存/磁盘使用率 + 连接数指标采集;
+	// 今日行首写生效、昨日行覆盖更新,rds 枚举以 ecam_instance 为准,不依赖
+	// EnableAutoSync;region/engine 从 attributes 逐实例透传 querier 分派)
+	rdsMetricDAO := dao.NewRDSMetricDAO(db)
+	rdsMetricsExecutor := executor.NewSyncRDSMetricsExecutor(accountRepo, instanceRepo, rdsMetricDAO, taskRepo, logger)
+	taskQueue.RegisterExecutor(rdsMetricsExecutor)
+	logger.Info("RDS指标采集执行器已注册")
+
 	// 注册 NAS 历史指标回填执行器(一次性上线回填:14~90 天历史,配额节流 +
 	// 错峰窗口 01:30~06:00 + 唯一键幂等去重;命中限流挂起、次日窗口续跑)
 	nasBackfillExecutor := executor.NewSyncNASBackfillExecutor(accountRepo, instanceRepo, nasMetricDAO, taskRepo, logger)
@@ -97,6 +106,7 @@ func InitModule(
 		nasMetricsExecutor:  nasMetricsExecutor,
 		ossMetricsExecutor:  ossMetricsExecutor,
 		diskMetricsExecutor: diskMetricsExecutor,
+		rdsMetricsExecutor:  rdsMetricsExecutor,
 		nasBackfillExecutor: nasBackfillExecutor,
 	}, nil
 }

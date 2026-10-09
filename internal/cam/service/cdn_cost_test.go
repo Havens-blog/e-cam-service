@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/gotomicro/ego/core/elog"
 )
 

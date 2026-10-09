@@ -1,12 +1,12 @@
-package repository
+﻿package repository
 
 import (
 	"context"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
-	"github.com/Havens-blog/e-cam-service/pkg/crypto"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/crypto"
 )
 
 // CloudAccountRepository 云账号仓储接口

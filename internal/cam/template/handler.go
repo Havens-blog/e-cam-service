@@ -1,4 +1,4 @@
-package template
+﻿package template
 
 import (
 	"errors"
@@ -7,7 +7,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
+	"github.com/Havens-blog/e-cloudx-sdk"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 )

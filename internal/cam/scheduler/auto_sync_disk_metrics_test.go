@@ -1,4 +1,4 @@
-package scheduler
+﻿package scheduler
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/taskx"
 )
 
 // T7(disk-ops-insight) Disk 每日指标采集接入持久化日闸(spec/proposal「持久化

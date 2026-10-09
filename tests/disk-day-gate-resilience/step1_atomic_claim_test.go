@@ -1,4 +1,4 @@
-// @feature disk-ops-insight @api-functional
+﻿// @feature disk-ops-insight @api-functional
 //
 // Contract disk-day-gate-resilience step-1-atomic-claim: the disk key claims
 // each day exactly once via an atomic conditional write, concurrent claims
@@ -19,7 +19,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/Havens-blog/e-cam-service/tests/disktest"
 	"github.com/stretchr/testify/require"
 )

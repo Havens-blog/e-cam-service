@@ -1,4 +1,4 @@
-// @feature cert-multicloud-deployers @api-functional
+﻿// @feature cert-multicloud-deployers @api-functional
 //
 // Contract: bind-failure-compensation / Step 1 — 绑定段执行失败并显式报错.
 // Outcomes under test: bind-failure-explicit, bind-rate-limited,
@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
+	"github.com/Havens-blog/e-cloudx-sdk"
 	"github.com/Havens-blog/e-cam-service/tests/multicloudtest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

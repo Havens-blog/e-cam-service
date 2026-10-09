@@ -1,10 +1,10 @@
-package normalizer
+﻿package normalizer
 
 import (
 	"strings"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/domain"
-	shareddomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	shareddomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // ServiceTypeMapper 将各云厂商原始服务类型映射为统一分类

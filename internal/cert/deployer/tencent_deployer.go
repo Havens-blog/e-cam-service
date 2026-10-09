@@ -1,4 +1,4 @@
-// tencent_deployer.go 腾讯云 CloudDeployer 实现（任务 5.5）。
+﻿// tencent_deployer.go 腾讯云 CloudDeployer 实现（任务 5.5）。
 //
 // 分层定位：将 3.2 cloudx 腾讯云证书五方法适配（CertAdapter，SDK 单次调用
 // 封装）组装为 deployer 层 CloudDeployer 端口实例，经 5.3 CloudAPIChannel
@@ -30,9 +30,9 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/tencent"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-cloudx-sdk/tencent"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // tencentCertAPI 3.2 CertAdapter 窄接口（*tencent.CertAdapter 天然满足；测试注入

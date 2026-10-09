@@ -1,13 +1,13 @@
-package template
+﻿package template
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // AccountProvider 云账号查询接口（解耦 repository 依赖）

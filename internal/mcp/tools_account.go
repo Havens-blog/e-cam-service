@@ -1,11 +1,11 @@
-package mcp
+﻿package mcp
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 

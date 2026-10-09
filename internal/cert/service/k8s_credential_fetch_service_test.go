@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	certtest "github.com/Havens-blog/e-cam-service/internal/cert/certtest"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -1,10 +1,10 @@
-package scheduler
+﻿package scheduler
 
 import (
 	"reflect"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 func TestBuildSyncParams_DefaultIncludesDNS(t *testing.T) {

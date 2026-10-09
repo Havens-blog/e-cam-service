@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/logquery"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // ---------------------------------------------------------------------

@@ -1,11 +1,11 @@
-package dao
+﻿package dao
 
 import (
 	"context"
 	"strings"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 )
 
 // RDS 指标写入路径数据质量门禁(T2 AC-4,proposal「单位归一化」+ probe-report

@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/Havens-blog/e-cam-service/internal/mcp"
-	"github.com/Havens-blog/e-cam-service/pkg/crypto"
+	"github.com/Havens-blog/e-common-go/crypto"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/spf13/viper"
 )

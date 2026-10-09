@@ -1,4 +1,4 @@
-package deployer
+﻿package deployer
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
+	"github.com/Havens-blog/e-cloudx-sdk"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 

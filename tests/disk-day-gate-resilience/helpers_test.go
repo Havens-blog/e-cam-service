@@ -1,4 +1,4 @@
-// @feature disk-ops-insight @api-functional
+﻿// @feature disk-ops-insight @api-functional
 //
 // Journey fixtures for disk-day-gate-resilience contract tests: the persistent
 // daily gate ( resource_type=disk key ) wired to in-memory fakes, plus a real
@@ -15,7 +15,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/Havens-blog/e-cam-service/tests/disktest"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/require"

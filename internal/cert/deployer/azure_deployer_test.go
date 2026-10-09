@@ -1,4 +1,4 @@
-// azure_deployer_test.go Azure CloudDeployer 单元测试：fake KV 适配覆盖五方法 ×
+﻿// azure_deployer_test.go Azure CloudDeployer 单元测试：fake KV 适配覆盖五方法 ×
 // 两产品（上传统一 CDN 口径、限流退避有界、ListReferences 指纹三级解析、经
 // CloudAPIChannel 端到端两段式与绑定失败补偿）（cert-multicloud-deployers 任务 3）。
 package deployer
@@ -17,9 +17,9 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/azure"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-cloudx-sdk/azure"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // azureTestSecretID 构造 KV secret ID（测试用上传产物/引用形态）

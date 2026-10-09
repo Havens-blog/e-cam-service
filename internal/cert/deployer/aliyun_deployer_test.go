@@ -1,4 +1,4 @@
-package deployer
+﻿package deployer
 
 import (
 	"context"
@@ -17,9 +17,9 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aliyun"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-cloudx-sdk/aliyun"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // ---------------------------------------------------------------------

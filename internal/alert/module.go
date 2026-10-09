@@ -1,4 +1,4 @@
-// Package alert 告警通知模块
+﻿// Package alert 告警通知模块
 package alert
 
 import (
@@ -10,7 +10,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/alert/service"
 	"github.com/Havens-blog/e-cam-service/internal/alert/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )

@@ -1,4 +1,4 @@
-// Package diagnose WAF 流量诊断规则引擎(proposal:网站被刷检测)。
+﻿// Package diagnose WAF 流量诊断规则引擎(proposal:网站被刷检测)。
 //
 // 纯函数、零 I/O:输入为现有联邦聚合通道可产出的结构(分桶 / TopN 维度聚合,
 // 见 cloudx/logquery.AggregateResult)+ 前一等长窗口对比值;输出风险分 /
@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
+	"github.com/Havens-blog/e-cloudx-sdk/logquery"
 )
 
 // 风险等级(无/低/中/高)。

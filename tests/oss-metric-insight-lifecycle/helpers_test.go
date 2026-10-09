@@ -1,4 +1,4 @@
-// @feature oss-ops-insight @api-functional
+﻿// @feature oss-ops-insight @api-functional
 //
 // Journey fixtures for oss-metric-insight-lifecycle contract tests: the
 // persistent daily gate ( resource_type=oss key ), the collect executor and a
@@ -15,8 +15,8 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/Havens-blog/e-cam-service/tests/osstest"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/require"

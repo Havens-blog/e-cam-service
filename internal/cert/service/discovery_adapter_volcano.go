@@ -1,11 +1,11 @@
-package service
+﻿package service
 
 import (
 	"context"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	volcanocert "github.com/Havens-blog/e-cam-service/internal/shared/cloudx/volcano"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	volcanocert "github.com/Havens-blog/e-cloudx-sdk/volcano"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // 火山引擎发现导入材料适配（cert-volcano-import-sync 任务 2）：任务 1 的

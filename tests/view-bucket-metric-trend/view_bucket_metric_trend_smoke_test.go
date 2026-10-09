@@ -1,4 +1,4 @@
-// @feature oss-ops-insight @api-functional
+﻿// @feature oss-ops-insight @api-functional
 //
 // Journey smoke: the trend-view golden path — collected rows over a multi-day
 // window render as an ascending dual series with latest/average summaries, a
@@ -14,7 +14,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-cam-service/tests/osstest"
 	"github.com/stretchr/testify/require"
 )

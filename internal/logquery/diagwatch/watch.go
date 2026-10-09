@@ -1,4 +1,4 @@
-// 定时 WAF 流量诊断看护:周期对已接入租户跑诊断,风险等级达到阈值时经
+﻿// 定时 WAF 流量诊断看护:周期对已接入租户跑诊断,风险等级达到阈值时经
 // 配置的 webhook 渠道推送告警(价值:被刷检测从"手动点击"升级为"持续监控")。
 //
 // 设计约束:
@@ -24,7 +24,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/alert/channel"
 	alertdomain "github.com/Havens-blog/e-cam-service/internal/alert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/logquery/service"
-	cloudxdomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	cloudxdomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gotomicro/ego/core/elog"
 )
 

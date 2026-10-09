@@ -1,4 +1,4 @@
-package topology
+﻿package topology
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/topology/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/topology/service"
 	"github.com/Havens-blog/e-cam-service/internal/topology/web"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )

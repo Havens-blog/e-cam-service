@@ -1,4 +1,4 @@
-// @feature nas-ops-insight @api-functional
+﻿// @feature nas-ops-insight @api-functional
 //
 // Shared journey harness for the nas-ops-insight API functional test
 // suites ( tests/<journey>/ ). It wires the exported production surfaces —
@@ -31,12 +31,12 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
-	camshared "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
+	camshared "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/mongox"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/require"

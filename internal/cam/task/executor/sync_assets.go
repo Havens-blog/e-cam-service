@@ -1,4 +1,4 @@
-// Package executor 同步资产任务执行器（异步任务队列，生产环境主入口）
+﻿// Package executor 同步资产任务执行器（异步任务队列，生产环境主入口）
 //
 // 文件：internal/cam/task/executor/sync_assets.go
 //
@@ -27,12 +27,12 @@ import (
 	auditdomain "github.com/Havens-blog/e-cam-service/internal/audit/domain"
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aliyun"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/asset"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/types"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-cloudx-sdk/aliyun"
+	"github.com/Havens-blog/e-cloudx-sdk/asset"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gotomicro/ego/core/elog"
 	"go.mongodb.org/mongo-driver/mongo"
 	"strings"

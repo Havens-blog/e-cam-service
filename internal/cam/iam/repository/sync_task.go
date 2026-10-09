@@ -1,11 +1,11 @@
-package repository
+﻿package repository
 
 import (
 	"context"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/repository/dao"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // SyncTaskRepository 同步任务仓储接口

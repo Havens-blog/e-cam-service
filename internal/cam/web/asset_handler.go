@@ -20,6 +20,7 @@ type AssetHandler struct {
 	nasQuery    NASQueryService
 	ossQuery    OSSQueryService
 	diskQuery   DiskQueryService
+	rdsQuery    RDSQueryService
 	logger      *elog.Component
 }
 
@@ -34,6 +35,15 @@ func NewAssetHandler(instanceSvc service.InstanceService, snapshotDAO dao.StatsS
 		diskQuery:   diskQuery,
 		logger:      elog.DefaultLogger,
 	}
+}
+
+// SetRDSQueryService 注入 RDS 指标读取服务(wire.go 装配)。
+// 采用链式 setter 而非扩张 NewAssetHandler 形参:避免既有 4 处测试 harness
+// 与 3 个构造调用点连锁改动(本方法与 asset_handler_rds_metrics.go 为 RDS
+// 读取链路的仅有两处接入)。未注入时 GET /rds/metrics 返回 500。
+func (h *AssetHandler) SetRDSQueryService(q RDSQueryService) *AssetHandler {
+	h.rdsQuery = q
+	return h
 }
 
 // upsertImageSnapshotAndTrend 惰性落当日镜像统计快照,并取 7 天前最近基线
@@ -115,6 +125,7 @@ func (h *AssetHandler) registerAssetRoutes(assetsGroup *gin.RouterGroup) {
 
 	// RDS 关系型数据库
 	assetsGroup.GET("/rds", h.ListRDS)
+	assetsGroup.GET("/rds/metrics", h.GetRDSMetrics)
 	assetsGroup.GET("/rds/:asset_id", h.GetRDS)
 
 	// Redis 缓存

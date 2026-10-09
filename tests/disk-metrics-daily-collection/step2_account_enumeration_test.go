@@ -1,4 +1,4 @@
-// @feature disk-ops-insight @api-functional
+﻿// @feature disk-ops-insight @api-functional
 //
 // Contract disk-metrics-daily-collection step-2-account-enumeration: the
 // active-account enumeration is driven by ecam_instance disk assets ( not the
@@ -17,7 +17,7 @@ package disk_metrics_daily_collection
 import (
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/Havens-blog/e-cam-service/tests/disktest"
 	"github.com/Havens-blog/e-cam-service/tests/nastest"
 	"github.com/stretchr/testify/require"

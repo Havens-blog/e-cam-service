@@ -1,10 +1,10 @@
-package repository
+﻿package repository
 
 import (
 	"context"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/repository/dao"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // AuditLogRepository 审计日志仓储接口

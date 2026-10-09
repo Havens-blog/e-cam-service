@@ -1,4 +1,4 @@
-package web
+﻿package web
 
 import (
 	"bytes"
@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/logquery/service"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/logquery"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/logquery"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 )
@@ -91,8 +91,8 @@ func TestTypes(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if len(resp.Data) != 3 {
-		t.Fatalf("types = %d, want 3", len(resp.Data))
+	if len(resp.Data) != 4 {
+		t.Fatalf("types = %d, want 4", len(resp.Data))
 	}
 	for _, m := range resp.Data {
 		if len(m.Fields) == 0 {

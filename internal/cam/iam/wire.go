@@ -1,4 +1,4 @@
-//go:build wireinject
+﻿//go:build wireinject
 
 package iam
 
@@ -11,8 +11,8 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/web"
 	camrepo "github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	camdao "github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/iam"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-cloudx-sdk/iam"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/google/wire"
 	"github.com/gotomicro/ego/core/elog"
 )

@@ -1,4 +1,4 @@
-// Package dao scheduler_state 持久化日闸数据访问。
+﻿// Package dao scheduler_state 持久化日闸数据访问。
 //
 // 文件：internal/cam/repository/dao/scheduler_state.go
 //
@@ -18,7 +18,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"

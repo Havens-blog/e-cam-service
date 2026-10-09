@@ -1,4 +1,4 @@
-package scheduler
+﻿package scheduler
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/google/uuid"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -39,6 +39,9 @@ type AutoSyncScheduler struct {
 	// lastDiskMetricsCollectDate Disk 内存闸日期,仅回滚模式下使用
 	// (Disk 生产走持久化日闸 disk 键,内存闸是 Hard Rule 要求的回滚退路)。
 	lastDiskMetricsCollectDate string
+	// lastRDSMetricsCollectDate RDS 内存闸日期,仅回滚模式下使用
+	// (RDS 生产走持久化日闸 rds 键,内存闸是 Hard Rule 要求的回滚退路)。
+	lastRDSMetricsCollectDate string
 	// dailyGate 持久化日闸(scheduler_state,findOneAndUpdate 原子认领):
 	// NAS/CDN/OSS 每日采集的提交入口,详见 daily_gate.go / auto_sync_nas_metrics.go。
 	dailyGate *PersistentDailyGate
@@ -153,6 +156,10 @@ func (s *AutoSyncScheduler) checkAndSync() {
 	// 每日 Disk 指标采集(持久化日闸 disk 键原子认领,与账号自动同步解耦,
 	// 详见 auto_sync_disk_metrics.go / daily_gate.go)
 	s.checkDiskMetricsCollection()
+
+	// 每日 RDS 指标采集(持久化日闸 rds 键原子认领,与账号自动同步解耦,
+	// 详见 auto_sync_rds_metrics.go / daily_gate.go)
+	s.checkRDSMetricsCollection()
 
 	// 获取所有启用自动同步的活跃账号
 	accounts, err := s.getAutoSyncAccounts(ctx)

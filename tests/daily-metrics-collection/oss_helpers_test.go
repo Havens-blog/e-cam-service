@@ -1,4 +1,4 @@
-// @feature oss-ops-insight @api-functional
+﻿// @feature oss-ops-insight @api-functional
 //
 // Journey fixtures for the oss-ops-insight daily-metrics-collection contract
 // tests ( co-located with the nas-ops-insight suite of the same journey —
@@ -17,7 +17,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/Havens-blog/e-cam-service/tests/osstest"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/require"

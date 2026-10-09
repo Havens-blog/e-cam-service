@@ -1,4 +1,4 @@
-package diagwatch
+﻿package diagwatch
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/logquery/diagnose"
 	"github.com/Havens-blog/e-cam-service/internal/logquery/service"
 	alertdomain "github.com/Havens-blog/e-cam-service/internal/alert/domain"
-	cloudxdomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	cloudxdomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gotomicro/ego/core/elog"
 )
 

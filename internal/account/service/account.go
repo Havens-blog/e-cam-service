@@ -1,4 +1,4 @@
-// Package service 云账号服务层
+﻿// Package service 云账号服务层
 package service
 
 import (
@@ -8,9 +8,9 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/account/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	"github.com/Havens-blog/e-cam-service/internal/shared/domain"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/google/uuid"
 	"github.com/gotomicro/ego/core/elog"
 )

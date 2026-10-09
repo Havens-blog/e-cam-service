@@ -1,8 +1,8 @@
-package ioc
+﻿package ioc
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/alert"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/gotomicro/ego/core/elog"
 )
 

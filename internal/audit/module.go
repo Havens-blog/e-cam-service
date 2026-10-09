@@ -1,4 +1,4 @@
-// Package audit 审计模块 - 独立实现
+﻿// Package audit 审计模块 - 独立实现
 // 提供全链路 API 操作审计和资产变更历史追踪能力
 package audit
 
@@ -8,7 +8,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/audit/service"
 	"github.com/Havens-blog/e-cam-service/internal/audit/web"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )

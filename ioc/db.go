@@ -1,4 +1,4 @@
-package ioc
+﻿package ioc
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/event"

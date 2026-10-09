@@ -1,4 +1,4 @@
-// deployer_common.go 部署器层共享小件（cert-multicloud-deployers 清理任务）：
+﻿// deployer_common.go 部署器层共享小件（cert-multicloud-deployers 清理任务）：
 // huawei/aws/azure 三云部署器逐字节重复的退避重试主干、上传名生成、凭证转换与
 // 指纹口径收敛为单点实现。aliyun/tencent（5.4/5.5）既有私有副本暂保持原状
 // （清理范围以 feature 变更文件为界），后续可平滑收编——共享函数签名与其
@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
 // boundedRetry 有界重试主干（RetryPolicy/固定退避序列与五云部署器共用口径）：

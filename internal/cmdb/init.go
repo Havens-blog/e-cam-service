@@ -1,11 +1,11 @@
-package cmdb
+﻿package cmdb
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cmdb/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cmdb/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cmdb/service"
 	"github.com/Havens-blog/e-cam-service/internal/cmdb/web"
-	"github.com/Havens-blog/e-cam-service/pkg/mongox"
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/gin-gonic/gin"
 )
 

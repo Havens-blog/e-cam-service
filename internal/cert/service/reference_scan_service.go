@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -17,12 +17,12 @@ import (
 	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/k8s"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aliyun"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/aws"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/azure"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/huawei"
-	"github.com/Havens-blog/e-cam-service/internal/shared/cloudx/tencent"
-	sharedomain "github.com/Havens-blog/e-cam-service/internal/shared/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/aliyun"
+	"github.com/Havens-blog/e-cloudx-sdk/aws"
+	"github.com/Havens-blog/e-cloudx-sdk/azure"
+	"github.com/Havens-blog/e-cloudx-sdk/huawei"
+	"github.com/Havens-blog/e-cloudx-sdk/tencent"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	k8smeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"

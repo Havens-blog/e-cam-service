@@ -1,4 +1,4 @@
-// @feature nas-ops-insight @api-functional
+﻿// @feature nas-ops-insight @api-functional
 //
 // Contract step-1-daily-collect-trigger: 触发当日 NAS 指标采集 — the
 // persistent gate claims the day once, restarts never re-claim, concurrent
@@ -19,7 +19,7 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
-	"github.com/Havens-blog/e-cam-service/pkg/taskx"
+	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/Havens-blog/e-cam-service/tests/nastest"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/require"
