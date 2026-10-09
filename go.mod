@@ -3,7 +3,7 @@ module github.com/Havens-blog/e-cam-service
 go 1.25.5
 
 require (
-	github.com/Havens-blog/e-iam v0.0.26
+	github.com/Havens-blog/e-iam v0.0.27
 	github.com/alibabacloud-go/alikafka-20190916/v3 v3.16.0
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.1.13
 	github.com/alibabacloud-go/elasticsearch-20170613/v4 v4.1.0
