@@ -1,28 +1,26 @@
 package adapter
 
 import (
-	cmdbrepository "github.com/Havens-blog/e-cam-service/internal/cmdb/repository"
+	"fmt"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/port"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/spf13/viper"
 )
 
-// NewCMDBPort 按配置选择 CMDB 适配器实现（拆分开关）。
+// NewCMDBPort 创建 CMDB 端口实现（强制远程模式）。
 //
-//   - 配置了 cmdb.remote_url  → RemoteCMDBAdapter，走 HTTP 调用独立的 e-cmdb-service；
-//   - 未配置                  → LocalCMDBAdapter，进程内直接调用 cmdb repository。
+// CMDB 已拆分为独立服务 e-cmdb-service，本地进程内适配器（LocalCMDBAdapter）
+// 及其对 internal/cmdb 的依赖已移除。servicetree 通过 HTTP 调用 e-cmdb-service。
 //
-// 这是 CAM / CMDB 从「单体进程内」平滑过渡到「独立微服务」的唯一切换点：
-// servicetree 业务代码只认 port.CMDBPort 接口，切换零改动。
-//
-// 返回 port.CMDBPort 接口（而非具体类型），因此 wire 无需 wire.Bind。
-func NewCMDBPort(cmdbRepo cmdbrepository.InstanceRepository) port.CMDBPort {
+// 配置项 cmdb.remote_url 为必填（指向 e-cmdb-service 内网地址）；缺失时启动失败，
+// 避免静默回退到已删除的进程内实现。
+func NewCMDBPort() port.CMDBPort {
 	remoteURL := viper.GetString("cmdb.remote_url")
-	if remoteURL != "" {
-		elog.DefaultLogger.Info("CMDB 适配器: 远程模式",
-			elog.String("remote_url", remoteURL))
-		return NewRemoteCMDBAdapter(remoteURL)
+	if remoteURL == "" {
+		panic(fmt.Errorf("cmdb.remote_url 未配置：CMDB 已拆分为独立服务，必须配置其内网地址"))
 	}
-	elog.DefaultLogger.Info("CMDB 适配器: 本地进程内模式")
-	return NewLocalCMDBAdapter(cmdbRepo)
+	elog.DefaultLogger.Info("CMDB 适配器: 远程模式",
+		elog.String("remote_url", remoteURL))
+	return NewRemoteCMDBAdapter(remoteURL)
 }

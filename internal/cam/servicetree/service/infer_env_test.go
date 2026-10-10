@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/port"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository"
-	cmdbdomain "github.com/Havens-blog/e-cam-service/internal/cmdb/domain"
 )
 
 // ---- infer_env 公共环境推断测试：命名/tag 双信号、uat↔staging 对齐、code→env_id 映射 ----
@@ -21,12 +21,12 @@ func (s *inferEnvRepoStub) List(ctx context.Context, filter domain.EnvironmentFi
 	return s.listFn(ctx, filter)
 }
 
-func inferInst(name string, tags map[string]any) cmdbdomain.Instance {
+func inferInst(name string, tags map[string]any) port.CMDBInstance {
 	attrs := map[string]any{}
 	if tags != nil {
 		attrs["tags"] = tags
 	}
-	return cmdbdomain.Instance{AssetName: name, Attributes: attrs}
+	return port.CMDBInstance{AssetName: name, Attributes: attrs}
 }
 
 // TestInferEnvCodeByName 命名模式优先：-prod-/-uat-/-test-/-dev- 命中（大小写不敏感），未命中返回空。

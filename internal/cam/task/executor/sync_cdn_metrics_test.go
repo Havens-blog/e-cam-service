@@ -1,4 +1,4 @@
-﻿package executor
+package executor
 
 import (
 	"context"
@@ -135,6 +135,7 @@ func (m *metricCloudAdapter) VSwitch() cloudx.VSwitchAdapter              { retu
 func (m *metricCloudAdapter) LB() cloudx.LBAdapter                        { return nil }
 func (m *metricCloudAdapter) CDN() cloudx.CDNAdapter                      { return m.cdn }
 func (m *metricCloudAdapter) WAF() cloudx.WAFAdapter                      { return nil }
+func (m *metricCloudAdapter) DDOS() cloudx.DDOSAdapter                    { return nil }
 func (m *metricCloudAdapter) DNS() cloudx.DNSAdapter                      { return nil }
 func (m *metricCloudAdapter) ENI() cloudx.ENIAdapter                      { return nil }
 func (m *metricCloudAdapter) NAS() cloudx.NASAdapter                      { return nil }

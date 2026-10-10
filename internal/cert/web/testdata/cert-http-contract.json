@@ -1,0 +1,56 @@
+{
+  "contract_version": 1,
+  "note": "cert 对外 HTTP API 契约快照（权威源）。锁定 挂载前缀 + 端点集(method+subpath) + 每端点生效授权角色。cert 服务抽取后其对外 API 面必须与此一致，否则网关路由/鉴权契约漂移。DTO 不纳入（请求/响应体变动频繁，边际安全低）；授权角色纳入——误删/弱化某端点的 RequireRoles 是安全降级，须被此闸挡下。subpath 相对 path_prefix；settings 子组端点含 /settings 段并继承组级角色。角色标识取 RequireRoles 实参名（Role* 常量），组级与端点级合并去重排序。变更流程：改路由后同步此快照，使 contract_test 转绿。",
+  "path_prefix": "/api/v1/certs",
+  "endpoints": [
+    { "method": "POST",   "subpath": "",                          "roles": ["RoleOpsEngineer"] },
+    { "method": "POST",   "subpath": "/batch",                    "roles": ["RoleOpsEngineer"] },
+    { "method": "GET",    "subpath": "/batch/:batchId",           "roles": ["RoleOpsEngineer"] },
+    { "method": "POST",   "subpath": "/:id/key",                  "roles": ["RoleOpsEngineer"] },
+
+    { "method": "GET",    "subpath": "/changes",                  "roles": ["RoleAuditor", "RoleOpsEngineer", "RoleOpsSupervisor"] },
+    { "method": "POST",   "subpath": "/changes",                  "roles": ["RoleOpsEngineer"] },
+    { "method": "GET",    "subpath": "/changes/:id",              "roles": ["RoleAuditor", "RoleOpsEngineer", "RoleOpsSupervisor"] },
+    { "method": "POST",   "subpath": "/changes/:id/confirm",      "roles": ["RoleOpsEngineer"] },
+    { "method": "POST",   "subpath": "/changes/:id/execute",      "roles": ["RoleOpsEngineer"] },
+    { "method": "POST",   "subpath": "/changes/:id/confirm-batch","roles": ["RoleOpsEngineer"] },
+    { "method": "POST",   "subpath": "/changes/:id/cancel",       "roles": ["RoleOpsEngineer"] },
+    { "method": "GET",    "subpath": "/changes/:id/progress",     "roles": ["RoleOpsEngineer"] },
+    { "method": "POST",   "subpath": "/changes/:id/rollback",     "roles": ["RoleOpsEngineer"] },
+    { "method": "GET",    "subpath": "/changes/:id/audit",        "roles": ["RoleAuditor", "RoleOpsEngineer", "RoleOpsSupervisor"] },
+
+    { "method": "GET",    "subpath": "/dashboard",                "roles": [] },
+    { "method": "GET",    "subpath": "/probes",                   "roles": [] },
+    { "method": "POST",   "subpath": "/probes/scan",              "roles": [] },
+
+    { "method": "GET",    "subpath": "/discovery/preview",        "roles": ["RoleOpsEngineer"] },
+    { "method": "GET",    "subpath": "/discovery/snapshot-status","roles": ["RoleOpsEngineer"] },
+    { "method": "POST",   "subpath": "/discovery/import",         "roles": ["RoleOpsEngineer"] },
+    { "method": "GET",    "subpath": "/discovery/import/:sessionId","roles": ["RoleOpsEngineer"] },
+    { "method": "POST",   "subpath": "/discovery/sync",           "roles": ["RoleOpsEngineer"] },
+
+    { "method": "GET",    "subpath": "/reverse",                  "roles": ["RoleOpsEngineer"] },
+    { "method": "GET",    "subpath": "/scan/status",              "roles": ["RoleOpsEngineer"] },
+    { "method": "GET",    "subpath": "/:id/references",           "roles": ["RoleOpsEngineer"] },
+    { "method": "POST",   "subpath": "/:id/scan",                 "roles": ["RoleOpsEngineer"] },
+
+    { "method": "GET",    "subpath": "",                          "roles": ["RoleOpsEngineer", "RoleOpsSupervisor"] },
+    { "method": "GET",    "subpath": "/stats",                    "roles": ["RoleOpsEngineer", "RoleOpsSupervisor"] },
+    { "method": "GET",    "subpath": "/:id",                      "roles": ["RoleOpsEngineer", "RoleOpsSupervisor", "RoleViewer"] },
+    { "method": "DELETE", "subpath": "/:id",                      "roles": ["RoleOpsEngineer"] },
+
+    { "method": "GET",    "subpath": "/settings",                     "roles": ["RoleAuditor", "RoleOpsSupervisor"] },
+    { "method": "PUT",    "subpath": "/settings",                     "roles": ["RoleAuditor", "RoleOpsSupervisor"] },
+    { "method": "POST",   "subpath": "/settings/exemptions",          "roles": ["RoleAuditor", "RoleOpsSupervisor"] },
+    { "method": "DELETE", "subpath": "/settings/exemptions/:domain",  "roles": ["RoleAuditor", "RoleOpsSupervisor"] },
+    { "method": "POST",   "subpath": "/settings/test",                "roles": ["RoleAuditor", "RoleOpsSupervisor"] },
+    { "method": "POST",   "subpath": "/settings/crds",                "roles": ["RoleAuditor", "RoleOpsSupervisor"] },
+    { "method": "GET",    "subpath": "/settings/crds",                "roles": ["RoleAuditor", "RoleOpsSupervisor"] },
+    { "method": "DELETE", "subpath": "/settings/crds/:id",            "roles": ["RoleAuditor", "RoleOpsSupervisor"] },
+    { "method": "GET",    "subpath": "/settings/k8s-credentials",     "roles": ["RoleAuditor", "RoleOpsSupervisor"] },
+    { "method": "POST",   "subpath": "/settings/k8s-credentials",     "roles": ["RoleAuditor", "RoleOpsSupervisor"] },
+    { "method": "DELETE", "subpath": "/settings/k8s-credentials/:name","roles": ["RoleAuditor", "RoleOpsSupervisor"] },
+    { "method": "GET",    "subpath": "/settings/k8s-clusters",        "roles": ["RoleAuditor", "RoleOpsSupervisor"] },
+    { "method": "POST",   "subpath": "/settings/k8s-credentials/fetch","roles": ["RoleAuditor", "RoleOpsSupervisor"] }
+  ]
+}

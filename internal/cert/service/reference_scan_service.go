@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -14,15 +14,14 @@ import (
 
 	"go.mongodb.org/mongo-driver/mongo"
 
-	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/k8s"
 	"github.com/Havens-blog/e-cloudx-sdk/aliyun"
 	"github.com/Havens-blog/e-cloudx-sdk/aws"
 	"github.com/Havens-blog/e-cloudx-sdk/azure"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cloudx-sdk/huawei"
 	"github.com/Havens-blog/e-cloudx-sdk/tencent"
-	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	k8smeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -1087,11 +1086,11 @@ func candidateGVRs(apiGroup, kind string) []schema.GroupVersionResource {
 // accountScanSource 扫描账号源生产实现：account 仓储 active 账号
 // （凭证解密在仓储读取路径完成；仅内存传递给云适配，禁入日志/错误）。
 type accountScanSource struct {
-	repo accountrepo.CloudAccountRepository
+	repo CloudAccountLister
 }
 
 // NewAccountScanSource 创建扫描账号源。
-func NewAccountScanSource(repo accountrepo.CloudAccountRepository) ScanAccountSource {
+func NewAccountScanSource(repo CloudAccountLister) ScanAccountSource {
 	return &accountScanSource{repo: repo}
 }
 

@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/port"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository"
-	cmdbdomain "github.com/Havens-blog/e-cam-service/internal/cmdb/domain"
 )
 
 // 环境推断的单份公共实现（SC：单份实现的根）：
@@ -58,7 +58,7 @@ func isStandardEnvCode(code string) bool {
 
 // extractTagEnv 取实例标签环境值：environment 优先、env 兜底。
 // 实测标签键为 environment（192 条），env 键 0 条——env 仅为历史兼容保留。
-func extractTagEnv(inst cmdbdomain.Instance) string {
+func extractTagEnv(inst port.CMDBInstance) string {
 	tags, ok := inst.Attributes["tags"].(map[string]any)
 	if !ok {
 		return ""
@@ -73,7 +73,7 @@ func extractTagEnv(inst cmdbdomain.Instance) string {
 // inferEnvCode 公共环境推断入口：命名模式（-prod-/-uat-/-test-/-dev-）优先，
 // 其次 tag.environment（兼容 tag.env）；返回 canonical 码 dev/test/staging/prod。
 // fat 等非标准码与无信号均返回空串，调用方走规则 env 兜底，不强行归类。
-func inferEnvCode(inst cmdbdomain.Instance) string {
+func inferEnvCode(inst port.CMDBInstance) string {
 	if code := matchNameEnvCode(inst.AssetName); code != "" {
 		return code
 	}

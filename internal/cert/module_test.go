@@ -1,4 +1,4 @@
-﻿package cert
+package cert
 
 import (
 	"context"
@@ -11,8 +11,6 @@ import (
 
 	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
 	accountdao "github.com/Havens-blog/e-cam-service/internal/account/repository/dao"
-	assetrepo "github.com/Havens-blog/e-cam-service/internal/asset/repository"
-	assetdao "github.com/Havens-blog/e-cam-service/internal/asset/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/scheduler"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
@@ -24,6 +22,12 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
+
+// zeroInstanceCounter 平凡 service.InstanceCounter（boot 冒烟不实际计数覆盖率
+// 分母；装配期不触发查询）。
+type zeroInstanceCounter struct{}
+
+func (zeroInstanceCounter) CountByModelUID(context.Context, string) (int64, error) { return 0, nil }
 
 // mongox test 实例启动方式与 repository/mongo_test.go 同约定：
 // CERT_TEST_MONGODB_DSN（缺省回退本地 27017），不可达即 skip。
@@ -85,9 +89,10 @@ func TestInitCertModule_BootSmoke(t *testing.T) {
 		db,
 		elog.DefaultLogger,
 		accountrepo.NewCloudAccountRepository(accountdao.NewCloudAccountDAO(db)),
-		assetrepo.NewInstanceRepository(assetdao.NewInstanceDAO(db)),
+		zeroInstanceCounter{},
 		queue,
 		service.NewLoggingAlertPublisher(), nil,
+		&fakeChangeAuditStore{},
 	)
 	if err != nil {
 		t.Fatalf("cert 模块装配失败: %v", err)
@@ -167,10 +172,11 @@ func TestUnavailableDispatcher_QueuelessBootDegradation(t *testing.T) {
 		db,
 		elog.DefaultLogger,
 		accountrepo.NewCloudAccountRepository(accountdao.NewCloudAccountDAO(db)),
-		assetrepo.NewInstanceRepository(assetdao.NewInstanceDAO(db)),
+		zeroInstanceCounter{},
 		nil, // 无任务队列：降级装配
 		nil, // 无告警发布器：回退日志发布
 		nil, // 无 DNS 源：回退台账 SAN 探测
+		&fakeChangeAuditStore{},
 	)
 	if err != nil {
 		t.Fatalf("无队列装配应成功: %v", err)

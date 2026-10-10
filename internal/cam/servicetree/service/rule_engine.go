@@ -11,8 +11,8 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	camrepo "github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	stdomain "github.com/Havens-blog/e-cam-service/internal/cam/servicetree/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/port"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository"
-	cmdbdomain "github.com/Havens-blog/e-cam-service/internal/cmdb/domain"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -262,7 +262,7 @@ func (s *ruleEngineService) MatchInstance(ctx context.Context, tenantID int64, i
 // inferInstanceEnvCode cam 域资产的环境推断适配：cam 与 cmdb 两套 Instance 同构
 // （AssetName/Attributes 同名同义），转发到 infer_env.go 的单份实现 inferEnvCode。
 func inferInstanceEnvCode(inst domain.Instance) string {
-	return inferEnvCode(cmdbdomain.Instance{AssetName: inst.AssetName, Attributes: inst.Attributes})
+	return inferEnvCode(port.CMDBInstance{AssetName: inst.AssetName, Attributes: inst.Attributes})
 }
 
 // resolveEnvID 绑定落库的环境解析：推断码命中租户环境码映射 → 对应 env_id；

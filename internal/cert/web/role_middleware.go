@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
 )
@@ -55,7 +54,7 @@ func CertRoleMiddleware() gin.HandlerFunc {
 				}
 			}
 		}
-		if u := middleware.GetUsername(c); u != "" {
+		if u := operatorUsername(c); u != "" {
 			c.Request = c.Request.WithContext(service.WithOperator(c.Request.Context(), u))
 		}
 		c.Next()

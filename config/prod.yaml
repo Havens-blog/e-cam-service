@@ -40,7 +40,7 @@ ldap:
   group_filter: "(|(member={dn}))"
 
 session:
-  session_encrypted_key: "1234567890Key"
+  session_encrypted_key: "haven-dev-session-shared-key-2026-10-10-A"
   cookie:
     domain: ".example.com"
     name: "ecmdb-token-key"
@@ -93,9 +93,9 @@ policy:
   auth_url: http://106.52.187.69:9000
   discovery_url: http://106.52.187.69:9000
 
-# CMDB 拆分开关（servicetree 访问 CMDB 数据的来源）
-# - 不配置 remote_url：本地进程内模式，直接调用进程内 cmdb repository（默认，零改动）
-# - 配置 remote_url：远程模式，走 HTTP 调用独立部署的 e-cmdb-service
-#   拆分上线时取消注释并指向 e-cmdb-service 内网地址即可，业务代码无需改动。
-# cmdb:
-#   remote_url: http://e-cmdb-service:8002
+# CMDB 拆分（servicetree 访问 CMDB 数据的来源）
+# CMDB 已拆分为独立服务 e-cmdb-service，本地进程内适配器已移除。
+# remote_url 为必填：指向 e-cmdb-service 内网地址（缺省会启动失败）。
+# 本地联调可临时改为 http://localhost:8002。
+cmdb:
+  remote_url: http://e-cmdb-service:8002

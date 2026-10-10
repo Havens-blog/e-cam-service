@@ -4,7 +4,6 @@ package ioc
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cam"
-	"github.com/Havens-blog/e-cam-service/internal/cmdb"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
 	"github.com/google/wire"
 )
@@ -28,7 +27,6 @@ var BaseSet = wire.NewSet(
 	InitLogQueryModule,
 	endpoint.InitModule,
 	cam.InitModuleWithIAM,
-	cmdb.InitModule,
 	InitAlertModule,
 	wire.FieldsOf(new(*endpoint.Module), "Hdl"),
 	wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),

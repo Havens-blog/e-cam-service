@@ -1,4 +1,4 @@
-﻿package executor
+package executor
 
 import (
 	"context"
@@ -342,6 +342,7 @@ func (m *mockCloudAdapter) EIP() cloudx.EIPAdapter {
 func (m *mockCloudAdapter) VSwitch() cloudx.VSwitchAdapter             { return nil }
 func (m *mockCloudAdapter) CDN() cloudx.CDNAdapter                     { return nil }
 func (m *mockCloudAdapter) WAF() cloudx.WAFAdapter                     { return nil }
+func (m *mockCloudAdapter) DDOS() cloudx.DDOSAdapter                   { return nil }
 func (m *mockCloudAdapter) DNS() cloudx.DNSAdapter                     { return nil }
 func (m *mockCloudAdapter) ENI() cloudx.ENIAdapter                     { return nil }
 func (m *mockCloudAdapter) Tag() cloudx.TagAdapter                     { return nil }

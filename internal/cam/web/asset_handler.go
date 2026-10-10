@@ -164,6 +164,10 @@ func (h *AssetHandler) registerAssetRoutes(assetsGroup *gin.RouterGroup) {
 	assetsGroup.GET("/waf", h.ListWAF)
 	assetsGroup.GET("/waf/:asset_id", h.GetWAF)
 
+	// DDoS 防护（高防IP/高防包/DDoS原生防护/Anti-DDoS/Shield）
+	assetsGroup.GET("/ddos", h.ListDDOS)
+	assetsGroup.GET("/ddos/:asset_id", h.GetDDOS)
+
 	// ENI 弹性网卡
 	assetsGroup.GET("/eni", h.ListENI)
 	assetsGroup.GET("/eni/:asset_id", h.GetENI)

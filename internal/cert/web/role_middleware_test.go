@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -18,7 +17,7 @@ func withClaims(data map[string]string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Set(session.CtxSessionKey, session.NewMemorySession(session.Claims{Data: data}))
 		if u, ok := data["username"]; ok {
-			c.Set(middleware.CtxUsernameKey, u)
+			c.Set(ctxUsernameKey, u)
 		}
 		c.Next()
 	}

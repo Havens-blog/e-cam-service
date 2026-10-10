@@ -14,7 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/dns"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 )
 
@@ -123,12 +122,32 @@ type ProbeService interface {
 	TriggerProbeRootAsync(ctx context.Context, rootDomain string) error
 }
 
+// DNSLinkedResource 链路关联资源（cdn/waf/external 等）的 cert 侧投影，等价
+// cam/dns.LinkedResource。cert 定义自有 DTO 以避免 import cam 域类型（为 cert
+// 服务抽取清除出站耦合）。
+type DNSLinkedResource struct {
+	Type string
+	Name string
+	ID   string
+}
+
+// DNSProbeTarget 一条 DNS 记录导出的拨测目标（子域名 + 链路关联资源）的 cert 侧
+// 投影，等价 cam/dns.ProbeTarget。
+type DNSProbeTarget struct {
+	Hostname       string
+	RecordType     string
+	RecordValue    string
+	TenantID       int64
+	LinkedResource *DNSLinkedResource
+}
+
 // DNSRecordSource DNS 记录只读端口（cam/dns 模块 RecordReadPort 的 cert 侧投影）：
-// cert 只依赖此接口，不碰 dns DAO/linker。dns.RecordReadPort 结构性满足本接口，
-// 装配层直接注入；nil = 未装配，probe 回退 ProbeLedgerDomains 台账 SAN 路径。
+// cert 只依赖此接口与自有 DNSProbeTarget 投影，不碰 dns DAO/linker/领域类型。
+// 组合根用 adapter 将 cam/dns.RecordReadPort 适配到本端口并注入；nil = 未装配，
+// probe 回退 ProbeLedgerDomains 台账 SAN 路径。
 type DNSRecordSource interface {
 	ListTenantsWithRecords(ctx context.Context) ([]int64, error)
-	ListProbeTargets(ctx context.Context, tenantID int64) ([]dns.ProbeTarget, error)
+	ListProbeTargets(ctx context.Context, tenantID int64) ([]DNSProbeTarget, error)
 }
 
 // ErrNoDNSSource DNS 记录源未装配（probe DNS 路径不可用，调用方应回退台账 SAN 路径）。
@@ -142,16 +161,16 @@ var ErrProbeRunning = errors.New("probe: already running")
 var ErrNoProbeTargets = errors.New("probe: no targets under root domain")
 
 type probeService struct {
-	certs     domain.CertificateRepository
-	probes    domain.ProbeResultRepository
-	exempts   domain.ExemptionRepository
-	alertCfg  domain.AlertConfigRepository
-	orders    domain.ChangeOrderRepository
-	dialer    tlsDialer
-	dnsSource DNSRecordSource // 可空：未装配则 ProbeAllTenantDNS 返回 ErrNoDNSSource
-	refs      domain.CertReferenceRepository // 可空：Phase 3 expected 侧（引用扫描指纹）
-	snapshots domain.ScanSnapshotRepository    // 可空：配合 refs 取 latest done 快照建引用索引
-	probeRunning atomic.Bool                  // 手动触发防重（CompareAndSwap）
+	certs        domain.CertificateRepository
+	probes       domain.ProbeResultRepository
+	exempts      domain.ExemptionRepository
+	alertCfg     domain.AlertConfigRepository
+	orders       domain.ChangeOrderRepository
+	dialer       tlsDialer
+	dnsSource    DNSRecordSource                // 可空：未装配则 ProbeAllTenantDNS 返回 ErrNoDNSSource
+	refs         domain.CertReferenceRepository // 可空：Phase 3 expected 侧（引用扫描指纹）
+	snapshots    domain.ScanSnapshotRepository  // 可空：配合 refs 取 latest done 快照建引用索引
+	probeRunning atomic.Bool                    // 手动触发防重（CompareAndSwap）
 }
 
 // ProbeOptions 探测可选依赖（均可空；零值=回退纯台账 SAN 路径）。
@@ -414,8 +433,8 @@ func (s *probeService) ProbeAllTenantDNS(ctx context.Context) ([]domain.ProbeRes
 		return nil, fmt.Errorf("probe: list dns tenants: %w", err)
 	}
 	var (
-		all     []domain.ProbeResult
-		errs    []error
+		all  []domain.ProbeResult
+		errs []error
 	)
 	for _, tid := range tenants {
 		if err := ctx.Err(); err != nil {
@@ -481,12 +500,12 @@ func (s *probeService) TriggerProbeRootAsync(ctx context.Context, rootDomain str
 
 // listRootTargets 汇总各租户拨测目标并按根域过滤（预检与拨测同一份目标清单，
 // 避免预检/执行窗口期目标漂移）。
-func (s *probeService) listRootTargets(ctx context.Context, rootDomain string) ([]dns.ProbeTarget, error) {
+func (s *probeService) listRootTargets(ctx context.Context, rootDomain string) ([]DNSProbeTarget, error) {
 	tenants, err := s.dnsSource.ListTenantsWithRecords(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("probe: list dns tenants: %w", err)
 	}
-	var out []dns.ProbeTarget
+	var out []DNSProbeTarget
 	suffix := "." + rootDomain
 	for _, tid := range tenants {
 		targets, err := s.dnsSource.ListProbeTargets(ctx, tid)
@@ -519,7 +538,7 @@ func (s *probeService) ProbeTenantDNS(ctx context.Context, tenantID int64) ([]do
 
 // probeTargets 拨测主干：受控并发 SNI 拨测 + 六态判定 + 逐域落库（全量轮与
 // 根域定向轮共用；判定上下文逐轮一次性读取）。单域名拨测/写库失败不中断整轮。
-func (s *probeService) probeTargets(ctx context.Context, targets []dns.ProbeTarget) ([]domain.ProbeResult, error) {
+func (s *probeService) probeTargets(ctx context.Context, targets []DNSProbeTarget) ([]domain.ProbeResult, error) {
 	// 逐轮一次性读取判定上下文（同 ProbeDomains）
 	exemptions, err := s.exempts.List(ctx)
 	if err != nil {
@@ -551,7 +570,7 @@ func (s *probeService) probeTargets(ctx context.Context, targets []dns.ProbeTarg
 			break
 		}
 		wg.Add(1)
-		go func(idx int, tgt dns.ProbeTarget) {
+		go func(idx int, tgt DNSProbeTarget) {
 			defer wg.Done()
 			select {
 			case sem <- struct{}{}:
@@ -582,7 +601,7 @@ func (s *probeService) probeTargets(ctx context.Context, targets []dns.ProbeTarg
 // 扫描解析的"该资源绑定证书指纹"做权威 expected（资源级精度）；无引用/external/ALB
 // 回退 coverageIndex（台账 SAN 通配符感知覆盖）。
 func (s *probeService) probeOneDNS(
-	tgt dns.ProbeTarget,
+	tgt DNSProbeTarget,
 	exemptSet map[string]bool,
 	coverage *coverageIndex,
 	refIndex map[string]map[string]bool,
@@ -629,7 +648,7 @@ func (s *probeService) probeOneDNS(
 // 的 hostname 能与 cert_reference.resourceId 对齐（== hostname）；key=product|hostname。
 // 若索引含该 key 但 onlineFP 不在其指纹集合 → 返回 false（由调用方落 diff，
 // 即"该资源绑了别的证书"——资源级漂移）；索引无该 key → 返回 false 走 coverage 回退。
-func refIndexMatches(refIndex map[string]map[string]bool, lr *dns.LinkedResource, hostname, onlineFP string) bool {
+func refIndexMatches(refIndex map[string]map[string]bool, lr *DNSLinkedResource, hostname, onlineFP string) bool {
 	if refIndex == nil || lr == nil {
 		return false
 	}
@@ -766,8 +785,8 @@ func coversSingleLabel(hostname, base string) bool {
 	return label != "" && !strings.Contains(label, ".")
 }
 
-// linkedResourceType 提取 dns.LinkedResource.Type（cdn/waf/external）；nil 时空串。
-func linkedResourceType(lr *dns.LinkedResource) string {
+// linkedResourceType 提取 DNSLinkedResource.Type（cdn/waf/external）；nil 时空串。
+func linkedResourceType(lr *DNSLinkedResource) string {
 	if lr == nil {
 		return ""
 	}

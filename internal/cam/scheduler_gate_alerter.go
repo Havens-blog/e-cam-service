@@ -16,22 +16,28 @@ import (
 	"time"
 
 	alertdomain "github.com/Havens-blog/e-cam-service/internal/alert/domain"
-	alertdao "github.com/Havens-blog/e-cam-service/internal/alert/repository/dao"
 	"github.com/gotomicro/ego/core/elog"
 )
 
 // gateAlertEscalateThreshold 日闸连续故障达到该轮数后告警升为 critical
 const gateAlertEscalateThreshold = 3
 
+// AlertEventSink cam 域所需的告警事件落库端口(消费方接口):仅 CreateEvent,
+// 绕过规则匹配直落。alert 仓储 AlertDAO 结构性满足;本桥依赖 alert domain
+// 契约而非其 repository/dao(depcheck R1:跨域不得触达对方持久化层)。
+type AlertEventSink interface {
+	CreateEvent(ctx context.Context, event alertdomain.AlertEvent) (int64, error)
+}
+
 // schedulerGateAlerter 日闸告警桥:DailyGateAlerter 的生产实现
 type schedulerGateAlerter struct {
-	alertDAO alertdao.AlertDAO
+	alertDAO AlertEventSink
 }
 
 // NewSchedulerGateAlerter 创建日闸告警桥(返回具体类型以同时满足
 // scheduler.DailyGateAlerter 与 executor.NASHealthAlerter 两个通道接口,
 // 同一实例装配两处——「同一定义勿重复造」)
-func NewSchedulerGateAlerter(alertDAO alertdao.AlertDAO) *schedulerGateAlerter {
+func NewSchedulerGateAlerter(alertDAO AlertEventSink) *schedulerGateAlerter {
 	return &schedulerGateAlerter{alertDAO: alertDAO}
 }
 

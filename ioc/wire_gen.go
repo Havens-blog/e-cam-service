@@ -8,7 +8,6 @@ package ioc
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cam"
-	"github.com/Havens-blog/e-cam-service/internal/cmdb"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
 	"github.com/google/wire"
 )
@@ -25,7 +24,7 @@ func InitApp() (*App, error) {
 	provider := InitSessionProvider(cmdable)
 	v := InitGinMiddlewares()
 	sdk := InitPolicySDK()
-	syncer := InitPermSyncer()
+	iSyncer := InitPermSyncer()
 	v2 := InitProviders()
 	mongo := InitMongoDB()
 	module := InitAuditModule(mongo)
@@ -40,7 +39,6 @@ func InitApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	cmdbModule := cmdb.InitModule(mongo)
 	certModule, err := InitCertModule(mongo, camModule)
 	if err != nil {
 		return nil, err
@@ -49,7 +47,7 @@ func InitApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	engine := InitWebServer(provider, v, sdk, syncer, v2, auditMiddleware, module, handler, camModule, cmdbModule, alertModule, mongo, certModule, logqueryModule)
+	engine := InitWebServer(provider, v, sdk, iSyncer, v2, auditMiddleware, module, handler, camModule, alertModule, mongo, certModule, logqueryModule)
 	v3 := InitJobs(camModule, certModule)
 	app := &App{
 		Logger:         logger,
@@ -79,5 +77,5 @@ var BaseSet = wire.NewSet(
 	InitWebServer,
 	InitJobs,
 	InitCertModule,
-	InitLogQueryModule, endpoint.InitModule, cam.InitModuleWithIAM, cmdb.InitModule, InitAlertModule, wire.FieldsOf(new(*endpoint.Module), "Hdl"), wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
+	InitLogQueryModule, endpoint.InitModule, cam.InitModuleWithIAM, InitAlertModule, wire.FieldsOf(new(*endpoint.Module), "Hdl"), wire.FieldsOf(new(*cam.Module), "Hdl", "TaskHdl"),
 )

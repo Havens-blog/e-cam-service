@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"sort"
 	"time"
 
-	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cert/deployer"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cloudx-sdk"
@@ -1079,14 +1078,14 @@ var _ SubtaskDispatcher = TaskxItemDispatcher{}
 // Secret 明文仅内存传递（deployer.Credential 契约：用后 Zeroize、禁入
 // 日志/响应/审计），错误文案仅含账号名/集群名等安全参数。
 type AccountCredentialSource struct {
-	accounts accountrepo.CloudAccountRepository
+	accounts CloudAccountLister
 	k8sCreds domain.K8sCredentialRepository
 	crypto   *domain.EnvelopeCrypto
 }
 
 // NewAccountCredentialSource 创建生产凭证来源。
 func NewAccountCredentialSource(
-	accounts accountrepo.CloudAccountRepository,
+	accounts CloudAccountLister,
 	k8sCreds domain.K8sCredentialRepository,
 	crypto *domain.EnvelopeCrypto,
 ) *AccountCredentialSource {

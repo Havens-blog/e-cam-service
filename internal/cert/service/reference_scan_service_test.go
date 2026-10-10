@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -9,8 +9,6 @@ import (
 	"time"
 
 	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
-	assetdomain "github.com/Havens-blog/e-cam-service/internal/asset/domain"
-	assetrepo "github.com/Havens-blog/e-cam-service/internal/asset/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
@@ -902,20 +900,19 @@ func TestToDiscoveredRefs(t *testing.T) {
 	assert.Empty(t, toDiscoveredRefs(0, nil))
 }
 
-// fakeAssetInstances asset 实例仓储 fake（嵌入接口仅覆写 Count，记录候选过滤）。
+// fakeAssetInstances InstanceCounter fake（按 model_uid 计数，记录查询过的 uid）。
 type fakeAssetInstances struct {
-	assetrepo.InstanceRepository
-	counts  map[string]int64 // model_uid → count
-	err     error
-	filters []assetdomain.InstanceFilter
+	counts    map[string]int64 // model_uid → count
+	err       error
+	modelUIDs []string
 }
 
-func (f *fakeAssetInstances) Count(_ context.Context, filter assetdomain.InstanceFilter) (int64, error) {
-	f.filters = append(f.filters, filter)
+func (f *fakeAssetInstances) CountByModelUID(_ context.Context, modelUID string) (int64, error) {
+	f.modelUIDs = append(f.modelUIDs, modelUID)
 	if f.err != nil {
 		return 0, f.err
 	}
-	return f.counts[filter.ModelUID], nil
+	return f.counts[modelUID], nil
 }
 
 // TestAssetRepositoryCounts asset 盘点计数：model_uid 候选聚合（多后缀并和）
@@ -935,7 +932,7 @@ func TestAssetRepositoryCounts(t *testing.T) {
 	assert.Equal(t, 3, counts[CloudProductKey{Cloud: domain.CloudTencent, Product: domain.ProductCLB}])
 	assert.Equal(t, 0, counts[CloudProductKey{Cloud: domain.CloudAzure, Product: domain.ProductCDN}])
 	// 候选过滤按 "{provider}_{type}" model_uid 约定
-	assert.Contains(t, instances.filters, assetdomain.InstanceFilter{ModelUID: "aliyun_cdn"})
+	assert.Contains(t, instances.modelUIDs, "aliyun_cdn")
 
 	// 任一候选查询失败 → 整体不可用（-1 固化依据）
 	instances.err = errors.New("asset store down")

@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/assert"
@@ -18,60 +17,34 @@ import (
 )
 
 // waitForAuditLogs 轮询等待异步审计写入落袋（中间件经 goroutine 写入）。
-func waitForAuditLogs(t *testing.T, dao *captureAuditDAO, n int) {
+func waitForAuditLogs(t *testing.T, sink *captureSink, n int) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if len(dao.logs) >= n {
+		if len(sink.entries) >= n {
 			return
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatalf("audit logs not written within deadline: got %d want %d", len(dao.logs), n)
+	t.Fatalf("audit logs not written within deadline: got %d want %d", len(sink.entries), n)
 }
 
-// captureAuditDAO 捕获中间件写入的审计日志（Create 落内存）。
-type captureAuditDAO struct {
-	logs []domain.AuditLog
+// captureSink 捕获中间件产出的 AuditEntry（领域无关，验证边界解耦后行为不变）。
+type captureSink struct {
+	entries []AuditEntry
 }
 
-func (d *captureAuditDAO) Create(_ context.Context, l domain.AuditLog) (int64, error) {
-	d.logs = append(d.logs, l)
-	return int64(len(d.logs)), nil
+func (s *captureSink) Write(_ context.Context, e AuditEntry) error {
+	s.entries = append(s.entries, e)
+	return nil
 }
-
-func (d *captureAuditDAO) List(context.Context, domain.AuditLogFilter) ([]domain.AuditLog, error) {
-	return nil, nil
-}
-
-// 其余查询接口与断言无关（中间件仅消费 Create）。
-
-func (d *captureAuditDAO) Count(context.Context, domain.AuditLogFilter) (int64, error) {
-	return 0, nil
-}
-func (d *captureAuditDAO) CountByResult(context.Context, domain.AuditLogFilter) (map[string]int64, error) {
-	return nil, nil
-}
-func (d *captureAuditDAO) CountByOperationType(context.Context, domain.AuditLogFilter) (map[string]int64, error) {
-	return nil, nil
-}
-func (d *captureAuditDAO) CountByHTTPMethod(context.Context, domain.AuditLogFilter) (map[string]int64, error) {
-	return nil, nil
-}
-func (d *captureAuditDAO) ListTopEndpoints(context.Context, domain.AuditLogFilter, int) ([]domain.EndpointStats, error) {
-	return nil, nil
-}
-func (d *captureAuditDAO) ListTopOperators(context.Context, domain.AuditLogFilter, int) ([]domain.OperatorStats, error) {
-	return nil, nil
-}
-func (d *captureAuditDAO) InitIndexes(context.Context) error { return nil }
 
 // TestInferOperationType_CertPaths cert 域操作类型标签（7.2：导入/删除/扫描/
 // 配置面写入 ecam_audit_log 的 operation_type 可辨识）。
 func TestInferOperationType_CertPaths(t *testing.T) {
 	cases := []struct {
 		path, method string
-		want         domain.AuditOperationType
+		want         string
 	}{
 		// cam 域既有口径不受影响
 		{"/api/v1/cam/assets", http.MethodPost, "api_asset_create"},
@@ -97,8 +70,8 @@ func TestInferOperationType_CertPaths(t *testing.T) {
 // TestAuditMiddleware_MultipartBodyOmitted multipart 请求体（证书/私钥上传）
 // 不落审计日志（渗透式自查口径：日志无明文私钥），仅记录占位符。
 func TestAuditMiddleware_MultipartBodyOmitted(t *testing.T) {
-	dao := &captureAuditDAO{}
-	mdl := NewAuditMiddleware(dao, elog.DefaultLogger)
+	sink := &captureSink{}
+	mdl := NewAuditMiddleware(sink, elog.DefaultLogger)
 
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
@@ -117,19 +90,19 @@ func TestAuditMiddleware_MultipartBodyOmitted(t *testing.T) {
 	engine.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 
-	waitForAuditLogs(t, dao, 1)
-	log := dao.logs[0]
-	assert.Equal(t, "api_cert_create", string(log.OperationType))
+	waitForAuditLogs(t, sink, 1)
+	log := sink.entries[0]
+	assert.Equal(t, "api_cert_create", log.OperationType)
 	assert.Equal(t, "[multipart/form-data body omitted]", log.RequestBody)
 	assert.NotContains(t, log.RequestBody, "PRIVATE KEY")
-	assert.Equal(t, "success", string(log.Result))
+	assert.Equal(t, "success", log.Result)
 }
 
 // TestAuditMiddleware_JSONBodySanitized JSON body 脱敏（既有行为回归：
 // password/secret 类字段掩码后入审计）。
 func TestAuditMiddleware_JSONBodySanitized(t *testing.T) {
-	dao := &captureAuditDAO{}
-	mdl := NewAuditMiddleware(dao, elog.DefaultLogger)
+	sink := &captureSink{}
+	mdl := NewAuditMiddleware(sink, elog.DefaultLogger)
 
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
@@ -143,9 +116,9 @@ func TestAuditMiddleware_JSONBodySanitized(t *testing.T) {
 	engine.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
-	waitForAuditLogs(t, dao, 1)
-	log := dao.logs[0]
+	waitForAuditLogs(t, sink, 1)
+	log := sink.entries[0]
 	assert.Contains(t, log.RequestBody, "***")
 	assert.NotContains(t, log.RequestBody, "p@ss")
-	assert.Equal(t, "api_settings_update", string(log.OperationType))
+	assert.Equal(t, "api_settings_update", log.OperationType)
 }

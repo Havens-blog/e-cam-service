@@ -9,7 +9,6 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/web"
-	cmdbrepository "github.com/Havens-blog/e-cam-service/internal/cmdb/repository"
 	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/google/wire"
 	"github.com/gotomicro/ego/core/elog"
@@ -47,9 +46,9 @@ var ProviderSet = wire.NewSet(
 )
 
 // InitModule 初始化服务树模块
-// instanceRepo 从 cam 模块注入，用于规则引擎查询实例
-// cmdbRepo 从 cmdb 模块注入，通过 adapter 转换为 port.CMDBPort
-func InitModule(db *mongox.Mongo, instanceRepo camrepo.InstanceRepository, cmdbRepo cmdbrepository.InstanceRepository, logger *elog.Component) (*Module, error) {
+// instanceRepo 从 cam 模块注入，用于规则引擎查询实例；
+// CMDB 数据经 adapter.NewCMDBPort 走远程 e-cmdb-service（配置 cmdb.remote_url）。
+func InitModule(db *mongox.Mongo, instanceRepo camrepo.InstanceRepository, logger *elog.Component) (*Module, error) {
 	wire.Build(
 		ProviderSet,
 		NewModule,

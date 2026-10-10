@@ -1,4 +1,4 @@
-﻿// 文件：sync_registry.go
+// 文件：sync_registry.go
 //
 // 作用：syncRegionAssets 的资源类型 → 同步函数派发表（同步收敛 Phase 2 S5 表驱动重构）。
 // 将原先 syncRegionAssets 内 20-case 的 switch 收敛为两张注册表：
@@ -64,4 +64,5 @@ var cloudxSyncFns = map[string]cloudxSyncEntry{
 	"subnet":         {(*SyncAssetsExecutor).syncRegionVSwitch, "同步VSwitch失败"},
 	"cdn":            {(*SyncAssetsExecutor).syncRegionCDN, "同步CDN失败"},
 	"waf":            {(*SyncAssetsExecutor).syncRegionWAF, "同步WAF失败"},
+	"ddos":           {(*SyncAssetsExecutor).syncRegionDDOS, "同步DDoS失败"},
 }

@@ -1,4 +1,4 @@
-﻿package web
+package web
 
 import (
 	"context"
@@ -295,4 +295,63 @@ func (h *AssetHandler) ListWAF(ctx *gin.Context) {
 // GetWAF 获取WAF实例详情
 func (h *AssetHandler) GetWAF(ctx *gin.Context) {
 	h.getAsset(ctx, "waf")
+}
+
+// ListDDOS 获取DDoS防护实例列表
+func (h *AssetHandler) ListDDOS(ctx *gin.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	provider := ctx.Query("provider")
+	region := ctx.Query("region")
+	status := ctx.Query("status")
+	name := ctx.Query("name")
+	accountIDStr := ctx.Query("account_id")
+
+	// DDoS 特有过滤参数
+	edition := ctx.Query("edition")
+
+	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+
+	var accountID int64
+	if accountIDStr != "" {
+		accountID, _ = strconv.ParseInt(accountIDStr, 10, 64)
+	}
+
+	attributes := make(map[string]interface{})
+	if region != "" {
+		attributes["region"] = region
+	}
+	if status != "" {
+		attributes["status"] = status
+	}
+	if edition != "" {
+		attributes["edition"] = edition
+	}
+
+	filter := domain.InstanceFilter{
+		ModelUID:   "ddos",
+		TenantID:   tenantID,
+		AccountID:  accountID,
+		AssetName:  name,
+		Provider:   provider,
+		Attributes: attributes,
+		Offset:     int64(offset),
+		Limit:      int64(limit),
+	}
+
+	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
+	if err != nil {
+		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
+	}
+
+	ctx.JSON(200, Result(UnifiedAssetListResp{
+		Items: h.toUnifiedAssetVOs(instances),
+		Total: total,
+	}))
+}
+
+// GetDDOS 获取DDoS防护实例详情
+func (h *AssetHandler) GetDDOS(ctx *gin.Context) {
+	h.getAsset(ctx, "ddos")
 }

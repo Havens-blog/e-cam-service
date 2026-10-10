@@ -1,14 +1,18 @@
-﻿package ioc
+package ioc
 
 import (
+	"context"
+
 	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
 	accountdao "github.com/Havens-blog/e-cam-service/internal/account/repository/dao"
 	alertdao "github.com/Havens-blog/e-cam-service/internal/alert/repository/dao"
-	alertservice "github.com/Havens-blog/e-cam-service/internal/alert/service"
 	assetrepo "github.com/Havens-blog/e-cam-service/internal/asset/repository"
 	assetdao "github.com/Havens-blog/e-cam-service/internal/asset/repository/dao"
+	auditdao "github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
+	auditservice "github.com/Havens-blog/e-cam-service/internal/audit/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam"
 	"github.com/Havens-blog/e-cam-service/internal/cert"
+	"github.com/Havens-blog/e-cam-service/internal/cert/alertpub"
 	"github.com/Havens-blog/e-cam-service/internal/cert/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cert/scheduler"
 	certservice "github.com/Havens-blog/e-cam-service/internal/cert/service"
@@ -26,9 +30,10 @@ import (
 //     （taskx 队列归 cam TaskModule 所有——ChangeItemExecutor 复用同队列，
 //     与 RegisterBillingExecutor 同机制）。
 //
-// CertAlertPublisher 生产装配（4.3 依赖方向 alert→cert，cert 永不反向 import：
-// 发布器由本组合根构造后注入 cert 模块）：webhook+email 双通道，
-// SMTP 凭据经 LoadCertSMTPConfig 从应用 config alert.cert_smtp 读取
+// CertAlertPublisher 生产装配（cert 自持：发布器实现在 internal/cert/alertpub，
+// 对 alert 零 import；本组合根构造后注入 cert 模块）：webhook+email 双通道，
+// SMTP 凭据经 loadCertSMTPConfig 从应用 config alert.cert_smtp 读取、并由
+// 本组合根的 adapter 适配 alert 通用基建到 cert 端口（见 ioc/cert_alert.go）
 // （未配置仅停用邮件通道并告警，webhook 不受影响——4.3 Hard）。
 func InitCertModule(db *mongox.Mongo, camModule *cam.Module) (*cert.Module, error) {
 	logger := elog.DefaultLogger
@@ -42,19 +47,39 @@ func InitCertModule(db *mongox.Mongo, camModule *cam.Module) (*cert.Module, erro
 		logger.Warn("cert: cam 任务队列不可用，变更项子任务派发降级为显式报错（不阻断启动）")
 	}
 
-	publisher := alertservice.NewCertAlertPublisher(
+	// 证书告警发布器（cert 自持；cert/alertpub 对 alert 零 import）：
+	// 通用 SMTP 邮件发送与投递记录持久化由本组合根用 alert 既有基建适配到
+	// cert 端口（见 ioc/cert_alert.go）。SMTP 未配置 → email sink 传 nil，
+	// 发布器据此停用邮件通道并告警，webhook 不受影响（4.3 Hard）。
+	smtp := loadCertSMTPConfig()
+	var emailSink alertpub.EmailSink
+	if smtp.Host != "" {
+		emailSink = certEmailSinkAdapter{cfg: smtp}
+	}
+	publisher := alertpub.NewCertAlertPublisher(
 		repository.NewAlertConfigRepository(db),
-		alertdao.NewAlertDAO(db),
-		alertservice.LoadCertSMTPConfig(),
+		certDeliveryRecorderAdapter{dao: alertdao.NewAlertDAO(db)},
+		emailSink,
 		logger,
 	)
 	// DNS 记录只读端口（cam/dns 模块暴露）：未装配时 dnsSource=nil，cert probe
 	// 回退台账 SAN 路径；装配后 ProbeAllTenantDNS 以 DNS 记录为源覆盖通配符子域名。
+	// adapter 将 cam/dns.RecordReadPort 的 ProbeTarget/LinkedResource 翻译为 cert
+	// 自有投影，使 cert 不再 import internal/cam/dns（见 ioc/cert_dns.go）。
 	var dnsSource certservice.DNSRecordSource
 	if camModule != nil && camModule.DNSRecordReadPort != nil {
-		dnsSource = camModule.DNSRecordReadPort
+		dnsSource = certDNSRecordSource{port: camModule.DNSRecordReadPort}
 	}
-	return cert.InitCertModule(db, logger, accounts, instances, queue, publisher, dnsSource)
+
+	// 变更单审计服务（7.2）：DAO 构造 + 索引初始化属持久化装配，置于组合根；
+	// 索引失败仅告警不阻断启动（缺索引仅影响去重键唯一性约束，流水写入/查询不受阻）。
+	auditDAO := auditdao.NewChangeOrderAuditDAO(db)
+	if err := auditDAO.InitIndexes(context.Background()); err != nil {
+		logger.Error("cert: 变更单审计索引初始化失败（仅告警，不阻断启动）", elog.FieldErr(err))
+	}
+	audits := auditservice.NewChangeOrderAuditService(auditDAO, logger)
+
+	return cert.InitCertModule(db, logger, accounts, assetInstanceCounter{repo: instances}, queue, publisher, dnsSource, certAuditStore{svc: audits})
 }
 
 // initCertJobs 构建 cert 域 10 类定时任务（9 个调度点）的 ecron 组件（任务 7.1；

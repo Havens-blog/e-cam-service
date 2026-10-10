@@ -1,0 +1,75 @@
+# cert-server 独立服务配置样例（cert 服务抽取 · 可独立部署入口）。
+# 用法：go run ./cmd/cert-server config/cert-server.example.yaml
+# 或：cert-server /path/to/your-config.yaml（省略则默认 config/prod.yaml）
+#
+# 所有值均为占位符，请按环境替换。标注 [必填] 的键缺失会 fail-closed 拒绝启动
+# （cert 路由绝不无认证裸露）。
+
+# HTTP 监听端口（省略则默认 8081）。
+cert-server:
+  port: "8081"
+
+  # 出站上游形态（cert 服务抽取 · 本地/远程 adapter + feature flag）。
+  # 每个端口可独立选 local（默认，同库仓储）或 remote（HTTP 调上游服务）。
+  # fail-closed：mode=remote 但 base_url 为空即拒绝启动，不静默回退本地。
+  # 默认走本地，灰度时逐个端口切 remote。
+  upstream:
+    instance_counter:
+      mode: "local"              # local | remote
+      # base_url: "http://asset-service:8080"   # mode=remote 时必填
+      # 远程契约：GET {base_url}/internal/v1/instances/count?modelUid=<uid> -> {"count": <int64>}
+
+    cloud_account_lister:
+      mode: "local"              # local | remote
+      # base_url: "https://account-service:8443"   # mode=remote 时必填
+      # 安全闸：云账号凭据（AK/SK）过 HTTP 内部跳转，remote 默认强制 https，
+      # 明文 http 即 fail-closed 拒绝启动；如上游在 mTLS 服务网格内可显式设
+      # allow_insecure: true。
+      # allow_insecure: false
+      # 远程契约（线上类型复用共享 SDK CloudAccount，零翻译）：
+      #   GET {base}/internal/v1/cloud-accounts?status=&provider=&environment=&tenantId=&offset=&limit=
+      #   -> {"accounts":[CloudAccount...], "total": <int64>}
+
+    audit_store:
+      mode: "local"              # local | remote
+      # base_url: "http://audit-service:8080"   # mode=remote 时必填
+      # 远程契约（含写路径 + dedup 幂等）：
+      #   POST {base}/internal/v1/change-audit                     (Record)
+      #   POST {base}/internal/v1/change-audit/dedup               -> {"inserted": <bool>}
+      #   GET  {base}/internal/v1/change-audit?orderId=<id>        -> {"entries":[...]}
+      #   GET  {base}/internal/v1/change-audit/orphan-cleanup?orderId=<id> -> {"entries":[...]}
+      #   GET  {base}/internal/v1/change-audit/unmet-domains?orderId=<id>  -> {"domains":[...]}
+
+# cert 信封加密的 fallback 主密钥源。未配置独立 env EIAM_CERT_MASTER_KEY_V<n>
+# 时，cert 降级复用此 key 派生 V1 主密钥（与单体同源，隔离性弱于独立 env）。
+security:
+  encryption_key: "<16+ 字节加密密钥>"
+
+# 会话鉴权 [必填]：须与签发会话的 eiam / 单体共享同一 key 和 cookie，
+# 否则本服务读取会话一律判为"无效或已过期"。
+session:
+  session_encrypted_key: "<与 eiam 一致的会话加密密钥>" # [必填]
+  cookie:
+    domain: ".example.com"   # [必填] 与签发方一致
+    name: "ecmdb-token-key"  # [必填] 与签发方一致
+
+# redis [必填]：addr 必填。db 必须与 eiam 写入 session 的 db 一致
+# （eiam 往该 db 写、本服务从同一 db 读校验，不一致即会话失效）。
+redis:
+  addr: "<host:port>"   # [必填]
+  password: "<redis 密码，无则留空>"
+  db: 1
+
+# mongodb [必填]：dsn/db 必填；username/password 有则注入 DSN。
+# cert 域全部集合为 cert_ 前缀，可指向独立库或与单体共库（数据归属不变）。
+mongodb:
+  dsn: "mongodb://<host:port>/<db>?authSource=admin"  # [必填]
+  db: "<db 名>"                                        # [必填]
+  username: "<用户名>"
+  password: "<密码>"
+
+# 认证白名单（无需会话的路径）。健康检查 /api/v1/certs/health 由程序自动加入，
+# 此处无需重复；按需追加其他放行路径。
+auth:
+  whitelist:
+    - "/api/v1/certs/health"

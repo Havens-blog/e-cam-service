@@ -57,12 +57,12 @@ func TestExpandAssetTypes_AggregateTypes(t *testing.T) {
 		{
 			name:     "network展开",
 			input:    []string{"network"},
-			expected: []string{"vpc", "vswitch", "eip", "eni", "lb", "cdn", "waf", "dns"},
+			expected: []string{"vpc", "vswitch", "eip", "eni", "lb", "cdn", "waf", "ddos", "dns"},
 		},
 		{
 			name:     "net别名",
 			input:    []string{"net"},
-			expected: []string{"vpc", "vswitch", "eip", "eni", "lb", "cdn", "waf", "dns"},
+			expected: []string{"vpc", "vswitch", "eip", "eni", "lb", "cdn", "waf", "ddos", "dns"},
 		},
 		{
 			name:     "storage展开",
@@ -146,7 +146,7 @@ func TestExpandAssetTypes_AllAggregates(t *testing.T) {
 	expectedTypes := []string{
 		"ecs", "disk", "snapshot", "security_group", "image",
 		"rds", "redis", "mongodb",
-		"vpc", "vswitch", "eip", "eni", "lb", "cdn", "waf", "dns",
+		"vpc", "vswitch", "eip", "eni", "lb", "cdn", "waf", "ddos", "dns",
 		"nas", "oss",
 		"kafka", "elasticsearch",
 	}

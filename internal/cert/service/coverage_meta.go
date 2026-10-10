@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"sort"
 
-	assetdomain "github.com/Havens-blog/e-cam-service/internal/asset/domain"
-	assetrepo "github.com/Havens-blog/e-cam-service/internal/asset/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 )
 
@@ -168,11 +166,11 @@ var scanProviders = []domain.Cloud{
 // asset 在用实例（独立于证书域维护的 ecam_instance 盘点集合）。
 // 候选表未覆盖的自定义 model_uid 不计入（分母口径保守；配合 -1 失效规则兜底）。
 type assetRepositoryCounts struct {
-	instances assetrepo.InstanceRepository
+	instances InstanceCounter
 }
 
 // NewAssetRepositoryCounts 创建 asset 盘点计数器。
-func NewAssetRepositoryCounts(instances assetrepo.InstanceRepository) AssetCountSource {
+func NewAssetRepositoryCounts(instances InstanceCounter) AssetCountSource {
 	return &assetRepositoryCounts{instances: instances}
 }
 
@@ -182,7 +180,7 @@ func (a *assetRepositoryCounts) Counts(ctx context.Context) (map[CloudProductKey
 	for _, provider := range scanProviders {
 		for suffix, product := range assetModelProductMap {
 			modelUID := fmt.Sprintf("%s_%s", provider, suffix)
-			n, err := a.instances.Count(ctx, assetdomain.InstanceFilter{ModelUID: modelUID})
+			n, err := a.instances.CountByModelUID(ctx, modelUID)
 			if err != nil {
 				return nil, fmt.Errorf("cert: asset inventory count %s: %w", modelUID, err)
 			}

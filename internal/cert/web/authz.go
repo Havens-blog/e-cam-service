@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -106,5 +105,5 @@ func RequireRoles(allowed ...Role) gin.HandlerFunc {
 
 // operator 从上下文取操作者名（审计/豁免 operator 字段；认证中间件注入）。
 func operator(c *gin.Context) string {
-	return middleware.GetUsername(c)
+	return operatorUsername(c)
 }

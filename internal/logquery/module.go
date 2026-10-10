@@ -1,4 +1,4 @@
-﻿// Package logquery 多云统一日志查询功能域(Phase 1)。
+// Package logquery 多云统一日志查询功能域(Phase 1)。
 //
 // 装配入口(照 internal/cert/module.go 模式):service(联邦编排)+ web(三接口)。
 // 只读域:无 repository(Phase A 不落库,ADR D1);云账号凭证经
@@ -8,7 +8,6 @@
 package logquery
 
 import (
-	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
 	"github.com/Havens-blog/e-cam-service/internal/logquery/diagwatch"
 	"github.com/Havens-blog/e-cam-service/internal/logquery/service"
 	"github.com/Havens-blog/e-cam-service/internal/logquery/web"
@@ -32,9 +31,11 @@ type Module struct {
 // InitLogQueryModule 装配日志查询功能域。
 //
 // deps:
-//   - accounts:云账号仓储(凭证解密在仓储读取路径完成)
+//   - accounts:云账号只读源(service.AccountSource 消费端口;生产实现由
+//     account 仓储结构性满足,凭证解密在仓储读取路径完成。diagwatch.AccountSource
+//     方法集与之一致,同一值通喂两个编排器)
 //   - logger:日志组件(nil 回退默认)
-func InitLogQueryModule(accounts accountrepo.CloudAccountRepository, logger *elog.Component) (*Module, error) {
+func InitLogQueryModule(accounts service.AccountSource, logger *elog.Component) (*Module, error) {
 	if accounts == nil {
 		return nil, errNilAccounts
 	}

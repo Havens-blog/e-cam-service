@@ -295,7 +295,7 @@ func (s *Server) handleGetAssetStatistics(ctx context.Context, request mcp.CallT
 		"vpc", "eip", "vswitch", "lb",
 		"disk", "snapshot", "security_group", "image",
 		"nas", "oss", "kafka", "elasticsearch",
-		"cdn", "waf",
+		"cdn", "waf", "ddos",
 	}
 
 	stats := make(map[string]int64)
@@ -357,6 +357,7 @@ func mapAssetTypeToModelUID(assetType string) string {
 		"elasticsearch":  "elasticsearch",
 		"cdn":            "cdn",
 		"waf":            "waf",
+		"ddos":           "ddos",
 	}
 
 	if uid, ok := mapping[assetType]; ok {

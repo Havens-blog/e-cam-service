@@ -1,0 +1,35 @@
+{
+  "contract_version": 1,
+  "note": "CMDB 内部跨服务契约快照。权威源 = e-cmdb-service 生产方。任何改动必须同时更新两个仓中这份字节相同的副本 + 两侧实现，否则对应仓的 contract_test 变红。跨仓强一致需要一个同时 checkout 两仓并 diff 两份副本的 CI job（超出单仓测试范围，见测试注释）。",
+  "path_prefix": "/api/v1/cmdb/internal",
+  "endpoints": [
+    { "method": "POST", "subpath": "/instances/batch-get" },
+    { "method": "GET", "subpath": "/instances/unbound" },
+    { "method": "GET", "subpath": "/instances/unbound/count" },
+    { "method": "POST", "subpath": "/stats/by-ids" },
+    { "method": "GET", "subpath": "/stats/all" },
+    { "method": "GET", "subpath": "/stats/unbound" }
+  ],
+  "dtos": {
+    "instance": {
+      "id": "int64",
+      "model_uid": "string",
+      "asset_id": "string",
+      "asset_name": "string",
+      "tenant_id": "int64",
+      "account_id": "int64",
+      "attributes": "map[string]interface{}",
+      "create_time": "int64",
+      "update_time": "int64"
+    },
+    "stats": {
+      "total": "int64",
+      "by_asset_type": "[]typecount",
+      "by_provider": "[]typecount"
+    },
+    "typecount": {
+      "key": "string",
+      "count": "int64"
+    }
+  }
+}

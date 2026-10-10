@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"context"
@@ -32,8 +32,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "加密组件初始化失败: %v\n", err)
 	}
 
-	// 初始化 MCP Server 依赖
-	deps, err := mcp.InitDependencies()
+	// 初始化 MCP Server 依赖（命令层组合根装配，见 deps.go）
+	deps, err := buildDependencies()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "初始化依赖失败: %v\n", err)
 		os.Exit(1)

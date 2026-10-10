@@ -28,6 +28,7 @@ func resourceTypeToModelUID(resourceType string) bson.M {
 		"oss":            {"_oss", "cloud_oss"},
 		"cdn":            {"_cdn", "cloud_cdn"},
 		"waf":            {"_waf", "cloud_waf"},
+		"ddos":           {"_ddos", "cloud_ddos"},
 		"disk":           {"_disk", "cloud_disk"},
 		"snapshot":       {"_snapshot", "cloud_snapshot"},
 		"security_group": {"_security_group", "cloud_security_group"},

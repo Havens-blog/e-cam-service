@@ -1,4 +1,4 @@
-﻿package cam
+package cam
 
 import (
 	"context"
@@ -25,8 +25,6 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree"
 	"github.com/Havens-blog/e-cam-service/internal/cam/tag"
 	"github.com/Havens-blog/e-cam-service/internal/cam/template"
-	cmdbrepository "github.com/Havens-blog/e-cam-service/internal/cmdb/repository"
-	cmdbdao "github.com/Havens-blog/e-cam-service/internal/cmdb/repository/dao"
 	"github.com/Havens-blog/e-cloudx-sdk"
 	shareddomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-common-go/mongox"
@@ -67,13 +65,9 @@ func InitModuleWithIAM(db *mongox.Mongo, redisClient redis.Cmdable, alertModule 
 	instanceDAO := dao.NewInstanceDAO(db)
 	instanceRepo := repository.NewInstanceRepository(instanceDAO)
 
-	// 创建 CMDB InstanceRepository 用于节点资产查询
-	cmdbInstanceDAO := cmdbdao.NewInstanceDAO(db)
-	cmdbInstanceRepo := cmdbrepository.NewInstanceRepository(cmdbInstanceDAO)
-
 	// 初始化服务树模块
 	logger.Info("开始初始化服务树模块")
-	stModule, err := servicetree.InitModule(db, instanceRepo, cmdbInstanceRepo, logger)
+	stModule, err := servicetree.InitModule(db, instanceRepo, logger)
 	if err != nil {
 		logger.Error("初始化服务树模块失败", elog.FieldErr(err))
 		return nil, err

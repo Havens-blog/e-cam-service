@@ -9,11 +9,10 @@ package servicetree
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/adapter"
-	repository3 "github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository"
+	repository2 "github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/web"
-	repository2 "github.com/Havens-blog/e-cam-service/internal/cmdb/repository"
 	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/google/wire"
 	"github.com/gotomicro/ego/core/elog"
@@ -22,21 +21,21 @@ import (
 // Injectors from wire.go:
 
 // InitModule 初始化服务树模块
-// instanceRepo 从 cam 模块注入，用于规则引擎查询实例
-// cmdbRepo 从 cmdb 模块注入，通过 adapter 转换为 port.CMDBPort
-func InitModule(db *mongox.Mongo, instanceRepo repository.InstanceRepository, cmdbRepo repository2.InstanceRepository, logger *elog.Component) (*Module, error) {
+// instanceRepo 从 cam 模块注入，用于规则引擎查询实例；
+// CMDB 数据经 adapter.NewCMDBPort 走远程 e-cmdb-service（配置 cmdb.remote_url）。
+func InitModule(db *mongox.Mongo, instanceRepo repository.InstanceRepository, logger *elog.Component) (*Module, error) {
 	nodeDAO := dao.NewNodeDAO(db)
-	nodeRepository := repository3.NewNodeRepository(nodeDAO)
+	nodeRepository := repository2.NewNodeRepository(nodeDAO)
 	bindingDAO := dao.NewBindingDAO(db)
-	bindingRepository := repository3.NewBindingRepository(bindingDAO)
+	bindingRepository := repository2.NewBindingRepository(bindingDAO)
 	treeService := service.NewTreeService(nodeRepository, bindingRepository, logger)
 	bindingService := service.NewBindingService(bindingRepository, nodeRepository, logger)
 	ruleDAO := dao.NewRuleDAO(db)
-	ruleRepository := repository3.NewRuleRepository(ruleDAO)
+	ruleRepository := repository2.NewRuleRepository(ruleDAO)
 	environmentDAO := dao.NewEnvironmentDAO(db)
-	environmentRepository := repository3.NewEnvironmentRepository(environmentDAO)
+	environmentRepository := repository2.NewEnvironmentRepository(environmentDAO)
 	ruleEngineService := service.NewRuleEngineService(ruleRepository, bindingRepository, nodeRepository, instanceRepo, environmentRepository, logger)
-	cmdbPort := adapter.NewCMDBPort(cmdbRepo)
+	cmdbPort := adapter.NewCMDBPort()
 	nodeAssetService := service.NewNodeAssetService(bindingRepository, nodeRepository, cmdbPort, environmentRepository, logger)
 	handler := web.NewHandler(treeService, bindingService, ruleEngineService, nodeAssetService)
 	environmentService := service.NewEnvironmentService(environmentRepository, bindingRepository, logger)
@@ -48,4 +47,4 @@ func InitModule(db *mongox.Mongo, instanceRepo repository.InstanceRepository, cm
 // wire.go:
 
 // ProviderSet 服务树模块依赖注入集合
-var ProviderSet = wire.NewSet(dao.NewNodeDAO, dao.NewBindingDAO, dao.NewRuleDAO, dao.NewEnvironmentDAO, repository3.NewNodeRepository, repository3.NewBindingRepository, repository3.NewRuleRepository, repository3.NewEnvironmentRepository, adapter.NewCMDBPort, service.NewTreeService, service.NewBindingService, service.NewRuleEngineService, service.NewEnvironmentService, service.NewNodeAssetService, web.NewHandler, web.NewEnvHandler)
+var ProviderSet = wire.NewSet(dao.NewNodeDAO, dao.NewBindingDAO, dao.NewRuleDAO, dao.NewEnvironmentDAO, repository2.NewNodeRepository, repository2.NewBindingRepository, repository2.NewRuleRepository, repository2.NewEnvironmentRepository, adapter.NewCMDBPort, service.NewTreeService, service.NewBindingService, service.NewRuleEngineService, service.NewEnvironmentService, service.NewNodeAssetService, web.NewHandler, web.NewEnvHandler)

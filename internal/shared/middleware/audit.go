@@ -9,13 +9,45 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
-	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
 
 const maxRequestBodySize = 4096
+
+// 审计结果/操作类型字面量（与 internal/audit/domain 的 AuditResult*/
+// AuditOpAPIGeneric 取值一致）。本中间件为 internal/shared 叶子包，刻意不
+// import 具体领域；领域类型的翻译由组合根（ioc）在 AuditSink 实现侧完成。
+const (
+	auditResultSuccess = "success"
+	auditResultFailed  = "failed"
+	auditOpAPIGeneric  = "api_generic"
+)
+
+// AuditEntry 中间件产出的、与具体领域解耦的审计记录（纯基本类型）。
+// 组合根负责将其翻译为 audit 领域的持久化模型。
+type AuditEntry struct {
+	OperationType string
+	OperatorID    string
+	OperatorName  string
+	TenantID      int64
+	HTTPMethod    string
+	APIPath       string
+	RequestBody   string
+	StatusCode    int
+	Result        string
+	RequestID     string
+	DurationMs    int64
+	ClientIP      string
+	UserAgent     string
+	Ctime         int64
+}
+
+// AuditSink 审计落袋端（消费方接口）。实现由组合根基于 audit 领域 DAO 注入，
+// 使本包无需 import internal/audit（R2：shared 保持叶子）。
+type AuditSink interface {
+	Write(ctx context.Context, e AuditEntry) error
+}
 
 // 敏感字段列表
 var sensitiveFields = map[string]bool{
@@ -28,13 +60,13 @@ var sensitiveFields = map[string]bool{
 
 // AuditMiddleware API 操作审计中间件
 type AuditMiddleware struct {
-	auditDAO dao.AuditLogDAO
-	logger   *elog.Component
+	sink   AuditSink
+	logger *elog.Component
 }
 
 // NewAuditMiddleware 创建审计中间件
-func NewAuditMiddleware(auditDAO dao.AuditLogDAO, logger *elog.Component) *AuditMiddleware {
-	return &AuditMiddleware{auditDAO: auditDAO, logger: logger}
+func NewAuditMiddleware(sink AuditSink, logger *elog.Component) *AuditMiddleware {
+	return &AuditMiddleware{sink: sink, logger: logger}
 }
 
 // auditResponseWriter 包装 ResponseWriter 以捕获状态码
@@ -87,9 +119,9 @@ func (m *AuditMiddleware) Build() gin.HandlerFunc {
 
 		// 异步写入审计日志
 		statusCode := writer.statusCode
-		result := domain.AuditResultSuccess
+		result := auditResultSuccess
 		if statusCode >= 400 {
-			result = domain.AuditResultFailed
+			result = auditResultFailed
 		}
 
 		uid := fmt.Sprintf("%d", GetUid(c))
@@ -100,7 +132,7 @@ func (m *AuditMiddleware) Build() gin.HandlerFunc {
 		opType := inferOperationType(path, method)
 		durationMs := time.Since(start).Milliseconds()
 
-		auditLog := domain.AuditLog{
+		entry := AuditEntry{
 			OperationType: opType,
 			OperatorID:    uid,
 			OperatorName:  username,
@@ -120,7 +152,7 @@ func (m *AuditMiddleware) Build() gin.HandlerFunc {
 		// 异步写入，不阻塞请求
 		go func() {
 			ctx := context.WithoutCancel(context.Background())
-			if _, err := m.auditDAO.Create(ctx, auditLog); err != nil {
+			if err := m.sink.Write(ctx, entry); err != nil {
 				m.logger.Warn("写入审计日志失败",
 					elog.FieldErr(err),
 					elog.String("path", path),
@@ -163,7 +195,7 @@ func sanitizeMap(data map[string]interface{}) {
 }
 
 // inferOperationType 根据 URL path 和 HTTP method 推断操作类型
-func inferOperationType(path, method string) domain.AuditOperationType {
+func inferOperationType(path, method string) string {
 	// 提取资源名称（cam 域沿用既有口径：去 /api/v1/cam/ 前缀取首段）
 	prefix := "/api/v1/cam/"
 	if strings.HasPrefix(path, "/api/v1/certs") {
@@ -178,18 +210,18 @@ func inferOperationType(path, method string) domain.AuditOperationType {
 				break
 			}
 		}
-		return domain.AuditOperationType(fmt.Sprintf("api_%s_%s", resource, actionOf(method, parts)))
+		return fmt.Sprintf("api_%s_%s", resource, actionOf(method, parts))
 	}
 	parts := strings.Split(strings.TrimPrefix(path, prefix), "/")
 	if len(parts) == 0 {
-		return domain.AuditOpAPIGeneric
+		return auditOpAPIGeneric
 	}
 
 	resource := parts[0]
 	// 处理复数形式
 	resource = strings.TrimSuffix(resource, "s")
 
-	return domain.AuditOperationType(fmt.Sprintf("api_%s_%s", resource, actionOf(method, parts)))
+	return fmt.Sprintf("api_%s_%s", resource, actionOf(method, parts))
 }
 
 // actionOf 按 method 推断动作（sync 尾段特判沿用既有口径）。

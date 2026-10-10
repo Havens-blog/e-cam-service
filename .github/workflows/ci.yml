@@ -9,7 +9,7 @@ on:
     types: [ published ]
 
 env:
-  GO_VERSION: '1.24.1'
+  GO_VERSION: '1.25.5'
   PROJECT_NAME: e-cam-service
 
 jobs:
@@ -97,6 +97,14 @@ jobs:
     - name: Run go vet
       run: |
         go vet ./...
+
+    - name: Check domain boundaries (depcheck)
+      run: |
+        go run ./scripts/depcheck
+
+    - name: Check cert-server deployability closure (deploycheck)
+      run: |
+        go run ./scripts/deploycheck
 
   build:
     name: Build

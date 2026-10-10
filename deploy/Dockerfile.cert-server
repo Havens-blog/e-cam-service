@@ -1,0 +1,58 @@
+# cert-server 独立服务镜像（cert 服务抽取 · 可独立部署入口）。
+# 构建方式: docker build -f deploy/Dockerfile.cert-server -t e-cert-service:1.0 .
+#
+# 与主服务镜像的关键差异：
+#   - 不执行 wire gen——cert-server 不 import ioc，装配在 cmd/cert-server 内手写。
+#   - 构建目标为 ./cmd/cert-server，产物仅链接 cert + account/asset/audit/shared，
+#     不含 cam/cmdb/alert 等重单体域（见 cmd/cert-server/deps.go）。
+#   - 健康检查打 cert 自己的 /api/v1/certs/health。
+
+# 构建阶段（Go 版本对齐 go.mod：1.25.5）
+FROM golang:1.25.5-alpine AS builder
+
+RUN apk add --no-cache git
+
+WORKDIR /app
+
+# 复制 go mod 文件并下载依赖（利用层缓存）
+COPY go.mod go.sum ./
+RUN go mod download
+
+# 复制源代码
+COPY . .
+
+# 构建 cert-server（无需 wire gen）
+ARG VERSION=dev
+ARG BUILD_TIME
+ARG COMMIT_HASH
+
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags "-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.CommitHash=${COMMIT_HASH}" \
+    -a -installsuffix cgo \
+    -o cert-server ./cmd/cert-server
+
+# 运行阶段
+FROM alpine:3.19
+
+RUN apk --no-cache add ca-certificates tzdata
+
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup
+
+WORKDIR /app
+
+COPY --from=builder /app/cert-server .
+# 仅复制配置样例；生产应以 secret/configmap 挂载真实配置覆盖。
+COPY --from=builder /app/config/cert-server.example.yaml ./config/cert-server.example.yaml
+
+RUN mkdir -p logs && chown -R appuser:appgroup /app
+
+USER appuser
+
+EXPOSE 8081
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8081/api/v1/certs/health || exit 1
+
+# 配置路径作为参数；生产以挂载的真实配置覆盖样例路径。
+CMD ["./cert-server", "config/cert-server.example.yaml"]

@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"strings"
 
-	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
 	certdomain "github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
@@ -85,14 +84,14 @@ const (
 
 type k8sCredentialFetchService struct {
 	csGateway AliyunCSGateway
-	accounts  accountrepo.CloudAccountRepository
+	accounts  CloudAccountLister
 	creds     K8sCredentialService
 }
 
 // NewK8sCredentialFetchService 创建拉取编排服务。
 func NewK8sCredentialFetchService(
 	csGateway AliyunCSGateway,
-	accounts accountrepo.CloudAccountRepository,
+	accounts CloudAccountLister,
 	creds K8sCredentialService,
 ) K8sCredentialFetchService {
 	return &k8sCredentialFetchService{csGateway: csGateway, accounts: accounts, creds: creds}

@@ -230,6 +230,13 @@ func matchAssetType(modelUID, assetType string) bool {
 			modelUID == "huawei_waf" ||
 			modelUID == "tencent_waf" ||
 			modelUID == "volcano_waf" || modelUID == "volcengine_waf"
+	case "ddos":
+		return modelUID == "ddos" || modelUID == "cloud_ddos" ||
+			modelUID == "aliyun_ddos" ||
+			modelUID == "aws_ddos" ||
+			modelUID == "huawei_ddos" ||
+			modelUID == "tencent_ddos" ||
+			modelUID == "volcano_ddos" || modelUID == "volcengine_ddos"
 	case "eni":
 		return modelUID == "eni" || modelUID == "cloud_eni" ||
 			modelUID == "aliyun_eni" ||

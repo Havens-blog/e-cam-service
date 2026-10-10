@@ -3,7 +3,6 @@ package service
 import (
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/dns"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 )
 
@@ -48,7 +47,7 @@ func TestCoverageIndex_Covers(t *testing.T) {
 }
 
 func TestLinkedResourceType(t *testing.T) {
-	if got := linkedResourceType(&dns.LinkedResource{Type: "cdn"}); got != "cdn" {
+	if got := linkedResourceType(&DNSLinkedResource{Type: "cdn"}); got != "cdn" {
 		t.Errorf("got %q", got)
 	}
 	if got := linkedResourceType(nil); got != "" {
@@ -70,9 +69,9 @@ func TestRefIndexMatches(t *testing.T) {
 		"cdn|www.example.com": {"fp-real": true},
 		"cdn|api.example.com": {"fp-real": true},
 	}
-	cdn := &dns.LinkedResource{Type: "cdn"}
-	waf := &dns.LinkedResource{Type: "waf"}
-	ext := &dns.LinkedResource{Type: "external"}
+	cdn := &DNSLinkedResource{Type: "cdn"}
+	waf := &DNSLinkedResource{Type: "waf"}
+	ext := &DNSLinkedResource{Type: "external"}
 
 	// CDN hostname 命中引用且指纹一致 → true
 	if !refIndexMatches(idx, cdn, "www.example.com", "fp-real") {
@@ -109,7 +108,7 @@ func TestRefIndexMatches_ExternalALB(t *testing.T) {
 	idx := map[string]map[string]bool{
 		"alb|www.example.com": {"fp-alb": true},
 	}
-	ext := &dns.LinkedResource{Type: "external"}
+	ext := &DNSLinkedResource{Type: "external"}
 
 	// 命中 ALB 索引且指纹一致 → true
 	if !refIndexMatches(idx, ext, "www.example.com", "fp-alb") {

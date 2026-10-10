@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -398,7 +398,7 @@ func (s *cloudAccountService) SyncAccount(ctx context.Context, id int64, req *do
 		assetTypes = []string{
 			"ecs", "disk", "snapshot", "security_group", "image",
 			"rds", "redis", "mongodb",
-			"vpc", "eip", "lb", "vswitch", "cdn", "waf", "dns",
+			"vpc", "eip", "lb", "vswitch", "cdn", "waf", "ddos", "dns",
 			"nas", "oss",
 			"kafka", "elasticsearch",
 		}

@@ -5,34 +5,37 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
-	"github.com/Havens-blog/e-cam-service/internal/audit/service"
 	certservice "github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/gotomicro/ego/core/elog"
 )
 
-// fakeChangeOrderAuditDAO 内存 DAO（追加即存；去重键命中即 inserted=false）。
-type fakeChangeOrderAuditDAO struct {
-	entries []domain.ChangeOrderAuditEntry
-	nextID  int64
+// fakeChangeAuditStore 内存 ChangeAuditStore（追加即存；去重键命中即
+// inserted=false）。复刻 internal/audit 单集合仅追加语义：RecordDedup 按
+// (OrderID, Action, DedupKey) 去重；ListUnmetDomains 倒序取最近一条非空；
+// ListOrphanCleanupResults 按 action 过滤。桥仅依赖 cert 中性端口，故测试亦
+// 不 import internal/audit。
+type fakeChangeAuditStore struct {
+	entries []certservice.ChangeAuditEntry
 }
 
-func (f *fakeChangeOrderAuditDAO) Append(_ context.Context, e domain.ChangeOrderAuditEntry) (int64, bool, error) {
+func (f *fakeChangeAuditStore) Record(_ context.Context, e certservice.ChangeAuditEntry) error {
+	f.entries = append(f.entries, e)
+	return nil
+}
+
+func (f *fakeChangeAuditStore) RecordDedup(_ context.Context, e certservice.ChangeAuditEntry) (bool, error) {
 	if e.DedupKey != "" {
 		for _, ex := range f.entries {
 			if ex.OrderID == e.OrderID && ex.Action == e.Action && ex.DedupKey == e.DedupKey {
-				return ex.ID, false, nil
+				return false, nil
 			}
 		}
 	}
-	f.nextID++
-	e.ID = f.nextID
 	f.entries = append(f.entries, e)
-	return e.ID, true, nil
+	return true, nil
 }
 
-func (f *fakeChangeOrderAuditDAO) ListByOrder(_ context.Context, orderID string) ([]domain.ChangeOrderAuditEntry, error) {
-	var out []domain.ChangeOrderAuditEntry
+func (f *fakeChangeAuditStore) ListByOrder(_ context.Context, orderID string) ([]certservice.ChangeAuditEntry, error) {
+	var out []certservice.ChangeAuditEntry
 	for _, e := range f.entries {
 		if e.OrderID == orderID {
 			out = append(out, e)
@@ -41,21 +44,30 @@ func (f *fakeChangeOrderAuditDAO) ListByOrder(_ context.Context, orderID string)
 	return out, nil
 }
 
-func (f *fakeChangeOrderAuditDAO) ListByOrderAction(_ context.Context, orderID, action string) ([]domain.ChangeOrderAuditEntry, error) {
-	var out []domain.ChangeOrderAuditEntry
+func (f *fakeChangeAuditStore) ListOrphanCleanupResults(_ context.Context, orderID string) ([]certservice.ChangeAuditEntry, error) {
+	var out []certservice.ChangeAuditEntry
 	for _, e := range f.entries {
-		if e.OrderID == orderID && e.Action == action {
+		if e.OrderID == orderID && e.Action == certservice.AuditActionOrphanCleanup {
 			out = append(out, e)
 		}
 	}
 	return out, nil
 }
 
-func (f *fakeChangeOrderAuditDAO) InitIndexes(context.Context) error { return nil }
+func (f *fakeChangeAuditStore) ListUnmetDomains(_ context.Context, orderID string) ([]string, error) {
+	// at 升序（插入序等价）；自尾向前取最近一条非空清单。
+	for i := len(f.entries) - 1; i >= 0; i-- {
+		e := f.entries[i]
+		if e.OrderID == orderID && e.Action == certservice.AuditActionVerify && len(e.UnmetDomains) > 0 {
+			return e.UnmetDomains, nil
+		}
+	}
+	return []string{}, nil
+}
 
-func newBridgeForTest() (*changeAuditBridge, *fakeChangeOrderAuditDAO) {
-	fake := &fakeChangeOrderAuditDAO{}
-	return &changeAuditBridge{audits: service.NewChangeOrderAuditService(fake, elog.DefaultLogger)}, fake
+func newBridgeForTest() (*changeAuditBridge, *fakeChangeAuditStore) {
+	fake := &fakeChangeAuditStore{}
+	return &changeAuditBridge{store: fake}, fake
 }
 
 // TestAuditBridge_WriteAndListByOrder 写入→按单读取往返：ChangeAuditEvent

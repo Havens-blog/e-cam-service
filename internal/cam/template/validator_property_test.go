@@ -1,4 +1,4 @@
-﻿package template
+package template
 
 import (
 	"context"
@@ -52,6 +52,7 @@ func (a *noopCloudAdapter) VSwitch() cloudx.VSwitchAdapter              { return
 func (a *noopCloudAdapter) LB() cloudx.LBAdapter                        { return nil }
 func (a *noopCloudAdapter) CDN() cloudx.CDNAdapter                      { return nil }
 func (a *noopCloudAdapter) WAF() cloudx.WAFAdapter                      { return nil }
+func (a *noopCloudAdapter) DDOS() cloudx.DDOSAdapter                    { return nil }
 func (a *noopCloudAdapter) DNS() cloudx.DNSAdapter                      { return nil }
 func (a *noopCloudAdapter) ENI() cloudx.ENIAdapter                      { return nil }
 func (a *noopCloudAdapter) NAS() cloudx.NASAdapter                      { return nil }

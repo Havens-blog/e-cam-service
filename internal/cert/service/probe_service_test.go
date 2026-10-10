@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/dns"
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/stretchr/testify/assert"
@@ -765,19 +764,19 @@ func TestNewProbeService_DefaultDialer(t *testing.T) {
 
 // rootTargetSource 单租户固定目标集的 DNS 源（定向探测预检/过滤测试用）。
 type rootTargetSource struct {
-	targets []dns.ProbeTarget
+	targets []DNSProbeTarget
 }
 
 func (f *rootTargetSource) ListTenantsWithRecords(context.Context) ([]int64, error) {
 	return []int64{3}, nil
 }
 
-func (f *rootTargetSource) ListProbeTargets(context.Context, int64) ([]dns.ProbeTarget, error) {
+func (f *rootTargetSource) ListProbeTargets(context.Context, int64) ([]DNSProbeTarget, error) {
 	return f.targets, nil
 }
 
 // newRootProbeHarness 构造带 DNS 源的 probe 服务（dialer 失败即可，不关心结果内容）。
-func newRootProbeHarness(t *testing.T, targets []dns.ProbeTarget) (*probeService, *fakeProbeRepo) {
+func newRootProbeHarness(t *testing.T, targets []DNSProbeTarget) (*probeService, *fakeProbeRepo) {
 	t.Helper()
 	probes := &fakeProbeRepo{}
 	svc := &probeService{
@@ -793,7 +792,7 @@ func newRootProbeHarness(t *testing.T, targets []dns.ProbeTarget) (*probeService
 }
 
 func TestTriggerProbeRootAsyncFiltersByRoot(t *testing.T) {
-	svc, probes := newRootProbeHarness(t, []dns.ProbeTarget{
+	svc, probes := newRootProbeHarness(t, []DNSProbeTarget{
 		{Hostname: "www.easyeda.com", RecordType: "CNAME", TenantID: 3},
 		{Hostname: "easyeda.com", RecordType: "A", TenantID: 3},
 		{Hostname: "api.jlcerp.com", RecordType: "A", TenantID: 3},
@@ -817,7 +816,7 @@ func TestTriggerProbeRootAsyncFiltersByRoot(t *testing.T) {
 }
 
 func TestTriggerProbeRootAsyncNoTargets(t *testing.T) {
-	svc, probes := newRootProbeHarness(t, []dns.ProbeTarget{
+	svc, probes := newRootProbeHarness(t, []DNSProbeTarget{
 		{Hostname: "api.jlcerp.com", RecordType: "A", TenantID: 3},
 	})
 	err := svc.TriggerProbeRootAsync(context.Background(), "easyeda.com")
@@ -826,7 +825,7 @@ func TestTriggerProbeRootAsyncNoTargets(t *testing.T) {
 }
 
 func TestTriggerProbeRootAsyncEmptyEqualsFull(t *testing.T) {
-	svc, _ := newRootProbeHarness(t, []dns.ProbeTarget{
+	svc, _ := newRootProbeHarness(t, []DNSProbeTarget{
 		{Hostname: "www.easyeda.com", RecordType: "CNAME", TenantID: 3},
 	})
 	// 空白参数等价全量触发：占住防重锁后再次触发返回 ErrProbeRunning

@@ -1,4 +1,4 @@
-﻿// Package cert 证书管理功能域（SSL 证书统一托管与更换）。
+// Package cert 证书管理功能域（SSL 证书统一托管与更换）。
 //
 // 本文件为域模块装配入口（任务 7.1）：repository/service/deployer/scheduler/web
 // 全量装配，经 ioc/cert.go 注入 Wire（Layer Placement：与 internal/cam 平级）。
@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"time"
 
-	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
-	assetrepo "github.com/Havens-blog/e-cam-service/internal/asset/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cert/deployer"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/k8s"
@@ -25,10 +23,10 @@ import (
 	aliyuncert "github.com/Havens-blog/e-cloudx-sdk/aliyun"
 	awscert "github.com/Havens-blog/e-cloudx-sdk/aws"
 	azurecert "github.com/Havens-blog/e-cloudx-sdk/azure"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	huaweicert "github.com/Havens-blog/e-cloudx-sdk/huawei"
 	tencentcert "github.com/Havens-blog/e-cloudx-sdk/tencent"
 	volcanocert "github.com/Havens-blog/e-cloudx-sdk/volcano"
-	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gin-gonic/gin"
@@ -94,11 +92,12 @@ type Module struct {
 func InitCertModule(
 	db *mongox.Mongo,
 	logger *elog.Component,
-	accounts accountrepo.CloudAccountRepository,
-	instances assetrepo.InstanceRepository,
+	accounts service.CloudAccountLister,
+	instances service.InstanceCounter,
 	queue *taskx.Queue,
 	publisher service.CertAlertPublisher,
 	dnsSource service.DNSRecordSource,
+	audits service.ChangeAuditStore,
 ) (*Module, error) {
 	if logger == nil {
 		logger = elog.DefaultLogger
@@ -123,7 +122,7 @@ func InitCertModule(
 
 	// ---- 审计桥（7.2）：5.8/5.9/5.10/5.11 审计与报告存档端口统一经
 	// internal/audit 落地（单集合仅追加；索引失败仅告警不阻断启动）----
-	auditBridge := newChangeAuditBridge(db, logger)
+	auditBridge := newChangeAuditBridge(audits)
 
 	// ---- 执行通道（5.3 CloudAPI + 5.6 K8s；六云部署器注册——aliyun/tencent
 	// 既有 + huawei/aws/azure（cert-multicloud-deployers 任务 1~4）+ volcano

@@ -1,4 +1,4 @@
-﻿package dns
+package dns
 
 import (
 	"context"
@@ -111,6 +111,7 @@ func (m *mockCloudAdapter) VSwitch() cloudx.VSwitchAdapter              { return
 func (m *mockCloudAdapter) LB() cloudx.LBAdapter                        { return nil }
 func (m *mockCloudAdapter) CDN() cloudx.CDNAdapter                      { return nil }
 func (m *mockCloudAdapter) WAF() cloudx.WAFAdapter                      { return nil }
+func (m *mockCloudAdapter) DDOS() cloudx.DDOSAdapter                    { return nil }
 func (m *mockCloudAdapter) ENI() cloudx.ENIAdapter                      { return nil }
 func (m *mockCloudAdapter) NAS() cloudx.NASAdapter                      { return nil }
 func (m *mockCloudAdapter) OSS() cloudx.OSSAdapter                      { return nil }

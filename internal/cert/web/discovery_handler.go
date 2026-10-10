@@ -8,7 +8,6 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -186,7 +185,7 @@ func (h *DiscoveryHandler) Import(c *gin.Context) {
 		})
 	}
 
-	operator := middleware.GetUsername(c)
+	operator := operatorUsername(c)
 	if operator == "" {
 		operator = "unknown"
 	}

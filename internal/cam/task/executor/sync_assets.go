@@ -1,4 +1,4 @@
-﻿// Package executor 同步资产任务执行器（异步任务队列，生产环境主入口）
+// Package executor 同步资产任务执行器（异步任务队列，生产环境主入口）
 //
 // 文件：internal/cam/task/executor/sync_assets.go
 //
@@ -238,6 +238,18 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 		}
 		syncCtx := context.WithValue(ctx, resourceGroupNamesKey{}, resourceGroupNames)
 
+		// 本账号实际同步的地域 ID 列表(GetRegions 经 params.Regions 过滤),经 ctx 传给
+		// 全局服务型资产的 syncRegion<X>:它们的 canonical 地域守卫必须以"本任务循环
+		// 实际跑哪些地域"为准,而不是 account.Regions[0](两者顺序/内容可不同,不一致
+		// 会令该资产组在每个地域都被跳过,表现为同步 0 行 0 错误)。
+		syncCtx = context.WithValue(syncCtx, syncLoopRegionIDsKey{}, func() []string {
+			ids := make([]string, 0, len(regions))
+			for _, r := range regions {
+				ids = append(ids, r.ID)
+			}
+			return ids
+		}())
+
 		// 同步该账号的所有地域资产(按资产类型互斥;被锁跳过的类型在此汇总)
 		accountSynced := 0
 		accountLocked := false
@@ -460,6 +472,16 @@ type resourceGroupNamesKey struct{}
 func resourceGroupNamesFromCtx(ctx context.Context) map[string]string {
 	names, _ := ctx.Value(resourceGroupNamesKey{}).(map[string]string)
 	return names
+}
+
+// syncLoopRegionIDsKey 本任务循环实际同步的地域 ID 列表的 context 键。
+// 全局服务型资产(DDoS 等)的 canonical 地域守卫用它决定"只执行一次"的那个地域,
+// 避免用 account.Regions[0] 与任务循环地域不一致导致整组被跳过。
+type syncLoopRegionIDsKey struct{}
+
+func syncLoopRegionIDsFromCtx(ctx context.Context) []string {
+	ids, _ := ctx.Value(syncLoopRegionIDsKey{}).([]string)
+	return ids
 }
 
 // diffAndUpsert 通用"对比本地 → 删除过期 → 新增/更新"（同步收敛 Phase 2 S5）。

@@ -1,10 +1,13 @@
-﻿// Package cert 证书管理功能域。
+// Package cert 证书管理功能域。
 //
 // 本文件为 cert 域审计桥（任务 7.2）：5.8 RollbackAuditRecorder、
 // 5.9 OrphanCleanupRecorder、5.10 VerifyWindowRecorder、5.11 读端口
 // （ChangeAuditSource/ChangeUnmetSource/ChangeOrphanCleanupSource）与
-// 7.2 ChangeAuditWriter 的统一生产实现——写入/查询全部经 internal/audit
-// ChangeOrderAuditService（单集合仅追加，Hard Rule：无 update/delete 路径）。
+// 7.2 ChangeAuditWriter 的统一生产实现——写入/查询全部经 cert 中性审计存储
+// 端口 service.ChangeAuditStore（单集合仅追加，Hard Rule：无 update/delete
+// 路径）。本桥对 internal/audit 零 import：存储实现由组合根用 internal/audit
+// ChangeOrderAuditService 适配并注入（审计数据归属推迟到接口背后，为 cert
+// 服务抽取清除出站耦合）。
 package cert
 
 import (
@@ -13,19 +16,14 @@ import (
 	"strconv"
 	"time"
 
-	auditdomain "github.com/Havens-blog/e-cam-service/internal/audit/domain"
-	auditdao "github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
-	auditservice "github.com/Havens-blog/e-cam-service/internal/audit/service"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/Havens-blog/e-common-go/mongox"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // changeAuditBridge cert 域审计桥：实现 service 层全部审计写入/读取端口。
 // 审计失败不阻塞业务主流程（错误上抛由调用方按端口契约处置；本桥负责
-// 日志告警——internal/audit service 层已记 Warn，此处不再重复记）。
+// 日志告警——存储实现层已记 Warn，此处不再重复记）。
 type changeAuditBridge struct {
-	audits *auditservice.ChangeOrderAuditService
+	store service.ChangeAuditStore
 }
 
 // 编译期断言：审计桥实现 cert 域全部审计端口。
@@ -39,14 +37,12 @@ var (
 	_ service.ChangeOrphanCleanupSource = (*changeAuditBridge)(nil)
 )
 
-// newChangeAuditBridge 构造审计桥（Mongo 变更单审计集合 + 索引；索引失败
-// 记日志不阻断装配——缺索引仅影响去重键唯一性约束，流水写入与查询不受阻）。
-func newChangeAuditBridge(db *mongox.Mongo, logger *elog.Component) *changeAuditBridge {
-	dao := auditdao.NewChangeOrderAuditDAO(db)
-	if err := dao.InitIndexes(context.Background()); err != nil {
-		logger.Error("cert: 变更单审计索引初始化失败（仅告警，不阻断启动）", elog.FieldErr(err))
-	}
-	return &changeAuditBridge{audits: auditservice.NewChangeOrderAuditService(dao, logger)}
+// newChangeAuditBridge 构造审计桥：接收组合根已装配的变更单审计存储端口
+// （DAO 构造 + 索引初始化属持久化装配，置于组合根——见 ioc/cert.go；
+// 本领域包仅依赖 cert 中性存储端口 service.ChangeAuditStore，不 import
+// internal/audit 的 domain/service）。
+func newChangeAuditBridge(store service.ChangeAuditStore) *changeAuditBridge {
+	return &changeAuditBridge{store: store}
 }
 
 // ---- service.ChangeAuditWriter（web 订单生命周期 + 执行引擎 item_result）----
@@ -57,7 +53,7 @@ func (b *changeAuditBridge) WriteChangeAudit(ctx context.Context, e service.Chan
 	if at.IsZero() {
 		at = time.Now()
 	}
-	return b.audits.Record(ctx, auditdomain.ChangeOrderAuditEntry{
+	return b.store.Record(ctx, service.ChangeAuditEntry{
 		OrderID: e.OrderID,
 		ItemID:  e.ItemID,
 		Actor:   e.Actor,
@@ -96,7 +92,7 @@ func (b *changeAuditBridge) RecordOrphanCleanup(ctx context.Context, orderID str
 		at = time.Now()
 	}
 	success := result.Success
-	return b.audits.RecordDedup(ctx, auditdomain.ChangeOrderAuditEntry{
+	return b.store.RecordDedup(ctx, service.ChangeAuditEntry{
 		OrderID: orderID,
 		Actor:   actorOrDefault(service.OperatorFromContext(ctx), service.ActorScheduler),
 		Action:  service.AuditActionOrphanCleanup,
@@ -116,7 +112,7 @@ func (b *changeAuditBridge) RecordOrphanCleanup(ctx context.Context, orderID str
 // RecordUnmetDomains 窗口关闭未达标清单落审计（payload=UnmetDomains，
 // 去重键=at；ChangeReport.UnmetDomains 权威来源）。
 func (b *changeAuditBridge) RecordUnmetDomains(ctx context.Context, orderID string, unmetDomains []string, at time.Time) (bool, error) {
-	return b.audits.RecordDedup(ctx, auditdomain.ChangeOrderAuditEntry{
+	return b.store.RecordDedup(ctx, service.ChangeAuditEntry{
 		OrderID:      orderID,
 		Actor:        actorOrDefault(service.OperatorFromContext(ctx), service.ActorScheduler),
 		Action:       service.AuditActionVerify,
@@ -131,7 +127,7 @@ func (b *changeAuditBridge) RecordUnmetDomains(ctx context.Context, orderID stri
 
 // ListByOrder 按单号查询审计流水（at 升序稳定返回 → 5.11 端点契约）。
 func (b *changeAuditBridge) ListByOrder(ctx context.Context, orderID string) ([]service.ChangeAuditLog, error) {
-	entries, err := b.audits.ListByOrder(ctx, orderID)
+	entries, err := b.store.ListByOrder(ctx, orderID)
 	if err != nil {
 		return nil, err
 	}
@@ -152,14 +148,14 @@ func (b *changeAuditBridge) ListByOrder(ctx context.Context, orderID string) ([]
 
 // ListUnmetDomains 窗口关闭未达标域名清单（最近一条非空存档）。
 func (b *changeAuditBridge) ListUnmetDomains(ctx context.Context, orderID string) ([]string, error) {
-	return b.audits.ListUnmetDomains(ctx, orderID)
+	return b.store.ListUnmetDomains(ctx, orderID)
 }
 
 // ---- service.ChangeOrphanCleanupSource（5.11 报告聚合读侧）----
 
 // ListOrphanCleanup 按单查询孤儿清理结果（at 升序 → ChangeReport.OrphanCleanup）。
 func (b *changeAuditBridge) ListOrphanCleanup(ctx context.Context, orderID string) ([]service.OrphanCleanupResult, error) {
-	entries, err := b.audits.ListOrphanCleanupResults(ctx, orderID)
+	entries, err := b.store.ListOrphanCleanupResults(ctx, orderID)
 	if err != nil {
 		return nil, err
 	}

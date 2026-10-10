@@ -1,4 +1,4 @@
-﻿package executor
+package executor
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cloudx-sdk"
-	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -19,6 +19,17 @@ func (e *SyncAssetsExecutor) syncRegionWAF(
 	region string,
 ) (int, error) {
 	modelUID := fmt.Sprintf("%s_waf", account.Provider)
+
+	// 腾讯云 WAF/TEO 是全局服务:任何地域调用都返回同一份全量列表(转换层把 Region
+	// 硬编码为 ap-guangzhou)。若沿账号×地域循环每个 region 各执行一次,会产生
+	// K×全量的 API 请求风暴(列表 + 每域名详情 N+1,K≈地域数),极易触发腾讯限流;
+	// 且一旦某一轮 WAF 列表接口报错,ListInstancesWithFilter 只告警不阻断地返回
+	// 空列表,diffAndUpsert 会把本地已存的全部腾讯 WAF 行当过期删除——列表出现
+	// "时有时无/缺行"。故与 DNS(账号级全局服务)同理,只在 canonical 地域
+	// ap-guangzhou 执行一次,其余地域直接跳过。
+	if account.Provider == domain.CloudProviderTencent && region != "ap-guangzhou" {
+		return 0, nil
+	}
 
 	wafAdapter := adapter.WAF()
 	if wafAdapter == nil {

@@ -1,4 +1,4 @@
-﻿// Package service 云账号服务层
+// Package service 云账号服务层
 package service
 
 import (
@@ -311,7 +311,7 @@ func (s *cloudAccountService) SyncAccount(ctx context.Context, id int64, req *do
 		assetTypes = []string{
 			"ecs", "disk", "snapshot", "security_group", "image",
 			"rds", "redis", "mongodb",
-			"vpc", "vswitch", "eip", "lb", "cdn", "waf",
+			"vpc", "vswitch", "eip", "lb", "cdn", "waf", "ddos",
 			"nas", "oss",
 			"kafka", "elasticsearch",
 		}
