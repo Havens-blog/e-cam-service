@@ -104,7 +104,7 @@ func (s *cloudAccountService) CreateAccount(ctx context.Context, req *domain.Cre
 		Provider:        req.Provider,
 		Environment:     req.Environment,
 		AccessKeyID:     req.AccessKeyID,
-		AccessKeySecret: req.AccessKeySecret, // TODO: 需要加密存储
+		AccessKeySecret: req.AccessKeySecret,
 		Regions:         req.Regions,
 		Description:     req.Description,
 		Status:          domain.CloudAccountStatusActive,
@@ -207,7 +207,7 @@ func (s *cloudAccountService) UpdateAccount(ctx context.Context, id int64, req *
 		account.AccessKeyID = *req.AccessKeyID
 	}
 	if req.AccessKeySecret != nil {
-		account.AccessKeySecret = *req.AccessKeySecret // TODO: 需要加密存储
+		account.AccessKeySecret = *req.AccessKeySecret
 	}
 	if req.Regions != nil && len(req.Regions) > 0 {
 		account.Regions = req.Regions
