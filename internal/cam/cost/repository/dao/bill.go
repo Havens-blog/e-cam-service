@@ -2,6 +2,7 @@
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/domain"
@@ -404,4 +405,26 @@ func (d *billDAO) buildUnifiedBillQuery(filter repository.UnifiedBillFilter) bso
 		query["billing_date"] = bson.M{"$lte": filter.EndDate}
 	}
 	return query
+}
+
+// DistinctTenantIDs 返回统一账单集合中出现过的全部 tenantID（去重）——供异常检测/
+// 优化建议定时任务按租户轮（方案A：从自身数据枚举覆盖面，照搬 dns 域范式）。
+// 无账单的租户无可分析数据，自然不入轮。
+func (d *billDAO) DistinctTenantIDs(ctx context.Context) ([]int64, error) {
+	vals, err := d.db.Collection(UnifiedBillCollection).Distinct(ctx, "tenant_id", bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("distinct unified bill tenant ids: %w", err)
+	}
+	out := make([]int64, 0, len(vals))
+	for _, v := range vals {
+		switch n := v.(type) {
+		case int64:
+			out = append(out, n)
+		case int32:
+			out = append(out, int64(n))
+		case float64:
+			out = append(out, int64(n))
+		}
+	}
+	return out, nil
 }

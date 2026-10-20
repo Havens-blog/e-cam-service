@@ -3,6 +3,7 @@ package anomaly
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -101,6 +102,32 @@ func (s *AnomalyService) DetectAnomalies(ctx context.Context, tenantID int64, da
 	}
 
 	return nil
+}
+
+// RunForAllTenants 按租户枚举逐个执行异常检测（每日定时入口），检测日期为昨日
+// （与原 job 闭包口径一致）。租户覆盖面：从账单集合 distinct tenant_id——无账单
+// 的租户无可分析数据，自然不入轮（方案A：照搬 dns/cert 域 ListTenantsWithRecords
+// 范式，不经 eiam 枚举全量租户）。严格遵循 ProbeAllTenantDNS 范式：逐租户调用
+// DetectAnomalies、单租户失败不中断其余租户（errors.Join 聚合）、ctx 取消时提前退出。
+func (s *AnomalyService) RunForAllTenants(ctx context.Context) error {
+	tenants, err := s.billDAO.DistinctTenantIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("anomaly: list tenants: %w", err)
+	}
+	s.logger.Info("anomaly: run for all tenants",
+		elog.Int("tenants", len(tenants)))
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	var errs []error
+	for _, tid := range tenants {
+		if err := ctx.Err(); err != nil {
+			break
+		}
+		if e := s.DetectAnomalies(ctx, tid, yesterday); e != nil {
+			errs = append(errs, fmt.Errorf("anomaly: tenant %d: %w", tid, e))
+			continue
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // detectForDimension 对单个维度执行异常检测

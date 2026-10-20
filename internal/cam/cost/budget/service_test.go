@@ -15,15 +15,16 @@ import (
 )
 
 type mockBudgetDAO struct {
-	createFn         func(ctx context.Context, budget costdomain.BudgetRule) (int64, error)
-	updateFn         func(ctx context.Context, budget costdomain.BudgetRule) error
-	getByIDFn        func(ctx context.Context, id int64) (costdomain.BudgetRule, error)
-	listFn           func(ctx context.Context, filter repository.BudgetFilter) ([]costdomain.BudgetRule, error)
-	countFn          func(ctx context.Context, filter repository.BudgetFilter) (int64, error)
-	listActiveFn     func(ctx context.Context, tenantID int64) ([]costdomain.BudgetRule, error)
-	updateStatusFn   func(ctx context.Context, id int64, status string) error
-	updateNotifiedFn func(ctx context.Context, id int64, notifiedAt map[string]time.Time) error
-	deleteFn         func(ctx context.Context, id int64) error
+	createFn            func(ctx context.Context, budget costdomain.BudgetRule) (int64, error)
+	updateFn            func(ctx context.Context, budget costdomain.BudgetRule) error
+	getByIDFn           func(ctx context.Context, id int64) (costdomain.BudgetRule, error)
+	listFn              func(ctx context.Context, filter repository.BudgetFilter) ([]costdomain.BudgetRule, error)
+	countFn             func(ctx context.Context, filter repository.BudgetFilter) (int64, error)
+	listActiveFn        func(ctx context.Context, tenantID int64) ([]costdomain.BudgetRule, error)
+	updateStatusFn      func(ctx context.Context, id int64, status string) error
+	updateNotifiedFn    func(ctx context.Context, id int64, notifiedAt map[string]time.Time) error
+	deleteFn            func(ctx context.Context, id int64) error
+	distinctTenantIDsFn func(ctx context.Context) ([]int64, error)
 }
 
 func (m *mockBudgetDAO) Create(ctx context.Context, budget costdomain.BudgetRule) (int64, error) {
@@ -81,8 +82,17 @@ func (m *mockBudgetDAO) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// DistinctTenantIDs 按租户枚举（RunForAllTenants 观测/驱动点）。
+func (m *mockBudgetDAO) DistinctTenantIDs(ctx context.Context) ([]int64, error) {
+	if m.distinctTenantIDsFn != nil {
+		return m.distinctTenantIDsFn(ctx)
+	}
+	return nil, nil
+}
+
 type mockBillDAO struct {
-	sumAmountFn func(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error)
+	sumAmountFn         func(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error)
+	distinctTenantIDsFn func(ctx context.Context) ([]int64, error)
 }
 
 func (m *mockBillDAO) SumAmount(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error) {
@@ -143,6 +153,14 @@ func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndMonth(_ context.Context, _ i
 	return 0, nil
 }
 func (m *mockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([]repository.AggregateResult, error) {
+	return nil, nil
+}
+
+// DistinctTenantIDs 按租户枚举（RunForAllTenants 观测/驱动点）。
+func (m *mockBillDAO) DistinctTenantIDs(ctx context.Context) ([]int64, error) {
+	if m.distinctTenantIDsFn != nil {
+		return m.distinctTenantIDsFn(ctx)
+	}
 	return nil, nil
 }
 
