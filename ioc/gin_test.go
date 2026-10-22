@@ -1,6 +1,15 @@
 package ioc
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/Havens-blog/e-cam-service/internal/metrics"
+)
 
 func TestOriginAllowed(t *testing.T) {
 	allowed := []string{"http://localhost:8888", "*.jlcops.com"}
@@ -39,5 +48,38 @@ func TestOriginAllowedDefaults(t *testing.T) {
 		if !originAllowed(origin, corsDefaultOrigins, false) {
 			t.Errorf("默认白名单应放行 %q", origin)
 		}
+	}
+}
+
+// TestRegisterPublicRoutesServesMetrics 验证 /metrics 与健康检查同为免认证
+// 基础路由，且 /metrics 实际暴露 ecam_* Prometheus 指标族。
+func TestRegisterPublicRoutesServesMetrics(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(metrics.PrometheusMiddleware())
+	registerPublicRoutes(r)
+
+	// 先打一发真实请求：Prometheus *Vec 无子序列时不输出指标族，
+	// 需让中间件先记录到样本，/metrics 才能暴露对应族
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/cam/health", nil))
+	// 同步任务指标不经 HTTP，直接制造子序列（值 0 不影响断言语义）
+	metrics.SyncTaskTotal.WithLabelValues("cam:__probe__", "success").Add(0)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /metrics = %d, want 200（免认证可达）", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "ecam_http_requests_total") {
+		t.Errorf("/metrics 响应未包含 ecam_http_requests_total 指标族")
+	}
+	if !strings.Contains(w.Body.String(), "ecam_sync_task_total") {
+		t.Errorf("/metrics 响应未包含 ecam_sync_task_total 指标族")
+	}
+
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/api/v1/cam/health", nil))
+	if w2.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/cam/health = %d, want 200", w2.Code)
 	}
 }
