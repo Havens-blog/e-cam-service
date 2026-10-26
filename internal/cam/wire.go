@@ -1,9 +1,11 @@
-﻿package cam
+package cam
 
 import (
+	"context"
 	"sync"
 
 	alertdao "github.com/Havens-blog/e-cam-service/internal/alert/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/cam/governance"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
@@ -12,12 +14,14 @@ import (
 	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
 	taskweb "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
+	"github.com/Havens-blog/e-cam-service/internal/shared/modelalias"
 
 	"github.com/Havens-blog/e-cloudx-sdk"
 	"github.com/Havens-blog/e-cloudx-sdk/asset"
 	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -103,10 +107,21 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	adapterFactory := asset.NewAdapterFactory(component)
 	cloudxAdapterFactory := cloudx.NewAdapterFactory(component)
 
+	// Dashboard（先于 Service 层创建：asset.Service 的 GetAssetStatistics 复用其聚合）
+	dashboardDAO := dao.NewDashboardDAO(db)
+	dashboardService := service.NewDashboardService(dashboardDAO)
+
 	// Service 层
-	serviceService := service.NewService(assetRepository, cloudAccountRepository, adapterFactory, component)
+	serviceService := service.NewService(assetRepository, cloudAccountRepository, dashboardService, adapterFactory, component)
 	modelService := service.NewModelService(modelRepository, modelFieldRepository, modelFieldGroupRepository)
 	instanceService := service.NewInstanceService(instanceRepository)
+
+	// 模型别名归一：多云同步写入实例的 model_uid（如 volcengine_ecs）经映射
+	// 归一为 CMDB 模型 uid（如 volcano_ecs），从源头消除孤儿实例。映射表事实源
+	// 在 e-cmdb-service（cmdb.remote_url 指向其内网地址），缓存 5 分钟刷新。
+	aliasResolver := modelalias.NewRemoteResolver(viper.GetString("cmdb.remote_url"), component)
+	aliasResolver.Start(context.Background())
+	instanceService.SetAliasResolver(aliasResolver)
 
 	// Task 模块
 	taskModule, err := task.InitModule(db, cloudAccountRepository, instanceRepository, adapterFactory, component)
@@ -114,16 +129,24 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 		return nil, err
 	}
 	queue := taskModule.Queue
-	cloudAccountService := service.NewCloudAccountService(cloudAccountRepository, instanceRepository, adapterFactory, queue, component)
+	// 租户治理配置客户端（R2.4 云账号配额 / R7 云厂商白名单的强制校验数据源）：
+	// 查询 eiam 租户详情 GET /api/tenant/detail/:id。base_url 留空回退
+	// policy.auth_url（同为 eiam HTTP 地址）；service_token 以 Bearer 发送——
+	// eiam 详情端点为私有路由，服务间鉴权机制落地前对真实 eiam 预期 401，
+	// 上层 CreateAccount fail-closed 拒绝（详见任务记录 records/1-1.md）
+	eiamBaseURL := viper.GetString("eiam.base_url")
+	if eiamBaseURL == "" {
+		eiamBaseURL = viper.GetString("policy.auth_url")
+	}
+	tenantGovernance := governance.NewEIAMTenantClient(eiamBaseURL, viper.GetString("eiam.service_token"), component)
+	cloudAccountService := service.NewCloudAccountService(cloudAccountRepository, instanceRepository, adapterFactory, queue, component, tenantGovernance)
 
 	// Task Service
 	taskRepository := InitTaskRepository(db)
 	taskService := taskservice.NewTaskService(queue, taskRepository, component)
 	taskHandler := taskweb.NewTaskHandler(taskService)
 
-	// Dashboard
-	dashboardDAO := dao.NewDashboardDAO(db)
-	dashboardService := service.NewDashboardService(dashboardDAO)
+	// Dashboard handler（service 已在 Service 层前创建，asset.Service 复用之）
 	dashboardHandler := web.NewDashboardHandler(dashboardService)
 
 	// Scheduler

@@ -9,6 +9,7 @@ import (
 	camrepository "github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task/executor"
+	"github.com/Havens-blog/e-cam-service/internal/metrics"
 	"github.com/Havens-blog/e-cloudx-sdk/asset"
 	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/Havens-blog/e-common-go/taskx"
@@ -53,33 +54,36 @@ func InitModule(
 	taskQueue := taskx.NewQueue(taskRepo, logger, queueConfig)
 
 	// 注册 CAM 模块的任务执行器
+	// 统一经 metrics.InstrumentExecutor 装饰注册：按 task_type + result 记录
+	// 执行次数/耗时到 Prometheus（ecam_sync_task_*）；Module 字段仍持原始
+	// 执行器指针，供 Set*HealthAlerter 等 setter 注入。
 	syncAssetsExecutor := executor.NewSyncAssetsExecutor(accountRepo, instanceRepo, adapterFactory, taskRepo, logger)
-	taskQueue.RegisterExecutor(syncAssetsExecutor)
+	taskQueue.RegisterExecutor(metrics.InstrumentExecutor(syncAssetsExecutor))
 
 	// 注册 CDN 指标采集执行器(每日带宽/流量/命中率指标采集)
 	metricDAO := dao.NewCDNMetricDAO(db)
-	taskQueue.RegisterExecutor(executor.NewSyncCDNMetricsExecutor(accountRepo, metricDAO, taskRepo, logger))
+	taskQueue.RegisterExecutor(metrics.InstrumentExecutor(executor.NewSyncCDNMetricsExecutor(accountRepo, metricDAO, taskRepo, logger)))
 	logger.Info("CDN指标采集执行器已注册")
 
 	// 注册 NAS 指标采集执行器(每日容量/使用率指标采集;今日行首写生效、
 	// 昨日行覆盖更新,实例枚举以 ecam_instance 为准,不依赖 EnableAutoSync)
 	nasMetricDAO := dao.NewNASMetricDAO(db)
 	nasMetricsExecutor := executor.NewSyncNASMetricsExecutor(accountRepo, instanceRepo, nasMetricDAO, taskRepo, logger)
-	taskQueue.RegisterExecutor(nasMetricsExecutor)
+	taskQueue.RegisterExecutor(metrics.InstrumentExecutor(nasMetricsExecutor))
 	logger.Info("NAS指标采集执行器已注册")
 
 	// 注册 OSS 指标采集执行器(每日容量/对象数指标采集;今日行首写生效、
 	// 昨日行覆盖更新,bucket 枚举以 ecam_instance 为准,不依赖 EnableAutoSync)
 	ossMetricDAO := dao.NewOSSMetricDAO(db)
 	ossMetricsExecutor := executor.NewSyncOSSMetricsExecutor(accountRepo, instanceRepo, ossMetricDAO, taskRepo, logger)
-	taskQueue.RegisterExecutor(ossMetricsExecutor)
+	taskQueue.RegisterExecutor(metrics.InstrumentExecutor(ossMetricsExecutor))
 	logger.Info("OSS指标采集执行器已注册")
 
 	// 注册 Disk 指标采集执行器(每日使用率/IOPS/吞吐指标采集;今日行首写生效、
 	// 昨日行覆盖更新,disk 枚举以 ecam_instance 为准,不依赖 EnableAutoSync)
 	diskMetricDAO := dao.NewDiskMetricDAO(db)
 	diskMetricsExecutor := executor.NewSyncDiskMetricsExecutor(accountRepo, instanceRepo, diskMetricDAO, taskRepo, logger)
-	taskQueue.RegisterExecutor(diskMetricsExecutor)
+	taskQueue.RegisterExecutor(metrics.InstrumentExecutor(diskMetricsExecutor))
 	logger.Info("Disk指标采集执行器已注册")
 
 	// 注册 RDS 指标采集执行器(每日 CPU/内存/磁盘使用率 + 连接数指标采集;
@@ -87,13 +91,13 @@ func InitModule(
 	// EnableAutoSync;region/engine 从 attributes 逐实例透传 querier 分派)
 	rdsMetricDAO := dao.NewRDSMetricDAO(db)
 	rdsMetricsExecutor := executor.NewSyncRDSMetricsExecutor(accountRepo, instanceRepo, rdsMetricDAO, taskRepo, logger)
-	taskQueue.RegisterExecutor(rdsMetricsExecutor)
+	taskQueue.RegisterExecutor(metrics.InstrumentExecutor(rdsMetricsExecutor))
 	logger.Info("RDS指标采集执行器已注册")
 
 	// 注册 NAS 历史指标回填执行器(一次性上线回填:14~90 天历史,配额节流 +
 	// 错峰窗口 01:30~06:00 + 唯一键幂等去重;命中限流挂起、次日窗口续跑)
 	nasBackfillExecutor := executor.NewSyncNASBackfillExecutor(accountRepo, instanceRepo, nasMetricDAO, taskRepo, logger)
-	taskQueue.RegisterExecutor(nasBackfillExecutor)
+	taskQueue.RegisterExecutor(metrics.InstrumentExecutor(nasBackfillExecutor))
 	logger.Info("NAS历史指标回填执行器已注册")
 
 	// 启动任务队列
@@ -169,7 +173,7 @@ func (m *Module) RegisterBillingExecutor(
 	billingExecutor := executor.NewSyncBillingExecutor(
 		normalizerSvc, billDAO, collectLogDAO, accountSvc, redisClient, m.TaskRepo, logger,
 	)
-	m.Queue.RegisterExecutor(billingExecutor)
+	m.Queue.RegisterExecutor(metrics.InstrumentExecutor(billingExecutor))
 	logger.Info("账单采集执行器已注册")
 }
 

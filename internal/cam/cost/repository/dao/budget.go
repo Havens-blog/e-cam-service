@@ -2,6 +2,7 @@
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/domain"
@@ -148,4 +149,26 @@ func (d *budgetDAO) buildQuery(filter repository.BudgetFilter) bson.M {
 		query["status"] = filter.Status
 	}
 	return query
+}
+
+// DistinctTenantIDs 返回预算集合中出现过的全部 tenantID（去重）——供预算检查定时
+// 任务按租户轮（方案A：从自身数据枚举覆盖面，照搬 dns 域范式）。无预算规则的
+// 租户无检查目标，自然不入轮。
+func (d *budgetDAO) DistinctTenantIDs(ctx context.Context) ([]int64, error) {
+	vals, err := d.db.Collection(BudgetCollection).Distinct(ctx, "tenant_id", bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("distinct budget tenant ids: %w", err)
+	}
+	out := make([]int64, 0, len(vals))
+	for _, v := range vals {
+		switch n := v.(type) {
+		case int64:
+			out = append(out, n)
+		case int32:
+			out = append(out, int64(n))
+		case float64:
+			out = append(out, int64(n))
+		}
+	}
+	return out, nil
 }

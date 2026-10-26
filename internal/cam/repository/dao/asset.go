@@ -1,4 +1,4 @@
-﻿package dao
+package dao
 
 import (
 	"context"
@@ -10,6 +10,22 @@ import (
 )
 
 const AssetCollection = "ecam_cloud_asset"
+
+// UnifiedBillCollection 账单明细表（cost 模块采集落库的原始账单，字段含
+// tenant_id / billing_date / provider / amount_cny）。
+//
+// 工作台成本趋势走明细表而非 ecam_cost_daily_summary 汇总表，是因为明细表是**权威源**：
+// 汇总表是派生数据，虽然现在已在启动时对账（dao.ReconcileWithSource）、并在每次采集
+// 成功后同步刷新（collector.refreshSummary），但后两者都是 best-effort——刷新失败时
+// 汇总表会陈旧到下次启动才自愈。工作台每次打开都要读这个口径，正确性优先于几十毫秒，
+// 故不做这个权衡。（成本模块自身的查询是先汇总表、空则降级明细表。）
+const UnifiedBillCollection = "ecam_cost_unified_bill"
+
+// DailyCostRow 按账期成本聚合结果（_id = billing_date "YYYY-MM-DD"，amount_cny = 当期人民币合计）
+type DailyCostRow struct {
+	ID        string  `bson:"_id"`
+	AmountCNY float64 `bson:"amount_cny"`
+}
 
 // Asset DAO层资产模型
 type Asset struct {
@@ -47,6 +63,9 @@ type AssetDAO interface {
 	ListAssets(ctx context.Context, filter AssetFilter) ([]Asset, error)
 	CountAssets(ctx context.Context, filter AssetFilter) (int64, error)
 	DeleteAsset(ctx context.Context, id int64) error
+	// AggregateDailyCost 按账期聚合成本趋势（最近 days 天，<=0 取 90），供工作台成本趋势 sparkline。
+	// 数据源：ecam_cost_unified_bill 明细表；tenant_id 恒定过滤，provider 空时聚合全厂商。
+	AggregateDailyCost(ctx context.Context, tenantID int64, provider string, days int) ([]DailyCostRow, error)
 }
 
 // AssetFilter DAO层过滤条件
@@ -214,4 +233,50 @@ func (dao *assetDAO) DeleteAsset(ctx context.Context, id int64) error {
 	filter := bson.M{"id": id}
 	_, err := dao.db.Collection(AssetCollection).DeleteOne(ctx, filter)
 	return err
+}
+
+// AggregateDailyCost 按账期聚合成本趋势。
+//
+// 数据源 ecam_cost_unified_bill（明细表，见 UnifiedBillCollection 注释）。
+// $match tenant_id（恒定生效，0 不作通配）+ billing_date ∈ [今天-days, 今天]（含），
+// provider 非空时加厂商过滤；$group by billing_date → $sum amount_cny；$sort 升序。
+//
+// 注意账期粒度：明细表的 billing_date 是「账期」而非自然日（云厂商月账单，
+// 实测为月初），故窗口过窄会只剩 0~1 个点、趋势图无法成形，默认放宽到 90 天。
+func (dao *assetDAO) AggregateDailyCost(ctx context.Context, tenantID int64, provider string, days int) ([]DailyCostRow, error) {
+	if days <= 0 {
+		days = 90
+	}
+	end := time.Now()
+	start := end.AddDate(0, 0, -days)
+	startStr := start.Format("2006-01-02")
+	endStr := end.Format("2006-01-02")
+
+	match := bson.M{
+		"tenant_id":    tenantID,
+		"billing_date": bson.M{"$gte": startStr, "$lte": endStr},
+	}
+	if provider != "" {
+		match["provider"] = provider
+	}
+
+	pipeline := bson.A{
+		bson.M{"$match": match},
+		bson.M{"$group": bson.M{
+			"_id":        "$billing_date",
+			"amount_cny": bson.M{"$sum": "$amount_cny"},
+		}},
+		bson.M{"$sort": bson.M{"_id": 1}},
+	}
+	cursor, err := dao.db.Collection(UnifiedBillCollection).Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var rows []DailyCostRow
+	if err := cursor.All(ctx, &rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
 }

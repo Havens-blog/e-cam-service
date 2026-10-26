@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -89,6 +90,11 @@ func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndMonth(_ context.Context, _ i
 	return 0, nil
 }
 func (m *mockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([]repository.AggregateResult, error) {
+	return nil, nil
+}
+
+// DistinctTenantIDs 按租户枚举（RunForAllTenants 用，本套测试不覆盖）。
+func (m *mockBillDAO) DistinctTenantIDs(_ context.Context) ([]int64, error) {
 	return nil, nil
 }
 
@@ -408,10 +414,18 @@ func TestAggregateWeekly_SundayBelongsToPreviousWeek(t *testing.T) {
 }
 
 func TestGetCostSummary_DateRanges(t *testing.T) {
-	var capturedFilters []repository.UnifiedBillFilter
+	// GetCostSummary 在三个并发 goroutine 中调用 SumAmount，本测试要捕获全部三个
+	// 查询的 filter。无锁 append 到共享切片构成数据竞争，会丢失写入（实测表现为
+	// capturedFilters 只有 1~2 项而断言要求 3 项），故必须加锁保护。
+	var (
+		mu              sync.Mutex
+		capturedFilters []repository.UnifiedBillFilter
+	)
 	dao := &mockBillDAO{
 		sumAmountFn: func(_ context.Context, filter repository.UnifiedBillFilter) (float64, error) {
+			mu.Lock()
 			capturedFilters = append(capturedFilters, filter)
+			mu.Unlock()
 			return 100.0, nil
 		},
 	}
@@ -419,7 +433,12 @@ func TestGetCostSummary_DateRanges(t *testing.T) {
 
 	_, err := svc.GetCostSummary(context.Background(), CostFilter{TenantID: 1})
 	require.NoError(t, err)
-	require.Len(t, capturedFilters, 3) // 当月、上月整月、上月同期
+
+	// GetCostSummary 返回时三个 goroutine 均已完成，此处取快照后即可无锁读取。
+	mu.Lock()
+	captured := append([]repository.UnifiedBillFilter(nil), capturedFilters...)
+	mu.Unlock()
+	require.Len(t, captured, 3) // 当月、上月整月、上月同期
 
 	now := time.Now()
 	expectedCurrentStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
@@ -429,7 +448,7 @@ func TestGetCostSummary_DateRanges(t *testing.T) {
 	// goroutines, so the capture order is non-deterministic. Assert on the
 	// multiset of queried start dates instead of positional indices.
 	queriedStarts := make(map[string]int)
-	for _, f := range capturedFilters {
+	for _, f := range captured {
 		queriedStarts[f.StartDate]++
 	}
 	assert.Equal(t, 1, queriedStarts[expectedCurrentStart],
@@ -442,17 +461,9 @@ func TestGetCostSummary_DateRanges(t *testing.T) {
 
 // mockSummaryQuerier 用于测试的汇总表 DAO mock
 type mockSummaryQuerier struct {
-	hasDataFn          func(ctx context.Context) bool
 	sumAmountFn        func(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error)
 	aggregateByFieldFn func(ctx context.Context, tenantID int64, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error)
 	aggregateDailyFn   func(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error)
-}
-
-func (m *mockSummaryQuerier) HasData(ctx context.Context) bool {
-	if m.hasDataFn != nil {
-		return m.hasDataFn(ctx)
-	}
-	return true
 }
 
 func (m *mockSummaryQuerier) SumAmount(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error) {
@@ -477,7 +488,8 @@ func (m *mockSummaryQuerier) AggregateDailyAmount(ctx context.Context, tenantID 
 }
 
 func TestAggregateByField_SummaryNoDataForRange_FallsBackToBills(t *testing.T) {
-	// 汇总表存在(HasData=true)但所查范围(2026-08)无数据 -> 必须降级明细表
+	// 汇总表存在但所查范围(2026-08)无数据 -> 必须降级明细表
+	// （判空依据是查询结果而非「表非空」，这正是原先 HasData 判据被废弃的原因）
 	svc, _ := setupTestService(t, &mockBillDAO{})
 	svc.SetSummaryDAO(&mockSummaryQuerier{
 		aggregateByFieldFn: func(_ context.Context, _ int64, _ string, _, _ string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {

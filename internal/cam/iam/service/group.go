@@ -8,8 +8,9 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	iamrepo "github.com/Havens-blog/e-cam-service/internal/cam/iam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
-	"github.com/Havens-blog/e-cloudx-sdk/iam"
+	certservice "github.com/Havens-blog/e-cam-service/internal/cert/service"
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/iam"
 	"github.com/gotomicro/ego/core/elog"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -358,18 +359,24 @@ func (s *userGroupService) logPolicyUpdate(ctx context.Context, groupID int64, g
 	beforeValue := fmt.Sprintf("策略数量: %d", len(oldPolicies))
 	afterValue := fmt.Sprintf("策略数量: %d", len(newPolicies))
 
+	// 操作人从 ctx 读取（web 中间件经 WithOperator 注入）；取不到时回退 "system"
+	operator := certservice.OperatorFromContext(ctx)
+	if operator == "" {
+		operator = "system"
+	}
+
 	now := time.Now()
 	auditLog := domain.AuditLog{
 		OperationType: domain.AuditOpUpdateGroup,
-		OperatorID:    "system", // TODO: 从context中获取操作人信息
-		OperatorName:  "system",
+		OperatorID:    operator,
+		OperatorName:  operator,
 		TargetType:    "group",
 		TargetID:      groupID,
 		TargetName:    groupName,
 		BeforeValue:   beforeValue,
 		AfterValue:    afterValue,
 		Result:        domain.AuditResultSuccess,
-		TenantID:      0, // TODO: 从context中获取租户ID
+		TenantID:      0, // 租户透传待独立任务（当前 service 层无 context.Context 版租户助手）
 		CreateTime:    now,
 		CTime:         now.Unix(),
 	}

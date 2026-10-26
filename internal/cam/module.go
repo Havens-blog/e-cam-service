@@ -73,16 +73,22 @@ type CostCollectorService interface {
 // CostBudgetService 预算检查服务接口（供定时任务使用）
 type CostBudgetService interface {
 	CheckBudgets(ctx context.Context, tenantID int64) error
+	// RunForAllTenants 按租户枚举逐个执行预算检查（定时任务统一入口）。
+	RunForAllTenants(ctx context.Context) error
 }
 
 // CostAnomalyService 异常检测服务接口（供定时任务使用）
 type CostAnomalyService interface {
 	DetectAnomalies(ctx context.Context, tenantID int64, date string) error
+	// RunForAllTenants 按租户枚举逐个执行异常检测（定时任务统一入口）。
+	RunForAllTenants(ctx context.Context) error
 }
 
 // CostOptimizerService 优化建议服务接口（供定时任务使用）
 type CostOptimizerService interface {
 	GenerateRecommendations(ctx context.Context, tenantID int64) error
+	// RunForAllTenants 按租户枚举逐个生成优化建议（定时任务统一入口）。
+	RunForAllTenants(ctx context.Context) error
 }
 
 // StartScheduler 启动自动同步调度器

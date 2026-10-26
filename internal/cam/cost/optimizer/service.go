@@ -3,6 +3,7 @@ package optimizer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -137,6 +138,32 @@ func (s *OptimizerService) GenerateRecommendations(ctx context.Context, tenantID
 	}
 
 	return nil
+}
+
+// RunForAllTenants 按租户枚举逐个生成优化建议（每日定时入口）。
+// 租户覆盖面：从账单集合 distinct tenant_id——无账单的租户无可分析数据，
+// 自然不入轮（方案A：照搬 dns/cert 域 ListTenantsWithRecords 范式，不经 eiam
+// 枚举全量租户）。严格遵循 ProbeAllTenantDNS 范式：逐租户调用
+// GenerateRecommendations、单租户失败不中断其余租户（errors.Join 聚合）、
+// ctx 取消时提前退出。
+func (s *OptimizerService) RunForAllTenants(ctx context.Context) error {
+	tenants, err := s.billDAO.DistinctTenantIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("optimizer: list tenants: %w", err)
+	}
+	s.logger.Info("optimizer: run for all tenants",
+		elog.Int("tenants", len(tenants)))
+	var errs []error
+	for _, tid := range tenants {
+		if err := ctx.Err(); err != nil {
+			break
+		}
+		if e := s.GenerateRecommendations(ctx, tid); e != nil {
+			errs = append(errs, fmt.Errorf("optimizer: tenant %d: %w", tid, e))
+			continue
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // detectLowCPUInstances 检测低 CPU 利用率实例

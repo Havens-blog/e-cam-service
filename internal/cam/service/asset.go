@@ -1,16 +1,18 @@
-﻿package service
+package service
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
+	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cloudx-sdk/asset"
-	"github.com/Havens-blog/e-cloudx-sdk/types"
 	shareddomain "github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -29,8 +31,8 @@ type Service interface {
 	DiscoverAssets(ctx context.Context, provider, region string, assetTypes []string) ([]domain.CloudAsset, error)
 
 	// 统计分析
-	GetAssetStatistics(ctx context.Context) (AssetStatistics, error)
-	GetCostAnalysis(ctx context.Context, provider string, days int) (CostAnalysis, error)
+	GetAssetStatistics(ctx context.Context, tenantID int64) (AssetStatistics, error)
+	GetCostAnalysis(ctx context.Context, tenantID int64, provider string, days int) (CostAnalysis, error)
 }
 
 // AssetStatistics 资产统计信息
@@ -70,6 +72,7 @@ type AssetCost struct {
 type service struct {
 	repo           repository.AssetRepository
 	accountRepo    repository.CloudAccountRepository
+	dashboardSvc   DashboardService
 	adapterFactory *asset.AdapterFactory
 	logger         *elog.Component
 }
@@ -78,12 +81,14 @@ type service struct {
 func NewService(
 	repo repository.AssetRepository,
 	accountRepo repository.CloudAccountRepository,
+	dashboardSvc DashboardService,
 	adapterFactory *asset.AdapterFactory,
 	logger *elog.Component,
 ) Service {
 	return &service{
 		repo:           repo,
 		accountRepo:    accountRepo,
+		dashboardSvc:   dashboardSvc,
 		adapterFactory: adapterFactory,
 		logger:         logger,
 	}
@@ -317,37 +322,105 @@ func (s *service) convertECSToAsset(inst types.ECSInstance) (domain.CloudAsset, 
 	}, nil
 }
 
-func (s *service) GetAssetStatistics(ctx context.Context) (AssetStatistics, error) {
-	// 获取总数
-	total, err := s.repo.CountAssets(ctx, domain.AssetFilter{})
+func (s *service) GetAssetStatistics(ctx context.Context, tenantID int64) (AssetStatistics, error) {
+	// 数据源：ecam_instance（真实资产 3.6w+，5 厂商），经 DashboardService 聚合，
+	// 按 tenantID 过滤 + 排除附属资源（与 dashboard 口径一致）。
+	// 不再用 ecam_cloud_asset 旧表（仅 760 aliyun 残留，口径错误）。
+	overview, err := s.dashboardSvc.GetOverview(ctx, tenantID)
 	if err != nil {
+		s.logger.Warn("资产总览聚合失败", elog.FieldErr(err), elog.Int64("tenant_id", tenantID))
 		return AssetStatistics{}, err
 	}
 
-	// TODO: 实现详细统计逻辑
-	stats := AssetStatistics{
-		TotalAssets:      total,
-		ProviderStats:    make(map[string]int64),
-		AssetTypeStats:   make(map[string]int64),
-		RegionStats:      make(map[string]int64),
-		StatusStats:      make(map[string]int64),
-		TotalCost:        0,
-		LastDiscoverTime: time.Now(),
+	// region 分布：dashboard Overview 不含 region，单独查
+	byRegion, err := s.dashboardSvc.CountByRegion(ctx, tenantID)
+	if err != nil {
+		s.logger.Warn("地域分布聚合失败", elog.FieldErr(err), elog.Int64("tenant_id", tenantID))
+		return AssetStatistics{}, err
 	}
 
+	stats := AssetStatistics{
+		TotalAssets:      overview.Total,
+		ProviderStats:    groupCountsToMap(overview.ByProvider),
+		AssetTypeStats:   mergeByAssetType(overview.ByType),
+		RegionStats:      groupCountsToMap(byRegion),
+		StatusStats:      groupCountsToMap(overview.ByStatus),
+		TotalCost:        0, // 成本走 GetCostAnalysis / cost 模块；此处保留 0 兼容契约
+		LastDiscoverTime: time.Now(),
+	}
 	return stats, nil
 }
 
-// GetCostAnalysis 获取成本分析
-func (s *service) GetCostAnalysis(ctx context.Context, provider string, days int) (CostAnalysis, error) {
-	// TODO: 实现成本分析逻辑
-	analysis := CostAnalysis{
-		Provider:    provider,
-		TotalCost:   0,
-		DailyCosts:  []DailyCost{},
-		AssetCosts:  []AssetCost{},
-		RegionCosts: make(map[string]float64),
+// mergeByAssetType 把 model_uid 维度的分布归并为「纯资产类型」分布。
+//
+// ecam_instance.model_uid 形如 "<provider>_<type>"（见 web/database_handler.go:180），
+// 直接按 model_uid 出图会把同一类型按厂商拆成多段（aliyun_ecs / volcano_ecs / ...），
+// 语义上「资产类型分布」应当是类型维度，故剥离首个下划线前缀后跨厂商合并计数。
+// 无下划线的 key 原样保留；剥离后为空归 "_empty"。
+func mergeByAssetType(groups []dao.GroupCount) map[string]int64 {
+	m := make(map[string]int64, len(groups))
+	for _, g := range groups {
+		typ := g.Key
+		if i := strings.Index(typ, "_"); i >= 0 {
+			typ = typ[i+1:]
+		}
+		if typ == "" {
+			typ = "_empty"
+		}
+		m[typ] += g.Count
+	}
+	return m
+}
+
+// groupCountsToMap 将 []dao.GroupCount 转为 map[key]count。
+// 空 key（缺失字段）归一 "_empty"，保留「未归类」可见性。
+func groupCountsToMap(groups []dao.GroupCount) map[string]int64 {
+	m := make(map[string]int64, len(groups))
+	for _, g := range groups {
+		key := g.Key
+		if key == "" {
+			key = "_empty"
+		}
+		m[key] = g.Count
+	}
+	return m
+}
+
+// GetCostAnalysis 获取成本分析。
+//
+// 账期趋势来自 ecam_cost_unified_bill（明细表）：按 billing_date $sum amount_cny，
+// tenant_id 恒定过滤。TotalCost = 各账期之和。
+// AssetCosts/RegionCosts 工作台 sparkline 不消费，暂留空
+// （后续若需资产级/地域级成本分布，可接 cost 模块 AggregateByField）。
+//
+// 窗口：明细表 billing_date 为账期粒度（月初），days<=0 归一为 90 天，
+// 保证趋势图至少覆盖 3 个月度点而非退化成单点。
+func (s *service) GetCostAnalysis(ctx context.Context, tenantID int64, provider string, days int) (CostAnalysis, error) {
+	if days <= 0 {
+		days = 90
+	}
+	rows, err := s.repo.AggregateDailyCost(ctx, tenantID, provider, days)
+	if err != nil {
+		s.logger.Warn("成本账期趋势聚合失败",
+			elog.FieldErr(err),
+			elog.Int64("tenant_id", tenantID),
+			elog.String("provider", provider),
+			elog.Int("days", days))
+		return CostAnalysis{}, err
 	}
 
-	return analysis, nil
+	dailyCosts := make([]DailyCost, 0, len(rows))
+	var total float64
+	for _, r := range rows {
+		dailyCosts = append(dailyCosts, DailyCost{Date: r.ID, Cost: r.AmountCNY})
+		total += r.AmountCNY
+	}
+
+	return CostAnalysis{
+		Provider:    provider,
+		TotalCost:   total,
+		DailyCosts:  dailyCosts,
+		AssetCosts:  []AssetCost{},
+		RegionCosts: make(map[string]float64),
+	}, nil
 }

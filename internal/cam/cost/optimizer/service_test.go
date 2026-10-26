@@ -80,7 +80,8 @@ func (m *mockOptimizerDAO) FindByResourceAndType(ctx context.Context, tenantID i
 }
 
 type mockBillDAO struct {
-	listUnifiedBillsFn func(ctx context.Context, filter repository.UnifiedBillFilter) ([]costdomain.UnifiedBill, error)
+	listUnifiedBillsFn  func(ctx context.Context, filter repository.UnifiedBillFilter) ([]costdomain.UnifiedBill, error)
+	distinctTenantIDsFn func(ctx context.Context) ([]int64, error)
 }
 
 func (m *mockBillDAO) ListUnifiedBills(ctx context.Context, filter repository.UnifiedBillFilter) ([]costdomain.UnifiedBill, error) {
@@ -143,6 +144,14 @@ func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndMonth(_ context.Context, _ i
 	return 0, nil
 }
 func (m *mockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([]repository.AggregateResult, error) {
+	return nil, nil
+}
+
+// DistinctTenantIDs 按租户枚举（RunForAllTenants 观测/驱动点）。
+func (m *mockBillDAO) DistinctTenantIDs(ctx context.Context) ([]int64, error) {
+	if m.distinctTenantIDsFn != nil {
+		return m.distinctTenantIDsFn(ctx)
+	}
 	return nil, nil
 }
 

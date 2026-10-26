@@ -1,4 +1,4 @@
-﻿// Package handler HTTP API 处理器
+// Package handler HTTP API 处理器
 package handler
 
 import (
@@ -60,6 +60,8 @@ func (h *CostHandler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/cost/anomalies/detect", h.TriggerAnomalyDetection)
 	g.GET("/cost/recommendations", h.ListRecommendations)
 	g.POST("/cost/recommendations/:id/dismiss", ginx.Wrap(h.DismissRecommendation))
+	// 运维入口：刷新本租户的成本汇总（手工补采后免重启）。租户级，见 handler 注释。
+	g.POST("/cost/summary/refresh", h.RefreshCostSummary)
 }
 
 // GetCostSummary 成本概览
@@ -249,4 +251,36 @@ func (h *CostHandler) DismissRecommendation(ctx *gin.Context) (ginx.Result, erro
 		return web.ErrorResultWithMsg(errs.SystemError, err.Error()), nil
 	}
 	return web.Result(nil), nil
+}
+
+// RefreshCostSummary 刷新当前租户的成本汇总（运维入口）。
+//
+// 用途：手工补采/回补账单后立即让预聚合口径与明细表对齐，无需重启服务。
+// 只作用于调用方租户（DAO 侧 ReconcileTenant 显式拒绝 tenant_id=0），无跨租户影响；
+// 组上的 RequireTenant 已保证 tenantID 非 0，故这里不会退化成全库重建。
+func (h *CostHandler) RefreshCostSummary(ctx *gin.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	if tenantID == 0 {
+		// 双重保险：组上的 RequireTenant 已拦截，但本端点会触发全表聚合，不能让
+		// 「tenant_id=0 即不过滤租户」的 DAO 语义在这里退化成全库重建。
+		ctx.JSON(http.StatusForbidden, gin.H{
+			"code":    403,
+			"message": "当前会话未选定租户空间",
+		})
+		return
+	}
+
+	// 全量对账要扫明细表并可能重建，超时给得比常规查询宽。
+	reqCtx, cancel := context.WithTimeout(ctx.Request.Context(), 5*time.Minute)
+	defer cancel()
+
+	rebuilt, err := h.costSvc.ReconcileSummary(reqCtx, tenantID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		return
+	}
+	ctx.JSON(http.StatusOK, web.Result(gin.H{
+		"tenant_id": tenantID,
+		"rebuilt":   rebuilt, // false = 账期已一致、无需重建
+	}))
 }

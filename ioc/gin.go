@@ -12,6 +12,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert"
 	"github.com/Havens-blog/e-cam-service/internal/endpoint"
 	"github.com/Havens-blog/e-cam-service/internal/logquery"
+	"github.com/Havens-blog/e-cam-service/internal/metrics"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/topology"
 	"github.com/Havens-blog/e-common-go/mongox"
@@ -22,6 +23,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/viper"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -38,7 +40,11 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, psdk *sdk.SDK, s
 	// 开启后 gin.Context 可作为 context.Context 透传，双通道一致。
 	server.ContextWithFallback = true
 
-	// 添加CORS中间件（最先）
+	// Prometheus HTTP 指标中间件（最先注册，覆盖全部请求——含 CORS 预检与
+	// 免认证路由；route 标签用路由模板保持低基数，见 internal/metrics）
+	server.Use(metrics.PrometheusMiddleware())
+
+	// 添加CORS中间件
 	logger.Info("配置CORS中间件")
 	server.Use(corsHdl())
 
@@ -48,17 +54,8 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, psdk *sdk.SDK, s
 	// 请求ID中间件（在认证之前）
 	server.Use(middleware.RequestIDMiddleware())
 
-	// Swagger 文档路由（不需要认证）
-	logger.Info("注册 Swagger 文档路由")
-	server.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-	server.GET("/docs", func(c *gin.Context) {
-		c.Redirect(302, "/swagger/index.html")
-	})
-
-	// 健康检查路由（不需要认证）
-	server.GET("/api/v1/cam/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"code": 0, "msg": "ok"})
-	})
+	// Swagger / 健康检查 / Prometheus 指标等免认证基础路由
+	registerPublicRoutes(server)
 
 	// ===== 以下路由需要 ecmdb session 认证 =====
 	// 加固版认证中间件，支持白名单
@@ -275,6 +272,30 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, psdk *sdk.SDK, s
 
 	logger.Info("Web服务器初始化完成")
 	return server
+}
+
+// registerPublicRoutes 注册免认证基础路由：Swagger 文档、健康检查、
+// Prometheus 指标端点。必须在认证中间件 Use 之前调用（gin 的引擎级中间件
+// 虽全局生效，但此处注册点与 /api/v1/cam/health 同级，语义上同属探测面；
+// /metrics 抓取面由部署侧网络边界保护，不进 eiam 会话链路）。
+func registerPublicRoutes(server *gin.Engine) {
+	logger := elog.DefaultLogger
+
+	// Swagger 文档路由（不需要认证）
+	logger.Info("注册 Swagger 文档路由")
+	server.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	server.GET("/docs", func(c *gin.Context) {
+		c.Redirect(302, "/swagger/index.html")
+	})
+
+	// 健康检查路由（不需要认证）
+	server.GET("/api/v1/cam/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"code": 0, "msg": "ok"})
+	})
+
+	// Prometheus 指标端点（不需要认证，与健康检查同级；经 promhttp 暴露
+	// 默认 registry 中的 ecam_* 指标族）
+	server.GET("/metrics", gin.WrapH(promhttp.Handler()))
 }
 
 func InitGinMiddlewares() []gin.HandlerFunc {

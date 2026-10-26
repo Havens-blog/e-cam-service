@@ -1,4 +1,4 @@
-﻿package web
+package web
 
 import (
 	"strconv"
@@ -6,6 +6,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task"
 	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-common-go/ginx"
 	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gin-gonic/gin"
@@ -21,6 +22,15 @@ func NewTaskHandler(taskSvc taskservice.TaskService) *TaskHandler {
 	return &TaskHandler{
 		taskSvc: taskSvc,
 	}
+}
+
+// currentCreatedBy 从认证中间件注入的上下文取当前登录用户，空值兜底 "system"。
+// 任务路由挂在认证中间件之后，正常请求用户名非空；兜底仅作防御。
+func currentCreatedBy(c *gin.Context) string {
+	if u := middleware.GetUsername(c); u != "" {
+		return u
+	}
+	return "system"
 }
 
 // RegisterRoutes 注册路由
@@ -53,8 +63,7 @@ func (h *TaskHandler) RegisterRoutes(r *gin.RouterGroup) {
 // @Failure 500 {object} ginx.Result "服务器错误"
 // @Router /cam/tasks/sync-assets [post]
 func (h *TaskHandler) SubmitSyncAssetsTask(ctx *gin.Context, req SubmitSyncAssetsTaskReq) (ginx.Result, error) {
-	// TODO: 从上下文获取当前用户
-	createdBy := "system"
+	createdBy := currentCreatedBy(ctx)
 
 	params := task.SyncAssetsParams{
 		Provider:   req.Provider,
@@ -86,8 +95,7 @@ func (h *TaskHandler) SubmitSyncAssetsTask(ctx *gin.Context, req SubmitSyncAsset
 // @Failure 500 {object} ginx.Result "服务器错误"
 // @Router /cam/tasks/discover-assets [post]
 func (h *TaskHandler) SubmitDiscoverAssetsTask(ctx *gin.Context, req SubmitDiscoverAssetsTaskReq) (ginx.Result, error) {
-	// TODO: 从上下文获取当前用户
-	createdBy := "system"
+	createdBy := currentCreatedBy(ctx)
 
 	params := task.DiscoverAssetsParams{
 		Provider:   req.Provider,

@@ -186,6 +186,11 @@ func (m *mockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([
 	return nil, nil
 }
 
+// DistinctTenantIDs 按租户枚举（RunForAllTenants 用，本套测试不覆盖）。
+func (m *mockBillDAO) DistinctTenantIDs(_ context.Context) ([]int64, error) {
+	return nil, nil
+}
+
 // --- Test Setup ---
 
 func setupTestService(t *testing.T) (*AllocationService, *mockAllocationDAO, *mockBillDAO) {

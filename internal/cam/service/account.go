@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/Havens-blog/e-cam-service/internal/cam/governance"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cloudx-sdk"
 	"github.com/Havens-blog/e-cloudx-sdk/asset"
@@ -58,6 +60,9 @@ type cloudAccountService struct {
 	taskQueue        *taskx.Queue
 	logger           *elog.Component
 	validatorFactory cloudx.CloudValidatorFactory
+	// governance 租户治理配置端口（eiam MaxAccounts/AllowedVendors），
+	// CreateAccount 侧的 R2.4/R7 强制校验数据源；nil 视为查询失败 fail-closed
+	governance governance.TenantGovernancePort
 }
 
 // ensureLogger 确保 logger 不为 nil
@@ -75,6 +80,7 @@ func NewCloudAccountService(
 	adapterFactory *asset.AdapterFactory,
 	taskQueue *taskx.Queue,
 	logger *elog.Component,
+	governancePort governance.TenantGovernancePort,
 ) CloudAccountService {
 	if logger == nil {
 		logger = elog.Load("default").Build()
@@ -86,11 +92,19 @@ func NewCloudAccountService(
 		taskQueue:        taskQueue,
 		logger:           logger,
 		validatorFactory: cloudx.NewCloudValidatorFactory(),
+		governance:       governancePort,
 	}
 }
 
 // CreateAccount 创建云账号
 func (s *cloudAccountService) CreateAccount(ctx context.Context, req *domain.CreateCloudAccountRequest) (*domain.CloudAccount, error) {
+	// 租户治理强制校验（R7 云厂商白名单 + R2.4 云账号配额）：置于查重/落库之前，
+	// 越白名单或超配额的请求不进入后续任何流程；fail-closed——治理配置查询失败
+	// 即拒绝，绝不静默放行（配额/白名单形同虚设的中间态不可接受）
+	if err := s.checkTenantGovernance(ctx, req); err != nil {
+		return nil, err
+	}
+
 	// 检查账号名称是否已存在
 	_, err := s.repo.GetByName(ctx, req.Name, req.TenantID)
 	if err == nil {
@@ -104,7 +118,7 @@ func (s *cloudAccountService) CreateAccount(ctx context.Context, req *domain.Cre
 		Provider:        req.Provider,
 		Environment:     req.Environment,
 		AccessKeyID:     req.AccessKeyID,
-		AccessKeySecret: req.AccessKeySecret, // TODO: 需要加密存储
+		AccessKeySecret: req.AccessKeySecret,
 		Regions:         req.Regions,
 		Description:     req.Description,
 		Status:          domain.CloudAccountStatusActive,
@@ -138,6 +152,48 @@ func (s *cloudAccountService) CreateAccount(ctx context.Context, req *domain.Cre
 	s.logger.Info("cloud account created successfully", elog.Any("id:", id))
 
 	return &account, nil
+}
+
+// checkTenantGovernance 创建云账号前的租户治理强制校验（R7 + R2.4）。
+// 校验顺序：缺租户上下文 → 治理配置查询（fail-closed）→ 白名单 → 配额。
+func (s *cloudAccountService) checkTenantGovernance(ctx context.Context, req *domain.CreateCloudAccountRequest) error {
+	// 写操作缺租户上下文直接拒绝（fail-closed 纵深防御，与 eiam 侧 R2.5/R2.6
+	// 配额校验同模式）；同时避免 tid=0 触发对租户 0 的无意义跨服务查询，
+	// 以及 DAO 按 tenant_id=0 退化成全量计数
+	if req.TenantID <= 0 {
+		return errs.ErrInvalidTenantID
+	}
+
+	if s.governance == nil {
+		return fmt.Errorf("%w: 租户治理配置端口未装配", errs.ErrTenantGovernanceUnavailable)
+	}
+	maxAccounts, allowedVendors, err := s.governance.GetGovernance(ctx, req.TenantID)
+	if err != nil {
+		s.logger.Error("查询租户治理配置失败，拒绝创建云账号",
+			elog.Int64("tenant_id", req.TenantID), elog.FieldErr(err))
+		return fmt.Errorf("%w: %v", errs.ErrTenantGovernanceUnavailable, err)
+	}
+
+	// R7 云厂商白名单：AllowedVendors 非空且请求厂商不在列 → 拒绝（空列表 = 全部允许，R7.4）
+	if len(allowedVendors) > 0 && !slices.Contains(allowedVendors, string(req.Provider)) {
+		return fmt.Errorf("%w: %s", errs.ErrVendorNotAllowed, string(req.Provider))
+	}
+
+	// R2.4 云账号配额：仅 MaxAccounts > 0 才计数拦截（0/负 = 无限制，R2.7）；
+	// 复用 repo.List 的 total 作账号计数（limit=1 最小取数，不新增 Count 接口）
+	if maxAccounts > 0 {
+		_, total, err := s.repo.List(ctx, domain.CloudAccountFilter{TenantID: req.TenantID, Limit: 1})
+		if err != nil {
+			s.logger.Error("统计租户云账号数量失败，拒绝创建云账号",
+				elog.Int64("tenant_id", req.TenantID), elog.FieldErr(err))
+			return errs.SystemError
+		}
+		if total >= maxAccounts {
+			return fmt.Errorf("%w: 已有 %d 个云账号，上限 %d", errs.ErrTenantQuotaExceeded, total, maxAccounts)
+		}
+	}
+
+	return nil
 }
 
 // GetAccount 获取云账号详情
@@ -207,7 +263,7 @@ func (s *cloudAccountService) UpdateAccount(ctx context.Context, id int64, req *
 		account.AccessKeyID = *req.AccessKeyID
 	}
 	if req.AccessKeySecret != nil {
-		account.AccessKeySecret = *req.AccessKeySecret // TODO: 需要加密存储
+		account.AccessKeySecret = *req.AccessKeySecret
 	}
 	if req.Regions != nil && len(req.Regions) > 0 {
 		account.Regions = req.Regions

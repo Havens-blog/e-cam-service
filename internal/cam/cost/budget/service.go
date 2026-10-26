@@ -3,6 +3,7 @@ package budget
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -172,6 +173,31 @@ func (s *BudgetService) CheckBudgets(ctx context.Context, tenantID int64) error 
 		}
 	}
 	return nil
+}
+
+// RunForAllTenants 按租户枚举逐个执行预算检查（每日定时入口）。
+// 租户覆盖面：从预算集合 distinct tenant_id——无预算规则的租户无检查目标，
+// 自然不入轮（方案A：照搬 dns/cert 域 ListTenantsWithRecords 范式，不经 eiam
+// 枚举全量租户）。严格遵循 ProbeAllTenantDNS 范式：逐租户调用 CheckBudgets、
+// 单租户失败不中断其余租户（errors.Join 聚合）、ctx 取消时提前退出。
+func (s *BudgetService) RunForAllTenants(ctx context.Context) error {
+	tenants, err := s.budgetDAO.DistinctTenantIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("budget: list tenants: %w", err)
+	}
+	s.logger.Info("budget: run for all tenants",
+		elog.Int("tenants", len(tenants)))
+	var errs []error
+	for _, tid := range tenants {
+		if err := ctx.Err(); err != nil {
+			break
+		}
+		if e := s.CheckBudgets(ctx, tid); e != nil {
+			errs = append(errs, fmt.Errorf("budget: tenant %d: %w", tid, e))
+			continue
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // checkSingleBudget 检查单个预算规则

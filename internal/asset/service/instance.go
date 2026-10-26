@@ -7,6 +7,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/asset/domain"
 	"github.com/Havens-blog/e-cam-service/internal/asset/repository"
 	"github.com/Havens-blog/e-cam-service/internal/shared/errs"
+	"github.com/Havens-blog/e-cam-service/internal/shared/modelalias"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -22,11 +23,14 @@ type InstanceService interface {
 	DeleteByAccountID(ctx context.Context, accountID int64) error
 	Upsert(ctx context.Context, instance *domain.Instance) error
 	Search(ctx context.Context, filter domain.SearchFilter) ([]domain.Instance, int64, error)
+	// SetAliasResolver 注入模型别名归一器（可选：未注入不做归一）。
+	SetAliasResolver(r modelalias.Resolver)
 }
 
 type instanceService struct {
-	repo   repository.InstanceRepository
-	logger *elog.Component
+	repo    repository.InstanceRepository
+	logger  *elog.Component
+	aliases modelalias.Resolver
 }
 
 func NewInstanceService(repo repository.InstanceRepository, logger *elog.Component) InstanceService {
@@ -36,7 +40,21 @@ func NewInstanceService(repo repository.InstanceRepository, logger *elog.Compone
 	return &instanceService{repo: repo, logger: logger}
 }
 
+// SetAliasResolver 注入模型别名归一器。
+func (s *instanceService) SetAliasResolver(r modelalias.Resolver) {
+	s.aliases = r
+}
+
+// normalizeAlias 归一 model_uid（未注入归一器时原样返回）。
+func (s *instanceService) normalizeAlias(modelUID string) string {
+	if s.aliases == nil {
+		return modelUID
+	}
+	return s.aliases.Resolve(modelUID)
+}
+
 func (s *instanceService) Create(ctx context.Context, instance *domain.Instance) (int64, error) {
+	instance.ModelUID = s.normalizeAlias(instance.ModelUID)
 	if err := instance.Validate(); err != nil {
 		return 0, err
 	}
@@ -49,8 +67,9 @@ func (s *instanceService) Create(ctx context.Context, instance *domain.Instance)
 }
 
 func (s *instanceService) CreateBatch(ctx context.Context, instances []domain.Instance) (int64, error) {
-	for _, inst := range instances {
-		if err := inst.Validate(); err != nil {
+	for i := range instances {
+		instances[i].ModelUID = s.normalizeAlias(instances[i].ModelUID)
+		if err := instances[i].Validate(); err != nil {
 			return 0, err
 		}
 	}
@@ -134,6 +153,7 @@ func (s *instanceService) DeleteByAccountID(ctx context.Context, accountID int64
 }
 
 func (s *instanceService) Upsert(ctx context.Context, instance *domain.Instance) error {
+	instance.ModelUID = s.normalizeAlias(instance.ModelUID)
 	if err := instance.Validate(); err != nil {
 		return err
 	}

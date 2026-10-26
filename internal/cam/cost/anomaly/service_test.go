@@ -63,9 +63,10 @@ func (m *mockAnomalyDAO) Count(ctx context.Context, filter repository.AnomalyFil
 }
 
 type mockBillDAO struct {
-	aggregateByFieldFn func(ctx context.Context, tenantID int64, field, startDate, endDate string) ([]repository.AggregateResult, error)
-	aggregateDailyFn   func(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error)
-	sumAmountFn        func(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error)
+	aggregateByFieldFn  func(ctx context.Context, tenantID int64, field, startDate, endDate string) ([]repository.AggregateResult, error)
+	aggregateDailyFn    func(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error)
+	sumAmountFn         func(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error)
+	distinctTenantIDsFn func(ctx context.Context) ([]int64, error)
 }
 
 func (m *mockBillDAO) AggregateByField(ctx context.Context, tenantID int64, field, startDate, endDate string, _ repository.UnifiedBillFilter) ([]repository.AggregateResult, error) {
@@ -136,6 +137,14 @@ func (m *mockBillDAO) DeleteUnifiedBillsByAccountAndMonth(_ context.Context, _ i
 	return 0, nil
 }
 func (m *mockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ string) ([]repository.AggregateResult, error) {
+	return nil, nil
+}
+
+// DistinctTenantIDs 按租户枚举（RunForAllTenants 观测/驱动点）。
+func (m *mockBillDAO) DistinctTenantIDs(ctx context.Context) ([]int64, error) {
+	if m.distinctTenantIDsFn != nil {
+		return m.distinctTenantIDsFn(ctx)
+	}
 	return nil, nil
 }
 

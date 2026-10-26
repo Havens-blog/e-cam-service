@@ -48,6 +48,10 @@ type BillDAO interface {
 	DeleteUnifiedBillsByAccountAndMonth(ctx context.Context, accountID int64, month string) (int64, error)
 	// AggregateByTag 按标签 key 聚合统一账单金额（展开 tags map）
 	AggregateByTag(ctx context.Context, tenantID int64, startDate, endDate string) ([]AggregateResult, error)
+	// DistinctTenantIDs 返回统一账单集合中出现过的全部租户 ID（去重）——供定时任务
+	// 按租户枚举（异常检测/优化建议的 RunForAllTenants 入口）。方案A：从自身数据
+	// 枚举覆盖面，不经 eiam 拿全量租户列表。
+	DistinctTenantIDs(ctx context.Context) ([]int64, error)
 }
 
 // UnifiedBillFilter 统一账单筛选条件
@@ -142,6 +146,9 @@ type BudgetDAO interface {
 	UpdateNotifiedAt(ctx context.Context, id int64, notifiedAt map[string]time.Time) error
 	// Delete 删除预算规则
 	Delete(ctx context.Context, id int64) error
+	// DistinctTenantIDs 返回预算集合中出现过的全部租户 ID（去重）——供预算检查
+	// 定时任务按租户枚举。无预算规则的租户无检查目标，自然不入轮（方案A）。
+	DistinctTenantIDs(ctx context.Context) ([]int64, error)
 }
 
 // BudgetFilter 预算规则筛选条件

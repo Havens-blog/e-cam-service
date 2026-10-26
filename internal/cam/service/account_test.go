@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/Havens-blog/e-cam-service/internal/cam/governance"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cloudx-sdk/asset"
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
@@ -85,6 +86,7 @@ type CloudAccountServiceTestSuite struct {
 	repo           *MockCloudAccountRepository
 	instanceRepo   *MockInstanceRepository
 	adapterFactory *asset.AdapterFactory
+	gov            *governance.MockTenantGovernancePort
 	ctx            context.Context
 }
 
@@ -92,10 +94,13 @@ func (suite *CloudAccountServiceTestSuite) SetupTest() {
 	suite.repo = new(MockCloudAccountRepository)
 	suite.instanceRepo = new(MockInstanceRepository)
 	suite.adapterFactory = asset.NewAdapterFactory(nil)
+	// governance mock：默认零值行为（配额 0、白名单空 = 无约束），既有用例
+	// 不感知治理校验；治理专项用例见 account_governance_test.go
+	suite.gov = new(governance.MockTenantGovernancePort)
 	// taskQueue is nil: no test in this suite exercises the async sync-submit path.
 	// logger uses elog.DefaultLogger (the repo-wide test pattern) because the
 	// constructor's nil-guard calls elog.Load("default"), which panics without ego config.
-	suite.service = NewCloudAccountService(suite.repo, nil, suite.adapterFactory, nil, elog.DefaultLogger)
+	suite.service = NewCloudAccountService(suite.repo, nil, suite.adapterFactory, nil, elog.DefaultLogger, suite.gov)
 	suite.ctx = context.Background()
 }
 

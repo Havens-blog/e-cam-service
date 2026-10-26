@@ -1,4 +1,4 @@
-﻿package normalizer
+package normalizer
 
 import (
 	"strings"
@@ -143,28 +143,42 @@ func (m *ServiceTypeMapper) initVolcano() {
 func (m *ServiceTypeMapper) initHuawei() {
 	m.mappings[shareddomain.CloudProviderHuawei] = map[string]string{
 		// compute
-		"hws.service.type.ec2": domain.ServiceTypeCompute,
-		"hws.service.type.ecs": domain.ServiceTypeCompute,
-		"hws.service.type.cce": domain.ServiceTypeCompute,
+		"hws.service.type.ec2":           domain.ServiceTypeCompute,
+		"hws.service.type.ecs":           domain.ServiceTypeCompute,
+		"hws.service.type.cce":           domain.ServiceTypeCompute,
+		"hws.service.type.vdi":           domain.ServiceTypeCompute, // 云桌面 Workspace
+		"hws.service.type.functionstage": domain.ServiceTypeCompute, // 函数工作流 FunctionGraph
+		"hws.service.type.dcaas":         domain.ServiceTypeCompute, // 专属云
 		// storage
-		"hws.service.type.obs": domain.ServiceTypeStorage,
-		"hws.service.type.evs": domain.ServiceTypeStorage,
-		"hws.service.type.sfs": domain.ServiceTypeStorage,
+		"hws.service.type.obs":      domain.ServiceTypeStorage,
+		"hws.service.type.evs":      domain.ServiceTypeStorage,
+		"hws.service.type.ebs":      domain.ServiceTypeStorage, // 云硬盘
+		"hws.service.type.sfs":      domain.ServiceTypeStorage,
+		"hws.service.type.sfsturbo": domain.ServiceTypeStorage, // SFS Turbo 高性能文件存储
+		"hws.service.type.cbr":      domain.ServiceTypeStorage, // 云备份恢复
 		// network
-		"hws.service.type.vpc": domain.ServiceTypeNetwork,
-		"hws.service.type.elb": domain.ServiceTypeNetwork,
-		"hws.service.type.eip": domain.ServiceTypeNetwork,
-		"hws.service.type.cdn": domain.ServiceTypeNetwork,
-		"hws.service.type.nat": domain.ServiceTypeNetwork,
+		"hws.service.type.vpc":        domain.ServiceTypeNetwork,
+		"hws.service.type.elb":        domain.ServiceTypeNetwork,
+		"hws.service.type.eip":        domain.ServiceTypeNetwork,
+		"hws.service.type.cdn":        domain.ServiceTypeNetwork,
+		"hws.service.type.nat":        domain.ServiceTypeNetwork,
+		"hws.service.type.natgateway": domain.ServiceTypeNetwork, // NAT 网关
+		"hws.service.type.dns":        domain.ServiceTypeNetwork, // 云解析服务
+		"hws.service.type.cen":        domain.ServiceTypeNetwork, // 企业路由器
+		"hws.service.type.vpn":        domain.ServiceTypeNetwork, // 虚拟专用网络
 		// database
 		"hws.service.type.rds":     domain.ServiceTypeDatabase,
 		"hws.service.type.dcs":     domain.ServiceTypeDatabase,
 		"hws.service.type.dds":     domain.ServiceTypeDatabase,
 		"hws.service.type.gaussdb": domain.ServiceTypeDatabase,
+		"hws.service.type.drs":     domain.ServiceTypeDatabase, // 数据复制服务
 		// middleware
 		"hws.service.type.kafka":    domain.ServiceTypeMiddleware,
 		"hws.service.type.css":      domain.ServiceTypeMiddleware,
 		"hws.service.type.rabbitmq": domain.ServiceTypeMiddleware,
+		"hws.service.type.ess":      domain.ServiceTypeMiddleware, // 云搜索服务 Elasticsearch
+		"hws.service.type.dms":      domain.ServiceTypeMiddleware, // 分布式消息服务
+		"hws.service.type.smn":      domain.ServiceTypeMiddleware, // 消息通知服务
 	}
 }
 

@@ -95,6 +95,11 @@ func (m *propertyMockBillDAO) AggregateByTag(_ context.Context, _ int64, _, _ st
 	return nil, nil
 }
 
+// DistinctTenantIDs 按租户枚举（RunForAllTenants 用，本套测试不覆盖）。
+func (m *propertyMockBillDAO) DistinctTenantIDs(_ context.Context) ([]int64, error) {
+	return nil, nil
+}
+
 // newPropertyCostService creates a CostService with miniredis for property tests.
 // Uses the outer *testing.T (not *rapid.T) for miniredis setup.
 func newPropertyCostService(t *testing.T, dao *propertyMockBillDAO) *CostService {
