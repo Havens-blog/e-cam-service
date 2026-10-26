@@ -1,4 +1,4 @@
-﻿// Package web 日志查询 HTTP 面(Phase 1.4,plan.md §4.5)。
+// Package web 日志查询 HTTP 面(Phase 1.4,plan.md §4.5)。
 //
 // 接口:types(字段字典)/ sources(日志源清单)/ search(联邦查询)/
 // aggregate(窗口聚合)/ diagnose(WAF 流量诊断,手动触发)。
@@ -119,6 +119,18 @@ var logTypes = []typeMeta{
 			FieldDef{Key: "upstream_status", Label: "后端状态"},
 			FieldDef{Key: "bytes_sent", Label: "下行字节"},
 			FieldDef{Key: "tls_protocol", Label: "TLS"},
+		),
+	},
+	{
+		// 应用业务日志(2026-10 接入):<service>-business store 单服务一源,
+		// service/level/message/timestamp 为 RCA 服务间消费(OpsAgent)契约字段。
+		Type: logquery.LogTypeApp, Label: "应用业务日志", MaxWindowDays: 3,
+		Fields: append(fixedFields(),
+			FieldDef{Key: "service", Label: "服务"},
+			FieldDef{Key: "level", Label: "级别"},
+			FieldDef{Key: "message", Label: "日志内容"},
+			FieldDef{Key: "exception", Label: "异常堆栈"},
+			FieldDef{Key: "trace_id", Label: "链路 ID"},
 		),
 	},
 }

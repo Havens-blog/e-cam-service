@@ -1,4 +1,4 @@
-﻿package web
+package web
 
 import (
 	"bytes"
@@ -91,8 +91,30 @@ func TestTypes(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if len(resp.Data) != 4 {
-		t.Fatalf("types = %d, want 4", len(resp.Data))
+	if len(resp.Data) != 5 {
+		t.Fatalf("types = %d, want 5(cdn/waf/slb/access/app)", len(resp.Data))
+	}
+	// app 类型含 RCA 服务间消费的契约字段(service/level/message)
+	var appFields []string
+	for _, m := range resp.Data {
+		if m.Type != "app" {
+			continue
+		}
+		for _, f := range m.Fields {
+			appFields = append(appFields, f.Key)
+		}
+	}
+	for _, want := range []string{"service", "level", "message"} {
+		found := false
+		for _, k := range appFields {
+			if k == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("app 类型缺契约字段 %q, fields=%v", want, appFields)
+		}
 	}
 	for _, m := range resp.Data {
 		if len(m.Fields) == 0 {
