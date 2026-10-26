@@ -99,3 +99,12 @@ policy:
 # 本地联调可临时改为 http://localhost:8002。
 cmdb:
   remote_url: http://e-cmdb-service:8002
+
+# eiam 租户治理配置查询（创建云账号时强制校验配额 R2.4 / 云厂商白名单 R7）
+# 数据源为 eiam 租户详情 GET /api/tenant/detail/:id；base_url 留空回退 policy.auth_url。
+# 鉴权阻塞：detail 端点属 eiam 私有路由（用户会话鉴权），服务间令牌机制尚未覆盖该端点，
+# service_token 配置后以 Bearer 发送；真实联调待 eiam 侧服务间鉴权落地（详见任务记录），
+# 未鉴权调用对真实 eiam 预期 401 → CreateAccount fail-closed 拒绝。
+eiam:
+  base_url: ""
+  service_token: ""

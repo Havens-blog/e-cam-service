@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	alertdao "github.com/Havens-blog/e-cam-service/internal/alert/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/cam/governance"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/scheduler"
@@ -128,7 +129,17 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 		return nil, err
 	}
 	queue := taskModule.Queue
-	cloudAccountService := service.NewCloudAccountService(cloudAccountRepository, instanceRepository, adapterFactory, queue, component)
+	// 租户治理配置客户端（R2.4 云账号配额 / R7 云厂商白名单的强制校验数据源）：
+	// 查询 eiam 租户详情 GET /api/tenant/detail/:id。base_url 留空回退
+	// policy.auth_url（同为 eiam HTTP 地址）；service_token 以 Bearer 发送——
+	// eiam 详情端点为私有路由，服务间鉴权机制落地前对真实 eiam 预期 401，
+	// 上层 CreateAccount fail-closed 拒绝（详见任务记录 records/1-1.md）
+	eiamBaseURL := viper.GetString("eiam.base_url")
+	if eiamBaseURL == "" {
+		eiamBaseURL = viper.GetString("policy.auth_url")
+	}
+	tenantGovernance := governance.NewEIAMTenantClient(eiamBaseURL, viper.GetString("eiam.service_token"), component)
+	cloudAccountService := service.NewCloudAccountService(cloudAccountRepository, instanceRepository, adapterFactory, queue, component, tenantGovernance)
 
 	// Task Service
 	taskRepository := InitTaskRepository(db)
