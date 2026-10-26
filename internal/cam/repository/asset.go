@@ -17,6 +17,8 @@ type AssetRepository interface {
 	ListAssets(ctx context.Context, filter domain.AssetFilter) ([]domain.CloudAsset, error)
 	CountAssets(ctx context.Context, filter domain.AssetFilter) (int64, error)
 	DeleteAsset(ctx context.Context, id int64) error
+	// AggregateDailyCost 按账期聚合成本趋势，供工作台 sparkline。承接 GetCostAnalysis。
+	AggregateDailyCost(ctx context.Context, tenantID int64, provider string, days int) ([]dao.DailyCostRow, error)
 }
 
 type assetRepository struct {
@@ -110,6 +112,11 @@ func (repo *assetRepository) CountAssets(ctx context.Context, filter domain.Asse
 // DeleteAsset 删除资产
 func (repo *assetRepository) DeleteAsset(ctx context.Context, id int64) error {
 	return repo.dao.DeleteAsset(ctx, id)
+}
+
+// AggregateDailyCost 按账期成本趋势，直通 DAO。
+func (repo *assetRepository) AggregateDailyCost(ctx context.Context, tenantID int64, provider string, days int) ([]dao.DailyCostRow, error) {
+	return repo.dao.AggregateDailyCost(ctx, tenantID, provider, days)
 }
 
 // toDomain 转换为领域模型

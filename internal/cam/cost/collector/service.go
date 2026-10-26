@@ -1,4 +1,4 @@
-﻿// Package collector 账单采集服务
+// Package collector 账单采集服务
 package collector
 
 import (
@@ -25,6 +25,10 @@ const (
 	lockTTL = 30 * time.Minute
 	// defaultPageSize 默认分页大小（阿里云 BSS API 最大支持 300）
 	defaultPageSize = 300
+	// summaryRefreshAttempts 采集后刷新汇总表的最大尝试次数（含首次）
+	summaryRefreshAttempts = 3
+	// defaultSummaryRefreshRetryDelay 刷新失败重试的基础退避，按 2^n 递增（1s, 2s）
+	defaultSummaryRefreshRetryDelay = 1 * time.Second
 )
 
 // ManualCollectRequest 手动采集请求
@@ -35,14 +39,25 @@ type ManualCollectRequest struct {
 	TenantID  int64
 }
 
+// SummaryRefresher 汇总表重建能力（消费方定义接口，避免 collector 直接依赖 dao 包实现）。
+// 由 cost/repository/dao.DailySummaryDAO 实现。
+type SummaryRefresher interface {
+	RebuildFromSource(ctx context.Context, startDate, endDate string) error
+}
+
 // CollectorService 账单采集服务
 type CollectorService struct {
-	normalizer    *normalizer.NormalizerService
-	billDAO       repository.BillDAO
-	collectLogDAO repository.CollectLogDAO
-	accountSvc    accountservice.CloudAccountService
-	redisClient   redis.Cmdable
-	logger        *elog.Component
+	normalizer       *normalizer.NormalizerService
+	billDAO          repository.BillDAO
+	collectLogDAO    repository.CollectLogDAO
+	accountSvc       accountservice.CloudAccountService
+	redisClient      redis.Cmdable
+	summaryRefresher SummaryRefresher
+	// summaryRefreshRetryDelay 汇总刷新失败重试的基础退避。
+	// 生产经 NewCollectorService 取默认值；直接构造（单测）时为 0 即不等待，
+	// 避免测试为退避睡掉真实秒数。
+	summaryRefreshRetryDelay time.Duration
+	logger                   *elog.Component
 }
 
 // NewCollectorService 创建采集服务（Wire DI 兼容）
@@ -55,13 +70,21 @@ func NewCollectorService(
 	logger *elog.Component,
 ) *CollectorService {
 	return &CollectorService{
-		normalizer:    normalizerSvc,
-		billDAO:       billDAO,
-		collectLogDAO: collectLogDAO,
-		accountSvc:    accountSvc,
-		redisClient:   redisClient,
-		logger:        logger,
+		normalizer:               normalizerSvc,
+		billDAO:                  billDAO,
+		collectLogDAO:            collectLogDAO,
+		accountSvc:               accountSvc,
+		redisClient:              redisClient,
+		summaryRefreshRetryDelay: defaultSummaryRefreshRetryDelay,
+		logger:                   logger,
 	}
+}
+
+// SetSummaryRefresher 注入汇总表重建器。
+// 构造后注入（而非构造参数）：汇总 DAO 在 cam/init.go 中晚于采集服务创建，
+// 与 costSvc.SetSummaryDAO 同一模式。未注入时采集流程跳过汇总刷新。
+func (s *CollectorService) SetSummaryRefresher(r SummaryRefresher) {
+	s.summaryRefresher = r
 }
 
 // acquireLock 获取账号级分布式锁
@@ -282,6 +305,11 @@ func (s *CollectorService) CollectAccount(ctx context.Context, accountID int64, 
 	// 10. 清除成本分析缓存，确保页面展示最新数据
 	s.invalidateCostCache(ctx)
 
+	// 11. 重建汇总表：账单已更新，预聚合汇总表必须同步。
+	// 否则汇总表只在服务启动时刷新，新采集的账期进不了预聚合，成本查询长期只能靠
+	// 「汇总表空则降级明细表」兜底（全量聚合且汇总口径陈旧）。
+	s.refreshSummary(ctx, startTime, endTime)
+
 	s.logger.Info("collection completed",
 		elog.Int64("account_id", accountID),
 		elog.Int64("record_count", totalRecords),
@@ -418,6 +446,67 @@ func (s *CollectorService) invalidateCostCache(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// summaryRebuildRange 计算汇总表重建窗口（纯函数，便于单测）。
+//
+// 账期为月初：厂商适配器按 billing.Granularity="monthly" 返回账单，BillingDate 统一为
+// 当月第一天（见 CollectAccount 的去重注释）。因此窗口起点必须对齐到月初 —— 否则增量
+// 采集从月中起算时（如 2026-09-12），起始月的账期行（2026-09-01）会落在窗口外而漏掉。
+// 终点无需对齐：起始日不大于终点日，账期行必被 $lte 覆盖。
+func summaryRebuildRange(startTime, endTime time.Time) (string, string) {
+	start := time.Date(startTime.Year(), startTime.Month(), 1, 0, 0, 0, 0, time.UTC)
+	return start.Format("2006-01-02"), endTime.Format("2006-01-02")
+}
+
+// refreshSummary 采集成功后重建汇总表。
+//
+// best-effort：失败不阻断采集（账单明细已落库，成本查询可降级明细表）。但既然是
+// best-effort，就带指数退避重试——汇总表陈旧后要等到下次启动对账才自愈，而瞬时的
+// mongo 抖动恰恰是重试能救回来的场景。重试耗尽才告警（保留人工介入线索）。
+func (s *CollectorService) refreshSummary(ctx context.Context, startTime, endTime time.Time) {
+	if s.summaryRefresher == nil {
+		return
+	}
+	startDate, endDate := summaryRebuildRange(startTime, endTime)
+
+	var lastErr error
+	for attempt := 0; attempt < summaryRefreshAttempts; attempt++ {
+		if attempt > 0 {
+			delay := s.summaryRefreshRetryDelay << (attempt - 1)
+			if delay > 0 {
+				timer := time.NewTimer(delay)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					s.logger.Warn("cost summary rebuild aborted by context",
+						elog.String("start_date", startDate),
+						elog.String("end_date", endDate),
+						elog.Int("attempt", attempt+1),
+						elog.FieldErr(ctx.Err()))
+					return
+				case <-timer.C:
+				}
+			}
+		}
+
+		if err := s.summaryRefresher.RebuildFromSource(ctx, startDate, endDate); err != nil {
+			lastErr = err
+			continue
+		}
+
+		s.logger.Info("cost summary rebuilt after collection",
+			elog.String("start_date", startDate),
+			elog.String("end_date", endDate),
+			elog.Int("attempt", attempt+1))
+		return
+	}
+
+	s.logger.Warn("failed to rebuild cost summary after collection",
+		elog.String("start_date", startDate),
+		elog.String("end_date", endDate),
+		elog.Int("attempts", summaryRefreshAttempts),
+		elog.FieldErr(lastErr))
 }
 
 // collectBillingMonths 计算时间范围覆盖的所有月份

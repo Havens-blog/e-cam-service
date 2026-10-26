@@ -7,6 +7,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
+	"github.com/Havens-blog/e-cam-service/internal/shared/modelalias"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -34,11 +35,16 @@ type InstanceService interface {
 	UpsertBatch(ctx context.Context, instances []domain.Instance) error
 	// Search 统一搜索实例
 	Search(ctx context.Context, filter domain.SearchFilter) ([]domain.Instance, int64, error)
+	// SetAliasResolver 注入模型别名归一器（可选：未注入不做归一）。
+	// 多云同步写入的 model_uid（如 volcengine_ecs）经映射归一为 CMDB 模型 uid
+	// （如 volcano_ecs），从源头消除孤儿实例。
+	SetAliasResolver(r modelalias.Resolver)
 }
 
 type instanceService struct {
-	repo   repository.InstanceRepository
-	logger *elog.Component
+	repo    repository.InstanceRepository
+	logger  *elog.Component
+	aliases modelalias.Resolver
 }
 
 // NewInstanceService 创建实例服务
@@ -49,8 +55,22 @@ func NewInstanceService(repo repository.InstanceRepository) InstanceService {
 	}
 }
 
+// SetAliasResolver 注入模型别名归一器。
+func (s *instanceService) SetAliasResolver(r modelalias.Resolver) {
+	s.aliases = r
+}
+
+// normalizeAlias 归一 model_uid（未注入归一器时原样返回）。
+func (s *instanceService) normalizeAlias(modelUID string) string {
+	if s.aliases == nil {
+		return modelUID
+	}
+	return s.aliases.Resolve(modelUID)
+}
+
 // Create 创建实例
 func (s *instanceService) Create(ctx context.Context, instance domain.Instance) (int64, error) {
+	instance.ModelUID = s.normalizeAlias(instance.ModelUID)
 	if err := instance.Validate(); err != nil {
 		return 0, err
 	}
@@ -73,8 +93,9 @@ func (s *instanceService) CreateBatch(ctx context.Context, instances []domain.In
 		return 0, nil
 	}
 
-	for _, inst := range instances {
-		if err := inst.Validate(); err != nil {
+	for i := range instances {
+		instances[i].ModelUID = s.normalizeAlias(instances[i].ModelUID)
+		if err := instances[i].Validate(); err != nil {
 			return 0, err
 		}
 	}
@@ -151,6 +172,7 @@ func (s *instanceService) DeleteByAccountID(ctx context.Context, accountID int64
 
 // Upsert 更新或插入实例
 func (s *instanceService) Upsert(ctx context.Context, instance domain.Instance) error {
+	instance.ModelUID = s.normalizeAlias(instance.ModelUID)
 	if err := instance.Validate(); err != nil {
 		return err
 	}
@@ -159,14 +181,15 @@ func (s *instanceService) Upsert(ctx context.Context, instance domain.Instance) 
 
 // UpsertBatch 批量更新或插入实例
 func (s *instanceService) UpsertBatch(ctx context.Context, instances []domain.Instance) error {
-	for _, inst := range instances {
-		if err := inst.Validate(); err != nil {
+	for i := range instances {
+		instances[i].ModelUID = s.normalizeAlias(instances[i].ModelUID)
+		if err := instances[i].Validate(); err != nil {
 			return err
 		}
-		if err := s.repo.Upsert(ctx, inst); err != nil {
+		if err := s.repo.Upsert(ctx, instances[i]); err != nil {
 			s.logger.Error("failed to upsert instance",
-				elog.String("asset_id", inst.AssetID),
-				elog.String("model_uid", inst.ModelUID),
+				elog.String("asset_id", instances[i].AssetID),
+				elog.String("model_uid", instances[i].ModelUID),
 				elog.FieldErr(err),
 			)
 			return err

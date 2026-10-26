@@ -34,7 +34,6 @@ import (
 
 	// 厂商注册统一入口（import manifest）：资产/计费/日志/IAM 四张注册表一并触发
 	_ "github.com/Havens-blog/e-cloudx-sdk/providers"
-
 )
 
 // InitModuleWithIAM 初始化CAM模块（包含IAM和成本管理）
@@ -191,26 +190,31 @@ func initCostModule(module *Module, db *mongox.Mongo, redisClient redis.Cmdable,
 	// 初始化每日汇总 DAO 并注入到成本服务（查询走汇总表，避免明细表全表扫描）
 	dailySummaryDAO := costdao.NewDailySummaryDAO(db, logger)
 	costSvc.SetSummaryDAO(dailySummaryDAO)
+	// 同一个 DAO 也提供租户级对账能力，供 POST /cost/summary/refresh 运维入口使用
+	costSvc.SetSummaryReconciler(dailySummaryDAO)
 
-	// 异步初始化汇总表索引和数据（仅在数据为空时重建，且限制时间范围）
+	// 采集成功后同步刷新汇总表。不注入则汇总表只在服务启动时刷新，
+	// 新采集的账期永远进不了预聚合（这是汇总表长期陈旧的一半原因）。
+	collectorSvc.SetSummaryRefresher(dailySummaryDAO)
+
+	// 异步初始化汇总表索引并对账数据。
+	// 对账取代了原先的「汇总表为空才重建」闸门：闸门一旦写入过历史数据就永不刷新，
+	// 实测导致汇总表只剩陈旧账期、部分租户整片缺失。ReconcileWithSource 按账期范围
+	// 与明细表比对，不一致才重建（自愈），一致则跳过（避免每次启动全量聚合）。
 	go func() {
 		bgCtx, bgCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer bgCancel()
 		if err := dailySummaryDAO.InitIndexes(bgCtx); err != nil {
 			logger.Error("初始化汇总表索引失败", elog.FieldErr(err))
 		}
-		if !dailySummaryDAO.HasData(bgCtx) {
-			// 只重建最近 30 天的数据，避免全量扫描
-			today := time.Now().Format("2006-01-02")
-			thirtyDaysAgo := time.Now().AddDate(0, 0, -30).Format("2006-01-02")
-			logger.Info("汇总表为空，开始从明细表重建（最近30天）...",
-				elog.String("start_date", thirtyDaysAgo),
-				elog.String("end_date", today))
-			if err := dailySummaryDAO.RebuildFromSource(bgCtx, thirtyDaysAgo, today); err != nil {
-				logger.Error("重建汇总表失败", elog.FieldErr(err))
-			} else {
-				logger.Info("汇总表重建完成")
-			}
+		rebuilt, err := dailySummaryDAO.ReconcileWithSource(bgCtx)
+		switch {
+		case err != nil:
+			logger.Error("汇总表对账失败", elog.FieldErr(err))
+		case rebuilt:
+			logger.Info("汇总表账期与明细表不一致，已重建")
+		default:
+			logger.Info("汇总表账期与明细表一致，跳过重建")
 		}
 	}()
 

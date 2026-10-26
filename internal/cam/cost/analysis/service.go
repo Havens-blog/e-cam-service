@@ -76,10 +76,11 @@ type ComparisonResult struct {
 
 // CostService 成本分析服务
 type CostService struct {
-	billDAO    repository.BillDAO
-	summaryDAO SummaryQuerier
-	redisCache redis.Cmdable
-	logger     *elog.Component
+	billDAO           repository.BillDAO
+	summaryDAO        SummaryQuerier
+	summaryReconciler SummaryReconciler
+	redisCache        redis.Cmdable
+	logger            *elog.Component
 }
 
 // SummaryQuerier 汇总表查询接口（由 DailySummaryDAO 实现）
@@ -87,7 +88,13 @@ type SummaryQuerier interface {
 	SumAmount(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error)
 	AggregateByField(ctx context.Context, tenantID int64, field string, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.AggregateResult, error)
 	AggregateDailyAmount(ctx context.Context, tenantID int64, startDate, endDate string, filter repository.UnifiedBillFilter) ([]repository.DailyAmount, error)
-	HasData(ctx context.Context) bool
+}
+
+// SummaryReconciler 汇总表对账能力（可选注入，由 DailySummaryDAO 实现）。
+// 与 SummaryQuerier 分开声明以保持「查询」与「维护」职责分离：只需查询的调用方
+// （以及测试 mock）不必被迫实现重建方法。
+type SummaryReconciler interface {
+	ReconcileTenant(ctx context.Context, tenantID int64) (bool, error)
 }
 
 // NewCostService 创建成本分析服务
@@ -104,10 +111,24 @@ func (s *CostService) SetSummaryDAO(dao SummaryQuerier) {
 	s.summaryDAO = dao
 }
 
+// SetSummaryReconciler 注入汇总表对账能力（用于租户级运维刷新入口）
+func (s *CostService) SetSummaryReconciler(r SummaryReconciler) {
+	s.summaryReconciler = r
+}
+
+// ReconcileSummary 让指定租户的成本汇总与明细表重新对齐，返回是否发生了重建。
+// 供运维在手工补采账单后立即刷新口径，无需重启服务。只作用于该租户。
+func (s *CostService) ReconcileSummary(ctx context.Context, tenantID int64) (bool, error) {
+	if s.summaryReconciler == nil {
+		return false, fmt.Errorf("汇总表对账能力未注入")
+	}
+	return s.summaryReconciler.ReconcileTenant(ctx, tenantID)
+}
+
 // sumAmount 优先从汇总表查询，该范围无数据时降级到明细表。
-// 汇总表覆盖范围有限（历史任务生成、当前无写入方，实测仅 2025-12 ~ 2026-03），
-// HasData 只能证明表非空、不能证明所查时间范围有数据，因此必须按查询结果判空降级，
-// 否则范围外的查询（如当月）会恒返回空。
+// 汇总表已在启动时对账（dao.ReconcileWithSource）、并在每次采集成功后刷新，但它仍是
+// 派生数据且刷新是 best-effort，因此必须按**查询结果**判空降级——表非空并不能证明所查
+// 时间范围有数据，否则范围外的查询（如当月、或刷新失败后的窗口）会恒返回空。
 func (s *CostService) sumAmount(ctx context.Context, filter repository.UnifiedBillFilter) (float64, error) {
 	if s.summaryDAO != nil {
 		v, err := s.summaryDAO.SumAmount(ctx, filter)

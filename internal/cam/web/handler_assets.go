@@ -1,10 +1,11 @@
-﻿package web
+package web
 
 import (
 	"strconv"
 
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-common-go/ginx"
 	"github.com/gin-gonic/gin"
@@ -305,7 +306,8 @@ func (h *Handler) SyncAssets(ctx *gin.Context, req SyncAssetsReq) (ginx.Result, 
 // @Failure 500 {object} ginx.Result "服务器错误"
 // @Router /cam/assets/statistics [get]
 func (h *Handler) GetAssetStatistics(ctx *gin.Context) {
-	stats, err := h.svc.GetAssetStatistics(ctx.Request.Context())
+	tenantID := middleware.GetTenantID(ctx)
+	stats, err := h.svc.GetAssetStatistics(ctx.Request.Context(), tenantID)
 	if err != nil {
 		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
 		return
@@ -336,10 +338,11 @@ func (h *Handler) GetAssetStatistics(ctx *gin.Context) {
 // @Failure 500 {object} ginx.Result "服务器错误"
 // @Router /cam/assets/cost-analysis [get]
 func (h *Handler) GetCostAnalysis(ctx *gin.Context) {
+	tenantID := middleware.GetTenantID(ctx)
 	provider := ctx.Query("provider")
-	days, _ := strconv.Atoi(ctx.DefaultQuery("days", "30"))
+	days, _ := strconv.Atoi(ctx.DefaultQuery("days", "90"))
 
-	analysis, err := h.svc.GetCostAnalysis(ctx.Request.Context(), provider, days)
+	analysis, err := h.svc.GetCostAnalysis(ctx.Request.Context(), tenantID, provider, days)
 	if err != nil {
 		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
 		return
