@@ -457,3 +457,84 @@
 **环境勘误（重要,修正上轮记录）**：上轮报告的"非 8888 来源 403"实为后端 CORS 白名单**设计内机制**(`corsDefaultOrigins`=8888/5173/3333,ioc/gin.go corsHdl)——验证端口 5174 在白名单外;改用 3333 后一切正常。轮次 1 的 5174 验收当时只断言了请求侧未断言响应状态,存在盲区,特此记录。
 
 **遗留候选**：① SDK AppLogEntry 缺 `case "exception"`(app 异常堆栈筛选恒空,下一切片首选);② app 专属 KPI(待业务口径)。
+
+---
+
+## cam-iteration-20261027-budget-progress（2026-10-27）
+
+**状态**：**已合并**（`e-cam-web#7`，merge commit `49af22a`，2026-10-27 19:52 +08）
+**代码 PR**：`e-cam-web#7`（commits `d5ab286` → `7a90904`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+2026-10-27 巡检「FinOps → 预算管理」：
+
+- 预算「成本控制」上限 **¥100,000**，后端进度接口返回 **已消耗 ¥3,169,088.99（3169.09%）、剩余 ¥0**；但列表完全不展示消耗，运维无法一眼发现严重超支。
+- 点击行打开「预算消耗进度」抽屉直接报错：`TypeError: Cannot read properties of undefined (reading 'toFixed')`（Vue render error）。根因：前端 `BudgetProgress` 按 `progress_percent` / `remaining` 读取，后端实际返回 `usage_percent` / `remaining_amount`。
+
+### 需求卡
+
+- 目标用户：运维/财务管理员，需要判断预算是否超支。
+- 目标：列表直接展示消耗金额/真实百分比/超支标识；「进度」按钮与行点击均可打开抽屉；抽屉展示预算上限、已消耗、真实百分比、剩余额度、超支金额；异常/旧版载荷不崩溃。
+- 非目标：预算计算规则、告警触发、后端改动、创建/编辑表单。
+- API 契约：复用 `GET /api/v1/cam/budget`、`GET /api/v1/cam/budget/{id}/progress`；字段 `amount_limit / current_spend / usage_percent / remaining_amount`。**后端零改动。**
+- 风险/回滚：纯前端；每个预算 1 次进度请求（批量并发 4）；回滚 `git revert 7a90904 d5ab286`。
+
+### 改动
+
+- `src/api/types/finops.ts`：`BudgetProgress` 对齐真实字段（`usage_percent`、`remaining_amount`）。
+- `src/views/cam/budget/progress.ts`（新增）：`clampPercent`、`isOverBudget(>100)`、`isAtLimit(=100)`、`formatUsagePercent`、`overBudgetAmount`、`progressColor`、`currentSpend/amountLimit/remainingAmount`、`normalizeProgress` 形状校验。
+- `src/views/cam/budget/progress.test.ts`（新增，10 例，含 legacy payload / NaN / Infinity / -0）。
+- `src/views/cam/budget/index.vue`：
+  - 列表新增「消耗进度」列（进度条 + 已消耗 + 真实百分比 + 超支/已达上限标签）；
+  - 操作列新增「进度」按钮，保留行点击；
+  - 抽屉展示上限/已消耗/剩余/超支金额，进度条 clamp 100、文字真实值；
+  - 批量进度 allSettled + 并发 4 + 请求令牌；失败行「获取失败，点击重试」；
+  - 抽屉 stale-while-revalidate，编辑/删除/新建后 `await fetchAll()`。
+
+### 验收（真实浏览器 + 真实后端）
+
+环境：隔离 worktree + Vite `:5180` + 真实 `e-cam-service:8001`；Chromium 141 headless；1440×900 / 390×844；`:8888` 统一登录（既有测试账号，未记录口令）。
+
+| # | 验收 | 结果 |
+|---|---|---|
+| 1 | 列表展示已消耗 | ✅ ¥3169089.00 = 接口 |
+| 2 | 真实百分比 | ✅ 3169.1% |
+| 3 | 超支标识 | ✅ 「超支」 |
+| 4-7 | 抽屉上限/已消耗/百分比/剩余 | ✅ ¥100000.00 / ¥3169089.00 / 3169.1% / ¥0.00 |
+| 8 | 超支金额 | ✅ ¥3069089.00 |
+| 9 | 进度条文字真实值 | ✅ 3169.1%（条宽 100%） |
+| 10 | 刷新后保持 | ✅ |
+| 11 | 390 无整页溢出 | ⚠️ 字面 PASS；内容区仅 122px（壳层既有 O1） |
+| 12 | 正常 console | ✅ 0 error（修复前 undefined.toFixed 崩溃） |
+| 13 | 旧版/异常载荷 | ✅ 降级「获取失败，点击重试」，不崩、可恢复 |
+| 14 | 失败行点击重试回填 | ✅ 抽屉与列表均回填 |
+
+独立 QA 另验：恰好 100% →「已达上限」、未超支 42.5% 路径、消耗 0 不误判失败；**15/15 + CONTRACT 7/7 + 边界 7/7 PASS**。
+
+### 测试
+
+- `vitest run`：55 files / 968 tests 通过（`progress.test.ts` 10 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：首轮 **request changes**（编辑后进度缓存失效、异常载荷仍可能崩溃 2 major），修复后复核 **approve with nits**，两个 major 均已实质修复。
+- 独立 QA：先发现「移动靶」（工作区并行修改），定稿后以 `7a90904` 为唯一快照复测（运行前后文件 SHA256 一致），15/15 PASS；legacy payload、缺字段、500 注入、失败重试回填均 PASS。
+- 未验证：编辑/新建/删除后的实际刷新（需改数据，按边界未执行）；窄屏可用性（O1）。
+
+### 版本组合
+
+- 前端：`7a90904`（合并为 `49af22a`）。
+- 后端：`main@cb3d692`（预算进度接口无 diff）。
+- 合并顺序：`e-cam-web#7` 已合；本记录 PR 随后。
+
+### 后续建议
+
+1. **P2 遮罩观感**：当前 `loading || progressLoadingAll` 会让表格在进度分批返回期间整体遮罩（预算多时约 2s 不可交互），建议只遮列表、进度用列内占位。
+2. **P3 浮点边界**：`usage_percent` 仅比 100 多 0.0033 时会显示「超支 ¥0.00」；建议按 `overBudgetAmount >= 0.005` 判定。
+3. **P3 异常字段**：`normalizeProgress` 对 `remaining_amount` 缺失仍回退 0，后端若只改此字段名会显示 ¥0.00 而非失败，建议一并强校验。
+4. **P2 移动端壳层**（O1，跨页面）：390px 侧栏固定 220px、内容区 122px，预算表需横滚 1032px；应在 `src/layouts`/`PageContainer` 加断点，非单页问题。
+5. **既有 P1 待办**：自动同步任务积压/持久化去重、采集 running 无超时回收、触发采集 403、账期口径。
