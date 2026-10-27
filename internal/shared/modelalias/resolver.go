@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Havens-blog/e-cam-service/internal/shared/auth"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -29,24 +30,26 @@ type Resolver interface {
 
 // RemoteResolver 基于 e-cmdb-service 内部 API 的别名归一器。
 type RemoteResolver struct {
-	baseURL string
-	client  *http.Client
-	logger  *elog.Component
+	baseURL       string
+	tokenProvider auth.TokenProvider
+	client        *http.Client
+	logger        *elog.Component
 
 	mu    sync.RWMutex
 	cache map[string]string
 }
 
 // NewRemoteResolver 创建归一器（baseURL 为 e-cmdb-service 内网地址）。
-func NewRemoteResolver(baseURL string, logger *elog.Component) *RemoteResolver {
+func NewRemoteResolver(baseURL string, tokenProvider auth.TokenProvider, logger *elog.Component) *RemoteResolver {
 	if logger == nil {
 		logger = elog.DefaultLogger
 	}
 	return &RemoteResolver{
-		baseURL: baseURL,
-		client:  &http.Client{Timeout: 5 * time.Second},
-		logger:  logger,
-		cache:   map[string]string{},
+		baseURL:       baseURL,
+		tokenProvider: tokenProvider,
+		client:        &http.Client{Timeout: 5 * time.Second},
+		logger:        logger,
+		cache:         map[string]string{},
 	}
 }
 
@@ -81,6 +84,13 @@ func (r *RemoteResolver) refresh(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("build alias request: %w", err)
 	}
+	if r.tokenProvider != nil {
+		tok, err := r.tokenProvider.TokenFor(ctx, 0)
+		if err != nil {
+			return fmt.Errorf("获取服务令牌失败: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
 	resp, err := r.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("fetch model aliases: %w", err)
@@ -88,8 +98,8 @@ func (r *RemoteResolver) refresh(ctx context.Context) error {
 	defer resp.Body.Close()
 
 	var body struct {
-		Code int            `json:"code"`
-		Msg  string         `json:"msg"`
+		Code int               `json:"code"`
+		Msg  string            `json:"msg"`
 		Data map[string]string `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {

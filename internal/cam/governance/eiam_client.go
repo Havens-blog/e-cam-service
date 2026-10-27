@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Havens-blog/e-cam-service/internal/shared/auth"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -36,7 +37,7 @@ const governanceHTTPTimeout = 10 * time.Second
 // EIAMTenantClient eiam 租户治理配置 HTTP 客户端。
 type EIAMTenantClient struct {
 	baseURL       string // eiam 基址，如 http://127.0.0.1:9000（不带尾斜杠）
-	tokenProvider TokenProvider
+	tokenProvider auth.TokenProvider
 	client        *http.Client
 	logger        *elog.Component
 }
@@ -44,7 +45,7 @@ type EIAMTenantClient struct {
 // NewEIAMTenantClient 创建 eiam 租户治理配置客户端。
 // baseURL/tokenProvider 为空时构造不报错，查询时报错（上层 fail-closed），
 // 避免装配期因配置缺失阻断整个服务启动。
-func NewEIAMTenantClient(baseURL string, tokenProvider TokenProvider, logger *elog.Component) *EIAMTenantClient {
+func NewEIAMTenantClient(baseURL string, tokenProvider auth.TokenProvider, logger *elog.Component) *EIAMTenantClient {
 	if logger == nil {
 		logger = elog.DefaultLogger
 	}

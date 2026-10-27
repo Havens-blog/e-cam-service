@@ -1,4 +1,4 @@
-package governance
+package auth
 
 import (
 	"context"
@@ -16,7 +16,6 @@ import (
 
 // TestServiceTokenProvider_TokenFor 覆盖换取/缓存/fail-closed 分支。
 func TestServiceTokenProvider_TokenFor(t *testing.T) {
-	// 起假 eiam token 端点，记录请求
 	var (
 		mu       sync.Mutex
 		reqCount int
@@ -43,7 +42,7 @@ func TestServiceTokenProvider_TokenFor(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "tok-abc", tok)
 
-	// 缓存命中：不重复调 token 端点
+	// 缓存命中:不重复调 token 端点
 	tok2, err := provider.TokenFor(context.Background(), 3)
 	require.NoError(t, err)
 	assert.Equal(t, "tok-abc", tok2)
@@ -52,7 +51,7 @@ func TestServiceTokenProvider_TokenFor(t *testing.T) {
 	assert.Equal(t, 1, reqCount, "同一租户第二次应命中缓存")
 	mu.Unlock()
 
-	// 不同租户：重新换取
+	// 不同租户:重新换取
 	tok3, err := provider.TokenFor(context.Background(), 5)
 	require.NoError(t, err)
 	assert.Equal(t, "tok-abc", tok3)
@@ -61,10 +60,26 @@ func TestServiceTokenProvider_TokenFor(t *testing.T) {
 	mu.Unlock()
 }
 
+// TestServiceTokenProvider_NoTenant 无租户(tenantID=0)换取纯服务身份 token。
+func TestServiceTokenProvider_NoTenant(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		assert.Equal(t, "0", r.PostForm.Get("tenant_id"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"tok-svc","expires_in":900}`))
+	}))
+	defer server.Close()
+
+	provider := NewServiceTokenProvider(server.URL, "c", "s", elog.DefaultLogger)
+	tok, err := provider.TokenFor(context.Background(), 0)
+	require.NoError(t, err)
+	assert.Equal(t, "tok-svc", tok)
+}
+
 func TestServiceTokenProvider_FailClosed(t *testing.T) {
 	t.Run("非法租户 ID", func(t *testing.T) {
 		provider := NewServiceTokenProvider("http://x", "c", "s", elog.DefaultLogger)
-		_, err := provider.TokenFor(context.Background(), 0)
+		_, err := provider.TokenFor(context.Background(), -1)
 		require.Error(t, err)
 	})
 

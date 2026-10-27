@@ -17,19 +17,22 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/port"
+	"github.com/Havens-blog/e-cam-service/internal/shared/auth"
 )
 
 // RemoteCMDBAdapter 远程 CMDB 适配器（HTTP 客户端）。
 type RemoteCMDBAdapter struct {
-	baseURL string // e-cmdb-service 基址，如 http://e-cmdb-service:8002
-	client  *http.Client
+	baseURL       string // e-cmdb-service 基址，如 http://e-cmdb-service:8002
+	tokenProvider auth.TokenProvider
+	client        *http.Client
 }
 
 // NewRemoteCMDBAdapter 创建远程 CMDB 适配器。
-func NewRemoteCMDBAdapter(baseURL string) *RemoteCMDBAdapter {
+func NewRemoteCMDBAdapter(baseURL string, tokenProvider auth.TokenProvider) *RemoteCMDBAdapter {
 	return &RemoteCMDBAdapter{
-		baseURL: baseURL,
-		client:  &http.Client{Timeout: 10 * time.Second},
+		baseURL:       baseURL,
+		tokenProvider: tokenProvider,
+		client:        &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -148,6 +151,14 @@ func (a *RemoteCMDBAdapter) postJSON(ctx context.Context, path string, body any,
 }
 
 func (a *RemoteCMDBAdapter) do(req *http.Request, out any) error {
+	// 换服务令牌(无租户:cmdb /internal 端点租户由请求显式传参,服务端只验服务身份)
+	if a.tokenProvider != nil {
+		tok, err := a.tokenProvider.TokenFor(req.Context(), 0)
+		if err != nil {
+			return fmt.Errorf("获取服务令牌失败: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
 	resp, err := a.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("调用 CMDB 服务失败: %w", err)

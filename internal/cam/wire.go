@@ -14,6 +14,7 @@ import (
 	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
 	taskweb "github.com/Havens-blog/e-cam-service/internal/cam/task/web"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
+	"github.com/Havens-blog/e-cam-service/internal/shared/auth"
 	"github.com/Havens-blog/e-cam-service/internal/shared/modelalias"
 
 	"github.com/Havens-blog/e-cloudx-sdk"
@@ -116,10 +117,18 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	modelService := service.NewModelService(modelRepository, modelFieldRepository, modelFieldGroupRepository)
 	instanceService := service.NewInstanceService(instanceRepository)
 
+	// S2S 服务令牌换取器（统一出站）：供 eiam 治理查询、e-cmdb-service 内部 API 调用复用。
+	tokenProvider := auth.NewServiceTokenProvider(
+		viper.GetString("eiam.token_url"),
+		viper.GetString("eiam.client_id"),
+		viper.GetString("eiam.client_secret"),
+		component,
+	)
+
 	// 模型别名归一：多云同步写入实例的 model_uid（如 volcengine_ecs）经映射
 	// 归一为 CMDB 模型 uid（如 volcano_ecs），从源头消除孤儿实例。映射表事实源
 	// 在 e-cmdb-service（cmdb.remote_url 指向其内网地址），缓存 5 分钟刷新。
-	aliasResolver := modelalias.NewRemoteResolver(viper.GetString("cmdb.remote_url"), component)
+	aliasResolver := modelalias.NewRemoteResolver(viper.GetString("cmdb.remote_url"), tokenProvider, component)
 	aliasResolver.Start(context.Background())
 	instanceService.SetAliasResolver(aliasResolver)
 
@@ -137,12 +146,6 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	if eiamBaseURL == "" {
 		eiamBaseURL = viper.GetString("policy.auth_url")
 	}
-	tokenProvider := governance.NewServiceTokenProvider(
-		viper.GetString("eiam.token_url"),
-		viper.GetString("eiam.client_id"),
-		viper.GetString("eiam.client_secret"),
-		component,
-	)
 	tenantGovernance := governance.NewEIAMTenantClient(eiamBaseURL, tokenProvider, component)
 	cloudAccountService := service.NewCloudAccountService(cloudAccountRepository, instanceRepository, adapterFactory, queue, component, tenantGovernance)
 

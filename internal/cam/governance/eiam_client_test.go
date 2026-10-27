@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Havens-blog/e-cam-service/internal/shared/auth"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/suite"
 )
@@ -36,7 +37,7 @@ type EIAMTenantClientTestSuite struct {
 func (suite *EIAMTenantClientTestSuite) TestGetGovernance() {
 	tests := []struct {
 		name           string
-		tokenProvider  TokenProvider
+		tokenProvider  auth.TokenProvider
 		handler        http.HandlerFunc
 		tenantID       int64
 		expectAccounts int64

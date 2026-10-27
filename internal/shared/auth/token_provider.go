@@ -1,10 +1,10 @@
-// ServiceTokenProvider 是 S2S 服务令牌的换取器:
-// 用 client_id/secret 向 eiam /oauth/v2/token 换取 client_credentials 模式的
-// access token(携带租户上下文),按租户缓存并提前刷新。
+// Package auth 平台统一服务间(S2S)鉴权的出站侧能力。
 //
-// 依赖 eiam 侧新增的 client_credentials grant(见 docs/designs/service-to-service-auth/design.md)。
+// ServiceTokenProvider 用 client_id/secret 向 eiam /oauth/v2/token 换取
+// client_credentials 模式的 access token,按租户缓存并提前刷新。
+// 依赖 eiam 侧 client_credentials grant(见 docs/designs/service-to-service-auth/design.md)。
 // 换取失败一律返回 error,由上层 fail-closed 拒绝业务。
-package governance
+package auth
 
 import (
 	"context"
@@ -22,7 +22,10 @@ import (
 
 // TokenProvider 服务令牌换取器(出站端口)。
 type TokenProvider interface {
-	// TokenFor 换取(或从缓存返回)"代表 tenantID"的 access token。失败 fail-closed 返回 error。
+	// TokenFor 换取(或从缓存返回)access token。
+	// tenantID > 0 表示"代表目标租户"(eiam 校验 allowed_tenants 后写入 claim);
+	// tenantID == 0 表示"纯服务身份 token"(无租户,用于租户显式传参的端点,如 e-cmdb /internal)。
+	// 失败 fail-closed 返回 error。
 	TokenFor(ctx context.Context, tenantID int64) (string, error)
 }
 
@@ -73,7 +76,7 @@ func NewServiceTokenProvider(tokenURL, clientID, clientSecret string, logger *el
 
 // TokenFor 返回缓存中的有效 token,或换取新 token 并缓存。
 func (p *ServiceTokenProvider) TokenFor(ctx context.Context, tenantID int64) (string, error) {
-	if tenantID <= 0 {
+	if tenantID < 0 {
 		return "", fmt.Errorf("非法租户 ID: %d", tenantID)
 	}
 
@@ -115,6 +118,7 @@ func (p *ServiceTokenProvider) exchange(ctx context.Context, tenantID int64) (to
 	form.Set("grant_type", "client_credentials")
 	form.Set("client_id", p.clientID)
 	form.Set("client_secret", p.clientSecret)
+	// tenant_id=0 表示纯服务身份(eiam 侧跳过租户授权范围校验,签发无租户 token)
 	form.Set("tenant_id", strconv.FormatInt(tenantID, 10))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.tokenURL, strings.NewReader(form.Encode()))
