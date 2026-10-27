@@ -257,3 +257,83 @@
 4. **移动端壳层（P2）**：390px 固定侧栏 + 固定列宽，需横向滚动；建议侧栏折叠/抽屉。
 5. 「账号 ID」改为账号名（需确认已删除账号回退规则）。
 6. 本文件上一轮「本轮结论」在 main 上仍为「待补」，建议由对应 PR 补档（不属本轮范围）。
+
+---
+
+## cam-iteration-20261027-collect-log-filters（2026-10-27）
+
+**状态**：实现和验收完成，待审核
+**代码 PR**：`e-cam-web#3`（分支 `cam-iteration-20261027-collect-log-filters`，commits `fb62415` → `2f32f4c` → `f7a770d`）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+2026-10-27 巡检「FinOps → 采集管理」：日志已 **1959 条**，页面固定 20 条/页且无任何筛选；账号列只有数字 ID，运维无法按账号/状态定位失败记录。
+
+真实分布（API 实测）：火山 417、阿里 388、AWS 385、腾讯 388、华为 385；`status=running` 29、`status=failed` 806。后端 `GET /cost/collect/logs` 已支持 `account_id`/`status`，前端未使用。优先级 P2。
+
+### 目标与非目标
+
+- 目标：账号/状态筛选；账号显示名称+ID；总条数；空结果区分；筛选回第 1 页；筛选与轮询共存。
+- 非目标：后端改动、任务调度/状态、日期区间筛选（后端不支持日志时间过滤）、URL 状态持久化。
+
+### 改动
+
+- e-cam-web：`src/api/finops.ts`（`CollectLogQuery`/`CollectLogStatus`/`status` 参数）、`src/views/cam/collect/index.vue`、`src/views/cam/collect/filters.ts`（新增）、`src/views/cam/collect/filters.test.ts`（新增 11 例）。
+- e-cam-service：无代码改动，仅本记录。
+
+### API 契约（后端零改动）
+
+`GET /api/v1/cam/cost/collect/logs?account_id=&status=&offset=&limit=`；`status` 取 `running|success|failed`；空值不下发；响应 `data.items[]` + `data.total`。
+
+### 验收（真实浏览器 + 真实后端）
+
+环境：隔离 worktree + Vite `:5178`（base `/cam/`）+ 真实 `e-cam-service:8001` + 测试库；Chromium 141 headless；1440×900 / 390×844；`:8888` 统一登录（既有测试账号，未记录口令）。
+
+| # | 验收 | 结果 |
+|---|---|---|
+| 1 | 表头「账号」，不再是「账号 ID」 | ✅ |
+| 2 | 总条数 + 账号名 | ✅ `共 1959 条`，`集团-火山云 #5` |
+| 3 | 账号名与 ID 同时可见 | ✅ |
+| 4 | 账号筛选 | ✅ 火山云 417，请求含 `account_id=5` |
+| 5 | 账号+状态组合 | ✅ 火山云+失败 48，全为失败 |
+| 6 | 空结果区分 | ✅ AWS+成功 0，空态「没有匹配的采集记录」+ 清空 |
+| 7 | 清空筛选恢复 | ✅ 1959 |
+| 8 | 筛选回第 1 页 | ✅ 第 2 页 → 选运行中 → 第 1 页、29 条 |
+| 9 | 运行中筛选下轮询 | ✅ 请求均含 `status=running` |
+| 10 | 刷新保留筛选 | ✅ |
+| 11 | 窄屏 390 | ⚠️ 无整页溢出、筛选可操作；壳层内容区仅 122–170px（既有问题） |
+| 12 | 正常路径 console | ✅ 被测页 0 error |
+| 13 | 筛选「失败」视图仍持续轮询 | ✅ 12s 内 2 次失败视图请求 + 2 次 `status=running&limit=1` 探针 |
+| 14 | 探针 total=0 时停止轮询 | ✅ 停止后 12s 内 0 请求 |
+| 15 | 账号名 title | ✅ `title="集团-火山云"` |
+
+### 测试
+
+- `vitest run`：53 files / 938 tests 通过（`filters.test.ts` 11 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全绿（以最终 commit 为准）。
+
+### 子 Agent 与复核
+
+- 独立审查（read-only）：首轮 **request changes**，指出筛选视图下轮询误停（major）。修复后复核 **approve with nits**，确认 major 已解决、世代 token 无泄漏；剩余 nit 已处理（探针竞态守卫、探针带账号、BOM/空行清理），未处理项为已知限制（>100 账号、僵尸 running 长期轮询）。
+- 独立 QA（自写脚本）：首轮 A–J 29/29 PASS；最终提交复跑 27/27 回归 + 新增 N1（失败视图仍轮询）/N2（无任务即停）/N3（title）全部 PASS；被测页 console 0 error。
+
+### 版本组合
+
+- 前端：`f7a770d`（本 PR）。
+- 后端：`main@f09e290`（采集日志接口无 diff）。
+- 建议合并顺序：`e-cam-web#3`（无后端依赖）。
+
+### 风险与回滚
+
+纯前端；筛选不写 URL；非 running 筛选下每次拉取伴随 1 次探针（请求约翻倍，当前量级可接受）；已知限制：账号下拉最多 100 个、僵尸 running 会使轮询持续。回滚：revert 三个提交。
+
+### 后续建议（按优先级）
+
+1. **P1 采集任务 running 堆积/无超时回收**：`status=running` 29 条，前端只能持续轮询。
+2. **P1 自动同步任务积压/重复入队**（本轮新发现）：`/cam/tasks` 总数 6996，最近 100 条中 43 pending + 5 running；最老 pending 6 小时；同账号出现 2 个 running；调度器去重仅内存态，进程重启后失效。
+3. **P2 手动触发采集 403**：需确认权限码与前端可见性。
+4. **P2 账期字段口径统一**。
+5. **P2 移动端壳层**（390px 固定侧栏 + 固定列宽）。
+6. **P3 采集日志筛选写入 URL**；账号下拉改为按 total 分页加载。
