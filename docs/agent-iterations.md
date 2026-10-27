@@ -103,7 +103,37 @@
 
 ### 本轮结论
 
-（待补：补采结果、UI 验证、PR 链接）
+**状态：实现和验收完成，待审核**（火山 2026-03~08 历史账期为云侧 API 限制，已记录为用户侧遗留动作，见上）
+
+- **PR**：
+  - e-cam-service: https://github.com/Havens-blog/e-cam-service/pull/5 （分支 `cam-iteration-20261027-multicloud-cost`，commit `5ffb731`）
+  - e-cloudx-sdk: https://github.com/Havens-blog/e-cloudx-sdk/pull/2 （同名分支，commit `8dc4029`）
+  - 交叉引用已写入 PR 描述；建议先合 SDK 仓（go.work 本地联调，无阻塞依赖）
+  - e-cam-web 本轮无改动，无 PR（不制造空提交）
+- **联调版本组合**：e-cam-service `5ffb731` + e-cloudx-sdk `8dc4029`（生产 dev 环境经 CompileDaemon 热部署，二进制 10:10:50 起为修复后版本）
+- **浏览器验收**（Playwright chromium 141 headless，视口 1440x900 + 375x812，经 nginx:8888 实链路）：
+  1. 未登录访问 `/cam/finops/cost` → 跳 `/console/login?redirect=...` ✅
+  2. admin 登录（仓库迁移初始凭证）→ 直达成本页 ✅
+  3. 成本页渲染、默认窗与宽窗（2025-12-01~2026-10-27）全部 cost API 200 ✅
+  4. 宽窗口页面出现四云标签：阿里云/华为云/腾讯云/火山 ✅
+  5. 控制台错误仅 2 条，均来自未登录阶段（401+路由守卫），属预期行为；无新增错误
+  - 已知坑（记录供后续会话复用）：登录态 cookie `ecmdb-token-key` 的 Domain 绑定 `localhost`——脚本/测试必须全程使用 `http://localhost:8888`，用 `127.0.0.1` 会被浏览器拒收 cookie（表现为"登录成功但永远 401"）
+- **证据**：`docs/agent-iterations-evidence/cam-iteration-20261027-multicloud-cost/`（01 未登录跳转、02 登录后、03 默认窗、04 宽窗、05 窄屏截图 + results.json）
+- **历史缺口补采**（生产 `CollectAccount` 路径，`backfill_range_collect.go`）：
+  - ✅ tencent 2026-03~10 一次成功（32m34s）：4~9 月缺口全部入库（4月 ¥57,832 / 5月 ¥67,243 / 6月 ¥66,177 / 7月 ¥78,789 / 8月 ¥98,963 / 9月 ¥189,751），汇总表按范围自动重建
+  - ✅ volcengine 2026-01 缺口补齐（¥222,959）
+  - ❌ volcengine 2026-03~08 六个账期月：分段（4 段）与单月粒度均被火山服务端拒绝——`InternalServiceTimeout`（3~6 月）与 `RequestInvalid 查询数据错误`（4~8 月交替出现），而 2025-12/01/02/09/10 正常。参数错误应全月一致失败，故判定为**火山账单明细 API 对该批历史账期不可用**（云侧限制）。已留存各月 request id 于采集日志；如需补齐需走火山账单导出/工单渠道（用户侧动作，非代码）
+  - 幂等性：脚本按月先删后插，云侧恢复后可安全重跑同一命令
+- **终态账期覆盖**（ecam_cost_unified_bill 按 provider×账期月，2026-10-27 10:45）：
+  - aliyun：2025-12 ~ 2026-10 共 11 月完整（¥1.72M~2.56M/月）
+  - tencent：2026-03 ~ 2026-10 共 8 月完整（本轮补齐 4~9 月）
+  - volcengine：2025-12、01（新补）、02、09、10 共 5 月；缺 3~8 月（云侧限制，见上）
+  - huawei：仅 2026-02（¥30.6M）；更多账期受 `bss:billDetail:view` 权限缺口阻塞（云侧运维动作）
+- **缺口窗口复验**（2026-04-01 ~ 2026-09-30，补采前腾讯在此窗口零数据）：
+  - distribution API 精确返回 3 个 provider：aliyun ¥13,126,954.41 (85.7%) / volcano ¥1,623,924.84 (10.6%) / **tencent ¥558,758.28 (3.65%，补采数据)**，无 huawei（4~9 月确无华为账期，精确正确）
+  - API 金额与库内聚合逐分吻合（腾讯 6 月合计=各月之和）→ 页面与数据库一致
+  - 注：页面 DOM 文本含"华为云"来自**云厂商筛选下拉的静态选项**（常驻），数据级断言以 distribution API 响应为准（gap-months-distribution.json 已存证）
+- **模拟/真实边界声明**：本轮所有云调用均为真实云厂商账单**只读** API（与定时采集同类，用户配置的真实账号、用户明确要求的实盘数据场景）；未做任何云资源写操作；浏览器链路为本地真实前后端 + 远程测试库（106.52.187.69），无前端 Mock
 
 ### 后续建议
 
