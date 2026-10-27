@@ -1066,3 +1066,70 @@
 1. **P1 任务生命周期治理**：重排放回 pending 未清 `started_at/progress/completed_at`；建议统一重置 + 超时回收 + 持久化去重，并补 `attempt/last_attempt_at`，届时标签可升级为「重试 N 次」。
 2. **P3 窄屏分页**：修复 `.el-pagination` 390 溢出（当前 37px 内部滚动）。
 3. **P3 tooltip 可达性**：触屏/键盘场景下补充可见说明或 `el-tooltip`。
+
+---
+
+## cam-iteration-20261028-pagination-narrow（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#16`，merge commit `baa94cf`，2026-10-28 03:58 +08）
+**代码 PR**：`e-cam-web#16`（commits `40471f2` → `7ea6aac`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮独立 QA 在 390×844 实测任务页 `.pagination-container` 内部横向溢出 37px，归因 `.el-pagination`（宽 424 > 容器 402）。
+- 本轮复测：390 下分页 **677px** / 容器 **310px**，内部溢出 **185px**；`layout="total, sizes, prev, pager, next, jumper"` 不换行导致控件被裁。
+- 审查进一步指出：仅按 ≤768 加媒体查询会漏掉 **769–940**（768 起侧栏由 64 恢复 220，可用宽度反向跳变）；369/820/900 实测仍溢出 84/68/18px。
+
+### 需求卡
+
+- 目标用户：手机/窄窗口运维。
+- 目标：分页控件在任何可用宽度不足时自动换行，不超出容器；宽屏保持单行、视觉不变。
+- 非目标：改分页 layout/pager-count、重排控件、采集页分页（当前无溢出）、页面级 12px bleed（既有问题）。
+- 规则：纯 CSS，对 `:deep(.el-pagination)` 无条件 `flex-wrap: wrap`；宽度足够时天然单行。
+- API 契约：无。
+- 风险/回滚：仅任务页样式；1440 截图与修复前逐像素一致；单提交回滚。
+
+### 变更内容
+
+- `src/views/tasks/index.vue` scoped 样式：`.pagination-container` 内 `:deep(.el-pagination)` 设置 `flex-wrap: wrap; justify-content: center; row-gap: 8px; width: 100%`（不设媒体查询，覆盖侧栏展开区间）。
+
+### 验收（真实浏览器 + 真实后端）
+
+| 视口 | 容器内溢出（修复前 → 后） | pagination 尺寸（后） |
+|---|---|---|
+| 390 | 185 → **0** | 276×112（3 行） |
+| 768 | — → **0** | 654×72（2 行） |
+| 769 | 84 → **0** | 475×72（2 行） |
+| 820 | 68 → **0** | 526×72 |
+| 900 | 18 → **0** | 606×72 |
+| 1024 | — → **0** | 730×32（单行） |
+| 1440 | 0 → **0** | 1146×32（单行，截图与修复前逐像素一致） |
+
+- 390 翻页可用：点第 2 页 active=2、卡片 ID 变化、翻页后三类溢出均 0、6 控件可见。
+- 全矩阵 `elementFromPoint` 命中自身、无遮挡；与列表 gap 16px。
+
+独立 QA：**1–7 项全部 PASS**（快照 `7ea6aac`）。
+
+### 测试
+
+- `vitest run`：63 files / 1013 tests 通过（纯样式改动，无新增用例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：1 major（断点 768 漏掉 769–940）+ 2 minor（页面级 12px bleed、390 高度依赖滚动条）+ nits；已修 major，M2 作为既有问题记录。
+- 独立 QA：首轮 390/768/1440 PASS、769 FAIL；修复后 `7ea6aac` **全 PASS**，769/820/900 溢出归零，1440 与旧版逐像素一致。
+- 未处理：页面级 12px bleed（`.tasks-page` 负 margin -24 与窄屏 padding 12 不匹配，既有）；390 下 3 行 112px；`width:100%` 使元素盒变宽但内容坐标不变。
+
+### 版本组合
+
+- 前端：`7ea6aac`（合并为 `baa94cf`）。
+- 后端：`main@059eb2c`（无接口改动）。
+
+### 后续建议
+
+1. **P3 页面级 bleed**：`tasks-page` 负 margin 在 ≤768 改为 -12px（或去掉 bleed），消除 12px 横向滚动；需同时评估分页可用宽度（可能需 `pager-count=5`）。
+2. **P3 窄屏分页更紧凑**：≤400px 可考虑 `:small` / `pager-count=5`，减少 3 行高度。
+3. **P1 仍待办**：任务生命周期治理（pending 残留执行态、超时回收、持久化去重）、采集 running 超时、菜单死链（`menu-config.ts` 仍被并行会话占用）。
