@@ -319,22 +319,30 @@ func (s *CollectorService) CollectAccount(ctx context.Context, accountID int64, 
 }
 
 // calculateIncrementalRange 计算增量采集时间范围
-// 优先检查失败日志进行重试，否则从上次成功采集的 BillEnd 开始
-// 如果没有历史记录，默认从当月第一天开始
+// 失败日志仅在其覆盖的账期晚于最近一次成功采集时才作为重试依据；否则从
+// 上次成功采集的 BillEnd 开始；无历史记录时默认从当月第一天开始。
+// 注意：GetLastFailed 返回的是账号历史上最近一次失败日志——若其后已有
+// 成功采集覆盖了更晚的账期（success.BillEnd >= failed.BillEnd），该失败
+// 早已被消化，绝不能再拿它的 BillStart 当增量起点，否则起点会被永久钉在
+// 旧账期，单月查询的适配器会每轮重复拉同一批旧账单。
+// 新旧判定用账期时间（BillStart/BillEnd）而非日志创建时间：重试产生的
+// 失败日志创建于"现在"，其账期起点却是历史值，按创建时间比较会误判。
 func (s *CollectorService) calculateIncrementalRange(ctx context.Context, accountID int64) (time.Time, time.Time) {
 	now := time.Now().UTC()
 	endTime := now
 
-	// 检查是否有失败的采集任务需要重试
-	failedLog, err := s.collectLogDAO.GetLastFailed(ctx, accountID)
-	if err == nil && !failedLog.BillStart.IsZero() {
+	// 查询上次成功采集时间
+	successLog, succErr := s.collectLogDAO.GetLastSuccess(ctx, accountID)
+
+	// 检查是否有账期晚于最近一次成功覆盖范围的失败采集需要重试
+	failedLog, failErr := s.collectLogDAO.GetLastFailed(ctx, accountID)
+	if failErr == nil && !failedLog.BillStart.IsZero() &&
+		(succErr != nil || failedLog.BillEnd.After(successLog.BillEnd)) {
 		// 重试失败的时间范围：从失败的 BillStart 开始
 		return failedLog.BillStart, endTime
 	}
 
-	// 查询上次成功采集时间
-	successLog, err := s.collectLogDAO.GetLastSuccess(ctx, accountID)
-	if err == nil && !successLog.BillEnd.IsZero() {
+	if succErr == nil && !successLog.BillEnd.IsZero() {
 		// 增量采集：从上次成功的 BillEnd 开始
 		return successLog.BillEnd, endTime
 	}

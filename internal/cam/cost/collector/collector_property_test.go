@@ -355,8 +355,56 @@ func TestProperty5_FailedCollectionRetryRange(t *testing.T) {
 				"start (%v) must be before end (%v)", start, end)
 		})
 	})
-}
+	t.Run("stale_failed_log_ignored_after_later_success", func(t *testing.T) {
+		rapid.Check(t, func(t *rapid.T) {
+			now := time.Now().UTC()
 
+			// 失败日志：账期范围止于 failedBillEnd（1 小时 ~ 1 年前）
+			endHoursAgo := rapid.IntRange(1, 8760).Draw(t, "endHoursAgo")
+			failedBillEnd := now.Add(-time.Duration(endHoursAgo) * time.Hour).Truncate(time.Second)
+			spanHours := rapid.IntRange(1, 720).Draw(t, "spanHours")
+			failedBillStart := failedBillEnd.Add(-time.Duration(spanHours) * time.Hour).Truncate(time.Second)
+
+			// 成功日志：覆盖范围晚于失败日志的账期终点（失败早已被成功消化）。
+			// 上限 now-1h，保证 start < end。
+			extraHours := rapid.IntRange(1, 720).Draw(t, "extraHours")
+			successBillEnd := failedBillEnd.Add(time.Duration(extraHours) * time.Hour)
+			if !successBillEnd.Before(now.Add(-time.Hour)) {
+				successBillEnd = now.Add(-time.Hour)
+			}
+			successBillEnd = successBillEnd.Truncate(time.Second)
+
+			accountID := rapid.Int64Range(1, 100000).Draw(t, "accountID")
+
+			dao := &mockCollectLogDAO{
+				lastFailed: &domain.CollectLog{
+					BillStart: failedBillStart,
+					BillEnd:   failedBillEnd,
+				},
+				lastSuccess: &domain.CollectLog{
+					BillEnd: successBillEnd,
+				},
+			}
+			svc := newTestCollectorService(dao)
+
+			start, end := svc.calculateIncrementalRange(ctx, accountID)
+
+			// 1. 失败已被更晚的成功覆盖：必须从成功 BillEnd 增量，
+			//    而不是被钉在历史失败的 BillStart（否则单月适配器会
+			//    每轮重复拉取同一批旧账期）
+			assert.True(t, start.Equal(successBillEnd),
+				"start (%v) should equal success BillEnd (%v), not stale failed BillStart (%v)",
+				start, successBillEnd, failedBillStart)
+
+			// 2. start must be before end
+			assert.True(t, start.Before(end),
+				"start (%v) must be before end (%v)", start, end)
+		})
+	})
+}
+// at most one collection task can run at a time. If a lock is already held,
+// subsequent collection attempts for the same account should fail (acquireLock
+// returns false). After releasing the lock, a new acquisition should succeed.
 // TestProperty6_CollectionMutualExclusion verifies that for any cloud account,
 // at most one collection task can run at a time. If a lock is already held,
 // subsequent collection attempts for the same account should fail (acquireLock
