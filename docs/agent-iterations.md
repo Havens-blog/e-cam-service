@@ -363,3 +363,83 @@
 **环境边界（如实记录）**：验证中并行会话 18:31 重建的后端开始对非 8888 来源的 `/api/v1/cam/logs/*` 一律 403（旧构建 8888 对照无 4xx）——客户端断言在该现象出现前已通过,数据渲染 E2E 属环境阻断而非本轮引入,已写入 PR 边界说明。
 
 **遗留（候选,不擅自实现）**：app 专属 KPI（需确认口径）;聚合/诊断补 account_ids（需账号级筛选 UI）。
+
+---
+
+## cam-iteration-20261027-task-filters（2026-10-27）
+
+**状态**：**已合并**（`e-cam-web#5`，merge commit `6812aa1`，2026-10-27 19:00 +08）
+**代码 PR**：`e-cam-web#5`（commits `5bda04a` → `0ab25a2` → `a3940da`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+2026-10-27 巡检「资源 → 任务管理」：
+
+1. **任务类型筛选失效**：前端选项值 `sync_assets` / `discover_assets`，后端真实类型是 `cam:sync_assets` 等。实测 `GET /tasks?type=sync_assets` → **total=0**，`?type=cam:sync_assets` → **6534**。
+2. **类型显示为原始字符串**：任务卡/详情页标签映射同样用无前缀键，页面直接显示 `cam:sync_assets`。
+3. **队列积压不可见**：任务总量 7000，其中待执行 67、执行中 3、已完成 6926、失败 4；页面只有分页总数，无按状态概览。
+
+另：QA 复核发现 4 条 failed 任务均为同一后端错误 `tenant_id: cannot decode 64-bit integer into a string type`（见后续建议）。
+
+### 需求卡
+
+- 目标用户：运维/云管管理员，关注资产同步任务积压与失败。
+- 目标：类型筛选可用、类型标签中文化、队列概览（全部/待执行/执行中/已完成/失败）可点击筛选、积压提示、积压时自动刷新。
+- 非目标：后端改动、任务调度/重试/超时回收（P1 另立项）、任务详情页重构。
+- API 契约：复用 `GET /api/v1/cam/tasks?type=&status=&offset=&limit=`；`type ∈ cam:sync_assets|cam:discover_assets|cam:sync_billing|cam:create_ecs`，`status ∈ pending|running|completed|failed|cancelled`；响应 `data.tasks[]` + `data.total`。**后端零改动。**
+- 风险/回滚：纯前端；概览额外 5 次 `limit=1` 统计（加载/手动刷新/类型变更/每 30s 补刷）；回滚 `git revert a3940da 0ab25a2 5bda04a`。
+
+### 改动
+
+- `src/api/types/task.ts`：`TaskType` 对齐后端真实值（4 种，含 `cam:create_ecs`），`Task` 增加 `error` 字段。
+- `src/views/tasks/taskFilters.ts`（新增）：类型/状态选项、概览状态、查询构造、标签、积压判定。
+- `src/views/tasks/taskFilters.test.ts`（新增，11 例）。
+- `src/views/tasks/index.vue`：
+  - 类型/状态下拉使用真实值；
+  - 队列概览条（5 档计数，点击筛选；参与类型筛选口径）；
+  - 积压提示「待执行 X · 执行中 Y」；
+  - 自动刷新：有积压 5s 刷列表（每 30s 补概览），空闲 30s 低频；卸载/竞态守卫。
+- `src/views/tasks/components/{TaskCard,TaskStatusBadge}.vue`、`detail.vue`：类型标签/图标覆盖 4 种类型；状态文案统一「待执行/执行中」；失败任务错误信息改读后端真实字段 `error`。
+
+### 验收（真实浏览器 + 真实后端）
+
+环境：隔离 worktree + Vite `:5179`（base `/cam/`）+ 真实 `e-cam-service:8001` + 测试库；Chromium 141 headless；1440×900 / 390×844；`:8888` 统一登录（既有测试账号，未记录口令）。
+
+| # | 验收 | 结果 |
+|---|---|---|
+| 1 | 概览五档计数与接口一致 | ✅ 7002 / 64 / 5 / 6929 / 4 |
+| 2 | 积压提示 | ✅ `队列积压：待执行 64 · 执行中 5` |
+| 3 | 类型筛选真实类型 | ✅ 同步资产 6536 = API，卡片标签均「同步资产」 |
+| 3b | 类型筛选后概览收敛 | ✅ chip「全部 6536」= 列表 total = API |
+| 4 | 无原始类型字符串 | ✅ |
+| 5 | chip 点击 + 组合筛选 | ✅ 待执行 63 = API，chip 高亮 |
+| 6 | 清空筛选 | ✅ 7002 |
+| 7 | 积压自动刷新 | ✅ 12s 内 2 次，间隔 5028ms，无整页 loading |
+| 8 | 窄屏 390 | ⚠️ 无整页溢出、概览可见；壳层内容区仍 170px（既有问题） |
+| 9 | 正常路径 console | ✅ 0 error / 0 warning |
+| 10 | 失败任务错误信息 | ✅ 4 条 failed 全部展示后端 `error` |
+
+### 测试
+
+- `vitest run`：54 files / 951 tests 通过（`taskFilters.test.ts` 11 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查（read-only）：首轮 **request changes**（首屏空态、概览与列表口径矛盾 2 个 major），修复后复核 **approve with nits**，确认 major 已实质修复；剩余 nit 已在 `a3940da` 收敛。
+- 独立 QA（自写脚本、真实接口零 mock）：对 `0ab25a2` 与 `a3940da` 各完整复跑，**18/18 PASS**（概览计数、积压提示、五 chip 逐个点击、类型筛选 6536、chip 收敛、组合、清空、5s 轮询、390、console 0、按钮存在性、失败错误信息透出）；零积压空闲分支因无法构造（禁止改数据）未执行。
+
+### 版本组合
+
+- 前端：`a3940da`（合并为 `6812aa1`）。
+- 后端：`main@f06a20c`（任务接口无 diff）。
+- 合并顺序：`e-cam-web#5` 已合；本记录 PR 随后。
+
+### 后续建议（按优先级）
+
+1. **P1 自动同步任务积压/重复入队**：7000+ 任务、60+ 待执行；调度器去重仅内存态、进程重启后失效；需启动对账 + 持久化去重 + 超时回收。
+2. **P1 任务执行失败根因**（QA 新证据）：4 条 failed 均为 `获取云账号失败: error decoding key tenant_id: cannot decode 64-bit integer into a string type` —— 账号解码类型问题，需后端修复（与采集/同步链路相关）。
+3. **P2 采集任务 running 29 条无超时回收**；**P2 触发采集 403 权限码确认**；**P2 账期口径统一**；**P2 移动端壳层**。
+4. **P3**：分页 `Total` 英文（全站未配 Element Plus zh-cn locale）；概览无法覆盖 disk:/nas:/oss:/rds: 指标任务（跨模块队列）。
