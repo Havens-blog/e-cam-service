@@ -1,0 +1,72 @@
+{
+  "results": [
+    {
+      "step": "1.未登录访问成本页",
+      "detail": "最终URL=http://localhost:8888/console/login?redirect=http%3A%2F%2Flocalhost%3A8888%2Fcam%2Ffinops%2Fcost",
+      "verdict": "PASS"
+    },
+    {
+      "step": "2.登录提交",
+      "detail": "最终URL=http://localhost:8888/cam/finops/cost",
+      "verdict": "PASS"
+    },
+    {
+      "step": "3.打开成本页",
+      "detail": "URL=http://localhost:8888/cam/finops/cost",
+      "verdict": "PASS"
+    },
+    {
+      "step": "4.设置日期范围",
+      "detail": "2025-12-01 ~ 2026-10-27",
+      "verdict": "DONE"
+    },
+    {
+      "step": "5.宽窗口页面含「阿里云」",
+      "detail": "出现",
+      "verdict": "FOUND"
+    },
+    {
+      "step": "5.宽窗口页面含「华为云」",
+      "detail": "出现",
+      "verdict": "FOUND"
+    },
+    {
+      "step": "5.宽窗口页面含「腾讯云」",
+      "detail": "出现",
+      "verdict": "FOUND"
+    },
+    {
+      "step": "5.宽窗口页面含「火山」",
+      "detail": "出现",
+      "verdict": "FOUND"
+    },
+    {
+      "step": "6.窄屏渲染",
+      "detail": "375x812 已截图",
+      "verdict": "DONE"
+    }
+  ],
+  "consoleErrors": [
+    "[Router] Navigation error: Error: Invalid navigation guard\n    at http://localhost:8888/cam/node_modules/.vite/deps/vue-router.js?v=aa2db11b:605:33",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "failedRequests": [
+    "HTTP 401 http://localhost:8888/api/iam/user/profile",
+    "GET http://localhost:8888/cam/src/assets/iconfont/iconfont.js :: net::ERR_ABORTED",
+    "GET http://localhost:8888/cam/node_modules/.pnpm/@fontsource-variable+inter@5.3.0/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2 :: net::ERR_ABORTED"
+  ],
+  "apiResponses": [
+    "HTTP 200 /api/v1/cam/cost/distribution?start_date=2026-08-01&end_date=2026-10-27&dimension=provider",
+    "HTTP 200 /api/v1/cam/cost/comparison?start_date=2026-08-01&end_date=2026-10-27",
+    "HTTP 200 /api/v1/cam/cost/trend?start_date=2026-08-01&end_date=2026-10-27&granularity=daily",
+    "HTTP 200 /api/v1/cam/cost/summary?start_date=2026-08-01&end_date=2026-10-27",
+    "HTTP 200 /api/v1/cam/cost/summary?start_date=2026-08-01&end_date=2026-10-27",
+    "HTTP 200 /api/v1/cam/cost/trend?start_date=2026-08-01&end_date=2026-10-27&granularity=daily",
+    "HTTP 200 /api/v1/cam/cost/distribution?start_date=2026-08-01&end_date=2026-10-27&dimension=provider",
+    "HTTP 200 /api/v1/cam/cost/comparison?start_date=2026-08-01&end_date=2026-10-27",
+    "HTTP 200 /api/v1/cam/cost/distribution?start_date=2025-12-01&end_date=2026-10-27&dimension=provider",
+    "HTTP 200 /api/v1/cam/cost/comparison?start_date=2025-12-01&end_date=2026-10-27",
+    "HTTP 200 /api/v1/cam/cost/summary?start_date=2025-12-01&end_date=2026-10-27",
+    "HTTP 200 /api/v1/cam/cost/trend?start_date=2025-12-01&end_date=2026-10-27&granularity=daily"
+  ]
+}

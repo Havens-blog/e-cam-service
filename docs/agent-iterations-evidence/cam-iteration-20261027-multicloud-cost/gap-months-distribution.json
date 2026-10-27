@@ -1,0 +1,29 @@
+[
+  {
+    "url": "/api/v1/cam/cost/distribution?start_date=2026-04-01&end_date=2026-09-30&dimension=provider",
+    "body": {
+      "code": 200,
+      "msg": "success",
+      "data": [
+        {
+          "key": "aliyun",
+          "amount": 13126954.41,
+          "amount_cny": 13126954.41,
+          "percent": 85.74307774613918
+        },
+        {
+          "key": "volcano",
+          "amount": 1623924.84,
+          "amount_cny": 1623924.84,
+          "percent": 10.607206322277966
+        },
+        {
+          "key": "tencent",
+          "amount": 558758.28,
+          "amount_cny": 558758.28,
+          "percent": 3.649715931582869
+        }
+      ]
+    }
+  }
+]
