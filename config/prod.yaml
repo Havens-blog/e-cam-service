@@ -110,3 +110,7 @@ eiam:
   token_url: ""
   client_id: ""
   client_secret: ""
+  # 服务间鉴权（入站验签）：eiam OIDC 签名密钥对应的 RSA 公钥 PEM，
+  # 用于 /api/s2s 路由组验 client_credentials RS256 令牌（OpsAgent RCA → 日志查询）。
+  # 由 eiam keyManager 导出（ExportPublicKeyPEM）；未配置则服务间调用 fail-closed。
+  public_key: ""

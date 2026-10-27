@@ -224,6 +224,13 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, psdk *sdk.SDK, s
 		logsGroup := server.Group("/api/v1/cam/logs")
 		logsGroup.Use(middleware.RequireTenant(logger))
 		logQueryModule.RegisterRoutes(logsGroup)
+
+		// 服务间日志查询路由（/api/s2s/logs）：S2S 令牌验签（eiam 签发 RS256），
+		// 供 OpsAgent RCA 调用；租户从令牌 claim 注入，不经用户会话。
+		s2sLogsGroup := server.Group("/api/s2s/logs")
+		s2sLogsGroup.Use(middleware.S2SAuth(viper.GetString("eiam.public_key")))
+		s2sLogsGroup.Use(middleware.RequireTenant(logger))
+		logQueryModule.RegisterRoutes(s2sLogsGroup)
 		logger.Info("日志查询功能域路由注册完成")
 	} else {
 		logger.Warn("日志查询功能域模块未初始化，跳过日志查询路由注册")
