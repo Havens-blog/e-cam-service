@@ -1,12 +1,15 @@
 // Command probe-applog 临时诊断（不进 CI）：用平台自身云账号（解密链复用
-// internal/account/repository）实测阿里 SLS 指定 project 的 logstore 清单与
+// internal/account/repository）实测云厂商日志服务的 logstore/topic 清单与
 // app 业务日志字段 schema，为 logquery「应用日志」类型的映射设计提供实测依据。
+// 已实测：阿里 SLS jlc-prod-log 104 个 <service>-business store；
+// 火山 TLS *_business topic。
 //
-// 凭证只经内存解密后用于 SLS 调用，不打印不落盘；日志样本仅输出字段名与
+// 凭证只经内存解密后用于云 API 调用，不打印不落盘；日志样本仅输出字段名与
 // 截断值。用法：
 //
 //	go run ./cmd/probe-applog -f config/prod.yaml -tenant 1 \
 //	  -region cn-shenzhen -project jlc-lb-log
+//	go run ./cmd/probe-applog -f config/prod.yaml -tenant 3 -provider volcano
 package main
 
 import (
@@ -25,25 +28,58 @@ import (
 	"github.com/Havens-blog/e-common-go/crypto"
 	sls "github.com/aliyun/aliyun-log-go-sdk"
 	"github.com/spf13/viper"
+	"github.com/volcengine/volc-sdk-golang/service/tls"
 )
 
 func fatal(f string, a ...any) { fmt.Fprintf(os.Stderr, "[probe] "+f+"\n", a...); os.Exit(1) }
+
+// resolveAccount 按 provider+tenant 取云账号（凭证不回显），空结果时列出全库分布帮助定位。
+func resolveAccount(repo repository.CloudAccountRepository, ctx context.Context, provider domain.CloudProvider, tenant int64) domain.CloudAccount {
+	accounts, _, err := repo.List(ctx, domain.CloudAccountFilter{Provider: provider, TenantID: tenant})
+	if err != nil {
+		fatal("list accounts: %v", err)
+	}
+	if len(accounts) == 0 {
+		all, _, lerr := repo.List(ctx, domain.CloudAccountFilter{})
+		if lerr != nil {
+			fatal("list all accounts: %v", lerr)
+		}
+		fmt.Printf("tenant %d 无 %s 账号；全库账号分布：\n", tenant, provider)
+		for _, a := range all {
+			fmt.Printf("  id=%d provider=%s tenant=%d status=%s name=%s\n", a.ID, a.Provider, a.TenantID, a.Status, a.Name)
+		}
+		fatal("无法继续")
+	}
+	acc := accounts[0]
+	fmt.Printf("== 使用云账号 id=%d name=%s provider=%s（凭证不回显） ==\n", acc.ID, acc.Name, acc.Provider)
+	return acc
+}
 
 func main() {
 	var (
 		confFile     string
 		tenant       int64
+		provider     string
 		region       string
 		project      string
 		stores       string
 		listProjects bool
+		listTopics   bool
+		query        string
+		topicFilter  string
+		vregion      string
 	)
 	flag.StringVar(&confFile, "f", "config/prod.yaml", "service config file")
 	flag.Int64Var(&tenant, "tenant", 1, "tenant id owning the cloud accounts")
-	flag.StringVar(&region, "region", "cn-shenzhen", "SLS region")
-	flag.StringVar(&project, "project", "jlc-lb-log", "SLS project to enumerate")
+	flag.StringVar(&provider, "provider", "aliyun", "cloud provider: aliyun | volcano")
+	flag.StringVar(&region, "region", "cn-shenzhen", "SLS region (aliyun)")
+	flag.StringVar(&project, "project", "jlc-lb-log", "SLS project to enumerate (aliyun)")
 	flag.StringVar(&stores, "stores", "", "comma-separated explicit logstores to sample (skips -business detection)")
-	flag.BoolVar(&listProjects, "list-projects", false, "only enumerate all SLS projects of the account")
+	flag.BoolVar(&listProjects, "list-projects", false, "only enumerate all SLS projects of the account (aliyun)")
+	flag.BoolVar(&listTopics, "list-topics", false, "only enumerate all TLS topics (volcano)")
+	flag.StringVar(&query, "query", "*", "search query passthrough for topic sampling (volcano)")
+	flag.StringVar(&topicFilter, "topic", "", "only probe topics whose name contains this substring (volcano)")
+	flag.StringVar(&vregion, "vregion", "", "limit volcano probe to one region (empty = all enum regions)")
 	flag.Parse()
 
 	viper.SetConfigFile(confFile)
@@ -55,31 +91,24 @@ func main() {
 	}
 	db := ioc.InitMongoDB()
 	repo := repository.NewCloudAccountRepository(accountdao.NewCloudAccountDAO(db))
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	accounts, _, err := repo.List(ctx, domain.CloudAccountFilter{
-		Provider: domain.CloudProviderAliyun,
-		TenantID: tenant,
-	})
-	if err != nil {
-		fatal("list accounts: %v", err)
-	}
-	if len(accounts) == 0 {
-		// 兜底：不带过滤列出全部账号，看租户/厂商分布（不打印凭证）
-		all, _, lerr := repo.List(ctx, domain.CloudAccountFilter{})
-		if lerr != nil {
-			fatal("list all accounts: %v", lerr)
-		}
-		fmt.Printf("tenant %d 无阿里云账号；全库账号分布：\n", tenant)
-		for _, a := range all {
-			fmt.Printf("  id=%d provider=%s tenant=%d status=%s name=%s\n", a.ID, a.Provider, a.TenantID, a.Status, a.Name)
-		}
-		fatal("无法继续")
-	}
-	acc := accounts[0]
-	fmt.Printf("== 使用云账号 id=%d name=%s（凭证不回显） ==\n", acc.ID, acc.Name)
 
+	switch strings.ToLower(provider) {
+	case "aliyun":
+		acc := resolveAccount(repo, ctx, domain.CloudProviderAliyun, tenant)
+		probeAliyun(acc, region, project, stores, listProjects)
+	case "volcano":
+		// 库里火山账号 provider 键为 volcengine（SDK volcano/volcengine 双键兼容）
+		acc := resolveAccount(repo, ctx, domain.CloudProviderVolcengine, tenant)
+		probeVolcano(acc, listTopics, query, topicFilter, vregion)
+	default:
+		fatal("未知 provider: %s", provider)
+	}
+}
+
+// probeAliyun 阿里 SLS：project/logstore 枚举 + -business 候选采样。
+func probeAliyun(acc domain.CloudAccount, region, project, stores string, listProjects bool) {
 	client := &sls.Client{
 		Endpoint:        region + ".log.aliyuncs.com",
 		AccessKeyID:     acc.AccessKeyID,
@@ -87,7 +116,6 @@ func main() {
 		RequestTimeOut:  20 * time.Second,
 	}
 
-	// -list-projects：只枚举全账号 project 清单（找 app 日志落点用）
 	if listProjects {
 		projects, err := client.ListProject()
 		if err != nil {
@@ -133,24 +161,107 @@ func main() {
 			fmt.Printf("\n-- %s: 查询失败 %v\n", store, err)
 			continue
 		}
-		fmt.Printf("\n-- %s: %d 条样本\n", store, len(resp.Logs))
-		if len(resp.Logs) == 0 {
-			continue
-		}
-		keys := make([]string, 0, len(resp.Logs[0]))
-		for k := range resp.Logs[0] {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		fmt.Println("   字段:", strings.Join(keys, ", "))
-		row := resp.Logs[0]
-		fmt.Println("   样本:")
-		for _, k := range keys {
-			v := row[k]
-			if len(v) > 80 {
-				v = v[:80] + "…"
+		rows := make([]map[string]any, 0, len(resp.Logs))
+		for _, l := range resp.Logs {
+			r := make(map[string]any, len(l))
+			for k, v := range l {
+				r[k] = v
 			}
-			fmt.Printf("     %s = %s\n", k, v)
+			rows = append(rows, r)
 		}
+		printSamples(store, len(rows), func(i int) map[string]any { return rows[i] })
+	}
+}
+
+// probeVolcano 火山 TLS：全量 DescribeTopics 枚举 + *_business 候选采样。
+// TLS SearchLogs 时间为 Unix 秒（同 SDK provider.go 注释）。
+func probeVolcano(acc domain.CloudAccount, listTopics bool, query, topicFilter, vregion string) {
+	regions := acc.Regions
+	if len(regions) == 0 {
+		regions = []string{"cn-guangzhou", "cn-beijing", "cn-shanghai"}
+	}
+	if vregion != "" {
+		regions = []string{vregion}
+	}
+	now := time.Now().Unix()
+	var allBusiness []*tls.Topic
+	for _, region := range regions {
+		client := tls.NewClient("https://tls-"+region+".volces.com", acc.AccessKeyID, acc.AccessKeySecret, "", region)
+		var topics []*tls.Topic
+		for page := 1; ; page++ {
+			resp, err := client.DescribeTopics(&tls.DescribeTopicsRequest{ProjectID: "", PageNumber: page, PageSize: 100})
+			if err != nil {
+				fatal("DescribeTopics %s page %d: %v", region, page, err)
+			}
+			if resp == nil || len(resp.Topics) == 0 {
+				break
+			}
+			topics = append(topics, resp.Topics...)
+			if len(resp.Topics) < 100 {
+				break
+			}
+		}
+		fmt.Printf("== %s 共 %d 个 topic ==\n", region, len(topics))
+		business := 0
+		for _, t := range topics {
+			if listTopics {
+				fmt.Printf("  - %s (id=%s ttl=%d)\n", t.TopicName, t.TopicID, t.Ttl)
+			}
+			if strings.HasSuffix(strings.ToLower(t.TopicName), "business") {
+				if topicFilter != "" && !strings.Contains(strings.ToLower(t.TopicName), strings.ToLower(topicFilter)) {
+					continue
+				}
+				business++
+				allBusiness = append(allBusiness, t)
+				if listTopics {
+					continue // 列表模式不再重复采样
+				}
+				q := query
+				if q == "" {
+					q = "*"
+				}
+				resp, err := client.SearchLogs(&tls.SearchLogsRequest{
+					TopicID: t.TopicID, Query: q,
+					StartTime: now - 86400, EndTime: now, Limit: 3, Sort: "desc",
+				})
+				if err != nil {
+					fmt.Printf("\n-- %s: 查询失败 %v\n", t.TopicName, err)
+					continue
+				}
+				rows := make([]map[string]any, 0, len(resp.Logs))
+				for _, l := range resp.Logs {
+					r := make(map[string]any, len(l))
+					for k, v := range l {
+						r[k] = v
+					}
+					rows = append(rows, r)
+				}
+				printSamples(t.TopicName, len(rows), func(i int) map[string]any { return rows[i] })
+			}
+		}
+		fmt.Printf("   其中 business 候选 %d 个\n", business)
+	}
+	fmt.Printf("\n== 全 region business 候选合计 %d 个 ==\n", len(allBusiness))
+}
+
+// printSamples 打印样本字段名与截断值（凭证无关字段，值截断 80 字符）。
+func printSamples(name string, n int, row func(int) map[string]any) {
+	fmt.Printf("\n-- %s: %d 条样本\n", name, n)
+	if n == 0 {
+		return
+	}
+	keys := make([]string, 0, len(row(0)))
+	for k := range row(0) {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	fmt.Println("   字段:", strings.Join(keys, ", "))
+	fmt.Println("   样本:")
+	for _, k := range keys {
+		v := fmt.Sprintf("%v", row(0)[k])
+		if len(v) > 80 {
+			v = v[:80] + "…"
+		}
+		fmt.Printf("     %s = %s\n", k, v)
 	}
 }
