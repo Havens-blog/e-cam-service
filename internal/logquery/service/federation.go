@@ -6,6 +6,7 @@
 package service
 
 import (
+	"errors"
 	"context"
 	"fmt"
 	"sort"
@@ -90,6 +91,9 @@ type AggregateSourceOutcome struct {
 	Total       int64                `json:"total"` // 该源窗口精确总数
 	Error       string               `json:"error"` // 失败/不支持原因(空=成功)
 	DurationMs  int64                `json:"duration_ms"`
+	// NotSupported 该源不具备聚合能力(确定性空,非瞬时失败):不参与
+	// 全源失败判定(结果可安全缓存,无脏 0 回放风险)。
+	NotSupported bool `json:"not_supported,omitempty"`
 }
 
 // AggregateResponse 联邦聚合响应(跨源归并:分桶求和、TopN 归并取前 10)。
@@ -101,9 +105,55 @@ type AggregateResponse struct {
 	Sources []AggregateSourceOutcome   `json:"sources"`
 	// TopNSkip 部分源维度/指标不可下推的说明(趋势/总数仍有效,仅 TopN 缺失)。
 	TopNSkip string `json:"topn_skip,omitempty"`
+	// TopNNote 采样型 TopN 的口径说明(窗口内最近优先采样,非精确全量分布);
+	// 精确聚合(索引 group by)为空。见 logquery.ScanTopNNote。
+	TopNNote string `json:"topn_note,omitempty"`
 	// Cached/CacheStale 结果缓存标注(语义同 SearchResponse)。
 	Cached     bool `json:"cached"`
 	CacheStale bool `json:"cache_stale"`
+}
+
+// normalizeWindowMs 毫秒/秒窗口自适配:窗口契约是 Unix 毫秒,但调用方常传
+// 秒——秒值被当毫秒解释成 1970 年,窗口静默返回 0 不报错(实测踩坑)。
+// 窗口值落在秒纪元范围([1e9,1e12),即 2001-09 后的秒)时按秒×1000 纠正;
+// 更小的值视为无效直接报错,不静默吞。混合毫秒/秒的窗口按各自量级纠正,
+// 纠正后再做窗口合法性校验。
+func normalizeWindowMs(start, end int64) (int64, int64, error) {
+	const msEpochFloor = int64(1_000_000_000_000) // 2001-09-09 起的毫秒纪元
+	const secEpochFloor = int64(1_000_000_000)    // 2001-09-09 起的秒纪元
+	adj := func(v int64) (int64, error) {
+		switch {
+		case v >= msEpochFloor:
+			return v, nil
+		case v >= secEpochFloor:
+			return v * 1000, nil
+		default:
+			return 0, fmt.Errorf("invalid window value %d: expected unix ms(或 [1e9,1e12) 区间的秒)", v)
+		}
+	}
+	s, err := adj(start)
+	if err != nil {
+		return 0, 0, err
+	}
+	e, err := adj(end)
+	if err != nil {
+		return 0, 0, err
+	}
+	return s, e, nil
+}
+
+// allSearchSourcesFailed 检索源结果全为失败(n>0 且每项 Error 非空)。
+// 全源失败时返回错误而非空结果(空结果会被结果缓存回放成脏 0)。
+func allSearchSourcesFailed(sources []SourceOutcome) bool {
+	if len(sources) == 0 {
+		return false
+	}
+	for _, oc := range sources {
+		if oc.Error == "" {
+			return false
+		}
+	}
+	return true
 }
 
 // Aggregate 窗口内真实聚合入口(plan.md §8):分桶下推各云引擎,百万级行
@@ -112,6 +162,11 @@ func (s *FederationService) Aggregate(ctx context.Context, tenantID int64, req A
 	if !logquery.IsValidLogType(req.LogType) {
 		return nil, fmt.Errorf("invalid log type: %s", req.LogType)
 	}
+	start, end, err := normalizeWindowMs(req.StartTime, req.EndTime)
+	if err != nil {
+		return nil, err
+	}
+	req.StartTime, req.EndTime = start, end
 	if req.EndTime <= req.StartTime {
 		return nil, fmt.Errorf("invalid time window: end %d <= start %d", req.EndTime, req.StartTime)
 	}
@@ -126,7 +181,7 @@ func (s *FederationService) Aggregate(ctx context.Context, tenantID int64, req A
 	if !logquery.IsValidAggregateMetric(req.Metric) {
 		return nil, fmt.Errorf("invalid aggregate metric: %s", req.Metric)
 	}
-	start := time.Now()
+	started := time.Now()
 	resp, cached, stale, err := cachedCall(ctx, s.cache, "aggregate", tenantID, req, func(cctx context.Context) (*AggregateResponse, error) {
 		return s.aggregateUncached(cctx, tenantID, req)
 	})
@@ -138,7 +193,7 @@ func (s *FederationService) Aggregate(ctx context.Context, tenantID int64, req A
 		elog.String("log_type", string(req.LogType)),
 		elog.String("cache_hit", strconv.FormatBool(cached)),
 		elog.String("cache_stale", strconv.FormatBool(stale)),
-		elog.Int64("duration_ms", time.Since(start).Milliseconds()))
+		elog.Int64("duration_ms", time.Since(started).Milliseconds()))
 	return resp, nil
 }
 
@@ -166,6 +221,7 @@ func (s *FederationService) aggregateUncached(ctx context.Context, tenantID int6
 		outcomes      []AggregateSourceOutcome
 		topNSkipMu    sync.Mutex
 		topNSkipFirst string
+		topNNote      string
 	)
 	g, gctx := errgroup.WithContext(ctx)
 	for i := range accounts {
@@ -209,6 +265,7 @@ func (s *FederationService) aggregateUncached(ctx context.Context, tenantID int6
 			if err != nil {
 				if gctx.Err() == nil { // 联邦级超时不计入单源失败
 					oc.Error = err.Error()
+					oc.NotSupported = errors.Is(err, errAggregateUnsupported)
 				}
 			} else if result != nil { // provider 返回 (nil,nil) 不崩(隔离)
 				oc.Total = result.Total
@@ -239,12 +296,24 @@ func (s *FederationService) aggregateUncached(ctx context.Context, tenantID int6
 					}
 					topNSkipMu.Unlock()
 				}
+				if result.TopNNote != "" {
+					topNSkipMu.Lock()
+					topNNote = result.TopNNote
+					topNSkipMu.Unlock()
+				}
 			}
 			mu.Unlock()
 			return nil // 单源失败隔离,永不中断 errgroup
 		})
 	}
 	_ = g.Wait()
+	// 瞬时全源失败(每源都报错且无任何真实数据):返回错误而不是 0 聚合——
+	// cachedCall 会缓存返回值,0 结果被缓存后同参请求在 TTL 内回放脏 0
+	// (result_cache 曾因此把一次瞬时故障的空窗回放给用户)。能力不支持的
+	// 源是确定性空,不算失败(缓存分析路径靠它做维度降级)。
+	if len(buckets) == 0 && allTransientFailed(outcomes) {
+		return nil, fmt.Errorf("log aggregate: 所有源查询失败(如 %s)", outcomes[0].Error)
+	}
 
 	resp := &AggregateResponse{
 		LogType: string(req.LogType),
@@ -269,6 +338,7 @@ func (s *FederationService) aggregateUncached(ctx context.Context, tenantID int6
 		return resp.TopN[i].Value > resp.TopN[j].Value
 	})
 	resp.TopNSkip = topNSkipFirst
+	resp.TopNNote = topNNote
 	const federatedTopN = 10
 	if len(resp.TopN) > federatedTopN {
 		resp.TopN = resp.TopN[:federatedTopN]
@@ -383,6 +453,11 @@ func (s *FederationService) Search(ctx context.Context, tenantID int64, req Sear
 	if !logquery.IsValidLogType(req.LogType) {
 		return nil, fmt.Errorf("invalid log type: %s", req.LogType)
 	}
+	start, end, err := normalizeWindowMs(req.StartTime, req.EndTime)
+	if err != nil {
+		return nil, err
+	}
+	req.StartTime, req.EndTime = start, end
 	if req.EndTime <= req.StartTime {
 		return nil, fmt.Errorf("invalid time window: end %d <= start %d", req.EndTime, req.StartTime)
 	}
@@ -394,7 +469,7 @@ func (s *FederationService) Search(ctx context.Context, tenantID int64, req Sear
 			return nil, fmt.Errorf("incomplete field filter: %+v", f)
 		}
 	}
-	start := time.Now()
+	started := time.Now()
 	resp, cached, stale, err := cachedCall(ctx, s.cache, "search", tenantID, req, func(cctx context.Context) (*SearchResponse, error) {
 		return s.searchUncached(cctx, tenantID, req)
 	})
@@ -406,7 +481,7 @@ func (s *FederationService) Search(ctx context.Context, tenantID int64, req Sear
 		elog.String("log_type", string(req.LogType)),
 		elog.String("cache_hit", strconv.FormatBool(cached)),
 		elog.String("cache_stale", strconv.FormatBool(stale)),
-		elog.Int64("duration_ms", time.Since(start).Milliseconds()))
+		elog.Int64("duration_ms", time.Since(started).Milliseconds()))
 	return resp, nil
 }
 
@@ -488,6 +563,12 @@ func (s *FederationService) searchUncached(ctx context.Context, tenantID int64, 
 	// provider 归并后总量可合理超过单源上限,不能以 Count>=perSource 判截断)
 	if ctx.Err() != nil {
 		truncate = true
+	}
+	// 全源失败(每源都报错且无任何条目):返回错误而不是空结果——上层
+	// cachedCall 会缓存返回值,空结果被缓存后同参请求在 TTL 内回放脏 0
+	// (result_cache 曾因此把一次瞬时故障的空窗回放给用户)。
+	if len(entries) == 0 && allSearchSourcesFailed(outcomes) {
+		return nil, fmt.Errorf("log search: 所有源查询失败(如 %s)", outcomes[0].Error)
 	}
 	// 跨源归并:时间倒序
 	sort.SliceStable(entries, func(i, j int) bool {

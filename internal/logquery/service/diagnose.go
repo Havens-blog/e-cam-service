@@ -316,6 +316,20 @@ func allSourcesFailed(sources []AggregateSourceOutcome) bool {
 	return true
 }
 
+// allTransientFailed 全部源均为瞬时失败(能力不支持的确定性空不算失败):
+// 用于全源失败时拒绝产出可被结果缓存回放的空聚合。
+func allTransientFailed(sources []AggregateSourceOutcome) bool {
+	if len(sources) == 0 {
+		return false
+	}
+	for _, oc := range sources {
+		if oc.Error == "" || oc.NotSupported {
+			return false
+		}
+	}
+	return true
+}
+
 // joinSourceErrors 去重拼接源失败原因(前窗不可用/维度缺失标注用)。
 func joinSourceErrors(sources []AggregateSourceOutcome) string {
 	seen := make(map[string]bool, len(sources))
