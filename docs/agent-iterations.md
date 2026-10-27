@@ -1133,3 +1133,76 @@
 1. **P3 页面级 bleed**：`tasks-page` 负 margin 在 ≤768 改为 -12px（或去掉 bleed），消除 12px 横向滚动；需同时评估分页可用宽度（可能需 `pager-count=5`）。
 2. **P3 窄屏分页更紧凑**：≤400px 可考虑 `:small` / `pager-count=5`，减少 3 行高度。
 3. **P1 仍待办**：任务生命周期治理（pending 残留执行态、超时回收、持久化去重）、采集 running 超时、菜单死链（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261028-tasks-bleed（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#17`，merge commit `44f23cc`，2026-10-28 05:26 +08）
+**代码 PR**：`e-cam-web#17`（commits `761c3ab` → `f7364d9`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮独立 QA 两次记录：390/768 下任务页存在 **12px 页面级横向滚动**；归因 `.tasks-page { margin: -24px }` 仍按外层 24px padding 设计，而 ≤768 时 `MainLayout` 把 padding 改为 12px。
+- 本轮修复前复测：390/768 `main-content scrollWidth-clientWidth = 12`；769/1440 为 0（padding 24 与 -24 匹配）。
+
+### 需求卡
+
+- 目标用户：手机/窄窗口运维。
+- 目标：≤768 消除页面级 12px 横向滚动；分页容器仍能放下；≥769 与 1440 不变；头部与卡片左右对齐。
+- 非目标：改动 MainLayout 全局 padding、分页控件布局、其它 22 个负 margin 页面（记录为后续）。
+- 规则：窄屏 `margin: -12px`、`height: calc(100% + 24px)`；`tasks-content` 左右 padding 20→8px；`page-top` 左右 padding 20→8px。
+- API 契约：无。
+- 风险/回滚：仅任务页样式；769/1440 截图与修复前逐字节一致；单提交回滚。
+
+### 变更内容
+
+- `src/views/tasks/index.vue` scoped 样式：
+  - `.tasks-page`：≤768 `margin:-12px; height:calc(100% + 24px)`；
+  - `.tasks-content`：≤768 `padding: 12px 8px`；
+  - `.page-top`：≤768 `padding: 16px 8px 12px`（对齐修复）。
+
+### 验收（真实浏览器 + 真实后端）
+
+| 指标 | 390 | 768 | 769 | 1440 |
+|---|---|---|---|---|
+| main-content 横向溢出（前→后） | 12→**0** | 12→**0** | 0→0 | 0→0 |
+| 实际可横滚 scrollLeft | 12→**0** | 12→**0** | 0 | 0 |
+| 分页容器 delta | **0** | **0** | 0 | 0 |
+| pagination / 容器内宽 | 276/278 | 654/656 | 475/477 | 1146/1148 |
+| 头部左 / 卡片左 | **72 / 72** | — | 240/240 | 240/240 |
+
+- 390 翻页：`GET /tasks?offset=20&limit=20` 200、active=2、20 条新 ID、与第 1 页重叠 0；分页 703..815 完整可见。
+- 390 全 DOM 越界元素 0；console 0 error/warning/pageerror。
+- 769/1440 截图与修复前**逐字节相同**。
+
+### 已知取舍/观察
+
+- 769 分页为 2 行（72px）：单行需视口 ≥970px，该行为来自已合入的 #16（无条件换行），非本次回归。
+- 390 分页余量仅 2px（276/278），总数变长会多换一行（wrap 兜底，不会横向溢出）。
+- `tasks-content` 20→8 与页边 −24→−12 叠加后卡片横向位置不变，仅页面背景盒内收 12px。
+- **新发现（既有，独立缺陷）**：筛选区两个 `el-select` 计算宽度恒 44px、只有箭头无文案（390/768/1440 均如此，修复前后逐像素一致）——建议下一轮排查表单样式。
+
+### 测试
+
+- `vitest run`：63 files / 1013 tests 通过（纯样式）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：通过、无 blocker/major；3 minor（头部对齐、魔法数、22 个同类页面）+ 4 nit；已修头部对齐。
+- 独立 QA：`f7364d9` 复跑 1–5 项 PASS（3 项中 769 单行按字面 FAIL 但为 #16 既有行为）；确认头部/卡片左对齐、翻页、console。
+- 未处理：魔法数统一（建议 `--page-gutter` 变量）、其余 22 个负 margin 页面。
+
+### 版本组合
+
+- 前端：`f7364d9`（合并为 `44f23cc`）。
+- 后端：`main@059eb2c`（无接口改动）。
+
+### 后续建议
+
+1. **P3 bleed 统一**：23 处 `margin:-24px` 建议走 `--page-gutter` 变量，一次性修掉 22 个页面 ≤768 的 12px 滚动。
+2. **P3 筛选下拉宽度异常**：两个 `el-select` 44px 仅箭头，疑似表单样式塌缩，建议排查（影响 390/768/1440 全端）。
+3. **P1 仍待办**：任务生命周期治理（pending 残留执行态、超时回收、持久化去重）、采集 running 超时、菜单死链（`menu-config.ts` 仍被并行会话占用）。
