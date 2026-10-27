@@ -1206,3 +1206,71 @@
 1. **P3 bleed 统一**：23 处 `margin:-24px` 建议走 `--page-gutter` 变量，一次性修掉 22 个页面 ≤768 的 12px 滚动。
 2. **P3 筛选下拉宽度异常**：两个 `el-select` 44px 仅箭头，疑似表单样式塌缩，建议排查（影响 390/768/1440 全端）。
 3. **P1 仍待办**：任务生命周期治理（pending 残留执行态、超时回收、持久化去重）、采集 running 超时、菜单死链（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261028-filter-width（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#18`，merge commit `51856ca`，2026-10-28 06:12 +08）
+**代码 PR**：`e-cam-web#18`（commits `4a551b9` → `6f463f3`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮 QA 观察：任务页筛选区两个 `el-select` 恒为 **44×32**、文本盒 0、placeholder 与选中值不可见（1440/390 均如此），只剩箭头。
+- 根因：Element Plus `el-select` 默认 `width:100%`，inline 表单的 `.el-form-item__content` 为 `flex:1; min-width:0`，百分比在收缩语境解析为 0，只能由 min-content 撑开（padding 24 + gap 6 + caret 14 = 44px）。
+- 属**内在尺寸塌陷**而非空间不足：1440 下筛选区 inner ~1148px，只需 472px，仍塌陷。
+
+### 需求卡
+
+- 目标用户：运维，使用任务类型/状态筛选。
+- 目标：下拉有可读宽度，placeholder 与选中值可见；选择/清空正常；窄屏可换行且不横向溢出。
+- 非目标：cost 页同类问题（记录为后续）、共享 FilterBar 统一改造。
+- 规则：`.filters-form` flex + wrap，`gap: 8px 24px`；`:deep(.el-select)` 显式 160px。
+- API 契约：无。
+- 风险/回滚：仅任务页样式；1440/1024 单行、769/390 两行；单提交回滚。
+
+### 变更内容
+
+- `src/views/tasks/index.vue` scoped 样式：`.filters-form` 增加 `display:flex; flex-wrap:wrap; gap:8px 24px`；表单项 `margin-right:0`；`:deep(.el-select)` 固定 `width:160px`。
+
+### 验收（真实浏览器 + 真实后端）
+
+| 视口 | 下拉宽度 | 行数 | main-content 溢出 | 交互 |
+|---|---|---|---|---|
+| 1440 | 160×32 | 1 | 0 | placeholder 可见、类型筛选 total 7046→6574→7046 |
+| 1024 | 160×32 | 1 | 0 | 选择「同步账单」total 2 后恢复 |
+| 900 | 160×32 | 1 | 0 | 选择/清空正常 |
+| 769 | 160×32 | 2 | 0 | 选择/清空正常（内容宽 475 < 480，差 5px 折行） |
+| 390 | 160×32 | 2 | 0 | 两行间距 8、无重叠；下拉面板在视口内 |
+
+- 键盘：Tab 聚焦 `role=combobox`、Enter 展开、Esc 关闭且焦点保留；label `for` 与 input id 对应。
+- 长文案：「创建云主机」70px / 文本盒 116px，无需更宽。
+- A/B：浏览器内覆盖 `width:100% !important` 可复现 44px + 文本盒 0，证明修复生效。
+
+独立 QA：**1–8 项全部 PASS**（快照 `6f463f3`）。
+
+### 测试
+
+- `vitest run`：63 files / 1013 tests 通过（纯样式，无新增用例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：Approve with nits（0 blocker/major）；确认 44px 可被 EP 样式算术复原、`:deep` 作用域正确；指出间距 32→16、140 档收益有限、cost 页同类问题。
+- 已按审查：移除 140 档、间距改 24px。
+- 独立 QA：`6f463f3` 8/8 PASS，含 A/B 反证、键盘、390/769/900/1024 矩阵。
+- 观察（不阻断）：placeholder 对比度约 **2.32:1**（选中值 12.29:1），为既有 token 问题；769/1024 顶栏右侧裁切为既有 shell 问题；分页英文 `Total`。
+
+### 版本组合
+
+- 前端：`6f463f3`（合并为 `51856ca`）。
+- 后端：`main@b210cb2`（无接口改动）。
+
+### 后续建议
+
+1. **P2 cost 页同类缺陷**：`cost/index.vue` 的 inline 表单 + 无宽度 select 同样 44px，建议下一轮修复。
+2. **P3 placeholder 对比度**：2.32:1 低于 AA，建议调整 `--el-text-color-placeholder` 在深色主题下的取值。
+3. **P3 顶栏裁切**：769/1024 右侧按钮被裁，既有 shell 问题。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、菜单死链（`menu-config.ts` 仍被并行会话占用）。
