@@ -538,3 +538,15 @@
 3. **P3 异常字段**：`normalizeProgress` 对 `remaining_amount` 缺失仍回退 0，后端若只改此字段名会显示 ¥0.00 而非失败，建议一并强校验。
 4. **P2 移动端壳层**（O1，跨页面）：390px 侧栏固定 220px、内容区 122px，预算表需横滚 1032px；应在 `src/layouts`/`PageContainer` 加断点，非单页问题。
 5. **既有 P1 待办**：自动同步任务积压/持久化去重、采集 running 无超时回收、触发采集 403、账期口径。
+
+---
+
+## cam-iteration-20261027-app-exception-filter（app 异常堆栈筛选恒空修复,审计收官）
+
+**需求来源**：契约审计面 D 最后一个 [高] 项 —— `/types` 字典为 app 注册 exception 字段,但 SDK `entryFieldValue` 无该 case,app 按「异常堆栈」筛选时 `EntryMatches` 每条返回 false,**明细静默恒空**。
+
+**改动**：仅 e-cloudx-sdk(e-cloudx-sdk#6,分支 `cam-iteration-20261027-app-exception-filter`)—— AppLogEntry 分支补 `case "exception"`,filter_test.go 补 eq/contains/不命中三态并修正注释。无服务/前端改动。
+
+**验收**：`go test ./logquery/` 全绿(exception 三态 + 既有 12 例回归)、`go vet` 干净、gofmt 通过。**边界(如实)**：生效需 SDK 发版 + 服务 go.mod 升级(系统性发布门控);app 源无存量数据,端到端演示不可行,语义由单测锁定。
+
+**审计收官状态**：面 A(url-state/LogType)→ e-cam-web#4;面 D(exception/下钻)→ SDK#6 + e-cam-web#8;面 E/F 小修 → e-cam-web#6。审计 9 项差异中 8 项已落地,余 2 项候选(app 专属 KPI 待业务口径;聚合/诊断 account_ids 需账号筛选 UI)。
