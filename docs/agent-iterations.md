@@ -708,3 +708,80 @@
 
 - 前端：`0fbbe55`（合并为 `4f2e871`）。
 - 后端：`main@ef5b307`（无接口改动）。
+
+---
+
+## cam-iteration-20261027-collect-running-summary（2026-10-27）
+
+**状态**：**已合并**（`e-cam-web#11`，merge commit `22eecbd`，2026-10-27 22:57 +08）
+**代码 PR**：`e-cam-web#11`（commits `e9dac10` → `51ec413` → `df32dbe`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 采集日志共 1959 条，其中 **29 条运行中**；最早一条开始于 **2026-03-05**，最长已运行 **236 天**，多条 `duration_ms=0`，属进程中断后未收敛的僵尸任务。
+- 页面已有逐行「已运行 X」，但无全局汇总：运维需切到「运行中」筛选才能知道积压规模与最老任务。
+
+### 需求卡
+
+- 目标用户：运维，判断采集任务是否积压/卡死。
+- 目标：日志标题下展示「运行中 N 条，最长已运行 X天Y小时」（全局口径）；「只看运行中」快捷筛选；手动刷新与 5s 轮询按 60s 节流刷新汇总。
+- 非目标：自动关闭/重试僵尸任务（需产品确认真实任务最长时长）、后端改动。
+- 规则：仅统计 `status=running`；「最长」按 `start_time`（缺失回退 `ctime`）计算；纯展示，不改变任务状态。
+- API 契约：复用 `GET /api/v1/cam/cost/collect/logs?status=running&offset=0&limit=200`，**后端零改动**。
+- 风险/回滚：额外汇总请求（60s 节流 + 在途复用）；>200 条时最长时长采样偏小（count 用 `total`）；单提交回滚。
+
+### 改动
+
+- `src/views/cam/collect/format.ts`：新增 `formatLongDuration`（跨天 X天Y小时、非有限值保护）、`summarizeRunningLogs`（数量/最早开始/最长时长）。
+- `src/views/cam/collect/format.test.ts`：新增 12 例（跨天、空数组、无时间 running、未来时间、ctime 回退、NaN、跨天边界）。
+- `src/views/cam/collect/index.vue`：
+  - 日志标题下汇总条 + 「只看运行中」；
+  - 汇总独立请求，60s 节流、`summaryInflight` 在途复用、`summarySeq` 防并发覆盖；
+  - 列表成功后节流刷新汇总；手动刷新/只看运行中强制刷新；
+  - `flex-wrap`、`aria-live`（纯文本 span）、`count` 取后端 `total`。
+
+### 验收（真实浏览器 + 真实后端）
+
+| # | 验收 | 结果 |
+|---|---|---|
+| 1 | 汇总条文案 | ✅「运行中 29 条，最长已运行 236天2小时」 |
+| 2 | 数量/最长与接口一致 | ✅ 29/29、236/236 天（差值 0） |
+| 3 | 挂载仅 1 次汇总请求 | ✅ 在途复用生效 |
+| 4 | 筛选不改变汇总 | ✅ 切状态/账号后文案逐字不变且不重取 |
+| 5 | 只看运行中 | ✅ 20/20 行运行中、请求带 status、按钮消失 |
+| 6 | 清空筛选 | ✅ 恢复混合列表与分页 |
+| 7 | 手动刷新 | ✅ 汇总请求 +1，无重复并发 |
+| 8 | 刷新后不陈旧 | ✅ 条带 = 实时接口 |
+| 9 | 轮询刷新汇总 | ✅ 60s 节流到期后零操作自动更新（注入 7 条/3天4小时被采纳） |
+| 10 | 500 降级 | ✅ 保留旧值、列表正常、无 pageerror |
+| 11 | console | ✅ 干净阶段 0 error（500 注入的 2 条单独归档） |
+| 12 | 390 | ✅ 条带折行可见、整页溢出 0 |
+
+独立 QA：**13/13 PASS**（快照 `df32dbe`，跑前跑后 blob 一致）。
+
+首版汇总条使用 `--el-color-warning-light-9` 在深色主题下数字不可见（截图发现），已改为 `color-mix(in srgb, var(--el-color-warning) 12%, transparent)` + 边框，实测对比度 5.23:1 / 数字 15.96:1。
+
+### 测试
+
+- `vitest run`：59 files / 994 tests 通过（collect 33 例，format 22 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS；首轮 Vitest 因 `src/views/logs/useLogUrlSync.ts` 的 `window is not defined`（既有异步计时器问题）失败，**重跑即绿**。
+
+### 子 Agent 与复核
+
+- 独立审查：首轮 1 major（汇总只在挂载/手动刷新取快照，60s 节流不可达）+ 若干 minor；修复后复核 **可合入**，确认节流、`total`、`summarySeq`、`offset`、头部刷新、a11y 均落地。
+- 独立 QA：13/13 PASS，含「轮询自动刷新汇总」「刷新后不陈旧」「500 保留旧值」「挂载仅 1 次请求」「a11y 单 live region」。
+- 残留（不阻塞）：汇总 500 时共享 axios 拦截器仍弹全局 toast；最长时长按 200 条采样（>200 偏小）；`formatLongDuration` 与表格「已运行」粒度不同（≥1 天丢分钟）。
+
+### 版本组合
+
+- 前端：`df32dbe`（合并为 `22eecbd`）。
+- 后端：`main@08fc306`（采集日志接口无 diff）。
+
+### 后续建议
+
+1. **P1 僵尸任务治理**：为采集任务增加「启动对账 + 超时回收」，需产品确认真实任务最长允许时长（当前最老 236 天）。
+2. **P3 汇总失败静默**：为汇总请求单独关闭全局错误 toast。
+3. **P3 >200 采样**：后端提供 count/max(start_time) 聚合字段后可去掉采样。
+4. **既有 390 问题**：采集页「账期范围」控件被 page-container 裁掉约 36px（非本轮引入）。
