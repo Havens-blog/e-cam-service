@@ -920,3 +920,71 @@
 2. **P3 性能**：5000 条上限下最多 25 次串行请求；仓库已有 `utils/exportAll.ts#fetchAllRows`（带进度）可复用，或把每页提升到 500。
 3. **P3 审计**：导出不含操作者/租户审计字段；如需留痕应走后端导出任务。
 4. **P1 仍待办**：任务生命周期治理（pending 残留 started_at）、采集 running 超时回收、菜单死链（`menu-config.ts` 仍被其他会话占用）。
+
+---
+
+## cam-iteration-20261028-task-oldest-pending（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#14`，merge commit `96fcf19`，2026-10-28 03:16 +08）
+**代码 PR**：`e-cam-web#14`（commits `6f50042` → `f4e3724`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 任务页概览只有「待执行 19 · 执行中 5」数量，没有积压年龄；列表按创建时间倒序，最早待执行任务不在首屏。
+- 接口核对：`GET /tasks?status=pending&limit=100` 最早 `created_at=2026-10-27T00:32:41Z`，页面观测时已等待约 **17 小时**，无法判断是短暂排队还是队列饿死。
+- 规则：取 `pending` 任务 `created_at` 最早值计算等待时长；纯展示，不改变任务状态。
+
+### 需求卡
+
+- 目标用户：运维，判断任务队列是否长期积压。
+- 目标：概览积压提示追加「最老等待 X」；随列表刷新按 60s 节流更新；手动刷新/类型变更强制更新；与类型筛选同口径。
+- 非目标：调度策略、超时回收、pending 残留 started_at 的后端修复（P1）。
+- API 契约：复用 `GET /api/v1/cam/tasks?type=&status=pending&offset=&limit=`，**后端零改动**。
+- 边界：无 pending 或时间非法时隐藏；pending=0 隐藏；失败保留上次值；pending>100 时补取最后一条（后端固定 created_at DESC）。
+
+### 改动
+
+- `src/views/tasks/queue.ts`（新增）：`oldestPendingWaitText`（仅 pending、非法/未来时间处理、`formatDurationMs`）。
+- `src/views/tasks/queue.test.ts`（新增，3 例）。
+- `src/views/tasks/index.vue`：概览追加「最老等待 X」；`fetchOldestPending`（60s 节流、seq、失败保留、携带 type、total>一页时补取最后一条）；类型变更/清空/手动刷新强制；pending=0 隐藏；时长 `nowrap`。
+
+### 验收（真实浏览器 + 真实后端）
+
+| # | 验收 | 结果 |
+|---|---|---|
+| 1 | 概览出现最老等待 | ✅「待执行 16 · 执行中 5 · 最老等待 17小时12分」 |
+| 2 | 与接口最早 pending 一致 | ✅ UI 17.20h vs 接口 17.21h（delta 0.01h） |
+| 3 | 首屏仅 1 次 pending 查询 | ✅（旧版 2 次）；total=pageCount 时不补请求 |
+| 4 | 刷新后一致 | ✅ 查询 +1、文案不变 |
+| 5 | 状态筛选不影响全局口径 | ✅「已完成」下文案逐字相同 |
+| 6 | 类型筛选跟随类型 | ✅ 同步资产：计数 16→10、请求带 `type=cam:sync_assets`、最老与类型接口一致 |
+| 7 | M1 pending>100 精确最老 | ✅ total=250 时补 `offset=249&limit=1`，显示 1天6小时（非截断的 2 小时） |
+| 8 | pending=0 隐藏最老等待 | ✅ 提示保留、`.oldest-wait` 为 0 |
+| 9 | 390 无孤字 | ✅ nowrap 行盒=1、无裁切、无整页溢出 |
+| 10 | console | ✅ 应用/登录均 0 |
+
+独立 QA：**27 条断言 26 PASS**，唯一 FAIL 为测试自身未拦截 M1 补请求（已复核为断言范围问题，非产品缺陷）。
+
+### 测试
+
+- `vitest run`：62 files / 1011 tests 通过（tasks 20 例：filters 11 + timing 6 + queue 3）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：**2 major**（pending>100 低估、类型筛选口径混用）+ 3 minor；已修 major 与 pending=0 残留、390 孤字、首屏重复请求。
+- 独立 QA：首轮 15/15；修复后以 `f4e3724` 复跑 26/27，覆盖类型口径、M1 合成 250 条、pending=0、390 nowrap。
+- 残留（不阻塞）：提示中「待执行/执行中」与上方 chip 数值重复；pending>100 时补请求在超大集合下 skip 成本需留意；无 aria-live。
+
+### 版本组合
+
+- 前端：`f4e3724`（合并为 `96fcf19`）。
+- 后端：`main@ffcd221`（任务接口无 diff）。
+
+### 后续建议
+
+1. **P1 任务生命周期治理**：pending 残留 started_at/progress、队列长期积压（当前 pending 16~21、最老 17h）；建议重排重置执行字段 + 超时回收 + 持久化去重，并补 `attempt/last_attempt_at`。
+2. **P3 口径**：最老等待与卡片「已等待」同用 created_at，重试前执行时长仍计入等待。
+3. **P3 交互**：概览与 chip 数值重复，可考虑概览只保留新增信息（最老等待）或合并展示。
