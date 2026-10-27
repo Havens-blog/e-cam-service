@@ -550,3 +550,76 @@
 **验收**：`go test ./logquery/` 全绿(exception 三态 + 既有 12 例回归)、`go vet` 干净、gofmt 通过。**边界(如实)**：生效需 SDK 发版 + 服务 go.mod 升级(系统性发布门控);app 源无存量数据,端到端演示不可行,语义由单测锁定。
 
 **审计收官状态**：面 A(url-state/LogType)→ e-cam-web#4;面 D(exception/下钻)→ SDK#6 + e-cam-web#8;面 E/F 小修 → e-cam-web#6。审计 9 项差异中 8 项已落地,余 2 项候选(app 专属 KPI 待业务口径;聚合/诊断 account_ids 需账号筛选 UI)。
+
+---
+
+## cam-iteration-20261027-cost-comparison（2026-10-27）
+
+**状态**：**已合并**（`e-cam-web#9`，merge commit `858523d`，2026-10-27 20:46 +08）
+**代码 PR**：`e-cam-web#9`（commit `b5b8e07`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+2026-10-27 巡检「FinOps → 成本概览」同比卡片：
+
+- 区间 `2026-08-01 ~ 2026-10-27`：接口 `/cost/comparison` 返回 `current_amount=10,529,255.90`、`previous_amount=0`、`change_percent=0`（2025 年同期无账单）。
+- 页面渲染为「去年同期 ¥0.00 ｜ 0.0%」，看起来像「同比持平」，与事实不符，属数据可信度问题。
+- 后端 `analysis/service.go` 的判定同样是 `if prevAmount > 0` 才计算百分比，前端规则与后端同构；有基线时的 `0.0%` 是真正的持平，应保留。
+
+### 需求卡
+
+- 目标用户：运维/财务，用同比判断成本走势。
+- 目标：去年同期无基线显示「—」与「去年同期无数据或消耗为 0，无法计算同比」，不出现 `¥0.00 / 0.0%`；有基线保持 `+x.x% / -x.x%` 与涨跌配色。
+- 非目标：后端计算口径、环比、其它卡片。
+- API 契约：复用 `GET /api/v1/cam/cost/comparison?start_date=&end_date=`；`current_amount / previous_amount / change_percent / current_period / previous_period`。**后端零改动。**
+- 规则：`previous_amount > 0` 为有基线；`== 0` 为无基线（无账单或去年消耗为 0，文案已涵盖）。
+- 风险/回滚：纯前端；单提交回滚。
+
+### 改动
+
+- `src/views/cam/cost/comparison.ts`（新增）：`hasComparisonBaseline`、`formatPreviousAmount`、`formatChangePercent`、`comparisonHint`。
+- `src/views/cam/cost/comparison.test.ts`（新增，7 例）。
+- `src/views/cam/cost/index.vue`：去年同期金额与百分比改走纯函数；无基线显示提示，有基线保留原配色与符号。
+
+### 验收（真实浏览器 + 真实后端）
+
+环境：隔离 worktree + Vite `:5180` + 真实 `e-cam-service:8001`；Chromium 141 headless；1440×900 / 390×844；`:8888` 统一登录（既有测试账号，未记录口令）。
+
+| # | 验收 | 结果 |
+|---|---|---|
+| 1 | 无基线不显示 ¥0.00 | ✅ 显示「—」 |
+| 2 | 无基线不显示 0.0% | ✅ |
+| 3 | 无基线提示 | ✅ 「去年同期无数据或消耗为 0，无法计算同比」 |
+| 4 | 当期金额 | ✅ ¥10529255.90 = 接口 |
+| 5 | 390 无整页溢出 | ⚠️ overflow=0；卡片仅 122px、金额被裁切（壳层既有 O1） |
+| 6 | console | ✅ 0 error |
+| 7 | CONTRACT 有基线路径 | ✅ 伪造 `+12.34` → `+12.3%`（increase）、`-5.6` → `-5.6%`（decrease）、`0` → `0.0%`（中性）；恢复真实接口回无基线 |
+| 8 | 切换日期/厂商 | ✅ 无报错、数值随筛选变化 |
+
+独立 QA：**14/14 PASS**（两次运行一致）。
+
+### 测试
+
+- `vitest run`：56 files / 975 tests 通过（`comparison.test.ts` 7 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：**approve with nits**（无 blocker/major）；交叉验证后端 `prevAmount > 0` 判定与前端一致，`0.0%` 仅在真持平时出现。
+- 独立 QA：14/14 PASS，含 CONTRACT 伪造增/减/持平与恢复；确认 null 边界降级正常、颜色语义一致。
+- 证据修正：作者 `00-before.png / 01-after.png` 因滚动容器是 `.page-container`、`fullPage` 只截首屏而字节相同，**截图无区分力**；有效视觉证据以 QA 的 `S1–S7` 卡片截图为准（`D:\Haven\.browser-verify\qa-comparison\`）。
+
+### 版本组合
+
+- 前端：`b5b8e07`（合并为 `858523d`）。
+- 后端：`main@9c8734f`（comparison 接口无 diff）。
+
+### 后续建议
+
+1. **P3 极小基线**：`0 < previous_amount < 0.005` 时仍会显示 `¥0.00`（四舍五入），可把基线阈值改为 `>= 0.005` 或说明理由。
+2. **P3 负基线**：抵扣/退款可能使 `previous_amount < 0`，当前显示「—」并断言「无数据或为 0」；建议展示带符号金额并调整文案。
+3. **P3 符号舍入**：`+0.04` 会显示 `+0.0%`，建议先舍入再判符号。
+4. **P2 移动端壳层**（跨页面）：390px 下同比卡片金额被裁切（内容区 122px），需在 `src/layouts`/`PageContainer` 加断点。
+5. **既有 P1 待办**：任务积压/持久化去重、采集 running 超时回收、触发采集 403。
