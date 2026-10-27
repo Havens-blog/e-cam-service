@@ -222,21 +222,9 @@ func main() {
 	}
 	fmt.Printf("\r  进度: %d / %d 条已处理。\n\n", totalRead, rawTotal)
 
-	// 6. 重建汇总表（-apply 时）：成本查询走 ecam_cost_daily_summary 预聚合，
-	// 只写明细不重建汇总会导致华为云成本在页面仍不可见。
-	if *apply && totalWritten > 0 {
-		fmt.Println("================ 重建汇总表 ecam_cost_daily_summary ================")
-		for _, m := range months {
-			start := m + "-01"
-			end := m + "-31"
-			n, err := rebuildSummary(ctx, db, acc.TenantID, start, end)
-			if err != nil {
-				log.Fatalf("rebuild summary for month %s: %v", m, err)
-			}
-			fmt.Printf("  已重建 %s 汇总: 写入 %d 行\n", m, n)
-		}
-		fmt.Println()
-	}
+	// 6. 重建汇总表：成本查询走 ecam_cost_daily_summary 预聚合，只写明细不重建
+	// 汇总时页面查询不到新数据。汇总重建由独立脚本完成（职责单一、可复用）：
+	//   go run scripts/rebuild_cost_summary.go -apply   （按租户/日期范围重建）
 
 	// 7. 报告
 	fmt.Printf("================ 归一化报告 ================\n")
