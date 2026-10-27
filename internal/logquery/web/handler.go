@@ -18,6 +18,7 @@ import (
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 )
 
 // ---------------------------------------------------------------------
@@ -212,7 +213,7 @@ func (h *LogQueryHandler) Sources(c *gin.Context) {
 	}
 	sources, err := h.svc.ListSources(c.Request.Context(), tenantID, logType, parseClouds(c.Query("clouds")), nil)
 	if err != nil {
-		writeError(c, http.StatusBadRequest, err.Error())
+		rejectBadRequest(c, "validate", err.Error())
 		return
 	}
 	if sources == nil {
@@ -238,7 +239,7 @@ type searchRequest struct {
 func (h *LogQueryHandler) Search(c *gin.Context) {
 	var req searchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid request: "+err.Error())
+		rejectBadRequest(c, "bind", "invalid request: "+err.Error())
 		return
 	}
 	tenantID, ok := tenantID(c)
@@ -257,7 +258,7 @@ func (h *LogQueryHandler) Search(c *gin.Context) {
 		Limit:      req.Limit,
 	})
 	if err != nil {
-		writeError(c, http.StatusBadRequest, err.Error())
+		rejectBadRequest(c, "validate", err.Error())
 		return
 	}
 	if resp.Entries == nil {
@@ -285,7 +286,7 @@ type aggregateRequest struct {
 func (h *LogQueryHandler) Aggregate(c *gin.Context) {
 	var req aggregateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid request: "+err.Error())
+		rejectBadRequest(c, "bind", "invalid request: "+err.Error())
 		return
 	}
 	tenantID, ok := tenantID(c)
@@ -305,7 +306,7 @@ func (h *LogQueryHandler) Aggregate(c *gin.Context) {
 		Metric:     req.Metric,
 	})
 	if err != nil {
-		writeError(c, http.StatusBadRequest, err.Error())
+		rejectBadRequest(c, "validate", err.Error())
 		return
 	}
 	if resp.Buckets == nil {
@@ -335,7 +336,7 @@ type diagnoseRequest struct {
 func (h *LogQueryHandler) Diagnose(c *gin.Context) {
 	var req diagnoseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid request: "+err.Error())
+		rejectBadRequest(c, "bind", "invalid request: "+err.Error())
 		return
 	}
 	tenantID, ok := tenantID(c)
@@ -353,7 +354,7 @@ func (h *LogQueryHandler) Diagnose(c *gin.Context) {
 		Filters:    req.Filters,
 	})
 	if err != nil {
-		writeError(c, http.StatusBadRequest, err.Error())
+		rejectBadRequest(c, "validate", err.Error())
 		return
 	}
 	if resp.Buckets == nil {
@@ -388,7 +389,7 @@ type cacheAnalyzeRequest struct {
 func (h *LogQueryHandler) CacheAnalyze(c *gin.Context) {
 	var req cacheAnalyzeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid request: "+err.Error())
+		rejectBadRequest(c, "bind", "invalid request: "+err.Error())
 		return
 	}
 	tenantID, ok := tenantID(c)
@@ -407,7 +408,7 @@ func (h *LogQueryHandler) CacheAnalyze(c *gin.Context) {
 		Confirm:    req.Confirm,
 	})
 	if err != nil {
-		writeError(c, http.StatusBadRequest, err.Error())
+		rejectBadRequest(c, "validate", err.Error())
 		return
 	}
 	if resp.Sources == nil {
@@ -450,6 +451,22 @@ func toProviders(raw []string) []domain.CloudProvider {
 		}
 	}
 	return out
+}
+
+// rejectBadRequest 校验拒绝统一出口:写 400 响应之外同步落一条 Warn,否则
+// 拒绝在服务端完全不可观测——客户端只见状态码,服务端无任何记录,无法定位
+// 触发字段与校验规则(2026-10-27 search/aggregate 连续 400 无日志可查,
+// 实测踩坑)。stage 区分 bind(载荷解析)与 validate(业务校验);msg 即
+// 响应体原文,日志与客户端所见一致,便于对账。
+func rejectBadRequest(c *gin.Context, stage string, msg string) {
+	elog.DefaultLogger.Warn("logquery request rejected",
+		elog.String("stage", stage),
+		elog.String("path", c.FullPath()),
+		elog.Int64("tenant_id", middleware.GetTenantID(c)),
+		elog.String("client_ip", c.ClientIP()),
+		elog.String("reason", msg),
+	)
+	writeError(c, http.StatusBadRequest, msg)
 }
 
 // writeError 错误信封(与 cert/web.WriteAPIError 同构;独立实现避免反向依赖)。
