@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/port"
+	"github.com/Havens-blog/e-cam-service/internal/shared/auth"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/spf13/viper"
 )
@@ -22,5 +23,11 @@ func NewCMDBPort() port.CMDBPort {
 	}
 	elog.DefaultLogger.Info("CMDB 适配器: 远程模式",
 		elog.String("remote_url", remoteURL))
-	return NewRemoteCMDBAdapter(remoteURL)
+	tokenProvider := auth.NewServiceTokenProvider(
+		viper.GetString("eiam.token_url"),
+		viper.GetString("eiam.client_id"),
+		viper.GetString("eiam.client_secret"),
+		elog.DefaultLogger,
+	)
+	return NewRemoteCMDBAdapter(remoteURL, tokenProvider)
 }

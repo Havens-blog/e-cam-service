@@ -134,6 +134,22 @@ var logTypes = []typeMeta{
 			FieldDef{Key: "trace_id", Label: "链路 ID"},
 		),
 	},
+	{
+		// K8s 事件(2026-10-27 接入:ACK 集群 eventer → SLS k8s-event store;
+		// 资源列 = 集群 ID)。level 归一 warning/info;reason/namespace/kind
+		// 来自 eventId JSON 子键,聚合精确下推(索引实测)。
+		Type: logquery.LogTypeK8sEvent, Label: "K8s 事件日志", MaxWindowDays: 3,
+		Fields: append(fixedFields(),
+			FieldDef{Key: "cluster", Label: "集群"},
+			FieldDef{Key: "namespace", Label: "命名空间"},
+			FieldDef{Key: "kind", Label: "对象类型"},
+			FieldDef{Key: "object", Label: "对象"},
+			FieldDef{Key: "reason", Label: "原因"},
+			FieldDef{Key: "level", Label: "级别"},
+			FieldDef{Key: "count", Label: "累计次数"},
+			FieldDef{Key: "message", Label: "事件内容"},
+		),
+	},
 }
 
 // ---------------------------------------------------------------------

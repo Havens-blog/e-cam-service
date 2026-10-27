@@ -79,10 +79,16 @@ policy:
   discovery_url: http://127.0.0.1:9000   # 资产上报，SDK 自动补 /api/v1/discovery/sync
 
 # eiam 租户治理配置查询（创建云账号时强制校验配额 R2.4 / 云厂商白名单 R7）
-# 数据源为 eiam 租户详情 GET /api/tenant/detail/:id；base_url 留空回退 policy.auth_url。
-# 鉴权阻塞：detail 端点属 eiam 私有路由（用户会话鉴权），服务间令牌机制尚未覆盖该端点，
-# service_token 配置后以 Bearer 发送；真实联调待 eiam 侧服务间鉴权落地（详见任务记录），
-# 未鉴权调用对真实 eiam 预期 401 → CreateAccount fail-closed 拒绝。
+# 数据源为 eiam 租户详情 GET /api/s2s/tenant/detail/:id（独立 S2S 路由组）；base_url 留空回退 policy.auth_url。
+# 鉴权：经 ServiceTokenProvider 用 client_credentials 换取携带租户上下文的 S2S 令牌，
+# eiam 侧需注册同 client_id 的机密应用并声明 allowed_tenants（含 -1 全租户通配）。
+# 换取/验签失败 → CreateAccount fail-closed 拒绝。
 eiam:
   base_url: ""
-  service_token: ""
+  token_url: ""
+  client_id: ""
+  client_secret: ""
+  # 服务间鉴权（入站验签）：eiam OIDC 签名密钥对应的 RSA 公钥 PEM，
+  # 用于 /api/s2s 路由组验 client_credentials RS256 令牌（OpsAgent RCA → 日志查询）。
+  # 由 eiam keyManager 导出（ExportPublicKeyPEM）；未配置则服务间调用 fail-closed。
+  public_key: ""

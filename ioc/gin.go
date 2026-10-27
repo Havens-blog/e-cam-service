@@ -55,7 +55,7 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, psdk *sdk.SDK, s
 	server.Use(middleware.RequestIDMiddleware())
 
 	// Swagger / 健康检查 / Prometheus 指标等免认证基础路由
-	registerPublicRoutes(server)
+	registerPublicRoutes(server, logQueryModule)
 
 	// ===== 以下路由需要 ecmdb session 认证 =====
 	// 加固版认证中间件，支持白名单
@@ -278,7 +278,7 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, psdk *sdk.SDK, s
 // Prometheus 指标端点。必须在认证中间件 Use 之前调用（gin 的引擎级中间件
 // 虽全局生效，但此处注册点与 /api/v1/cam/health 同级，语义上同属探测面；
 // /metrics 抓取面由部署侧网络边界保护，不进 eiam 会话链路）。
-func registerPublicRoutes(server *gin.Engine) {
+func registerPublicRoutes(server *gin.Engine, logQueryModule *logquery.Module) {
 	logger := elog.DefaultLogger
 
 	// Swagger 文档路由（不需要认证）
@@ -296,6 +296,16 @@ func registerPublicRoutes(server *gin.Engine) {
 	// Prometheus 指标端点（不需要认证，与健康检查同级；经 promhttp 暴露
 	// 默认 registry 中的 ecam_* 指标族）
 	server.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	// 服务间日志查询路由（/api/s2s/logs）：S2S 令牌验签（eiam 签发 RS256），
+	// 供 OpsAgent RCA 调用。挂在此处（会话认证中间件之前），只经 S2SAuth，
+	// 不经过全局 EcmdbAuthMiddleware 的会话校验。
+	if logQueryModule != nil {
+		s2sLogsGroup := server.Group("/api/s2s/logs")
+		s2sLogsGroup.Use(middleware.S2SAuth(viper.GetString("eiam.public_key")))
+		s2sLogsGroup.Use(middleware.RequireTenant(logger))
+		logQueryModule.RegisterRoutes(s2sLogsGroup)
+	}
 }
 
 func InitGinMiddlewares() []gin.HandlerFunc {

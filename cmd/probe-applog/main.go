@@ -14,6 +14,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -64,10 +65,12 @@ func main() {
 		project      string
 		stores       string
 		listProjects bool
+		kind         string
 		listTopics   bool
 		query        string
 		topicFilter  string
 		vregion      string
+		rawSQL       string
 	)
 	flag.StringVar(&confFile, "f", "config/prod.yaml", "service config file")
 	flag.Int64Var(&tenant, "tenant", 1, "tenant id owning the cloud accounts")
@@ -76,6 +79,9 @@ func main() {
 	flag.StringVar(&project, "project", "jlc-lb-log", "SLS project to enumerate (aliyun)")
 	flag.StringVar(&stores, "stores", "", "comma-separated explicit logstores to sample (skips -business detection)")
 	flag.BoolVar(&listProjects, "list-projects", false, "only enumerate all SLS projects of the account (aliyun)")
+	flag.StringVar(&kind, "kind", "", "aliyun probe kind: k8s = enumerate k8s-log-* projects event stores")
+	flag.BoolVar(&fullDump, "full", false, "dump the first non-empty sample row as full JSON")
+	flag.StringVar(&rawSQL, "sql", "", "aliyun: run this exact query (search|SQL pipeline) against -project/-stores and dump rows")
 	flag.BoolVar(&listTopics, "list-topics", false, "only enumerate all TLS topics (volcano)")
 	flag.StringVar(&query, "query", "*", "search query passthrough for topic sampling (volcano)")
 	flag.StringVar(&topicFilter, "topic", "", "only probe topics whose name contains this substring (volcano)")
@@ -97,7 +103,7 @@ func main() {
 	switch strings.ToLower(provider) {
 	case "aliyun":
 		acc := resolveAccount(repo, ctx, domain.CloudProviderAliyun, tenant)
-		probeAliyun(acc, region, project, stores, listProjects)
+		probeAliyun(acc, region, project, stores, listProjects, kind, rawSQL)
 	case "volcano":
 		// 库里火山账号 provider 键为 volcengine（SDK volcano/volcengine 双键兼容）
 		acc := resolveAccount(repo, ctx, domain.CloudProviderVolcengine, tenant)
@@ -108,12 +114,32 @@ func main() {
 }
 
 // probeAliyun 阿里 SLS：project/logstore 枚举 + -business 候选采样。
-func probeAliyun(acc domain.CloudAccount, region, project, stores string, listProjects bool) {
+func probeAliyun(acc domain.CloudAccount, region, project, stores string, listProjects bool, kind, rawSQL string) {
 	client := &sls.Client{
 		Endpoint:        region + ".log.aliyuncs.com",
 		AccessKeyID:     acc.AccessKeyID,
 		AccessKeySecret: acc.AccessKeySecret,
 		RequestTimeOut:  20 * time.Second,
+	}
+
+	if rawSQL != "" {
+		now := time.Now().Unix()
+		resp, err := client.GetLogsV2(project, stores, &sls.GetLogRequest{
+			From: now - 7*86400, To: now, Query: rawSQL, Lines: 20,
+		})
+		if err != nil {
+			fatal("raw sql: %v", err)
+		}
+		fmt.Printf("== 命中 %d 行 ==\n", len(resp.Logs))
+		for _, row := range resp.Logs {
+			parts := make([]string, 0, len(row))
+			for k, v := range row {
+				parts = append(parts, k+"="+v)
+			}
+			sort.Strings(parts)
+			fmt.Println("  " + strings.Join(parts, " | "))
+		}
+		return
 	}
 
 	if listProjects {
@@ -124,6 +150,41 @@ func probeAliyun(acc domain.CloudAccount, region, project, stores string, listPr
 		fmt.Printf("== 账号全部 SLS project（共 %d 个） ==\n", len(projects))
 		for _, p := range projects {
 			fmt.Println("  -", p)
+		}
+		return
+	}
+
+	if kind == "k8s" {
+		probeAliyunK8s(client)
+		return
+	}
+	if kind == "k8sindex" {
+		// 索引配置转储:field index(doc_value/倒排)决定过滤与分组能否下推 SLS。
+		target := project
+		if stores != "" {
+			target = stores // 复用 -stores 传 logstore 名
+		}
+		idx, err := client.GetIndex(project, target)
+		if err != nil {
+			fatal("GetIndex %s/%s: %v", project, target, err)
+		}
+		fmt.Printf("== %s/%s 索引配置 ==\nline_full_text: %v\n", project, target, idx.Line != nil)
+		if idx.Line != nil {
+			fmt.Printf("  fulltext: case_sensitive=%v chn=%v tokens=%v\n",
+				idx.Line.CaseSensitive, idx.Line.Chn, idx.Line.Token)
+		}
+		keys := make([]string, 0, len(idx.Keys))
+		for k := range idx.Keys {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			v := idx.Keys[k]
+			fmt.Printf("  key %s: type=%s doc_value=%v json_keys=%d\n",
+				k, v.Type, v.DocValue, len(v.JsonKeys))
+			for name, jk := range v.JsonKeys {
+				fmt.Printf("    json %s: type=%s doc_value=%v\n", name, jk.Type, jk.DocValue)
+			}
 		}
 		return
 	}
@@ -170,6 +231,66 @@ func probeAliyun(acc domain.CloudAccount, region, project, stores string, listPr
 			rows = append(rows, r)
 		}
 		printSamples(store, len(rows), func(i int) map[string]any { return rows[i] })
+	}
+}
+
+// probeAliyunK8s 枚举账号内 k8s-log-* project(ACK 集群日志接入),逐 project
+// 列 logstore 并采样含 "event" 的 store schema,为 k8s 事件日志类型设计
+// 提供实测依据。SLS ListProject 分页由 SDK 内部处理。
+var fullDump bool
+
+func probeAliyunK8s(client *sls.Client) {
+	projects, err := client.ListProject()
+	if err != nil {
+		fatal("ListProject: %v", err)
+	}
+	var k8s []string
+	for _, p := range projects {
+		if strings.HasPrefix(p, "k8s-log-") {
+			k8s = append(k8s, p)
+		}
+	}
+	fmt.Printf("== k8s-log-* project 共 %d 个 ==\n", len(k8s))
+	now := time.Now().Unix()
+	for _, project := range k8s {
+		stores, err := client.ListLogStore(project)
+		if err != nil {
+			fmt.Printf("\n-- %s: ListLogStore 失败 %v\n", project, err)
+			continue
+		}
+		var eventStores []string
+		for _, s := range stores {
+			if strings.Contains(strings.ToLower(s), "event") {
+				eventStores = append(eventStores, s)
+			}
+		}
+		fmt.Printf("\n== %s(%d store,事件候选 %d)==\n", project, len(stores), len(eventStores))
+		for _, s := range stores {
+			fmt.Printf("   store: %s\n", s)
+		}
+		for _, s := range eventStores {
+			resp, err := client.GetLogsV2(project, s, &sls.GetLogRequest{
+				From: now - 86400, To: now, Query: "*", Lines: 2, Reverse: true,
+			})
+			if err != nil {
+				fmt.Printf("   [%s] 采样失败 %v\n", s, err)
+				continue
+			}
+			rows := make([]map[string]any, 0, len(resp.Logs))
+			for _, l := range resp.Logs {
+				r := make(map[string]any, len(l))
+				for k, v := range l {
+					r[k] = v
+				}
+				rows = append(rows, r)
+			}
+			if fullDump && len(rows) > 0 {
+				b, _ := json.MarshalIndent(rows[0], "", "  ")
+				fmt.Printf("   [%s] 全量首条:\n%s\n", s, string(b))
+				fullDump = false
+			}
+			printSamples(s, len(rows), func(i int) map[string]any { return rows[i] })
+		}
 	}
 }
 

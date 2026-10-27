@@ -57,7 +57,7 @@ func TestRegisterPublicRoutesServesMetrics(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(metrics.PrometheusMiddleware())
-	registerPublicRoutes(r)
+	registerPublicRoutes(r, nil)
 
 	// 先打一发真实请求：Prometheus *Vec 无子序列时不输出指标族，
 	// 需让中间件先记录到样本，/metrics 才能暴露对应族

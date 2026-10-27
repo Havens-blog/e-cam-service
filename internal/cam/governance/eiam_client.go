@@ -6,11 +6,9 @@
 //   - 业务失败（如租户不存在）：HTTP 500，{"code":4020906,"msg":"...","data":null}
 //   - 未认证：会话中间件 401（无响应体契约）
 //
-// 鉴权现状（阻塞，详见任务记录 records/1-1.md）：detail 端点挂在 eiam
-// PrivateRoutes 下走用户会话鉴权；eiam 现有服务间令牌机制（discovery 的
-// Bearer eiam_sct_*）仅覆盖资产上报端点，不适用本端点。此处按约定提供
-// 可配置的 Bearer token（viper eiam.service_token），真实服务间鉴权机制
-// 落地前对真实 eiam 的调用预期 401，由上层 fail-closed 拒绝创建。
+// 鉴权：经 ServiceTokenProvider 用 client_credentials 换取携带租户上下文的
+// S2S 令牌（eiam 唯一签发方），调 eiam /api/s2s/tenant/detail/:id（独立 S2S
+// 路由组，S2STokenAuth 中间件验签）。换取/验签失败一律 fail-closed 拒绝创建。
 package governance
 
 import (
@@ -22,6 +20,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Havens-blog/e-cam-service/internal/shared/auth"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -37,24 +36,24 @@ const governanceHTTPTimeout = 10 * time.Second
 
 // EIAMTenantClient eiam 租户治理配置 HTTP 客户端。
 type EIAMTenantClient struct {
-	baseURL string // eiam 基址，如 http://127.0.0.1:9000（不带尾斜杠）
-	token   string // 可选 Bearer token（服务间鉴权机制落地前的占位，可空）
-	client  *http.Client
-	logger  *elog.Component
+	baseURL       string // eiam 基址，如 http://127.0.0.1:9000（不带尾斜杠）
+	tokenProvider auth.TokenProvider
+	client        *http.Client
+	logger        *elog.Component
 }
 
 // NewEIAMTenantClient 创建 eiam 租户治理配置客户端。
-// baseURL 为空时构造不报错，查询时报错（上层 fail-closed），
+// baseURL/tokenProvider 为空时构造不报错，查询时报错（上层 fail-closed），
 // 避免装配期因配置缺失阻断整个服务启动。
-func NewEIAMTenantClient(baseURL, token string, logger *elog.Component) *EIAMTenantClient {
+func NewEIAMTenantClient(baseURL string, tokenProvider auth.TokenProvider, logger *elog.Component) *EIAMTenantClient {
 	if logger == nil {
 		logger = elog.DefaultLogger
 	}
 	return &EIAMTenantClient{
-		baseURL: baseURL,
-		token:   token,
-		client:  &http.Client{Timeout: governanceHTTPTimeout},
-		logger:  logger,
+		baseURL:       baseURL,
+		tokenProvider: tokenProvider,
+		client:        &http.Client{Timeout: governanceHTTPTimeout},
+		logger:        logger,
 	}
 }
 
@@ -77,13 +76,20 @@ func (c *EIAMTenantClient) GetGovernance(ctx context.Context, tenantID int64) (i
 		return 0, nil, errBaseURLNotConfigured
 	}
 
+	// 换取服务令牌(携带租户上下文);失败 fail-closed
+	if c.tokenProvider == nil {
+		return 0, nil, fmt.Errorf("服务令牌换取器未装配")
+	}
+	tok, err := c.tokenProvider.TokenFor(ctx, tenantID)
+	if err != nil {
+		return 0, nil, fmt.Errorf("获取服务令牌失败: %w", err)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+eiamTenantDetailPath+strconv.FormatInt(tenantID, 10), nil)
 	if err != nil {
 		return 0, nil, fmt.Errorf("构造 eiam 租户详情请求失败: %w", err)
 	}
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	}
+	req.Header.Set("Authorization", "Bearer "+tok)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
