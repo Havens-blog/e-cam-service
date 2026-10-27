@@ -1274,3 +1274,71 @@
 2. **P3 placeholder 对比度**：2.32:1 低于 AA，建议调整 `--el-text-color-placeholder` 在深色主题下的取值。
 3. **P3 顶栏裁切**：769/1024 右侧按钮被裁，既有 shell 问题。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、菜单死链（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261028-zh-locale（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#19`，merge commit `a114665`，2026-10-28 07:17 +08）
+**代码 PR**：`e-cam-web#19`（commits `afb1703` → `8bb7755`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 多轮 QA 观察：分页显示英文 `Total 7046`、`Go to`；Element Plus 默认 locale 为英文。
+- 根因：应用入口未配置 `ElConfigProvider` locale，所有 Element 组件走默认 en。
+
+### 需求卡
+
+- 目标用户：全部中文用户。
+- 目标：分页、日期面板、下拉空态、对话框等 Element 内置文案统一中文；布局与功能不变。
+- 非目标：自研文案替换、日期格式调整、多语言切换。
+- 规则：`App.vue` 外层 `el-config-provider` 绑定 `element-plus/es/locale/lang/zh-cn`。
+- API 契约：无。
+- 风险/回滚：影响所有 Element 组件文案；分页中文宽度略小于英文，390/1440 已验证；单提交回滚。
+
+### 变更内容
+
+- `src/App.vue`：引入 `zhCn`，根节点外包 `<el-config-provider :locale="zhCn">`。
+- `src/components.d.ts`：自动注册 `ElConfigProvider`（构建生成，评审后补提交）。
+
+### 验收（真实浏览器 + 真实后端）
+
+| # | 验收 | 结果 |
+|---|---|---|
+| 1 | 分页中文 | ✅「共 7048 条 20条/页 … 353 前往 页」；无 Total/Go to/page |
+| 2 | 翻页/跳页可用 | ✅ 下一页 active 1→2；「前往」填 1 回第 1 页 |
+| 3 | 日期面板中文 | ✅「2026 年10 月 日 一 二 三 四 五 六」，英文月份 0 命中；Esc 关闭 |
+| 4 | 预算对话框中文 | ✅ 标题/5 个标签/取消/确定；打开+取消期间写请求 0 |
+| 5 | 下拉空态文案 | ✅ locale 取值：无数据/无匹配数据/请选择/前往/共 N 条/年 |
+| 6 | 1440 / 390 布局 | ✅ doc/body 溢出 0；390 分页折 3 行（112px）仍可用 |
+| 7 | console | ✅ 0 error / 0 pageerror |
+| 8 | 英文残留 | ✅ 三页全文本 0 命中；属性级（placeholder/aria/title/展开面板）13 类 0 命中 |
+
+独立 QA：**23/23 PASS**（快照 `8bb7755`）。
+
+### 测试
+
+- `vitest run`：63 files / 1013 tests 通过。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- `build:gz` + `ci:gzip-budget`：全量 **2099.7 / 2300 KB**，各桶 OK（入口 gzip 31.86/40 KB）。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：Approve（0 blocker/major）；确认 ElConfigProvider 覆盖 teleport 与命令式弹窗（模块级 globalConfig 回退），导入路径匹配 2.11.7，产物内联 zhCn；指出遗漏 `components.d.ts`、建议验证 gzip 预算。
+- 已修：补提交 `components.d.ts`；已跑 gzip 预算通过。
+- 独立 QA：`8bb7755` 23/23 PASS（分页/日期/对话框/下拉/1440/390/console/英文残留），并审计 457 个请求全为 GET。
+- 未执行：`el-message` 等命令式弹窗的 UI 实测（依赖 EP 内部回退，审查在 happy-dom 验证）；全站页面逐一目视。
+
+### 版本组合
+
+- 前端：`8bb7755`（合并为 `a114665`）。
+- 后端：`main@b9b51f3`（无接口改动）。
+
+### 后续建议
+
+1. **P3 分页窄屏高度**：中文 locale 后 390 分页折 3 行 112px，可配合 `pager-count=5`/`:small` 更紧凑。
+2. **P3 多入口**：若未来新增入口（如独立登录页用 Element 组件），需重复配置 provider；建议抽 `installElementLocale(app)`。
+3. **P3 测试**：`App.vue` 无挂载测试，建议补一条 locale 断言（或对命令式弹窗按钮文案断言）。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、菜单死链（`menu-config.ts` 仍被并行会话占用）。
