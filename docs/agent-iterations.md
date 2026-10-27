@@ -1,4 +1,4 @@
-# 云管模块迭代记录（agent-iterations）
+﻿# 云管模块迭代记录（agent-iterations）
 
 > 本记录由自动化迭代代理维护。每轮一个需求切片，记录需求、分支、Commit、PR、
 > 验收结果、证据位置与剩余事项。协议要点：浏览器 UI 验证为完成门槛；接口成功
@@ -337,3 +337,15 @@
 4. **P2 账期字段口径统一**。
 5. **P2 移动端壳层**（390px 固定侧栏 + 固定列宽）。
 6. **P3 采集日志筛选写入 URL**；账号下拉改为按 total 分页加载。
+
+---
+
+## cam-iteration-20261027-log-type-url（日志页 t=app 链接还原修复）
+
+**需求来源**：排查日志查询 400（同期 PR #11）时发现的 encode/decode 不对称——`encodeUrlState` 在应用业务日志页签写 `t=app`，`decodeUrlState` 白名单漏 app，分享/刷新链接静默落 CDN 页签；根因 `LogType` 联合类型漏列 app（后端 /types 已有 5 类）。
+
+**改动**（仅 e-cam-web，配套 PR **Havens-blog/e-cam-web#4**，分支 `cam-iteration-20261027-log-type-url`）：decode 白名单收敛为 LOG_TYPES 集合（与 /types 字典一致）；LogType 联合类型补 app。无后端改动。
+
+**验收**：url-state 单测 9/9（含 t=app 往返 + 全类型往返表）、logs 视图全套 127/127、vue-tsc 通过；浏览器真实链路验收 PASS——本地 vite 实例 + 真实登录会话（eiam Cookie，localhost 域端口无关自动携带）+ 真实后端，`/cam/logs?t=app` 正确激活「应用业务日志」页签并按 `log_type:app` 查询（截图 url-app-after-5174.png；对照旧构建 8888 同 URL 页签未渲染）。证据留存本地 `D:\Haven\logs\dev\`。
+
+**遗留**：运行中 8888 部署实例待合并重建生效；CI 系统性失败（未发布 SDK）仍待维护者处理。
