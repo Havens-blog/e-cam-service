@@ -130,15 +130,20 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 	}
 	queue := taskModule.Queue
 	// 租户治理配置客户端（R2.4 云账号配额 / R7 云厂商白名单的强制校验数据源）：
-	// 查询 eiam 租户详情 GET /api/tenant/detail/:id。base_url 留空回退
-	// policy.auth_url（同为 eiam HTTP 地址）；service_token 以 Bearer 发送——
-	// eiam 详情端点为私有路由，服务间鉴权机制落地前对真实 eiam 预期 401，
-	// 上层 CreateAccount fail-closed 拒绝（详见任务记录 records/1-1.md）
+	// 查询 eiam 租户详情 GET /api/s2s/tenant/detail/:id。base_url 留空回退
+	// policy.auth_url（同为 eiam HTTP 地址）；经 ServiceTokenProvider 用
+	// client_credentials 换取 S2S 令牌（携带租户上下文），失败 fail-closed 拒绝创建。
 	eiamBaseURL := viper.GetString("eiam.base_url")
 	if eiamBaseURL == "" {
 		eiamBaseURL = viper.GetString("policy.auth_url")
 	}
-	tenantGovernance := governance.NewEIAMTenantClient(eiamBaseURL, viper.GetString("eiam.service_token"), component)
+	tokenProvider := governance.NewServiceTokenProvider(
+		viper.GetString("eiam.token_url"),
+		viper.GetString("eiam.client_id"),
+		viper.GetString("eiam.client_secret"),
+		component,
+	)
+	tenantGovernance := governance.NewEIAMTenantClient(eiamBaseURL, tokenProvider, component)
 	cloudAccountService := service.NewCloudAccountService(cloudAccountRepository, instanceRepository, adapterFactory, queue, component, tenantGovernance)
 
 	// Task Service
