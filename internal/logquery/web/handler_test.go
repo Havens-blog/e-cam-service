@@ -1,4 +1,4 @@
-package web
+﻿package web
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -96,8 +97,23 @@ func TestTypes(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if len(resp.Data) != 5 {
-		t.Fatalf("types = %d, want 5(cdn/waf/slb/access/app)", len(resp.Data))
+	if len(resp.Data) != 6 {
+		t.Fatalf("types = %d, want 6(cdn/waf/slb/access/app/k8s-event)", len(resp.Data))
+	}
+	// k8s-event 类型含集群/原因/级别等事件契约字段
+	var k8sFields []string
+	for _, m := range resp.Data {
+		if m.Type != "k8s-event" {
+			continue
+		}
+		for _, f := range m.Fields {
+			k8sFields = append(k8sFields, f.Key)
+		}
+	}
+	for _, want := range []string{"cluster", "namespace", "reason", "level", "message"} {
+		if !slices.Contains(k8sFields, want) {
+			t.Errorf("k8s-event 字段缺 %s(有 %v)", want, k8sFields)
+		}
 	}
 	// app 类型含 RCA 服务间消费的契约字段(service/level/message)
 	var appFields []string
