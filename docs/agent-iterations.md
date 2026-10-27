@@ -443,3 +443,17 @@
 2. **P1 任务执行失败根因**（QA 新证据）：4 条 failed 均为 `获取云账号失败: error decoding key tenant_id: cannot decode 64-bit integer into a string type` —— 账号解码类型问题，需后端修复（与采集/同步链路相关）。
 3. **P2 采集任务 running 29 条无超时回收**；**P2 触发采集 403 权限码确认**；**P2 账期口径统一**；**P2 移动端壳层**。
 4. **P3**：分页 `Total` 英文（全站未配 Element Plus zh-cn locale）；概览无法覆盖 disk:/nas:/oss:/rds: 指标任务（跨模块队列）。
+
+---
+
+## cam-iteration-20261027-app-drilldown（app TopN 下钻明细恒空修复）
+
+**需求来源**：契约审计面 D 两条 —— app 无聚合 TopN,采样回退图按 `entryHost`(回退 resource_id)分组名实不符;点击下钻生成 `host eq` 筛选,app 无 host 字段 → **明细静默恒空**。
+
+**改动**：前端(e-cam-web#8,分支 `cam-iteration-20261027-app-drilldown`)—— 新增 `entryService`/`buildTopServices`,app 采样第三图按服务分组(图题「服务 Top」),`defaultTopnField(app)='service'`;LogEntry 联合补 AppLogEntry 形态;entryHost/entryStatus 窄化守卫。配套 e-cloudx-sdk#5 —— app 过滤语义单测 12 例(锁 service eq 命中,此前零覆盖)。无后端服务改动。
+
+**验收**：logs 全套 138/138、vue-tsc 通过;SDK go test 全绿 + vet 干净;浏览器真实链路(白名单端口 3333 + 真实登录/后端)—— app 页签激活、search 200、第三图标题「服务 Top」、0 控制台错误。**数据边界**：应用业务日志源当前无存量数据(1h/3d 均 0 条),图与下钻点击无法用真实数据演示,由单测链保证语义。截图 `D:\Haven\logs\dev\app-*.png`。
+
+**环境勘误（重要,修正上轮记录）**：上轮报告的"非 8888 来源 403"实为后端 CORS 白名单**设计内机制**(`corsDefaultOrigins`=8888/5173/3333,ioc/gin.go corsHdl)——验证端口 5174 在白名单外;改用 3333 后一切正常。轮次 1 的 5174 验收当时只断言了请求侧未断言响应状态,存在盲区,特此记录。
+
+**遗留候选**：① SDK AppLogEntry 缺 `case "exception"`(app 异常堆栈筛选恒空,下一切片首选);② app 专属 KPI(待业务口径)。
