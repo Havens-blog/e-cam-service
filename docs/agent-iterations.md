@@ -158,3 +158,18 @@
 1. 火山适配器重试间隔过短（`retry.WithBackoff` 3 次共 ~3s），服务端过载窗内全灭；建议对历史账期拉长退避（如 5s/15s/45s）或在采集器层做跨轮次重试。
 2. 账期缺口巡检：按 provider×月核对 unified_bill 覆盖（如每日 cron 发现缺失月告警/自动补采），避免每次靠人工比对发现。
 3. `ListAmortizedCostBillDetail` 需要 `AmortizedMonth`（非 BillPeriod），如未来引入摊销口径注意参数差异。
+
+---
+
+### 附：回归与生产健康度核查（2026-10-27 12:00~12:10，等待审核期间）
+
+**回归（CI 态 / registry 依赖）**：origin/main 整仓 `go build` 失败，两处均属同一系统性根因——已提交代码依赖**未发布**的本地兄弟仓能力：
+1. `ioc` Wire 生成：`syncerpkg.ISyncer` / `capability.IPermissionProvider`（e-iam 最新发布 tag 即 v0.0.27，类型只存在于本地未发布提交）；
+2. `internal/cam/task/executor/sync_ddos.go`：`adapter.DDOS` / `types.DDOSInstance`（e-cloudx-sdk v0.1.0 无 DDOS，本地 main 已有）及 `logquery/service/federation.go` 的 `TopNNote`（同因）。
+本仓 cost 域（含本 PR 全部路径）在 CI 态构建健康：`go build ./scripts/backfill_range_collect.go` exit 0、`go test ./internal/cam/cost/collector/...` ok。**系统性修复（发布 e-iam/e-cloudx-sdk 新版本或 CI 侧 workspace 对齐）需维护者决策，未擅动。**
+
+**生产健康度（合并后首次 cron 触发核查）**：12:00:00 采集 cron 准时触发（app.log `ioc/jobs.go:40` + `starting scheduled collection {account_count: 5}`），volcengine 建立采集日志后，12:00:30 并行会话保存文件触发 CompileDaemon 12:00:49 重建重启，进程被硬杀：
+- 残留一条 volcengine `running` 僵尸采集日志（无 record_count，仅影响采集页展示；增量计算按 success/failed 过滤，不受影响）；
+- 账号锁 TTL 30 分钟，12:30 自愈，18:00 cron 无阻塞；
+- 无数据损失：12:00~18:00 的增量将由 18:00 触发时按"最近成功账期"自动覆盖（增量修复的设计自愈路径）。
+此前"12:00 未触发"的初判为误报（中文日志 grep 未指定 UTF-8 编码漏检），已更正。
