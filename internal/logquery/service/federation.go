@@ -485,9 +485,76 @@ func (s *FederationService) Search(ctx context.Context, tenantID int64, req Sear
 	return resp, nil
 }
 
+// Warmup 启动预热 + 周期保温(后台 goroutine,不阻塞启动):逐活跃云账号 ×
+// 日志类型拉一次源清单与聚合字段探测,填充 SDK 进程级缓存(火山 topics
+// TTL 30min/SLS 索引探测 30min),消除首查冷启动——实测冷进程 /types 探测
+// 超时返回空、冷聚合 82s,均为枚举成本而非查询本身。预热失败 2min 重试
+// (启动时序:Mongo/网络可能未就绪),成功后每 25min 重温(短于 topics 缓存
+// TTL);SDK 缓存命中时零 API 调用。进程生命周期由 ctx 控制。
+func (s *FederationService) Warmup(ctx context.Context) {
+	go s.warmupLoop(ctx)
+}
+
+func (s *FederationService) warmupLoop(ctx context.Context) {
+	for {
+		wait := 25 * time.Minute
+		if !s.warmupOnce(ctx) {
+			wait = 2 * time.Minute // 失败短重试(启动时序/瞬时网络)
+		}
+		t := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return
+		case <-t.C:
+		}
+	}
+}
+
+// warmupOnce 一轮预热:返回是否至少完成一个 provider 的源清单拉取。
+// 账号遍历绕过租户过滤(provider 级缓存与租户无关);未注册 (云, 类型)
+// 组合静默跳过;单账号失败仅记日志不中断。
+func (s *FederationService) warmupOnce(ctx context.Context) bool {
+	start := time.Now()
+	accounts, _, err := s.accounts.List(ctx, domain.CloudAccountFilter{Status: domain.CloudAccountStatusActive})
+	if err != nil {
+		s.logger.Warn("[logquery] warmup list accounts failed", elog.FieldErr(err))
+		return false
+	}
+	warmed := 0
+	for i := range accounts {
+		acc := accounts[i]
+		for _, lt := range logquery.AllLogTypes {
+			creator, err := logquery.GetProvider(acc.Provider, lt)
+			if err != nil {
+				continue // 未注册 (云, 类型) 静默跳过
+			}
+			p, err := creator(&acc)
+			if err != nil {
+				continue
+			}
+			if _, err := p.ListLogSources(ctx, &acc); err != nil {
+				s.logger.Warn("[logquery] warmup list sources failed",
+					elog.String("cloud", string(acc.Provider)),
+					elog.String("log_type", string(lt)), elog.FieldErr(err))
+				continue
+			}
+			if agg, ok := p.(logquery.AggregatableLister); ok {
+				// 聚合字段探测自带进程级缓存(30min),调用即保温;失败不致命
+				_, _ = agg.AggregatableFields(ctx, &acc)
+			}
+			warmed++
+		}
+	}
+	s.logger.Info("[logquery] warmup done",
+		elog.Int("accounts", len(accounts)),
+		elog.Int("providers_warmed", warmed),
+		elog.Int64("duration_ms", time.Since(start).Milliseconds()))
+	return warmed > 0
+}
+
 // searchUncached 真实联邦查询(无缓存路径)。
-func (s *FederationService) searchUncached(ctx context.Context, tenantID int64, req SearchRequest) (*SearchResponse, error) {
-	perSource := req.Limit
+func (s *FederationService) searchUncached(ctx context.Context, tenantID int64, req SearchRequest) (*SearchResponse, error) {	perSource := req.Limit
 	if perSource <= 0 {
 		perSource = DefaultPerSourceLimit
 	}
