@@ -623,3 +623,15 @@
 3. **P3 符号舍入**：`+0.04` 会显示 `+0.0%`，建议先舍入再判符号。
 4. **P2 移动端壳层**（跨页面）：390px 下同比卡片金额被裁切（内容区 122px），需在 `src/layouts`/`PageContainer` 加断点。
 5. **既有 P1 待办**：任务积压/持久化去重、采集 running 超时回收、触发采集 403。
+
+---
+
+## cam-iteration-20261027-reject-logging-verify（已合并 #11 的部署验证,400 归因闭环）
+
+**需求来源**：轮次 1 审计的 400 归因可观测性悬案 —— e-cam-service#11(400 拒因结构化日志)已合并,但并行开发实例长期未拉取;本日 21:22 实例重建(HEAD 27b9c4f,含 f09e290 祖先)后可验证。
+
+**验证(A 级真实链路)**：真实登录会话经 8888 → 后端 :8001 发构造请求 `log_type=nope` → **HTTP 400** `invalid log type: nope`;`logs/app.log` 21:39:01/21:40:29 两条 WARN:`{"stage":"validate","path":"/api/v1/cam/logs/search","tenant_id":3,"client_ip":"127.0.0.1","reason":"invalid log type: nope"}`(web/handler.go:478)—— 五字段与 #11 设计一致,**闭环**。
+
+**边界发现(如实,不改行为)**：`log_type=cdn + 30d 窗口` → **200**(total=417)——服务端**不强制** max_window_days,窗口钳制是前端 clampWindow(url-state.ts)单侧契约。超窗大查询当前可达聚合/检索层。如需服务端强制(防绕过),属新需求待确认。
+
+**本轮无代码改动**(验证轮)。
