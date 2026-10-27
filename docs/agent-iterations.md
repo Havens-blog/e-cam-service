@@ -349,3 +349,17 @@
 **验收**：url-state 单测 9/9（含 t=app 往返 + 全类型往返表）、logs 视图全套 127/127、vue-tsc 通过；浏览器真实链路验收 PASS——本地 vite 实例 + 真实登录会话（eiam Cookie，localhost 域端口无关自动携带）+ 真实后端，`/cam/logs?t=app` 正确激活「应用业务日志」页签并按 `log_type:app` 查询（截图 url-app-after-5174.png；对照旧构建 8888 同 URL 页签未渲染）。证据留存本地 `D:\Haven\logs\dev\`。
 
 **遗留**：运行中 8888 部署实例待合并重建生效；CI 系统性失败（未发布 SDK）仍待维护者处理。
+
+---
+
+## cam-iteration-20261027-contract-alignment（契约对齐小修打包）
+
+**需求来源**：轮次 2 委派子 agent 的只读契约审计（6 契约面/9 差异）。本切片取其中可独立交付项：① `/types` 字典加载晚于 URL 水合,3d 类型（slb/access/app）分享长窗链接打开后按 7d 兜底超窗查询;② limit 注释「硬顶 500」与后端 MaxPerSourceLimit=2000 漂移;③ 搜索/聚合响应的 `cached/cache_stale/topn_note/not_supported` 字段前端类型未声明。
+
+**改动**（仅 e-cam-web,配套 PR **Havens-blog/e-cam-web#6**,分支 `cam-iteration-20261027-contract-alignment`）：新增 `clampWindow` 纯函数（end 钳 now/start 收到 end-cap/倒挂回退 1h）,hydrate 与 onMounted 字典到位后复钳共用;limit 解码放宽为正整数透传（白名单仍在 useLogUrlSync）;注释 500→2000;响应类型补全（仅类型层）。无后端改动。
+
+**验收**：logs 全套单测 150/150（新增 7 例）、vue-tsc 通过;浏览器真实链路（真实登录+真实后端:8001）——slb 分享 5d 链接打开 picker 收紧到 now-3d、查询载荷 start_time=now-3d（PASS）,cdn 对照 5d 保留（PASS）。证据：`D:\Haven\logs\dev\clamp-*.png`。
+
+**环境边界（如实记录）**：验证中并行会话 18:31 重建的后端开始对非 8888 来源的 `/api/v1/cam/logs/*` 一律 403（旧构建 8888 对照无 4xx）——客户端断言在该现象出现前已通过,数据渲染 E2E 属环境阻断而非本轮引入,已写入 PR 边界说明。
+
+**遗留（候选,不擅自实现）**：app 专属 KPI（需确认口径）;聚合/诊断补 account_ids（需账号级筛选 UI）。
