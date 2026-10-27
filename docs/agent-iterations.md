@@ -852,3 +852,71 @@
 1. **P1 任务生命周期治理**：pending 残留 started_at/progress 说明重排未清执行态；建议统一「重排重置执行字段 + 超时回收 + 持久化去重」，并补 `attempt/last_attempt_at` 字段以区分「首次排队/重试等待」。
 2. **P3**：`cancelled` 无 completed_at 的耗时口径需后端确认；时长格式化可下沉 `utils/formatters` 统一。
 3. **P3**：TaskProgress 运行中进度百分比重复显示（条右 + 条下）、详情页头部「新增」按钮等既有观察，非本轮范围。
+
+---
+
+## cam-iteration-20261028-collect-export（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#13`，merge commit `c5679a8`，2026-10-28 02:29 +08）
+**代码 PR**：`e-cam-web#13`（commits `c187e5f` → `38441a9`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 采集日志页只能在线翻页查看（当时 1964 条），运维做周报/对账需要把日志带走，页面没有导出能力。
+- 页面已有账号/状态筛选与分页，错误信息包含逗号/引号/换行（华为/AWS 失败行），对 CSV 转义有真实要求。
+
+### 需求卡
+
+- 目标用户：运维/财务，离线核对采集结果与失败原因。
+- 目标：按当前筛选导出 CSV；列名与表格一致；Excel 中文不乱码；特殊字符不破坏列结构；大量数据有上限与提示。
+- 非目标：后端导出任务、异步大文件、审计留痕。
+- 规则：遵循账号/状态筛选；单次上限 **5000** 条；文件名 `collect-logs-YYYYMMDD-HHmm.csv`；UTF-8 BOM；空结果不生成文件。
+- API 契约：复用 `GET /api/v1/cam/cost/collect/logs?account_id=&status=&offset=&limit=`，**后端零改动**。
+- 正常/加载/空/失败/恢复：导出中按钮 loading 防重复；空结果提示「当前筛选无数据，未生成文件」；失败 toast；失败不留半份文件。
+
+### 改动
+
+- `src/views/cam/collect/export.ts`（新增）：`csvCell`（RFC4180 转义 + Excel 公式注入中和）、`buildCollectLogCsv`（BOM + 9 列表头）、`exportFileName`、`EXPORT_MAX_ROWS=5000`。
+- `src/views/cam/collect/export.test.ts`（新增，8 例）。
+- `src/views/cam/collect/index.vue`：导出按钮；导出前快照筛选；分页拉取（每页 200）以短页为终止条件、`total` 仅提示；按 id 去重；空结果不下载；`disposed` 检查；`revokeObjectURL` 延迟 1s。
+
+### 验收（真实浏览器 + 真实后端）
+
+| # | 验收 | 结果 |
+|---|---|---|
+| 1 | 全量导出 | ✅ 1964 行 = 接口 total 1964；BOM；9 列表头精确 |
+| 2 | 逐字段比对 | ✅ 1964 行 0 差异（账号/厂商/状态/账期/记录数/耗时/错误/采集时间） |
+| 3 | 转义 | ✅ 692 特殊行（逗号 691/引号 259/换行 306），恒 9 列，引号双写，解码=原值 |
+| 4 | 筛选导出 | ✅ 运行中 29 行 = 接口；账号 #2 386 行 = 接口 |
+| 5 | 交互 | ✅ loading/disabled，连点 2 次仅 1 次下载、1 组分页 |
+| 6 | 空结果（评审后行为） | ✅ 无下载、提示「当前筛选无数据，未生成文件」 |
+| 7 | 390 | ✅ 按钮可见、整页溢出 0 |
+| 8 | console | ✅ 0 error / 0 pageerror / 0 requestfailed |
+| 9 | 上限 CONTRACT（total=6000） | ✅ 5000 行 / 25 页 / 「共 6000 条，仅导出前 5000 条」 |
+
+独立 QA：**核心 69/69 PASS + 上限 CONTRACT 5/5 PASS**（快照 `38441a9`，与 c187e5f 同数据 CSV 逐字节一致）。
+
+### 测试
+
+- `vitest run`：61 files / 1007 tests 通过（collect 41 例，export 8 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：**无 blocker，2 major**（导出期间筛选漂移、total 缺失静默截断）+ 若干 minor；已修 major 与公式注入/空结果/去重/revoke/离页保护。
+- 独立 QA：首轮 c187e5f 54/54；修复后以 `38441a9` 复跑 **69/69**，并专门验证快照筛选（导出中切筛选仍 1964 行）、短页终止、去重、公式中和、空结果无下载、上限提示。
+- 未直接验证：`revokeObjectURL` 1s 时序（仅确认下载完整）；导出中离页 `disposed` 分支；真实 >5000 数据（CONTRACT 造数）。
+
+### 版本组合
+
+- 前端：`38441a9`（合并为 `c5679a8`）。
+- 后端：`main@6fdc34e`（采集日志接口无 diff）。
+
+### 后续建议
+
+1. **P3 口径统一**：CSV 账期为原始 RFC3339、表格显示日期；运行中耗时 CSV「进行中」、表格「已运行 X」——已注释为导出快照口径，如需完全一致可复用 `formatElapsed/formatDate`。
+2. **P3 性能**：5000 条上限下最多 25 次串行请求；仓库已有 `utils/exportAll.ts#fetchAllRows`（带进度）可复用，或把每页提升到 500。
+3. **P3 审计**：导出不含操作者/租户审计字段；如需留痕应走后端导出任务。
+4. **P1 仍待办**：任务生命周期治理（pending 残留 started_at）、采集 running 超时回收、菜单死链（`menu-config.ts` 仍被其他会话占用）。
