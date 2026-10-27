@@ -111,3 +111,65 @@
 2. 采集日志 `bill_start/bill_end` 记录的是"请求范围"而非"实际返回账期范围"，排查历史缺口时可读性差，可考虑记录适配器实际覆盖的账期月清单。
 3. e-cam-web 无 E2E 框架，成本页核心流程（筛选→分布→趋势）值得补 Playwright 冒烟（需先确认登录测试账号约定）。
 4. 华为云 `bss:billDetail:view`、AWS Cost Explorer 授权仍是云侧权限缺口（运维动作，非代码）。
+
+---
+
+## cam-iteration-20261027-volcano-months
+
+**状态：实现和验收完成，待审核**
+
+### 需求来源
+
+延续已确认需求「成本统计其他云也要实现」（`cam-iteration-20261027-multicloud-cost` 轮遗留）：火山引擎 2026-03~08 六个账期月缺失。
+
+### 关键更正（对上轮结论）
+
+上轮记录"火山账单明细 API 对 2026-03~08 不可用（云侧限制）"**判断有误**：本轮 11:03 用多数据面探针对同一账期月复测，`ListBillDetail` 对 2026-03 正常返回 32,610 条（与该月其他 API 及库内口径一致）。上轮 10:30~10:40 的连续失败实为**火山服务端瞬时过载窗口**——分段与单月粒度在 10 分钟内密集重试，全部撞进同一故障窗。
+教训：对云侧"不可用"结论，必须隔开故障窗复测后再下（本轮探针含 2026-02 正常月做对照）。
+
+### 本轮过程与结果
+
+- 多数据面对照探针（只读）：`ListBillDetail` / `ListSplitBillDetail` / `ListAmortizedCostBillDetail`（需 AmortizedMonth 参数）/ `ListBill`（月度汇总，交叉验证）。确认 `ListBillDetail` 恢复后，**无需任何备选 API 或代码改动**，直接走生产补采路径。
+- 逐月补采（`backfill_range_collect.go -apply`，月间 20s 间隔，全部一次成功）：
+
+| 账期月 | 记录数 | 金额 (¥) |
+|---|---|---|
+| 2026-03 | 32,610 | 436,743.90 |
+| 2026-04 | 33,594 | 715,668.28 |
+| 2026-05 | 33,772 | 628,106.49 |
+| 2026-06 | 34,130 | 657,125.38 |
+| 2026-07 | 34,902 | 705,521.55 |
+| 2026-08 | 35,801 | 765,334.27 |
+
+- 火山账期覆盖达 **11/11 个月**（2025-12 ~ 2026-10），无代码变更。
+
+### 验收
+
+- **数据一致性**：缺口窗口（2026-03-01~2026-08-31）distribution API 返回 volcano ¥3,908,499.87（23.0%），与库内 6 个月合计**分毫不差**；aliyun 74.5% / tencent 2.5% 同窗合理。
+- **浏览器 UI**（Playwright，localhost:8888 实链路）：未登录跳转→登录→成本页→缺口窗口火山出现（此前为零数据）→ 宽窗四云齐现 ✅；截图与 API 响应存证于 `docs/agent-iterations-evidence/cam-iteration-20261027-volcano-months/`。
+- 云侧边界：同前轮，全部为账单只读查询，无云资源写操作。
+
+### 踩坑记录（供后续会话复用）
+
+- `ListAccounts` 返回的账号**不携带完整凭证**（密文态）；必须 `GetAccountWithCredentials(ctx, id)` 才拿到解密密钥（与采集器一致）。探针曾直接用 List 结果构造客户端 → `Invalid 'Authorization' header`，一度误判为密钥失效/依赖漂移——区分方法：对照正常账期月 + 换用凭证级接口。
+
+### 后续建议
+
+1. 火山适配器重试间隔过短（`retry.WithBackoff` 3 次共 ~3s），服务端过载窗内全灭；建议对历史账期拉长退避（如 5s/15s/45s）或在采集器层做跨轮次重试。
+2. 账期缺口巡检：按 provider×月核对 unified_bill 覆盖（如每日 cron 发现缺失月告警/自动补采），避免每次靠人工比对发现。
+3. `ListAmortizedCostBillDetail` 需要 `AmortizedMonth`（非 BillPeriod），如未来引入摊销口径注意参数差异。
+
+---
+
+### 附：回归与生产健康度核查（2026-10-27 12:00~12:10，等待审核期间）
+
+**回归（CI 态 / registry 依赖）**：origin/main 整仓 `go build` 失败，两处均属同一系统性根因——已提交代码依赖**未发布**的本地兄弟仓能力：
+1. `ioc` Wire 生成：`syncerpkg.ISyncer` / `capability.IPermissionProvider`（e-iam 最新发布 tag 即 v0.0.27，类型只存在于本地未发布提交）；
+2. `internal/cam/task/executor/sync_ddos.go`：`adapter.DDOS` / `types.DDOSInstance`（e-cloudx-sdk v0.1.0 无 DDOS，本地 main 已有）及 `logquery/service/federation.go` 的 `TopNNote`（同因）。
+本仓 cost 域（含本 PR 全部路径）在 CI 态构建健康：`go build ./scripts/backfill_range_collect.go` exit 0、`go test ./internal/cam/cost/collector/...` ok。**系统性修复（发布 e-iam/e-cloudx-sdk 新版本或 CI 侧 workspace 对齐）需维护者决策，未擅动。**
+
+**生产健康度（合并后首次 cron 触发核查）**：12:00:00 采集 cron 准时触发（app.log `ioc/jobs.go:40` + `starting scheduled collection {account_count: 5}`），volcengine 建立采集日志后，12:00:30 并行会话保存文件触发 CompileDaemon 12:00:49 重建重启，进程被硬杀：
+- 残留一条 volcengine `running` 僵尸采集日志（无 record_count，仅影响采集页展示；增量计算按 success/failed 过滤，不受影响）；
+- 账号锁 TTL 30 分钟，12:30 自愈，18:00 cron 无阻塞；
+- 无数据损失：12:00~18:00 的增量将由 18:00 触发时按"最近成功账期"自动覆盖（增量修复的设计自愈路径）。
+此前"12:00 未触发"的初判为误报（中文日志 grep 未指定 UTF-8 编码漏检），已更正。
