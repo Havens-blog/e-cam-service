@@ -988,3 +988,81 @@
 1. **P1 任务生命周期治理**：pending 残留 started_at/progress、队列长期积压（当前 pending 16~21、最老 17h）；建议重排重置执行字段 + 超时回收 + 持久化去重，并补 `attempt/last_attempt_at`。
 2. **P3 口径**：最老等待与卡片「已等待」同用 created_at，重试前执行时长仍计入等待。
 3. **P3 交互**：概览与 chip 数值重复，可考虑概览只保留新增信息（最老等待）或合并展示。
+
+---
+
+## cam-iteration-20261028-task-requeued-tag（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#15`，merge commit `c39bf0c`，2026-10-28 03:00 +08）
+**代码 PR**：`e-cam-web#15`（commits `3998955` → `3012ddd`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 2026-10-27 巡检：`GET /tasks?status=pending&limit=100` 的 **38 条待执行中 27 条带 `started_at`（progress 22%~60%）**，说明任务被重排/重试后回到 pending，但执行时间戳未清空。
+- 上一轮（#12）为避免误读，pending 卡片不再展示开始时间/耗时，改为「已等待」；副作用是**重排痕迹对运维完全不可见**。
+- 本轮补纯事实标记：pending 且 `started_at` 可解析 → 卡片「曾执行·待重排」、详情「上次执行: 曾开始执行（当前等待重排）· 上次开始时间」。不改变任务状态。
+
+### 需求卡
+
+- 目标用户：运维，判断任务是否被反复重排/重试。
+- 目标：待执行任务残留执行时间时有可见标记与解释；运行中/终态不显示；非法/空时间不误标。
+- 非目标：修复后端重排未清执行字段的根因（P1，需产品确认重试语义/超时规则）、重试入口（后端无 retry 接口）。
+- 规则：`status==='pending' && startedAt 可解析` → 标记；纯展示。
+- API 契约：复用 `GET /api/v1/cam/tasks`、`/tasks/{id}`，**后端零改动**。
+- 风险/回滚：标签可能被误读为「执行过且失败」——已用 info 色 + 「待重排」措辞 + tooltip 弱化；单提交回滚。
+
+### 改动
+
+- `src/views/tasks/timing.ts`：新增 `isRequeuedPending`（校验 `Date.parse` 可解析）。
+- `src/views/tasks/timing.test.ts`：+2 例（含 failed/cancelled/空串/非法串）。
+- `TaskCard.vue`：meta 行「曾执行·待重排」info 标签（title + aria-label + 窄屏 align-self）。
+- `detail.vue`：「上次执行」信息项，附上次开始时间。
+
+### 验收
+
+> 验证时真实 pending 已排空（total=0），渲染逻辑用 `page.route` 合成 3 条 pending（2 条带 started_at）+ 详情；运行中/终态用合成与真实数据复核。
+
+| # | 验收 | 结果 |
+|---|---|---|
+| 1 | 合成 3 卡中恰好 2 卡标记 | ✅ tagged=2、untagged=1，按 id 对齐 |
+| 2 | 标签文案/title/aria | ✅「曾执行·待重排」、title 含重排、aria-label 正确 |
+| 3 | 详情（带 started_at） | ✅「曾开始执行（当前等待重排）· 3小时前」 |
+| 4 | 详情（不带 started_at）不显示 | ✅ |
+| 5 | 执行中/终态不标记 | ✅ 合成 running/completed/failed 均 0；真实已完成 20 卡 0 |
+| 6 | 真实 pending=0 页面正常 | ✅ 20 卡渲染、无崩溃 |
+| 7 | 390 标签不拉伸/无溢出/不重叠 | ✅ 91×20、交集 0、docOverflow 0 |
+| 8 | console | ✅ :5187 0 error / 0 pageerror；:8888 噪音 0 |
+| 9 | 非法/空 started_at 不标记 | ✅ |
+
+独立 QA：**27/27 断言 PASS**（快照 `3012ddd`，运行前后 HEAD 一致）。
+
+配色对比度：修复前 warning 2.00:1（深色主题突兀），修复后 info **5.25:1**（WCAG AA）。
+
+### 测试
+
+- `vitest run`：63 files / 1013 tests 通过（timing 8 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：1 major（warning 色 + 「曾执行」易读成告警）、5 minor；已修配色/文案/时间校验/详情时间/窄屏对齐。
+- 独立 QA：`3998955` 首轮 29/29；修复后 `3012ddd` **27/27 PASS**，含几何/对比度/真实空队列回归。
+- 未验证：真实 pending 数据的渲染（验证时队列为空，属环境时序；真实数据证据见需求来源）；触屏/键盘 tooltip 可达性（观察到原生 title 不可达）。
+
+### 新发现（非本轮引入）
+
+- **390 下任务列表内部横向溢出 37px**：归因 `.el-pagination`（宽 424，右边界 439 > 容器 402），与本次标签无关；建议后续修分页在窄屏的布局。
+- 原生 `title` 在触屏/键盘不可达，`aria-label` 落在无 role 的 span 上读屏可能忽略；如需解释可改 `el-tooltip` 或卡片内直出说明。
+
+### 版本组合
+
+- 前端：`3012ddd`（合并为 `c39bf0c`）。
+- 后端：`main@48c01cf`（任务接口无 diff）。
+
+### 后续建议
+
+1. **P1 任务生命周期治理**：重排放回 pending 未清 `started_at/progress/completed_at`；建议统一重置 + 超时回收 + 持久化去重，并补 `attempt/last_attempt_at`，届时标签可升级为「重试 N 次」。
+2. **P3 窄屏分页**：修复 `.el-pagination` 390 溢出（当前 37px 内部滚动）。
+3. **P3 tooltip 可达性**：触屏/键盘场景下补充可见说明或 `el-tooltip`。
