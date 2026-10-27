@@ -2,7 +2,7 @@
 
 import (
 	"context"
-	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -138,44 +138,53 @@ func TestSearchInvalidParams(t *testing.T) {
 	}
 }
 
-// TestSearchUnregisteredCloud 云未注册该类型 provider:状态显式记因,不报错。
+// TestSearchUnregisteredCloud 云未注册该类型 provider:全源失败时显式报错,
+// 不返回可被结果缓存回放的空 200(瞬时全失败曾以脏 0 回放)。
 func TestSearchUnregisteredCloud(t *testing.T) {
 	svc := NewFederationService(&fakeAccountSource{accounts: []domain.CloudAccount{
 		testAccount(9, "aliyun"),
 	}}, nil)
 	now := time.Now().UnixMilli()
-	resp, err := svc.Search(context.Background(), 3, SearchRequest{
+	_, err := svc.Search(context.Background(), 3, SearchRequest{
 		LogType: logquery.LogTypeWAF, StartTime: now - 1000, EndTime: now,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Sources) != 1 || resp.Sources[0].Error == "" {
-		t.Fatalf("want provider-not-registered outcome, got %+v", resp.Sources)
+	if err == nil || !strings.Contains(err.Error(), "所有源查询失败") {
+		t.Fatalf("want all-sources-failed error, got %v", err)
 	}
 }
 
 // TestSearchSourceFailureIsolated 单源失败:其他源结果正常返回,失败源记 error。
 func TestSearchSourceFailureIsolated(t *testing.T) {
 	now := time.Now().UnixMilli()
-	mustRegister(t, []logquery.LogEntry{&testEntry{ts: now - 1000}}, nil)
-	svc := NewFederationService(&fakeAccountSource{accounts: []domain.CloudAccount{
-		testAccount(1, testCloud), // 正常源
-		testAccount(9, "aliyun"),  // 未注册 -> not registered
-	}}, nil)
-	// 让 testCloud provider 失败:重新注册一个会报错的
+	// 显式注册 testCloud WAF 为健康 provider(注册表是全局的,防其他测试
+	// 的注册泄漏到本用例;mustRegister 注册的是 CDN,与本用例无关)
 	logquery.RegisterProvider(testCloud, logquery.LogTypeWAF, func(*domain.CloudAccount) (logquery.LogProvider, error) {
-		return nil, errors.New("boom")
+		return &fakeProvider{cloud: testCloud, logType: logquery.LogTypeWAF,
+			entries: []logquery.LogEntry{&testEntry{ts: now - 1000}}}, nil
 	})
+	svc := NewFederationService(&fakeAccountSource{accounts: []domain.CloudAccount{
+		testAccount(1, testCloud), // 正常源:上面注册的数据可查
+		testAccount(9, "aliyun"),  // 未注册 -> 单源失败隔离,仅注解
+	}}, nil)
 	resp, err := svc.Search(context.Background(), 3, SearchRequest{
 		LogType: logquery.LogTypeWAF, StartTime: now - 1000, EndTime: now,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 无可用数据源但无整体错误
-	if len(resp.Entries) != 0 {
-		t.Fatalf("entries = %d, want 0", len(resp.Entries))
+	// 单源失败不中断整体:健康源条目照常返回,失败源记 error(源顺序是
+	// 并发完成序,不断言位置)
+	if len(resp.Entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(resp.Entries))
+	}
+	failed := 0
+	for _, oc := range resp.Sources {
+		if oc.Error != "" {
+			failed++
+		}
+	}
+	if failed != 1 || len(resp.Sources) != 2 {
+		t.Fatalf("want 1 failed + 1 ok source, got %+v", resp.Sources)
 	}
 }
 
@@ -411,5 +420,42 @@ func TestSearchFederatedCap(t *testing.T) {
 	}
 	if resp2.Total != 3000 {
 		t.Errorf("total = %d, want 3000", resp2.Total)
+	}
+}
+
+// TestNormalizeWindowMs 毫秒/秒窗口自适配:秒纪元值([1e9,1e12))按秒×1000
+// 纠正;毫秒纪元原样;更小值报错不静默(1970 空窗曾静默返回 0)。
+func TestNormalizeWindowMs(t *testing.T) {
+	now := time.Now().UnixMilli()
+	s, e, err := normalizeWindowMs(now-60_000, now)
+	if err != nil || s != now-60_000 || e != now {
+		t.Fatalf("ms passthrough: %d,%d,%v", s, e, err)
+	}
+	nowSec := time.Now().Unix()
+	s, e, err = normalizeWindowMs(nowSec-60, nowSec)
+	if err != nil || s != (nowSec-60)*1000 || e != nowSec*1000 {
+		t.Fatalf("sec auto-correct: %d,%d,%v", s, e, err)
+	}
+	if _, _, err := normalizeWindowMs(1000, 2000); err == nil {
+		t.Fatal("1e3 级窗口应报错")
+	}
+}
+
+// TestAllTransientFailed 能力不支持的确定性空不算瞬时失败。
+func TestAllTransientFailed(t *testing.T) {
+	if allTransientFailed(nil) {
+		t.Fatal("空源不算全失败")
+	}
+	ok := []AggregateSourceOutcome{{Error: ""}}
+	if allTransientFailed(ok) {
+		t.Fatal("有成功源不算全失败")
+	}
+	transient := []AggregateSourceOutcome{{Error: "boom"}, {Error: "timeout"}}
+	if !allTransientFailed(transient) {
+		t.Fatal("全瞬时失败应 true")
+	}
+	mixed := []AggregateSourceOutcome{{Error: "boom"}, {Error: "aggregate not supported for this provider", NotSupported: true}}
+	if allTransientFailed(mixed) {
+		t.Fatal("含不支持源不算全失败")
 	}
 }

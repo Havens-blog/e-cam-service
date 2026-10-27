@@ -55,7 +55,7 @@ func newCountingCloud(t *testing.T, name domain.CloudProvider, entries []logquer
 }
 
 func searchReq() SearchRequest {
-	return SearchRequest{LogType: logquery.LogTypeCDN, StartTime: 1000, EndTime: 2000}
+	return SearchRequest{LogType: logquery.LogTypeCDN, StartTime: 1_700_000_000_000, EndTime: 1_700_000_000_000 + 1000}
 }
 
 // TestSearchResultCacheFreshHit 相同请求第二次命中结果缓存:不再触发 provider
@@ -88,7 +88,7 @@ func TestSearchResultCacheFreshHit(t *testing.T) {
 	}
 	// 不同请求参数 = 不同键,必须 miss
 	other := searchReq()
-	other.StartTime = 1100
+	other.StartTime = 1_700_000_000_000 + 100
 	if _, err := svc.Search(context.Background(), 3, other); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestAggregateResultCacheFreshHit(t *testing.T) {
 	svc := NewFederationService(&fakeAccountSource{accounts: []domain.CloudAccount{
 		testAccount(1, cloud),
 	}}, nil)
-	req := AggregateRequest{LogType: logquery.LogTypeCDN, StartTime: 1000, EndTime: 2000}
+	req := AggregateRequest{LogType: logquery.LogTypeCDN, StartTime: 1_700_000_000_000, EndTime: 1_700_000_000_000 + 1000}
 	r1, err := svc.Aggregate(context.Background(), 3, req)
 	if err != nil {
 		t.Fatal(err)
