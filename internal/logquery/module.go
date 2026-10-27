@@ -1,4 +1,4 @@
-// Package logquery 多云统一日志查询功能域(Phase 1)。
+﻿// Package logquery 多云统一日志查询功能域(Phase 1)。
 //
 // 装配入口(照 internal/cert/module.go 模式):service(联邦编排)+ web(三接口)。
 // 只读域:无 repository(Phase A 不落库,ADR D1);云账号凭证经
@@ -8,6 +8,8 @@
 package logquery
 
 import (
+	"context"
+
 	"github.com/Havens-blog/e-cam-service/internal/logquery/diagwatch"
 	"github.com/Havens-blog/e-cam-service/internal/logquery/service"
 	"github.com/Havens-blog/e-cam-service/internal/logquery/web"
@@ -40,6 +42,9 @@ func InitLogQueryModule(accounts service.AccountSource, logger *elog.Component) 
 		return nil, errNilAccounts
 	}
 	svc := service.NewFederationService(accounts, logger)
+	// 启动预热 + 周期保温(后台):填充 provider 进程级缓存,消除首查冷启动
+	// (实测冷进程 /types 探测超时返回空、冷聚合 82s)。进程生命周期。
+	svc.Warmup(context.Background())
 	return &Module{
 		Svc:   svc,
 		Hdl:   web.NewLogQueryHandler(svc),

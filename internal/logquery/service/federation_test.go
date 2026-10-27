@@ -45,11 +45,16 @@ type fakeProvider struct {
 	listed      []logquery.LogSource
 	listErr     error
 	ignoreLimit bool // 模拟多内部源归并总量超限的 provider(不做每源截断)
+	// onListSources 预热等场景的调用计数钩子(可 nil)。
+	onListSources func()
 }
 
 func (p *fakeProvider) Cloud() domain.CloudProvider { return p.cloud }
 func (p *fakeProvider) LogType() logquery.LogType   { return p.logType }
 func (p *fakeProvider) ListLogSources(_ context.Context, _ *domain.CloudAccount) ([]logquery.LogSource, error) {
+	if p.onListSources != nil {
+		p.onListSources()
+	}
 	return p.listed, p.listErr
 }
 func (p *fakeProvider) Search(_ context.Context, _ *domain.CloudAccount, params logquery.SearchParams) ([]logquery.LogEntry, error) {
@@ -457,5 +462,31 @@ func TestAllTransientFailed(t *testing.T) {
 	mixed := []AggregateSourceOutcome{{Error: "boom"}, {Error: "aggregate not supported for this provider", NotSupported: true}}
 	if allTransientFailed(mixed) {
 		t.Fatal("含不支持源不算全失败")
+	}
+}
+
+// TestWarmupOnce 预热遍历活跃账号 × 已注册类型调源清单;未注册组合跳过,
+// 至少完成一个 provider 记成功。
+func TestWarmupOnce(t *testing.T) {
+	now := time.Now().UnixMilli()
+	calls := 0
+	logquery.RegisterProvider(testCloud, logquery.LogTypeCDN, func(*domain.CloudAccount) (logquery.LogProvider, error) {
+		return &fakeProvider{cloud: testCloud, logType: logquery.LogTypeCDN,
+			entries: []logquery.LogEntry{&testEntry{ts: now}}, onListSources: func() { calls++ }}, nil
+	})
+	svc := NewFederationService(&fakeAccountSource{accounts: []domain.CloudAccount{
+		testAccount(1, testCloud),
+		testAccount(9, "aliyun"), // 未注册组合:静默跳过
+	}}, nil)
+	if !svc.warmupOnce(context.Background()) {
+		t.Fatal("warmupOnce 应记成功")
+	}
+	if calls != 1 {
+		t.Fatalf("ListLogSources 调用 = %d, want 1", calls)
+	}
+	// 无账号:不算成功(触发短重试)
+	empty := NewFederationService(&fakeAccountSource{}, nil)
+	if empty.warmupOnce(context.Background()) {
+		t.Fatal("零 provider 预热不应记成功")
 	}
 }
