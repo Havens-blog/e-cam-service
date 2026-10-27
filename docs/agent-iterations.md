@@ -785,3 +785,70 @@
 2. **P3 汇总失败静默**：为汇总请求单独关闭全局错误 toast。
 3. **P3 >200 采样**：后端提供 count/max(start_time) 聚合字段后可去掉采样。
 4. **既有 390 问题**：采集页「账期范围」控件被 page-container 裁掉约 36px（非本轮引入）。
+
+---
+
+## cam-iteration-20261027-task-pending-timing（2026-10-27）
+
+**状态**：**已合并**（`e-cam-web#12`，merge commit `09b904b`，2026-10-27 23:5x +08）
+**代码 PR**：`e-cam-web#12`（commits `3055663` → `acc31d2`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 任务页筛选「待执行」后，卡片显示 **开始时间** 与 **耗时**（示例「50分51秒」），且随时间增长，语义上像正在执行。
+- 接口核对：`GET /tasks?status=pending&limit=100` 的 38 条待执行中，**27 条仍带 `started_at` 与 progress（22%~60%）**；QA 复测 33 条中 24 条带 `started_at`——任务重排/重试后状态回到 pending，但执行时间戳未清空。
+- 规则：pending 不使用执行耗时口径，改展示自 `created_at` 起的「已等待 X」；运行中/已完成/失败/取消仍展示开始时间与耗时（终态无 completed_at 时不展示耗时）。
+
+### 需求卡
+
+- 目标用户：运维，判断任务是在排队还是执行中。
+- 目标：待执行卡片/详情页展示「已等待 X」，不出现「开始时间/耗时/完成时间」；运行中继续展示开始时间与耗时。
+- 非目标：修复后端 pending 残留 `started_at` 的根因（任务生命周期/重试语义，P1 另立项）。
+- API 契约：复用 `GET /api/v1/cam/tasks`、`/tasks/{id}`，**后端零改动**。
+- 风险/回滚：纯前端展示；等待时长随 5s 轮询刷新；单提交回滚。
+
+### 改动
+
+- `src/views/tasks/timing.ts`（新增）：`shouldUseExecutionTiming`、`formatDurationMs`（天/小时/分/秒，NaN/Infinity/负值兜底）、`pendingWaitDurationText`（created_at 口径）。
+- `src/views/tasks/timing.test.ts`（新增，6 例）。
+- `TaskCard.vue` / `detail.vue`：pending 显示「已等待」；开始时间/完成时间/耗时均受执行口径控制；耗时统一 `formatDurationMs`，非 running 且无 completed_at 不展示。
+
+### 验收（真实浏览器 + 真实后端）
+
+| # | 验收 | 结果 |
+|---|---|---|
+| 1 | 数据前提 | ✅ pending 33 条，其中 24 条带 started_at |
+| 2 | 待执行不显示开始时间/耗时 | ✅ 前 20 卡命中 0 |
+| 3 | 待执行显示已等待 | ✅ 20/20 |
+| 4 | 已等待与 created_at 一致 | ✅ 1.29h vs UI 1小时17分（差 0.00h） |
+| 5 | 详情页同规则 | ✅ 有「已等待」、无开始时间/耗时；残留 started_at 任务显示 13小时40分 |
+| 6 | 运行中仍显示开始时间+耗时 | ✅ 5/5，且无「已等待」 |
+| 7 | 70s 增长采样 | ✅ 5/5 增长（+60s/+120s），非静态快照 |
+| 8 | 390 无整页/卡片内溢出 | ✅ 0，已等待可见 20/20 |
+| 9 | console | ✅ 0 error / 0 pageerror（8888 登录噪音 0） |
+
+独立 QA：**A–G 全 PASS + 5 项补充断言 PASS**（快照 `acc31d2`，跑前/跑后 4 文件 SHA256 一致）。
+
+### 测试
+
+- `vitest run`：60 files / 1000 tests 通过（tasks 17 例：filters 11 + timing 6）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：**Approve**（无 blocker/major）；指出完成时间未纳入口径、耗时未复用 helper（NaN/负数）、cancelled 残留 started_at 等 6 minor；已修前两类并补测试。
+- 独立 QA：首轮在干净 `3055663` 全 PASS；最终在 `acc31d2` 复跑 A–G 全 PASS，并记录源码哈希一致性。
+- 残留（不阻塞）：`cancelled` 若只改状态不写 `completed_at` 仍可能显示耗时（依赖后端语义）；「已等待」把重试前执行时长计入；组件级测试缺失（纯函数覆盖）；`formatDurationMs` 与 collect 的时长格式化重复。
+
+### 版本组合
+
+- 前端：`acc31d2`（合并为 `09b904b`）。
+- 后端：`main@da8949a`（任务接口无 diff）。
+
+### 后续建议
+
+1. **P1 任务生命周期治理**：pending 残留 started_at/progress 说明重排未清执行态；建议统一「重排重置执行字段 + 超时回收 + 持久化去重」，并补 `attempt/last_attempt_at` 字段以区分「首次排队/重试等待」。
+2. **P3**：`cancelled` 无 completed_at 的耗时口径需后端确认；时长格式化可下沉 `utils/formatters` 统一。
+3. **P3**：TaskProgress 运行中进度百分比重复显示（条右 + 条下）、详情页头部「新增」按钮等既有观察，非本轮范围。
