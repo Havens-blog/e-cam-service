@@ -3006,3 +3006,29 @@
 1. **P2 待产品确认**：最小支持宽度（320/360/390）；若是 320，按上表 7 页修复（建议统一用容器查询 + 工具条成组，与本轮前几轮方案一致）。
 2. **P3 巡检脚本固化**：把「多路由 × 多视口 × console/HTTP/溢出」脚本收进仓库（`scripts/`），作为发布前检查，避免每轮临时写脚本（本轮曾因路由写错产生误判）。
 3. **P1 仍待办**：任务生命周期治理（pending 残留执行态、超时回收、持久化去重）、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## 2026-10-29 根因链闭合:service 构建/CI 依赖**两个未发布的兄弟仓版本**(发布债)
+
+**承接 #59**(已定位 `wire gen ./ioc` 因 `undefined: syncerpkg.ISyncer / capability.IPermissionProvider` 失败)。本轮把"未发布"这一笼统判断**逐仓、逐提交核实**,结论如下:
+
+### 依赖一:github.com/Havens-blog/e-iam(接口重命名未推送)
+- e-iam **本地 `main` 领先 `origin/main` 12+ 提交且全部未推送**(`origin` 只有 `main` 与 `fix/role-list-keyword`;`branch -r --contains HEAD` 为空)。
+- 其中 `e547cc9 refactor(arch): pkg 对外接口补 I 前缀 + 协调下游 e-cam-service(AGENTS.md 合规)` 正是把 `PermissionProvider→IPermissionProvider`、`Syncer→ISyncer`(21 文件)并**同步修改 e-cam-service** 的提交。
+- 远端(origin/main)`pkg/web/capability` **不含**这些类型 → service 固定的 `e-iam v0.0.27` 必然缺失。
+
+### 依赖二:github.com/Havens-blog/e-cloudx-sdk(字段未发布到标签)
+- SDK 仓库**只有一个标签 `v0.1.0`**(提交 `72ef82b`),该标签 `logquery/aggregate.go` **不含** `TopNNote`;
+- `TopNNote` 由 origin/main 的 `b1b3d7e feat(logquery): 扫描型维度采样 TopN + SQL NULL 组过滤` 引入;
+- service 固定 `e-cloudx-sdk v0.1.0` → 同样无法从已发布依赖构建(此前本地报 `result.TopNNote undefined` 即此因)。
+- 另:SDK 本地 HEAD `a67248c` 领先 origin/main 1 提交(未推送)。
+
+### 结论与建议(维护者侧,本轮不擅自执行)
+service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,故:
+1. 其 `Test` 作业在 `Generate Wire code` 前必失败 —— **对所有 service PR 恒红**,而非某个 PR 的问题;
+2. 本地之所以能构建/测试,仅因 `go.work` 把两仓映射到本地检出(实测:补 `go work use D:\Haven\eiam` 后 `wire`/`go build ./...` 双双 exit 0)。
+
+**解除顺序(建议)**:① 推送 e-iam 本地 main(含 e547cc9);② 推送 SDK 未推送提交;③ 为两仓打新标签发布(如 e-iam v0.0.28、e-cloudx-sdk v0.1.1);④ 在 service `go.mod` 升这两项,**在无 go.work 的干净环境**验证 `go build ./...` 与 `wire gen ./ioc`;⑤ 届时 service PR 门禁恢复可用。
+
+**影响面(如实)**:本轮未改动任何依赖/CI 配置;service 侧我的 #39/#57 等 PR 均是在"本地 go test 全绿 + 本条系统性失败已定位"的前提下合并的。
