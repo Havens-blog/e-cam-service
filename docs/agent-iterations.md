@@ -2388,3 +2388,23 @@
 2. **P3 重置入口**：筛选区加「清除筛选」按钮（当前需逐项选回「全部」）。
 3. **P3 390 首屏**：压缩统计卡/工具栏高度，避免下拉被视口裁切 8px。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## 2026-10-28 巡检:main 分支 CI 红灯归因(非代码缺陷,避免误判与重复排查)
+
+**背景**:web/service 两侧 main 上 `Build & Deploy` 长期红灯,易被误读为代码回归。
+
+**排查(逐步骤定位)**:
+| 仓库 | 工作流 | 失败步骤 | 性质 |
+|---|---|---|---|
+| e-cam-web | Build & Deploy(如 run 40691202263 @7c48ae7) | **`Login to Aliyun Registry`** | 基础设施/凭据(阿里云镜像仓库登录),非代码 |
+| e-cam-service | Build & Deploy(如 run 40691591408 @bd9b141) | **`Login to Aliyun Registry`** | 同上 |
+| e-cam-service | CI/CD Pipeline | Test(未发布 e-cloudx-sdk/e-iam 版本) | 既知系统性依赖问题 |
+
+**关键结论**:
+1. 两侧 `Build & Deploy` 的红灯**均止于阿里云镜像仓库登录步骤**,与代码无关 —— 在 386dbc3/d3cf094/14c0c29/7c48ae7 等多个 main 提交上稳定复现,属 CI 凭据/网络环境问题,应由维护者处理(本轮不伪造修复)。
+2. **PR 门禁工作流(web `CI`)在 main 上全绿**(Gzip Budget/ESLint/Vitest/Typecheck & Build 四项 success),本日合并的 #28/#30/#37 均由该门禁放行 —— 门禁有效。
+3. e-cam-service 的 `Test` 失败为既知系统性(依赖版本未发布),与各在途 PR 表现一致,非本轮引入。
+
+**方法备注**:`check-runs` 报出的失败项若在 `actions/runs?head_sha=` 查不到运行记录,需改用 `actions/runs?per_page=N` 按时间列举,再取 `runs/{id}/jobs` 逐步骤定位失败步骤(本次即如此定位到 Registry 登录步骤)。
