@@ -2756,3 +2756,20 @@
 2. **P3 结构断言补齐**：看板/探针测试各加 4 行（`.toolbar-actions` 唯一、含预期子元素、无 `.toolbar-spacer`），与台账对齐。
 3. **P3 组宽抖动**：探针 loading 时按钮组 +20px，视口 1036–1058 可能触发整组跳行；可给按钮组定宽或改用 `margin-left` 固定。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261029-cloud-order-consistency(云序变体归一:修复同屏云序自相矛盾)
+
+**需求来源**:协议优先级 3/4(可复现且预期明确的缺陷)。日志接口的 `cloud` 取账号 provider:火山账号返回 `volcengine`,而排序表 `CLOUD_ORDER` 用 `volcano`。未归一时同一朵云在同屏得到两种权重 —— 云/账号下拉走 `CLOUD_ORDER.indexOf`(未命中 **-1**)排**最前**,源分组/明细分组走 `groupRank`(未命中 `length`)排**最后**,违背 `cloud-order.ts` 自身声明的「同屏云序一致」不变式。
+
+**改动**:
+- e-cam-web#44:`cloud-order.ts` 新增 `normalizeCloud`/`cloudRank`(变体 `volcengine`/`volc`→`volcano`;未知云统一排最后,消除 -1 排最前);`groupRank` 改为取组键云段归一后排序(保留前缀兜底);`useLogSources` 的 `availableClouds`/`accountOptions` 改用 `cloudRank`;新增 `cloud-order.test.ts`(5 例,含「同屏云序一致」直接断言:同一朵云 `cloudRank === groupRank`)。
+
+**验收**:
+- 自动化:日志域 **169/169**(13 files)、`vue-tsc` 0、`eslint` 0、CI 四项全绿后合并(web main 已核实)
+- **浏览器实测(A 类,worktree :3333 + 真实后端 :8001,1440×900,app Tab)**:云下拉由 `[火山云, 阿里云]` 变为 **`[阿里云, 火山云]`**,与源分组 `[aliyun·集团-阿里云, volcengine·集团-火山云]` **顺序一致**;0 页面错误。
+
+**未处理(如实,超范围)**:源分组的组标签沿用原始云 id(`volcengine·…`),而账号下拉标签为 `火山云·…` —— 属既有可见文案约定,非本缺陷引入;若需统一文案应另行确认口径。
+
+**同日观察**:此前轮次记录的「云下拉显示原始 id `volcengine`」已被并行会话修复(`CLOUD_LABELS` 增补 `volcengine`/`volc` 别名),本轮仅剩**排序**维度未归一,现已修复。
