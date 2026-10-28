@@ -423,3 +423,58 @@ func TestWindowBoundary(t *testing.T) {
 		})
 	}
 }
+
+// 窗口守卫覆盖全部四入口(search/aggregate/diagnose/cache-analyze,#39 只测了 search):
+// 超窗一律 400 且原因文案统一;合法窗口不得被守卫误拒(仅断言"未命中守卫文案"——
+// 合法窗口后仍可能因特性开关关闭/类型不支持/无 provider 等原因另行报错,那不是本测试对象)。
+func TestWindowGuardAllEndpoints(t *testing.T) {
+	r := newTestRouter(t)
+	now := time.Now().UnixMilli()
+	day := int64(86400_000)
+
+	cases := []struct {
+		name    string
+		path    string
+		logType string
+		maxDays int
+		extra   string // 各入口专有字段
+	}{
+		{"aggregate cdn 超窗", "/api/v1/cam/logs/aggregate", "cdn", 7, `,"dimension":"host"`},
+		{"diagnose waf 超窗", "/api/v1/cam/logs/diagnose", "waf", 7, ""},
+		{"cache-analyze cdn 超窗", "/api/v1/cam/logs/cache-analyze", "cdn", 7, ""},
+	}
+	post := func(path, body string) (int, string) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(w, req)
+		var resp struct {
+			Msg string `json:"msg"`
+		}
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
+		return w.Code, resp.Msg
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// 超窗(上限+23 天):400 + 统一守卫文案
+			over := fmt.Sprintf(`{"log_type":"%s","start_time":%d,"end_time":%d%s}`,
+				tc.logType, now-int64(tc.maxDays+23)*day, now, tc.extra)
+			code, msg := post(tc.path, over)
+			want := fmt.Sprintf("exceeds max_window_days %d for %s", tc.maxDays, tc.logType)
+			if code != http.StatusBadRequest {
+				t.Fatalf("超窗 code = %d, want 400, msg=%q", code, msg)
+			}
+			if !strings.Contains(msg, want) {
+				t.Fatalf("超窗 msg = %q, want 含 %q", msg, want)
+			}
+
+			// 合法窗口(1h):守卫不得命中(其余失败原因另议)
+			ok := fmt.Sprintf(`{"log_type":"%s","start_time":%d,"end_time":%d%s}`,
+				tc.logType, now-3600_000, now, tc.extra)
+			if _, okMsg := post(tc.path, ok); strings.Contains(okMsg, "exceeds max_window_days") {
+				t.Fatalf("合法窗口被守卫误拒: %q", okMsg)
+			}
+		})
+	}
+}
