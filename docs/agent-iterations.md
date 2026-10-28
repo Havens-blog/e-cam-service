@@ -1855,3 +1855,15 @@
 2. **P3 台账 390 头部**：`.page-actions` 不换行导致 28px 内容区溢出（全量台账同样存在）。
 3. **P2 组件级测试**：`goLedger`/面包屑接线目前仅浏览器验证，建议按仓库既有 mount 范式补一条（可捕获本次 blocker 类问题）。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261028-server-window-limit（服务端强制 max_window_days,超窗 400）
+
+**需求来源**：口径确认(2026-10-28 维护者答"超窗 400 拒绝,S2S 不豁免")。此前实测 cdn 30d 窗口 200 通过 —— 窗口约束仅前端 clampWindow 单侧钳制。
+
+**改动**：e-cam-service#39 —— 四入口(search/aggregate/diagnose/cache-analyze)统一 checkWindow,超 /types 字典 max_window_days 一律 400 + 结构化拒因日志;S2S 路由复用同 handler 同样生效;恰等于上限放行(与前端钳制语义一致)。
+
+**验收**：本地 `go test ./internal/logquery/...` 全绿(含新增超窗 2 例精确消息 + 边界 2 例:恰 7d 放行走通完整链路/超 1ms 拒绝)、vet/gofmt 干净。**边界**：运行实例未含本改动,live 验证待实例重建后核查(参照 #11 模式)。
+
+**配套说明**：8888 主检出拉取被安全阻断 —— 并行工作区 24 个未提交文件中 2 个与 incoming main 重叠(AppSidebar.vue/CommandPalette.test.ts),不覆盖他人进行中的修改,保持等待。
