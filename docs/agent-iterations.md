@@ -2683,3 +2683,76 @@
 **同日另记(e-iam 发布/CI 修复候选,未执行)**:
 - 试图核实"是否已有含 `IPermissionProvider`/`ISyncer` 的已发布 e-iam 版本",但 `proxy.golang.org` 与本机配置的 `mirrors.aliyun.com/goproxy` 均未返回版本列表(网络不可达/无缓存),**无法确认存在可用版本**。
 - 依赖升级/发布属维护者决策(且协议禁止擅自升级核心依赖),故**本轮不擅动**;精确配方见 #59 记录(publish e-iam 含这些 API 的版本并升 go.mod,或 CI 检出 e-iam + replace/go.work)。
+
+---
+
+## cam-iteration-20261029-cert-toolbar-siblings（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#41`，merge commit `3808fa3`，2026-10-29 00:53 +08）
+**代码 PR**：`e-cam-web#41`（commits `427c177` → `bfb9076`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- #40 修台账工具栏时，审查指出 `cert/dashboard/components/DashboardTable.vue` 与 `cert/probes/index.vue` 仍是 `.toolbar-spacer{flex:1}` 结构——窄容器会把尾部元信息/按钮推到行尾或拆行，与台账同症状。
+- 审查进一步用盒模型证明看板单行需 ≈775 内容宽，直接照抄台账的 720 阈值会与换行点错位（1084–1139 视口元信息孤悬第二行最右）。
+
+### 需求卡
+
+- 目标：两页工具栏尾部簇成组，窄容器整组换行左对齐，宽屏右对齐；无 `.toolbar-spacer`。
+- 规则：尾部簇包进 `.toolbar-actions`（`flex + gap + margin-left:auto`），容器查询归零（看板 ≤820、探针 ≤800），删除 spacer；补 `role="group" aria-label`。
+- 非目标：看板 tooltip 键盘可达性（既有 `trigger=hover`）、其它页面。
+- API 契约：无。
+
+### 变更内容
+
+- `DashboardTable.vue`：spacer → `.toolbar-actions`（包 el-tooltip + 2 个 meta span），阈值 820，注释说明来源。
+- `probes/index.vue`：spacer → `.toolbar-actions`（包扫描/刷新按钮），阈值 800。
+- 两处 `.table-toolbar`/`.toolbar` 加 `container-type: inline-size`。
+
+### 验收（真实浏览器 + 真实后端，基线 `bfb9076`）
+
+| 页面 | 视口 | 结果 |
+|---|---|---|
+| 看板 | 390/768/1024 | 组换行左对齐，x=125/125/293=内容左缘 |
+| 看板 | **1084/1100/1120/1140** | 换行左对齐、**无孤悬**（margin 0） |
+| 看板 | 1200/1440 | 单行右对齐（ΔR=0） |
+| 探针 | 390/768/1024 | 按钮组整组换行左对齐（x=76/76/244） |
+| 探针 | 1440 | 单行右对齐（x=1220） |
+| 两页 | 全部 | `.toolbar-actions`=1、`.toolbar-spacer`=0、`overflowX=0` |
+
+- 看板 tooltip hover 1440：popper `547.8×32` 在视口内（right=1439.8），`container-type` 未裁切；390 亦正常；
+- 下拉面板 390/1440 均 teleport 到 body、不被工具栏裁切；
+- 1440 与上一提交 `427c177` 整图 **0 像素差**（SHA256 相同）；与旧基线仅探测时间文本变化；
+- console error/pageerror 0；非 GET 请求 0（QA 未点「立即探测/刷新」）。
+
+### 已知遗留
+
+- **看板 tooltip 键盘 focus 不出提示**（QA 实测 focus-visible 有描边但 tips=0）：既有问题（`tabindex=0` 但 `trigger=hover`），父提交同样，记录待修。
+- 看板 1440 tooltip 右缘距视口 0.2px：当前文案不裁切，文案增长需复测。
+- 阈值仍有 20–37px 的「组右跳」台阶（与 #40 台账同性质，一次性）。
+- 探针无像素基线（无历史截图）。
+
+### 测试
+
+- `vitest run`：66 files / **1055 tests** passed。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：0 blocker；**major**（阈值 720 照抄台账）→ 改 820 并补注释；minor（缩进、缺结构断言）与 nit（role/aria、魔数注释、运行时组宽抖动、未跟踪文件）—— 缩进/role/注释已修，结构断言未加（记录）。
+- 独立浏览器 QA：22 项 **20 PASS / 1 FAIL（既有 tooltip 键盘）/ 1 INFO**；确认 1084–1140 无孤悬、1440 与 427c177 像素一致。
+- 总控：实现 + 阈值修复，实测阈值带 5 档与两页 4 档。
+
+### 版本组合
+
+- 前端：`bfb9076`（合并为 `3808fa3`）。
+- 后端：`main@d48f7f8`（无接口改动）。
+
+### 后续建议
+
+1. **P3 tooltip 键盘可达性**：看板「通配符跳过拨测」`tabindex=0` 但 `trigger=hover`，键盘用户看不到说明；改 `trigger="hover,focus"` 或 `:content` 常显。
+2. **P3 结构断言补齐**：看板/探针测试各加 4 行（`.toolbar-actions` 唯一、含预期子元素、无 `.toolbar-spacer`），与台账对齐。
+3. **P3 组宽抖动**：探针 loading 时按钮组 +20px，视口 1036–1058 可能触发整组跳行；可给按钮组定宽或改用 `margin-left` 固定。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
