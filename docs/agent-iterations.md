@@ -2669,3 +2669,17 @@
 **影响**:service 仓 PR 门禁(`Test`)对所有 PR 恒红;我的 #39/#57 等是在"本地 go test 全绿 + 本条系统性失败已定位"前提下合并的。**修复属维护者决策**,本轮不擅自改 CI/依赖:① 发布含这些 API 的 e-iam 版本并升级 `go.mod`;或 ② CI 检出 e-iam 并加 `replace`/`go.work` 映射。
 
 **附注**:`go work use D:\Haven\eiam` 触发工具链切换(e-iam 要求 go >= 1.26.0 → 自动切至 go1.26.10),配置 CI 时需一并考虑 Go 版本。
+
+---
+
+## cam-iteration-20261029-progress-account-count(进度文案按账号收窄的回归测试)
+
+**需求来源**:协议优先级 4。#30 让 `querySourceCount` 按所选账号收窄,但进度文案("正在查询 N 个云账号")**只有默认全选态的断言**,账号维度无覆盖。
+
+**改动(e-cam-web#42,纯测试)**:3 源分属账号 1(2 个已投递)与账号 2(1 个已投递),选中账号 2 后断言进度文案为「1 个云账号」。保护不变式:进度预估源数与联邦实际查询范围一致(失效则预估虚高、与所见不符)。
+
+**验收**:单用例 `-t '进度文案的源数按账号收窄'` pass;日志域全量 **164/164**(12 files);vue-tsc 0;eslint 0;CI 四项全绿后合并(web main 已核实)。
+
+**同日另记(e-iam 发布/CI 修复候选,未执行)**:
+- 试图核实"是否已有含 `IPermissionProvider`/`ISyncer` 的已发布 e-iam 版本",但 `proxy.golang.org` 与本机配置的 `mirrors.aliyun.com/goproxy` 均未返回版本列表(网络不可达/无缓存),**无法确认存在可用版本**。
+- 依赖升级/发布属维护者决策(且协议禁止擅自升级核心依赖),故**本轮不擅动**;精确配方见 #59 记录(publish e-iam 含这些 API 的版本并升 go.mod,或 CI 检出 e-iam + replace/go.work)。
