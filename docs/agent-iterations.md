@@ -2217,3 +2217,20 @@
 2. **P3 抽 `useSearchQueryPrefill()`**：统一 15 处重复块，减少漂移（本轮 ecs 就是漂移产物）。
 3. **P3 源码级防漂移断言**：仿 `MainLayout.test.ts` 的 grep 断言，要求读取 `route.query.search` 的页面必须同时设置显示态。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## 2026-10-28 验证轮:账号筛选在缓存分析/诊断卡的下发(#30 验证缺口闭环)
+
+**背景**:#30 的 UI 验证当时只断言了 search/aggregate 载荷;诊断卡与缓存分析卡走同一 `diagnoseContext` computed,属代码级覆盖,未做真机断言。
+
+**验证(A 类:自有 worktree :3333 + 真实后端 :8001,:1440×900)**:
+| 路径 | 结果 |
+|---|---|
+| CDN Tab 选账号 → search | `account_ids:[1]` ✓ |
+| CDN Tab 选账号 → **缓存分析** | `account_ids:[1]` ✓(与 search 同值;载荷键 `log_type/start_time/end_time/clouds/account_ids`) |
+| WAF Tab(诊断卡) | **不适用** —— 该环境 WAF 无日志源(账号选项 0),无法选账号;诊断请求已按预期发出(`account_ids` 缺省即不发送),但 WAF 路径**未取得 live 断言**,仅同源 computed 代码级覆盖 |
+
+**结论**:#30 的"聚合/诊断请求补账号级筛选"在可验证路径(CDN 缓存分析)已闭环;WAF 诊断路径列为人工审核重点(环境无 WAF 源)。
+
+**附:并行会话协同核查** —— 核对我已合并改动在当前 main(386dbc3)上完好(appKpis/accountOptions/selectedAccounts/filter-accounts 均在),未被并行会话的 stats/url-state 改动覆盖;k8s-event 的 KPI 专项已由并行会话(#34)补齐,与本轮无重叠。
