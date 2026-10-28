@@ -1499,3 +1499,75 @@
 1. **P3 翻页历史语义**：当前 `router.replace` 不产生历史项，返回键离开页面；若产品希望逐步回退页码需改 `push` 并接受历史膨胀。
 2. **P3 查询条件全量同步**：其它页面（资产/日志）筛选仍不写 URL，可复用本模式。
 3. **P1 仍待办**：任务生命周期治理（pending 残留执行态、超时回收、持久化去重）、采集 running 超时、菜单死链（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261028-revert-key（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#22`，merge commit `148df85`，2026-10-28 09:57 +08）
+**代码 PR**：`e-cam-web#22`（commit `f288da0`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 背景与证据
+
+- #21 为消除「query 变化整页重挂载导致的重复概览请求」，把 `MainLayout` 的 `<router-view :key="route.fullPath" />` 改为 `:key="route.path"`。
+- 回归：**21 个列表页**（compute/disk、ecs、image、security-group、snapshot；databases/mongodb、rds、redis；middleware/elasticsearch、kafka；network/cdn、ddos、eip、eni、lb、vpc、waf；storage/nas、oss；vswitch 的 `vpc_id`；cert/ledger 的 `daysLeft`；ecs 的 `uid`）在 `onMounted` 读取 `route.query`，依赖「同 path、query 变化 → 重挂载」预填搜索/深链参数。
+- 实测（磁盘页 SPA `pushState` + `popstate` 模拟全局搜索跳转）：
+  - `route.path`：URL 变为 `?search=probe-123`，**remounted=false、关键字为空**（搜索失效）；
+  - 回滚后：**remounted=true、关键字 `probe-123`**（恢复）。
+
+### 需求卡
+
+- 目标用户：使用全局搜索、资源详情「查看资产」等带 `?search/?uid` 跳转的用户。
+- 目标：恢复重挂载语义，保证 query 深链被页面读取；任务页 URL 深链/筛选/后退不回退。
+- 非目标：消除重复概览请求（重挂载架构的代价，另做页面内 watch query 才能根治）。
+- 规则：`router-view :key` 恢复 `route.fullPath`。
+- API 契约：无。
+- 风险：重复概览（QA #8）现象回归，属已知取舍。
+
+### 变更内容
+
+- `src/layouts/MainLayout.vue`：`:key="route.path"` → `:key="route.fullPath"`（与 #21 之前逐字节一致）。
+
+### 验收（真实浏览器 + 真实后端）
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | 磁盘页同 path 改 `?search=probe-123` | ✅ 重挂载真、关键字预填 |
+| 2 | 任务页深链 type+page+size | ✅ 第 2 页/50 卡/类型正确 |
+| 3 | chip「失败」 | ✅ 去 page、带 status |
+| 4 | `?status=completed&page=2` 刷新 | ✅ 保持 |
+| 5 | 非法 type/size | ✅ 清理回退 |
+| 6 | A→B→后退 | ✅ 恢复 A |
+| 7 | 默认 `/cam/tasks` | ✅ 无参数 |
+| 8 | console | ✅ 0 error |
+
+### 已知取舍
+
+- 回滚后，任务页每次写 URL（翻页/筛选）都会重挂载：状态 chip/翻页触发 5 次概览请求，类型切换 10 次；`oldest` 60s 节流被重置；滚动回顶；cert/dashboard 筛选会重跑 `refresh()+loadProbes()`。
+- 这是 **既有重挂载架构**的代价，本轮优先修复用户可见的搜索失效；根治方向：为 21 页抽 `useQuerySearchPrefill()`（watch query），或在路由 meta 标记 `remountOnQuery` 折中。
+
+### 测试
+
+- `vitest run`：62 files / 1022 tests 通过。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：Approve（0 blocker）；确认回滚与 #21 之前逐字节一致、21 页清单无遗漏、4 处已响应式页面属多余重挂载；建议补 `?search` 预填回归测试与 follow-up 记录。
+- 独立 QA：本轮启动但在合并时仍在运行，未及返回；搜索预填与任务页 URL 流程由总控以真实浏览器（:5194）验证。
+- 未执行：21 页逐一搜索预填回归（以磁盘页 + 代码清单推断）。
+
+### 版本组合
+
+- 前端：`f288da0`（合并为 `148df85`）。
+- 后端：`main@5ab9499`（无接口改动）。
+
+### 后续建议
+
+1. **P2 概览去重**：tasks 概览 5 个 status 各 limit=1，可换后端聚合端点或短 TTL 缓存。
+2. **P2 query 预填 composable**：抽 `useQuerySearchPrefill()`，21 页改为 watch query，之后 key 才能安全改回 path。
+3. **P2 回归测试**：补「列表页 mount 带 ?search 预填」用例，锁住本次行为。
+4. **P3 空深链**：`AccountCard` 跳 `/iam/users?cloud_account_id=` 但用户页不读 query，属独立问题。
+5. **P1 仍待办**：任务生命周期治理、采集 running 超时、菜单死链。
