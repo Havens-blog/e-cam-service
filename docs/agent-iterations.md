@@ -2313,3 +2313,78 @@
 **验收**:vue-tsc 0 / vitest 163/163(12 files) / eslint 0;CI 四项全绿后合并(web main=14c0c29)。浏览器回归(真实链路 :3333+真实后端,:1440×900):工具栏三选择器齐、账号筛选生效(search 携带 account_ids:[1])、0 页面错误。
 
 **未执行(如实)**:WAF 诊断 live 断言(环境无 WAF 源),本轮以单测覆盖该缺口。
+
+---
+
+## cam-iteration-20261028-cert-filter-sync（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#36`，merge commit `7c48ae7`，2026-10-28 23:42 +08）
+**代码 PR**：`e-cam-web#36`（commits `44dadd8` → `e1703fd`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 台账页 `onMounted` 解析 `route.query.daysLeft` 并据此请求，但筛选控件在 `CertTable` 内部、以 `ref('')` 自持状态——`/certs?daysLeft=le30` 显示 14 行（已过滤）而下拉仍显示「请选择」，用户看不到当前档位。
+- 该深链用于外部链接/收藏/手输 URL（到期看板自 `619726f` 起改为页内 `?level=` 筛选，不再跳转台账）。
+
+### 需求卡
+
+- 目标用户：通过链接进入带筛选台账的运维。
+- 目标：深链档位在「剩余天数」下拉回显；后续手动切换仍生效；无 query 时为默认态。
+- 非目标：URL 回写（受控化）、hostingStatus/search 深链（页面未解析）、看板下钻口径。
+- 规则：`CertTable` 新增可选 `initialHostingStatus/initialDaysLeft/initialSearch`；refs 从 props 初始化，并加单向幂等 watch（父级值变化时同步、判等防回环）。
+- API 契约：无。
+- 风险：依赖 `router-view :key="route.fullPath"` 重挂载；watch 为单向（本组件仍是用户操作源）。
+
+### 变更内容
+
+- `CertTable.vue`：3 个可选 props + 3 个单向 watch + 卸载清理 `searchTimer`。
+- `ledger/index.vue`：透传 `:initial-hosting-status/:initial-days-left/:initial-search`。
+- `ledger/index.test.ts`：AC4 断言 `initialDaysLeft === 'expired'` 透传。
+
+### 验收（真实浏览器 + 真实后端）
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | `?daysLeft=le30` | ✅ 下拉「≤30 天」、14 行、共 14 条 |
+| 2 | `le7` / `le14` / `expired` | ✅ 「≤7 天」4 行 / 「≤14 天」5 行 / 「已过期」首页 20 行（共 27） |
+| 3 | 无 query | ✅ 两个下拉均「请选择」、20 行、共 88 条 |
+| 4 | 深链后手动切档 | ✅ 「≤30 天」14 → 「≤7 天」4 → 「≤14 天」5 |
+| 5 | 清除（选「剩余天数：全部」） | ✅ 回 20 行、下拉回占位、请求去掉 daysLeft |
+| 6 | 看板分级卡 → 台账 | **无法验证**：入口已被移除（页内 `?level=` 筛选），点击期间台账接口 0 请求 |
+| 7 | 390×844 | ✅ 回显正常、`scrollWidth=clientWidth=390`、无横向溢出 |
+| 8 | console | ✅ error 0 / pageerror 0 |
+| 9 | watch 是否重复请求 | ✅ 进入/切档/清除各 1 次请求，无回环 |
+
+独立 QA：**8/8 PASS**（另 1 项入口不存在，如实标注），两轮数值一致。审查：0 blocker；major（仅初始化语义）已用单向幂等 watch 处置。
+
+### 已知遗留
+
+- **URL 不回写（S3）**：深链 le30 后手动切 le7，地址栏仍 `?daysLeft=le30`，刷新会回 le30；分享当前筛选亦不可用。需按 `tasks/index.vue` 的「URL 单一真值 + `router.replace`」受控化（约 30–50 行），下一轮候选。
+- **无专用重置按钮**：清空依赖下拉「剩余天数：全部」。
+- **390 首屏下拉底边 852 > 844**：需下滚约 8px 才完整可见（无横向溢出）。
+- **深链入口缺失**：看板已改页内筛选，该深链目前只能外部链接触达；若产品仍需下钻需确认口径。
+
+### 测试
+
+- `vitest run`：66 files / **1053 tests** passed（AC4 新增透传断言）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：0 blocker；major（`initial*` 与父级活状态语义冲突、依赖重挂载兜底）→ 加单向幂等 watch；minor（`searchTimer` 未清理、注释不符）已修；指出 `daysLeft` 深链在仓内已无生产者。
+- 独立 QA：8/8 PASS，含请求计数（watch 无额外请求）、390 命中测试、清除路径。
+- 总控：实现 + 评审修复，浏览器 6 项复跑一致。
+
+### 版本组合
+
+- 前端：`e1703fd`（合并为 `7c48ae7`）。
+- 后端：`main@9db6c4e`（无接口改动）。
+
+### 后续建议
+
+1. **P2 台账筛选受控化**：URL 单一真值 + `router.replace` 回写 + `watch(route.query)`（同 tasks 范式），可一次解决回显/分享/刷新三类问题。
+2. **P3 重置入口**：筛选区加「清除筛选」按钮（当前需逐项选回「全部」）。
+3. **P3 390 首屏**：压缩统计卡/工具栏高度，避免下拉被视口裁切 8px。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
