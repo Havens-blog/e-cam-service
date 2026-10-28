@@ -2029,3 +2029,17 @@
 **配套**:同日交付 e-cam-service#39(服务端超窗 400)+#40(记录);e-cam-web#30(账号级筛选)与本切片同为日志域口径确认需求。
 
 **环境备注**:当日 GitHub api.github.com TLS 握手持续被阻断(SNI 层),改用 curl + --resolve 备用 IP 完成 PR 创建/合并;github.com git 通道正常。
+
+---
+
+## cam-iteration-20261028-account-filter(聚合/诊断补账号级筛选 account_ids)
+
+**需求来源**:口径确认(2026-10-28 维护者答"做,复用现有筛选模式补账号维度")。`account_ids` 后端四入口(search/aggregate/diagnose/cache-analyze)早已支持,前端从未下发。
+
+**改动**:e-cam-web#30 —— useLogSources 新增 accountOptions(源清单去重推导,number 平台 ID,标签 云·账号,CLOUD_ORDER 组序);useLogSearch 的 search/aggregate/翻页请求统一携带 account_ids;工具栏新增账号多选;diagnoseContext 同步(诊断/缓存分析卡生效);watch+onCloudsChange 清理失效选择;类型补 LogAggregateRequest/LogDiagnoseRequest.account_ids。
+
+**验收**:vue-tsc 0 / vitest 150/150(新增 6 例)/ eslint 0;CI 四项全绿后合并。浏览器 UI(真实链路 A 类,:3333+后端 :8888,1440×900):真实源清单 809 源去重为 2 账号(去重语义正确);单选 → search 与 aggregate 均带 account_ids:[1];云扩至 aliyun+volcengine → 账号联动 2 项,全选后 account_ids:[5,1];0 页面错误。
+
+**未执行(如实)**:app 数据仅 2 账号,无法构造 3+ 账号真实验证;账号选择未做 URL 持久化(口径外)。
+
+**环境备注**:api.github.com TLS 握手被持续阻断,改用 curl --resolve 备用 IP 完成 PR 建/合并。
