@@ -3032,3 +3032,64 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 **解除顺序(建议)**:① 推送 e-iam 本地 main(含 e547cc9);② 推送 SDK 未推送提交;③ 为两仓打新标签发布(如 e-iam v0.0.28、e-cloudx-sdk v0.1.1);④ 在 service `go.mod` 升这两项,**在无 go.work 的干净环境**验证 `go build ./...` 与 `wire gen ./ioc`;⑤ 届时 service PR 门禁恢复可用。
 
 **影响面(如实)**:本轮未改动任何依赖/CI 配置;service 侧我的 #39/#57 等 PR 均是在"本地 go test 全绿 + 本条系统性失败已定位"的前提下合并的。
+
+---
+
+## cam-iteration-20261029-audit-mobile（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#47`，merge commit `2f93330`，2026-10-29 08:10 +08）
+**代码 PR**：`e-cam-web#47`（commit `f77fce2`；CI Typecheck/Vitest/ESLint 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮只读巡检发现 320px 下 7 页 `.main-content` 横向溢出；进一步测 360px（常见 Android 宽度，属支持范围）仍有 5 页溢出。
+- 本次选其中一页：`/cam/audit/logs` 在 360 下溢出 **72px**、320 下 **112px**（`document` 无溢出，属容器内部横滚）。
+
+### 需求卡
+
+- 目标用户：小屏（320–390）查看操作审计的运维。
+- 目标：320/360/390 下 `.main-content` 横向溢出为 0；1440 布局不变。
+- 规则：
+  1. `.audit-page{margin:-24px}` 只匹配桌面内边距（24），移动端为 12 → ≤768 改 `margin:-12px` 与 `height:calc(100%+24px)`；
+  2. `.stats-badges` 允许换行，≤480 取消 `margin-left:auto`；
+  3. `.filter-left/.filter-right{min-width:0}`，筛选下拉 `flex:1 1 130px`。
+- 非目标：分页栏（`layout` 约需 740px，范围外）、其它 4 页同源问题、日期区间输入框的文字裁切（既有）。
+- API 契约：无。
+
+### 变更内容
+
+- `src/views/audit/logs/index.vue`：+28 行样式（三处规则，其中一个 ≤768 媒体块、一个 ≤480 媒体块）。
+
+### 验收（真实浏览器 + 真实后端）
+
+| 视口 | 修复前 main 溢出 | 修复后 | 徽章宽度 |
+|---|---|---|---|
+| 320 | 112px | **0** | 152（换行） |
+| 360 | 72px | **0** | 183 |
+| 390 | 42px | **0** | 207 |
+| 1440 | 0 | **0** | 295（不变） |
+
+- 复核：`.audit-page` 在 360 下宽度 = `main.clientWidth`(296)；日期区间控件由 flex 收缩至 256 后不再越界。
+
+独立审查：**0 blocker**；M1（疑日期控件 360px 固定宽）经实测**可收缩**，无需 `!important`；M2 分页栏溢出属范围外记录。独立 QA：**未在合并前返回结果**（截至合并仍 running），本轮以总控自测数据为准，已在风险中标注。
+
+### 已知遗留
+
+- **日期区间输入框文字裁切（既有，全宽度）**：`2026-10-29 12:00:00` 在 1440 也不完整（clientWidth 133 < scrollWidth 140）；EP range 输入各占 39%，非本次引入。
+- **分页栏溢出（范围外）**：`total/sizes/pager/jumper` 约需 740px，`justify-content:flex-end` 使溢出落在左侧不可滚动区，`scrollWidth` 口径看不到。
+- **同源 4 页未修**：`audit/changes`（232px）、`iam/users`（97px）、`iam/groups`（72px）、`databases/rds`（256px，360 下）。
+- **断点体系**：新增 480 断点与仓库 768/1024 体系不一致（审查 minor）。
+
+### 测试
+
+- `vitest run`：67 files / **1063 tests** passed（audit 目录无既有测试文件，`vitest run src/views/audit` 在 base 同样 exit 1）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint SUCCESS；Gzip Budget 合并时仍在运行。
+
+### 后续建议
+
+1. **P2 同源四页**：`audit/changes`、`iam/users`、`iam/groups`、`databases/rds` 按同一方案（bleed 12 + 可收缩 + 换行）修复。
+2. **P3 分页栏小屏化**：复用 `paginationUiForContentWidth`（tasks 已有），避免左侧不可达。
+3. **P3 日期区间输入**：`min-width` 或缩短格式（`YYYY-MM-DD` 而非带秒），解决全宽度裁切。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
