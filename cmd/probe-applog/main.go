@@ -327,38 +327,51 @@ func probeVolcano(acc domain.CloudAccount, listTopics bool, query, topicFilter, 
 		for _, t := range topics {
 			if listTopics {
 				fmt.Printf("  - %s (id=%s ttl=%d)\n", t.TopicName, t.TopicID, t.Ttl)
+				continue
+			}
+			// 采样选择:显式 -topic 子串命中任意 topic(如 jlc-prod-k8s-log),
+			// 否则回退 app 业务流的 *_business 约定。曾经的 bug:-topic 只
+			// 作用于 business 候选,非 business 命名的源(如 K8s 事件)永远
+			// 采不到样,误判为"无该 topic"。
+			matched := false
+			if topicFilter != "" {
+				matched = strings.Contains(strings.ToLower(t.TopicName), strings.ToLower(topicFilter))
+			} else {
+				matched = strings.HasSuffix(strings.ToLower(t.TopicName), "business")
+			}
+			if !matched {
+				continue
 			}
 			if strings.HasSuffix(strings.ToLower(t.TopicName), "business") {
-				if topicFilter != "" && !strings.Contains(strings.ToLower(t.TopicName), strings.ToLower(topicFilter)) {
-					continue
-				}
 				business++
 				allBusiness = append(allBusiness, t)
-				if listTopics {
-					continue // 列表模式不再重复采样
-				}
-				q := query
-				if q == "" {
-					q = "*"
-				}
-				resp, err := client.SearchLogs(&tls.SearchLogsRequest{
-					TopicID: t.TopicID, Query: q,
-					StartTime: now - 86400, EndTime: now, Limit: 3, Sort: "desc",
-				})
-				if err != nil {
-					fmt.Printf("\n-- %s: 查询失败 %v\n", t.TopicName, err)
-					continue
-				}
-				rows := make([]map[string]any, 0, len(resp.Logs))
-				for _, l := range resp.Logs {
-					r := make(map[string]any, len(l))
-					for k, v := range l {
-						r[k] = v
-					}
-					rows = append(rows, r)
-				}
-				printSamples(t.TopicName, len(rows), func(i int) map[string]any { return rows[i] })
 			}
+			q := query
+			if q == "" {
+				q = "*"
+			}
+			resp, err := client.SearchLogs(&tls.SearchLogsRequest{
+				TopicID: t.TopicID, Query: q,
+				StartTime: now - 86400, EndTime: now, Limit: 3, Sort: "desc",
+			})
+			if err != nil {
+				fmt.Printf("\n-- %s: 查询失败 %v\n", t.TopicName, err)
+				continue
+			}
+			rows := make([]map[string]any, 0, len(resp.Logs))
+			for _, l := range resp.Logs {
+				r := make(map[string]any, len(l))
+				for k, v := range l {
+					r[k] = v
+				}
+				rows = append(rows, r)
+			}
+			if fullDump && len(rows) > 0 {
+				b, _ := json.MarshalIndent(rows[0], "", "  ")
+				fmt.Printf("   [%s] 全量首条:\n%s\n", t.TopicName, string(b))
+				fullDump = false
+			}
+			printSamples(t.TopicName, len(rows), func(i int) map[string]any { return rows[i] })
 		}
 		fmt.Printf("   其中 business 候选 %d 个\n", business)
 	}
