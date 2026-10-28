@@ -1638,3 +1638,74 @@
 3. **P2 概览聚合**：5 个 status 各 limit=1 → 后端单端点。
 4. **P3 首屏双倍**：深链含默认/非法参数时，规范化 replace 会让首屏多一次挂载。
 5. **P1 仍待办**：任务生命周期治理、采集 running 超时、菜单死链。
+
+---
+
+## cam-iteration-20261028-cert-ledger-redirect（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#24`，merge commit `cc7ce13`，2026-10-28 13:56 +08）
+**代码 PR**：`e-cam-web#24`（commit `0626c53`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据（含一次自我纠正）
+
+- 本轮只读健康审计新覆盖 5 页（告警中心/操作审计/变更历史/用户与权限/证书台账），发现 `/cam/certs/ledger` 请求返回 **400 `CERT_INVALID_ID`**、页面「证书详情加载失败」。
+- **纠正**：审查用全仓与 20 个 worktree grep 证明仓库内**没有任何菜单指向 `/certs/ledger`**（`cert-nav.ts`/`menu-config.ts` 均为 `/certs`）；该 400 来自历史书签/外部链接，或本轮审计脚本硬编码的 URL。原「菜单死链」结论不成立，PR 描述已改为「旧链接防御性兼容」。
+- 真实风险仍存在：`GET /api/v1/certs/ledger` → 400，`/certs/:id` 会把 `ledger` 当证书 id；任意旧书签会落到错误页。
+
+### 需求卡
+
+- 目标用户：持旧书签/外部链接的运维。
+- 目标：`/certs/ledger` 落到台账列表，不再请求详情接口；`/certs/:id` 详情与权限守卫不受影响。
+- 非目标：修改菜单（无此错误）、通用无效 id 的 404 处理（列为后续）。
+- 规则：新增 `{ path: '/certs/ledger', redirect: '/certs' }`，静态段优先于 `/certs/:id`。
+- API 契约：无。
+- 风险/回滚：单条重定向；测试排除 redirect 不计入「表外页面」。
+
+### 变更内容
+
+- `src/router/routes.ts`：新增 `/certs/ledger → /certs` 重定向。
+- `src/router/routes.test.ts`：组合校验排除 redirect，并断言该重定向存在。
+
+### 验收（真实浏览器 + 真实后端）
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | 直接访问 `/cam/certs/ledger` | ✅ 落到 `/cam/certs`，20 行，`/api/v1/certs/ledger` 请求 0 次，4xx 0 |
+| 2 | 台账 → 详情 `/certs/:id` | ✅ 详情/引用/变更均 200，reload 稳定 |
+| 3 | 看板/变更 | ✅ 正常 |
+| 4 | 只读角色（前端模拟） | ✅ 落看板并提示，无 400 |
+| 5 | console / 4xx | ✅ 0 / 0 |
+| 6 | 390 页面级横向滚动 | ✅ 0（内容区 28px 为既有布局，见下） |
+| 7 | replace 语义 | ✅ 不留 `/certs/ledger` 历史项，后退回前页 |
+
+独立 QA：**7/7 PASS**；审查：无 blocker（确认静态段优先、守卫与详情不受影响、redirect 为替换式并保留 query/hash）。
+
+### 已知问题（既有，非本轮）
+
+- 390 下证书台账 `.page-actions` 右边界 418 > 视口 390，内容区横向溢出 28px；直接访问 `/certs` 与重定向后截图 SHA256 相同，属既有布局。
+- 任意其它无效 id（如 `/certs/setting`）仍会被当详情并返回 400，建议后续做「详情页 404/不存在」处理。
+
+### 测试
+
+- `vitest run`：62 files / 1022 tests 通过（router 6 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：无 blocker；major 为「描述证据不成立」，已按审查改正为防御性兼容，并据此把结论写入记录。
+- 独立 QA：7/7 PASS，含 390、权限模拟、replace、query/hash 保留、400 对照实验。
+- 总控：确认审计脚本 URL 写错导致自造证据；保留 redirect（真实旧链接仍有 400 风险）。
+
+### 版本组合
+
+- 前端：`0626c53`（合并为 `cc7ce13`）。
+- 后端：`main@f499095`（无接口改动）。
+
+### 后续建议
+
+1. **P2 详情页无效 id**：把后端 `CERT_INVALID_ID`（400）映射为「证书不存在」页并提供「返回台账」，覆盖任意脏链接。
+2. **P2 审计脚本修正**：`cam-audit-20261028-health/audit.cjs` 中 `/cam/certs/ledger` 改为 `/cam/certs`，避免再次自造证据。
+3. **P3 台账 390 头部按钮**：`.page-actions` 不换行导致 28px 溢出。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、菜单死链（`menu-config.ts` 仍被并行会话占用）。
