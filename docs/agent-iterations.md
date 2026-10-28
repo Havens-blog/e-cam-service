@@ -3128,3 +3128,76 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 
 - 日期范围面板 646px 在 320/360 右侧被裁（popper 已 teleport，页面级溢出仍 0）：既有，非本次引入；已在上一节「已知遗留」记录。
 - `.filter-right{flex-wrap:wrap}` 未包媒体查询（全宽生效），实测 1440/1024/769 几何与像素均无变化，风险低，后续可收窄。
+
+---
+
+## cam-iteration-20261029-dict-reactive（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#48`，merge commit `b6d0ee3`，2026-10-29 08:47 +08）
+**代码 PR**：`e-cam-web#48`（commits `61da2e5` → `5a1c541`；CI 四项全绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮 QA 在操作审计页发现：`/api/v1/cam/dict/data/operation_type` 返回 200 且含 6–7 项，但「操作类型」下拉恒显示「无数据」，表格列回退显示原始值 `api_log_create`。
+- 定位：`src/composables/useDictionary.ts` 的 `dictCache` 是**普通 `Map`**，而 `getDictOptions/getDictItems` 返回 `computed` 读它——普通 Map 不参与依赖收集，`loadDict` 完成后 computed 不会重算，下拉永远停在首次的空结果。
+- 影响面：`getDictOptions` 的 2 个使用方（操作审计 `operation_type`、成本页 `service_type`）以及未来所有字典下拉。
+
+### 需求卡
+
+- 目标用户：使用字典下拉筛选的运维（审计、成本等）。
+- 目标：`loadDict/loadDicts` 完成后，字典下拉即时出现选项；`refreshDict` 后同步更新；刷新/冷启动均正确。
+- 非目标：日志行 `api_log_create` 与字典值 `create` 的值域口径（需后端/产品确认）、成本图表例（命令式渲染路径）。
+- 规则：缓存改 `reactive(new Map())`；按 code 记忆化 computed，避免每次挂载在模块级缓存 dep 上留下永久 effect。
+- API 契约：无变更（沿用 `/api/v1/cam/dict/data/{code}` 与批量接口）。
+
+### 变更内容
+
+- `src/composables/useDictionary.ts`：`dictCache` 改响应式；`getDictOptions/getDictItems` 按 code 复用 computed。
+- `src/composables/useDictionary.test.ts`（新增 4 例）：单条加载后 options 生效、批量加载、`refreshDict` 刷新、`getDictLabel` 取标签；`beforeEach` 重置模块避免缓存跨用例污染。
+
+### 验收（独立 QA `61da2e5`：14/14 PASS；总控 `5a1c541` 隔离复验）
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | 操作类型下拉 | ✅ **7 项**（查询/创建/更新/删除/同步/导入/导出），与 API 逐项一致，无「无数据」 |
+| 2 | 即时性 | ✅ 155/462/1379ms 三次采样恒 7 项（非二次触发补数据） |
+| 3 | 选中「查询」→ 查询 | ✅ `operation_type=query` 200，total 0 → 空态「暂无数据」合理（现存 7162 条几乎全为 create） |
+| 4 | 成本页下拉 | ✅ 服务类型 6 / 云厂商 6 / 云账号 5 / 地域 59 |
+| 5 | F5 刷新 | ✅ 仍 7 项 |
+| 6 | 冷启动（新 context、唯一导航） | ✅ 字典 679ms 到位，仍 7 项 |
+| 7 | console / HTTP | ✅ error 0 / pageerror 0 / API 全 200（61 条） |
+| 8 | 记忆化提交复验（`5a1c541`） | ✅ 逐下拉隔离枚举：请求方法 5、操作类型 **7**、结果 2，与 QA 数字一致 |
+
+**取证更正**：本 PR 早期自测脚本点的是 `.filter-left .el-select` 首个（请求方法）且读取全文档选项，得出 20 项混样；结论虽对但口径有误，已由 QA 的「同一时刻仅 1 个可见弹层 + 逐下拉枚举」替代。
+
+### 已知遗留
+
+- **值域不匹配**：日志行存 `api_log_create`，字典 value 为 `create` → 表格「操作类型」列显示原始值（tag 视觉截断为 `api_log_crea`）。需后端/产品确认口径（改字典值 or 改写入值），本轮不动。
+- **时间列年份溢出**：QA 发现表格显示 `58794-10-05 23:51:18`（既有格式化 bug），独立问题。
+- **成本图表例**：`CostDistributionChart` 在命令式 `renderChart()` 里调 `getDictLabel`，字典加载不会触发图例重算，目前靠 `props.data` 二次渲染兜底。
+- 首屏 0–300ms el-tag 入场动画期间截图会显示该列为空（DOM 文本 t0 即为原值），取证需等约 700ms。
+
+### 测试
+
+- 全量：**68 files / 1069 tests** passed（新增 4 例字典用例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立审查：0 blocker / 0 major；minor —— 测试只覆盖单条路径且 commit 描述夸大（实测只有第 1 例会红）、每次挂载遗留永久 computed、测试隔离靠 code 命名 → 已补批量/刷新用例、加 `beforeEach` resetModules、按 code 记忆化 computed。
+- 独立浏览器 QA：**14/14 PASS**，含即时性采样、冷启动、F5、请求参数与空态；并指出自测脚本口径问题。
+- 总控：实现 + 记忆化 + 隔离复验（7 项操作类型与 QA 一致）。
+
+### 版本组合
+
+- 前端：`5a1c541`（合并为 `b6d0ee3`）。
+- 后端：`main@5016d7a`（无接口改动）。
+
+### 后续建议
+
+1. **P2 值域口径**：`api_log_*` 与字典 `value` 对齐（后端写入或字典配置），使表格列能显示中文标签。
+2. **P2 时间列年份溢出**：`58794-10-05` 说明格式化对异常时间戳未兜底，需检查 `formatTime` 类函数。
+3. **P3 图例刷新**：`CostDistributionChart` 改 watch 字典 ref 或把 `getDictLabel` 放进 computed。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
