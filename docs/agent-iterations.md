@@ -2574,3 +2574,72 @@
 2. **P3 同结构同步**：DashboardTable/probes 的工具栏按同一容器查询方案收敛。
 3. **P3 占位文案**：空值显示「托管状态：全部 / 剩余天数：全部」，减少「请选择」的语义噪音。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261028-cert-toolbar-group（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#40`，merge commit `1f3fea0`，2026-10-29 01:05 +08）
+**代码 PR**：`e-cam-web#40`（commits `7c204a9` → `53e211a`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮（#39）用容器查询修掉了「spacer 把托管状态下拉推到行尾」，但 768–1024 仍会把两个筛选下拉拆到两行（搜索+托管同行、剩余天数掉行），审查与 QA 均记录。
+- 390 实测：组内两个下拉各占一行且左缘一致（125），但未成组。
+
+### 需求卡
+
+- 目标：两个筛选下拉作为一组，任何宽度下不被拆到两行（要么同排相邻、要么组内换行同左缘）；宽屏仍单行右对齐。
+- 规则：`.toolbar-actions{display:flex;gap:12px;flex-wrap:wrap;margin-left:auto;min-width:0}`，容器查询 `≤720px` 归零 `margin-left`；删除 `.toolbar-spacer`；补 `role="group"`。
+- 非目标：让「清除筛选」按钮零位移（右锚定下必然左移，属既有行为）、其它表格。
+- API 契约：无。
+
+### 变更内容
+
+- `CertTable.vue`：两个 select 包进 `.toolbar-actions`；删除 spacer 与其容器查询；注释/缩进纠偏；`role="group" aria-label="筛选条件"`。
+- `index.test.ts`：新增结构断言（两 `.toolbar-select` 同属一个 `.toolbar-actions`、`.toolbar-spacer` 不存在）。
+
+### 验收（真实浏览器 + 真实后端，基线 `53e211a`）
+
+| 视口 | 结果 |
+|---|---|
+| 360/390/519 | 组内换行、两下拉左缘相同（125） |
+| 768/880/1024 | 同排相邻，gap **12.00**（此前被拆两行） |
+| 1060/1063/1086/1121 | 同排相邻，gap 12 |
+| 1440 | 单行右对齐；与上一轮基线 **0 像素差** |
+| 全部 11 档 | `docOverflow=0`、toolbar `scrollWidth=clientWidth` |
+
+- 390 下拉面板：`125,461,170×118`（3 项）与 `125,505,170×220`（6 项）均完整在视口内；
+- console error/pageerror 0；
+- 结构断言新增后全量 **1055** 测试通过。
+
+### 已知观察（接受，非本次引入）
+
+- **阈值台阶**：容器内容宽 720→721 时 `margin-left` 0→37px，整组右移 37px（一次性，不抖动）；源于「放不下 684 时归零右对齐」的设计。
+- **过滤态右移 149.06px**：1440 无筛选时组后是 235.06px 的「已隐藏 N 张…」横幅，过滤后横幅消失、改由 86px「清除筛选」占行尾；`235.06 − 86 = 149.06` 与实测吻合。属右锚定尾部内容变化的副作用，1024/880/768/390 位移均为 0。
+- 兄弟工具栏（`DashboardTable`、`probes`）仍是 `.toolbar-spacer` 结构，未跟进。
+
+### 测试
+
+- `vitest run`：66 files / **1055 tests** passed（新增 1 条结构断言）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：0 blocker / 0 major；minor（过期注释、模板缩进、阈值死区、`margin-left:auto` 隐性耦合、兄弟工具栏未跟进）与 nit（死 class、冗余 min-width、a11y role）——注释/缩进/role/test 已修，其余记录。
+- 独立浏览器 QA：**16 PASS / 1 观察**（过滤态 149px 位移，已分解为横幅↔按钮的右锚定差异）；11 档宽度与阈值两侧均无拆行；1440 与基线 0 像素差。
+- 总控：实现 + 三轮修复（spacer → 容器查询 → 成组），11 档复跑一致。
+
+### 版本组合
+
+- 前端：`53e211a`（合并为 `1f3fea0`）。
+- 后端：`main@44e3bea`（无接口改动）。
+
+### 后续建议
+
+1. **P3 兄弟工具栏收敛**：`DashboardTable`、`probes` 按同一 `.toolbar-actions` 方案改造（同症状）。
+2. **P3 阈值细化**：把 720 调到 ~700 或以 `.table-search{margin-right:auto}` 替代容器查询，消除 37px 台阶与隐性耦合（审查 minor 3/4）。
+3. **P3 过滤态位移**：若产品要求下拉不随横幅/按钮变化移动，需要给工具栏尾部预留定宽或把横幅移出工具栏行。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
