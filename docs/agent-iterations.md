@@ -2858,3 +2858,68 @@
 **验收**:
 - 自动化:日志域 **171/171**(13 files)、`vue-tsc` 0、`eslint` 0、CI 四项全绿后合并(web main 已核实)
 - **浏览器实测(A 类,worktree :3333 + 真实后端 :8001,1440×900,app Tab)**:源分组标签 `["aliyun·集团-阿里云","volcengine·集团-火山云"]` → **`["阿里云·集团-阿里云","火山云·集团-火山云"]`**;无原始 id 泄漏;0 页面错误。
+
+---
+
+## cam-iteration-20261029-cert-toolbar-guards（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#45`，merge commit `620147e`，2026-10-29 03:47 +08）
+**代码 PR**：`e-cam-web#45`（commits `47f4cd7` → `e687c9b`；CI Typecheck/Vitest/ESLint 绿，**合并时 Gzip Budget 仍在运行**）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- #41 把看板/探针工具栏迁到 `.toolbar-actions`，但两页都没有回归守卫（台账在 #40 已有）。
+- 上轮审查 m2/m6 建议补结构断言；同时本轮复核了上轮 QA 的「过期徽章 108 > 96 被裁」：1440/1024/390 实测徽章 108 < 单元格 120，`scrollWidth` 差值来自 padding 计入 → **该观察已过时，未复现**，不作为需求。
+
+### 需求卡
+
+- 目标：看板/探针工具栏结构回归时 CI 先红（组唯一、无 `.toolbar-spacer`、尾部簇真在组内）。
+- 规则：新增 describe，断言 `.toolbar-actions` 唯一、`.toolbar-spacer` 不存在、看板 3 个下拉 + 组内 `.meta-item` 与「最近巡检」文案、探针组内 ≥2 按钮。
+- 非目标：产品代码、视觉断言（happy-dom 无布局）。
+- API 契约：无。
+
+### 变更内容
+
+- `cert/dashboard/components/__tests__/DashboardTable.test.ts`：新增工具栏结构用例。
+- `cert/probes/index.test.ts`：新增工具栏结构用例（自带 `probesApi.mockResolvedValue`，可单跑）。
+
+### 验收
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | 全量测试 | ✅ 67 files / **1063 tests** passed |
+| 2 | 单独跑新用例（`-t`） | ✅ 探针/看板均独立通过（评审 major 修掉「依赖前序 mock」） |
+| 3 | 变异：`.toolbar-actions` → `.toolbar-spacer` | ✅ 两处均红 |
+| 4 | 变异：清空组内容 / 拆成两个组 | ✅ 看板红（补 `.meta-item` 后不再假绿） |
+| 5 | 变异：spacer 改名 + 内联 `margin-left:auto` | ⚠️ 仍绿（类名断言的已知盲区，记录） |
+| 6 | tsc / eslint / build | ✅ exit 0 |
+
+### 已知局限
+
+- 断言绑定类名：换成其它类名或内联样式即逃逸（复核在临时副本实证）。
+- 未做浏览器验证（纯测试改动，产品行为在 #41 已验收）。
+
+### 测试
+
+- `vitest run`：67 files / 1063 tests passed。
+- `vue-tsc -b` / `eslint` / `vite build` exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint **SUCCESS**；Gzip Budget 合并时仍在运行（测试-only 改动，未等其完成，如实记录）。
+
+### 子 Agent 与复核
+
+- 独立审查：无 blocker；**major 1**（探针用例靠前序 mock 残留才绿）→ 已补 mock；**major 2**（看板计数未作用域化，随附修正意见「下拉应在组内」→ 与实际结构不符：本页分组包的是尾部元信息）→ 采用其「组内断言」意图，改为「组内 `.meta-item` + 文案」+ 下拉保持全局计数并注释原因。
+- 独立复核：真实变异（临时副本）证明「加回 spacer / 拆组」会红、「改名 + 内联样式」会漏；全量 1063 通过；确认无产品代码改动。
+- 总控：实现 + 两处评审修正，单跑与全量均绿。
+
+### 版本组合
+
+- 前端：`e687c9b`（合并为 `620147e`）。
+- 后端：`main@4ca8946`（无接口改动）。
+
+### 后续建议
+
+1. **P3 守卫增强**：对工具栏直接子元素做结构快照（而非类名），消除「改名逃逸」。
+2. **P3 视觉回归**：如需锁布局，需引入 Playwright 截图基线（当前仓库无此基建）。
+3. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+4. **观察**：上轮 QA 的「徽章被裁」为过时结论，后续引用需重新测量（`scrollWidth` 含 padding，不能直接与 `clientWidth` 比较）。
