@@ -2773,3 +2773,74 @@
 **未处理(如实,超范围)**:源分组的组标签沿用原始云 id(`volcengine·…`),而账号下拉标签为 `火山云·…` —— 属既有可见文案约定,非本缺陷引入;若需统一文案应另行确认口径。
 
 **同日观察**:此前轮次记录的「云下拉显示原始 id `volcengine`」已被并行会话修复(`CLOUD_LABELS` 增补 `volcengine`/`volc` 别名),本轮仅剩**排序**维度未归一,现已修复。
+
+---
+
+## cam-iteration-20261029-cert-tooltip-a11y（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#43`，merge commit `5e0cd10`，2026-10-29 04:42 +08）
+**代码 PR**：`e-cam-web#43`（commits `af4aa81` → `ccb3235`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮 QA 实测：看板「通配符跳过拨测」span 有 `tabindex="0"`，但 `el-tooltip` 仅 `trigger="hover"`，键盘 focus 后**只有描边、没有提示**（tips=0）；改动前 `3808fa3` 全文件 `:trigger` 0 处。
+- 审查进一步指出同文件另有 3 处「可聚焦 + 仅 hover」：SAN chip（`SAN ×N`，说明只存在于 tooltip）、隐藏 chip、线上探测徽标。
+
+### 需求卡
+
+- 目标用户：键盘/读屏用户。
+- 目标：看板 4 处可聚焦提示在 hover 与键盘 focus 时都能显示；blur/Tab 离开后关闭；焦点环可见。
+- 规则：`el-tooltip` 的 `:trigger="['hover','focus']"`（EP 2.11.7 `trigger` 接受 `String | Array`）；`.sans-chip/.hidden-chip/.dash-badge` 加 `:focus-visible` 描边（2px `--cert-accent`、offset 2px）。
+- 非目标：Escape 关闭、触屏常驻、侧栏菜单项可聚焦（独立议题）。
+- API 契约：无。
+
+### 变更内容
+
+- `DashboardTable.vue`：4 处 tooltip 加 `:trigger`；3 个可聚焦类加 focus-visible 描边。
+
+### 验收（真实浏览器 + 真实后端，基线 `ccb3235`）
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | hover 显示 | ✅ popper `548×32 @ (892,420)`、`role=tooltip`、文案含「通配符」 |
+| 2 | 键盘 Tab 到达显示 | ✅ 第 **14** 次 Tab；`aria-describedby` 指向 popper；描边 `2px solid rgb(0,112,243)`、对比度 **3.83:1**（≥3:1） |
+| 3 | Tab 离开隐藏 | ✅ 第 15 次 Tab 后 `visible:false` |
+| 4 | SAN chip（第 17 次 Tab） | ✅ 「共 2 个 SAN：*.jlcpcb.com、jlcpcb.com」 |
+| 5 | 线上探测徽标（第 18 次 Tab） | ✅ 「线上证书与台账不一致…（最近探测：20h 前）」 |
+| 6 | 隐藏 chip（开启「查看全部」） | ✅ 渲染 14 个，逐个可聚焦并显示「服务端隐藏谓词命中…」 |
+| 7 | 改动前对比 | ✅ `3808fa3` 4 处 tooltip 全无 `:trigger`，focus 无提示（A/B 还原复现） |
+| 8 | 触屏（390，hasTouch） | 记录：tap 后常驻、点外部关闭；与改动前完全一致（EP 既有） |
+| 9 | console | ✅ error 0 / pageerror 0 / 失败请求 0 |
+
+### 已知限制（EP 既有，A/B 证实非本次引入）
+
+- **Escape 不关闭**：EP tooltip 只绑 triggerKeys（Enter/NumpadEnter/Space），未绑 ESC。
+- **Space/Enter 会切换关闭**（需 Tab 离开再回来才能重开）。
+- **触屏常驻**：tap 打开后到点外部才关；`['hover','focus']` 会禁用 click-outside 之外的关闭路径。
+- 探测徽标 `aria-label` 与 tooltip 文案高度重叠（读屏 name+description 冗余，P3）。
+- 侧栏折叠态菜单项不是 link/button，只加 focus trigger 无效（独立 a11y 议题）。
+
+### 测试
+
+- `vitest run`：66 files / **1055 tests** passed（该分支无既有用例覆盖 wildcard>0，视觉 a11y 由浏览器验证）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：0 blocker；**major**（同文件 3 处同类缺陷）→ 已一并修；minor（Escape、Space、hover/focus 关闭独立、触屏、读屏必达、无测试、焦点环）分别修复或记录。
+- 独立浏览器 QA：**6/6 PASS**，含 4 处触发器的 Tab 名次、描边对比度、A/B 还原复现改动前缺陷、隐藏 chip 通过「查看全部」实测量 14 个。
+- 总控：实现 + M1 修复，自测 3 处 focus 均显示提示、outline solid。
+
+### 版本组合
+
+- 前端：`ccb3235`（合并为 `5e0cd10`）。
+- 后端：`main@b6a290d`（无接口改动）。
+
+### 后续建议
+
+1. **P3 Escape 关闭**：4 处 tooltip 加 `@keydown.esc` + tooltip ref `hide()`（APG 建议）。
+2. **P3 读屏冗余**：探测徽标 `aria-label` 与 tooltip 文案重叠，建议 `aria-label` 只留简短状态。
+3. **P3 触屏**：`hide-after` 或 tap-toggle 方案，避免常驻面板遮挡下拉。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
