@@ -1783,3 +1783,75 @@
 2. **P3 台账 URL 筛选控件不同步**：`?daysLeft=le30` 时控件显示「请选择」。
 3. **P2 后端错误码统一**：无效 id 可由后端返回 404 语义（或前端把 400/404 统一为不存在），减少前端码值依赖。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261028-cert-back（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#26`，merge commit `efee595`，2026-10-28 15:12 +08）
+**代码 PR**：`e-cam-web#26`（commits `32e67ee` → `cc9f711`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮 QA 观察：从筛选台账（`?daysLeft=le30`，14 行）进入证书详情后，面包屑与「证书不存在」CTA 都固定 `push('/certs')`，返回变全量 20 行，筛选上下文丢失。
+- 实测确认：筛选态 14 行 → 详情 → 面包屑 → `/certs`（20 行）。
+
+### 需求卡
+
+- 目标用户：带筛选查看台账后进入详情的运维。
+- 目标：从台账/看板进入详情后，返回时保留筛选 query；直接打开详情（无来源）回落全量台账；只读角色回落看板。
+- 非目标：台账 URL 与筛选控件同步（独立问题）、跨 tab 历史合并。
+- 规则：`history.state.back` 为台账/看板 → `router.back()`；否则按角色 push；面包屑/CTA 共用逻辑。
+- API 契约：无。
+- 风险：依赖 `history.state.back`（fullPath、不含 base，vue-router 4 行为）；单提交回滚。
+
+### 变更内容
+
+- `src/views/cert/detail/format.ts`：`isCertListBackTarget`（容错尾斜杠、hash）。
+- `src/views/cert/detail/index.vue`：`goLedger()` 回退逻辑；面包屑由 `router-link` 改为原生 `<a :href>` + `onLedgerClick`（修饰键/中键保持新标签，普通点击 preventDefault 后只走 goLedger）；只读仅接受看板回退目标。
+- `format.test.ts`：+2 例及边界（`/certs/`、`/certs/?x`、`/certs#top`、`/certs/changes/new`、`/certs/probes`、null）。
+
+### 验收（真实浏览器 + 真实后端）
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | 筛选台账 14 行 → 详情 → 面包屑 | ✅ 仍 14 行、URL 保留；`history.length 6→6`（无额外条目） |
+| 2 | 同流程浏览器后退 | ✅ 14→14 行、URL 保留 |
+| 3 | 直接打开有效详情 → 面包屑 | ✅ 回落 `/certs` 20 行（history 2→3，push 一次，预期） |
+| 4 | 直接打开无效详情 → CTA | ✅ `/certs` 20 行 |
+| 5 | 筛选台账进入无效 id → CTA | ✅ 回 `?daysLeft=le30`、14 行（两种入口） |
+| 6 | 390×844 | ✅ 三条关键路径正常，文档级无横向滚动 |
+| 7 | console | ✅ 应用 error 0、pageerror 0（仅网络级 400/404 桩） |
+| 8 | 面包屑可访问性 | ✅ 真 `<a href>`、tabIndex=0、focus ring、Enter 生效、中键新标签打开 `/certs` |
+| 9 | **单击只一次导航** | ✅ push=0 / pop=1 / replace=0、导航次数=1（修掉 RouterLink 双跳） |
+
+独立 QA：**8/8 PASS**（快照 `cc9f711`，含 3 轮对比：`32e67ee`、中间态、`cc9f711`）。审查：1 blocker（RouterLink 双跳）+ 2 major（接线无测试、谓词边界）均已修复。
+
+### 过程中的环境事件
+
+- 14:46–15:42 本地后端 `e-cam-service:8001` 宕机（非本轮改动导致，进程消失），导致 QA 与总控验收中断；15:42 用 `dev.ps1 restart e-cam-service` 恢复后完成复跑。QA 报告明确标注了这一窗口。
+
+### 测试
+
+- `vitest run`：62 files / 1026 tests 通过（format 新增 2 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：发现 **blocker**（`router-link` 自带 navigate 与 `@click.prevent` 的 `back()` 叠加 → push+back 双跳）、谓词漏尾斜杠/hash、接线零测试；全部修复并补边界测试。
+- 独立 QA：`cc9f711` 8/8 PASS，专项验证「面包屑单击只一次导航」（history.length 不变、push=0/pop=1）。
+- 总控：复跑筛选/直接打开/无效 CTA，确认单次导航与筛选保留。
+
+### 版本组合
+
+- 前端：`cc9f711`（合并为 `efee595`）。
+- 后端：`main@c7f4276`（无接口改动；本地服务期间重启过一次）。
+
+### 后续建议
+
+1. **P3 台账筛选控件与 URL 不同步**：`?daysLeft=le30` 时控件仍显示「请选择」。
+2. **P3 台账 390 头部**：`.page-actions` 不换行导致 28px 内容区溢出（全量台账同样存在）。
+3. **P2 组件级测试**：`goLedger`/面包屑接线目前仅浏览器验证，建议按仓库既有 mount 范式补一条（可捕获本次 blocker 类问题）。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
