@@ -3226,3 +3226,75 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 **静态基线(web main b6d0ee3)**:`vue-tsc` 0;全量 `vitest` **68 files / 1069 tests 全通过**。
 
 **结论**:本轮未发现可复现缺陷,未产生代码改动(不为产出提交而改动)。日志域交互面在合并后 main 上健康。
+
+---
+
+## cam-iteration-20261029-audit-time（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#49`，merge commit `98f4a47`，2026-10-29 09:08 +08）
+**代码 PR**：`e-cam-web#49`（commits `582ef21` → `b0c0897`；CI 四项全绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮 QA 在操作审计页发现时间列显示 `58794-10-05 23:51:18`。
+- 实测接口：`/api/v1/cam/audit/logs` 50/50 条 `ctime` 均为**毫秒**（如 `1793216245878`）；而页面 `formatTs` 固定 `new Date(ts * 1000)`，把毫秒又放大 1000 倍 → 年份错乱。
+- 审查补充（后端源码）：审计模块自初始提交起只用 `time.Now().UnixMilli()`，历史上**不存在**秒级格式，真正的缺陷只是前端多乘了 1000。
+
+### 需求卡
+
+- 目标用户：查看操作审计/变更历史的运维与审计人员。
+- 目标：时间列与详情抽屉显示正确年份；秒级误传/旧数据也能正常显示；异常值有兜底。
+- 规则：`normalizeEpochMs`（`>=1e11` 视为毫秒）→ `formatAuditTime`；越界用 **UTC 年份**判断并对 μs 误传在 DEV 下 warn。
+- 非目标：`audit/changes` 页（后端同为毫秒，`new Date(ts)` 正确，仅展示风格不同）、导出 CSV（后端格式化）。
+- API 契约：无变更；明确「`ctime` 为毫秒」。
+
+### 变更内容
+
+- `src/views/audit/logs/format.ts`（新增）：`normalizeEpochMs` + `formatAuditTime`（命名刻意区别于 `views/logs/format.ts` 的同名不同输出）。
+- `src/views/audit/logs/index.vue`：删除本地 `formatTs`，表格列与详情抽屉改用 `formatAuditTime`。
+- `src/views/audit/logs/format.test.ts`（新增 9 例）：毫秒/秒/阈值两侧/负数/字符串/μs 误传/占位符。
+
+### 验收（独立 QA **11/11 PASS**；总控复验 4 项）
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | 首页 20 行时间格式 | ✅ 全部 `20xx-xx-xx xx:xx:xx`，首行 `2026-10-29 03:37:25` |
+| 2 | 与接口毫秒换算比对 | ✅ 20/20 逐条相等（独立 +8 换算） |
+| 3 | 详情抽屉 | ✅ 与表格逐字符相同 |
+| 4 | 第 2 页 / 每页 50 条 | ✅ 0 异常，抽 3 条与 `ctime` 一致 |
+| 5 | 日期筛选（最近 1 天） | ✅ 请求参数为毫秒，total 418，页内越界 0 |
+| 6 | 1440 / 390 视口 | ✅ 时间列可见、文本/页面溢出均 0 |
+| 7 | console / HTTP | ✅ error 0 / pageerror 0 / HTTP≥400 0 |
+| 8 | 合成数据（秒/毫秒/0） | ✅ 秒与毫秒均渲染 `2026-10-29 03:37:25`，0 → `-` |
+
+### 已知遗留
+
+- **同源既有缺陷（审查 MAJOR，范围外）**：`src/views/compute/template/index.vue:324` 的 `formatTime(ts)` 用 `new Date(ts * 1000)`，而模板接口 `created_at` 是毫秒 → 抽屉渲染 `-29857xxxxxxx 分钟前`。建议下一轮直接复用 `normalizeEpochMs`。
+- **阈值体系不一致**：`cam/collect/format.ts` 用 `1e12`，本模块用 `1e11`；另有 3 份等价格式化与 `views/logs/format.ts` 同名不同输出。建议抽 `src/utils/epoch.ts` 统一。
+- **`1e11` 以下毫秒值（1970–1973）会被当秒**：本系统数据自 2026，不可达；若升为通用 util 需按「取能落在 1970–9999 的解释」实现。
+- **`audit/changes` 展示风格**：用 `toLocaleString('zh-CN')`（`2026/10/29 03:37:25`），与 logs 页固定格式不同。
+
+### 测试
+
+- 全量：**69 files / 1078 tests** passed（新增 9 例时间用例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立审查：0 blocker/本 PR 内 0 major；minor —— 注释称历史双格式不实、阈值与既有实现不一致、兜底时区相关、测试缺边界 → 全部修复（注释纠正、改名、UTC 年份、9 例）；另报范围外 MAJOR（compute/template 同类 bug）。
+- 独立浏览器 QA：**11/11 PASS**，含 20 行与接口毫秒逐条比对、分页、日期筛选参数、双视口、合成数据。
+- 总控：实现 + 评审修复 + 4 项复验（时间列/详情/排序/console）。
+
+### 版本组合
+
+- 前端：`b0c0897`（合并为 `98f4a47`）。
+- 后端：`main@8db7228`（无接口改动）。
+
+### 后续建议
+
+1. **P2 compute/template 时间格式化同源缺陷**（审查已给出后端证据：`UnixMilli` + 前端 `*1000` → 负的百亿分钟），下一轮首选。
+2. **P3 统一时间工具**：`src/utils/epoch.ts`（归一 + 固定格式），替换 collect/audit/logs 的三套实现。
+3. **P3 审计两页展示风格统一**：`toLocaleString` vs 固定格式。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
