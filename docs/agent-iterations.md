@@ -2643,3 +2643,29 @@
 2. **P3 阈值细化**：把 720 调到 ~700 或以 `.table-search{margin-right:auto}` 替代容器查询，消除 37px 台阶与隐性耦合（审查 minor 3/4）。
 3. **P3 过滤态位移**：若产品要求下拉不随横幅/按钮变化移动，需要给工具栏尾部预留定宽或把横幅移出工具栏行。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## 2026-10-28 根因定位:service CI `Test` 作业失败的精确原因与补救路径
+
+**背景**:#53 巡检把 service `Test` 失败笼统记为"未发布依赖版本"。本轮逐步骤 + 逐符号定位到**精确根因**,并验证了补救路径。
+
+**失败位置**:CI `Test` 作业在 **`Generate Wire code`** 步骤失败(`Run tests` 被跳过),报错:
+```
+##[error]wire: ioc/gin.go:32:97: undefined: syncerpkg.ISyncer
+##[error]wire: ioc/gin.go:32:129: undefined: capability.IPermissionProvider
+##[error]wire: ioc/policy.go:20:33: undefined: syncerpkg.ISyncer
+##[error]wire: ioc/policy.go:27:35: undefined: capability.IPermissionProvider
+```
+
+**符号归属与缺失原因**:两者均来自 `github.com/Havens-blog/e-iam`(`capability.IPermissionProvider` ← `pkg/web/capability`;`syncerpkg.ISyncer` ← `pkg/web/capability/syncer`)。service `go.mod` 固定 `e-iam v0.0.27`,该**已发布版本不含上述类型**;本地检出 `D:\Haven\eiam`(HEAD `d8c1dc5`)确有定义(`pkg/web/capability/model.go:83`、`registry.go:37`、`pkg/web/capability/syncer/syncer.go:15`)。
+
+**复现与补救验证(本地)**:
+| 步骤 | 结果 |
+|---|---|
+| 仅 `go.work`(本仓 + e-cloudx-sdk) | `wire gen ./ioc` / `go build ./...` **失败**,报错与 CI 完全一致 |
+| 追加 `go work use D:\Haven\eiam` | `wire gen ./ioc` **exit 0**;`go build ./...` **exit 0** ✓ |
+
+**影响**:service 仓 PR 门禁(`Test`)对所有 PR 恒红;我的 #39/#57 等是在"本地 go test 全绿 + 本条系统性失败已定位"前提下合并的。**修复属维护者决策**,本轮不擅自改 CI/依赖:① 发布含这些 API 的 e-iam 版本并升级 `go.mod`;或 ② CI 检出 e-iam 并加 `replace`/`go.work` 映射。
+
+**附注**:`go work use D:\Haven\eiam` 触发工具链切换(e-iam 要求 go >= 1.26.0 → 自动切至 go1.26.10),配置 CI 时需一并考虑 Go 版本。
