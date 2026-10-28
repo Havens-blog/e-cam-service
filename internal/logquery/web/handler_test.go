@@ -1,4 +1,4 @@
-﻿package web
+package web
 
 import (
 	"bytes"
@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/logquery/service"
-	"github.com/Havens-blog/e-cloudx-sdk/logquery"
-	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/logquery"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 	"go.uber.org/zap/zapcore"
@@ -284,6 +284,20 @@ func TestSearchRejectionContract(t *testing.T) {
 			wantMsg:  "incomplete field filter:",
 			prefix:   true,
 		},
+		{
+			// 服务端窗口纵深防御(2026-10-28 口径确认):超 max_window_days 一律 400,
+			// 绕过前端 clampWindow 直连 API 同样被拒;窗口毫秒数为固定输入的确定值
+			name:     "validate:超窗(cdn 30d > 7d)",
+			body:     fmt.Sprintf(`{"log_type":"cdn","start_time":%d,"end_time":%d}`, now-30*86400_000, now),
+			wantCode: 400,
+			wantMsg:  "time window 2592000000ms exceeds max_window_days 7 for cdn",
+		},
+		{
+			name:     "validate:超窗(slb 8d > 3d)",
+			body:     fmt.Sprintf(`{"log_type":"slb","start_time":%d,"end_time":%d}`, now-8*86400_000, now),
+			wantCode: 400,
+			wantMsg:  "time window 691200000ms exceeds max_window_days 3 for slb",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -327,9 +341,9 @@ type memCore struct {
 	entries []memEntry
 }
 
-func (c *memCore) Enabled(zapcore.Level) bool             { return true }
-func (c *memCore) With([]zapcore.Field) zapcore.Core      { return c }
-func (c *memCore) Sync() error                            { return nil }
+func (c *memCore) Enabled(zapcore.Level) bool        { return true }
+func (c *memCore) With([]zapcore.Field) zapcore.Core { return c }
+func (c *memCore) Sync() error                       { return nil }
 func (c *memCore) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
 	if c.Enabled(ent.Level) {
 		return ce.AddCore(ent, c)
@@ -380,4 +394,32 @@ func TestSearchRejectionLogged(t *testing.T) {
 		return // 命中即通过
 	}
 	t.Fatalf("未捕获 logquery request rejected 日志: entries=%+v", core.entries)
+}
+
+// 窗口边界:恰好等于 max_window_days 放行(200),超 1ms 拒绝(400)——
+// 钳制语义与前端 clampWindow(end-start <= max)一致,不多收也不误伤。
+func TestWindowBoundary(t *testing.T) {
+	r := newTestRouter(t)
+	now := time.Now().UnixMilli()
+	maxMs := int64(7 * 86400_000) // cdn max_window_days = 7
+
+	for _, tc := range []struct {
+		name     string
+		delta    int64
+		wantCode int
+	}{
+		{"恰好 7 天放行", maxMs, http.StatusOK},
+		{"超 1ms 拒绝", maxMs + 1, http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := fmt.Sprintf(`{"log_type":"cdn","start_time":%d,"end_time":%d}`, now-tc.delta, now)
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/cam/logs/search", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			r.ServeHTTP(w, req)
+			if w.Code != tc.wantCode {
+				t.Fatalf("code = %d, want %d, body=%s", w.Code, tc.wantCode, w.Body.String())
+			}
+		})
+	}
 }

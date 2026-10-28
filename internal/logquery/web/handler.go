@@ -8,15 +8,16 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/logquery/service"
-	"github.com/Havens-blog/e-cloudx-sdk/logquery"
-	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/logquery"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -262,6 +263,9 @@ func (h *LogQueryHandler) Search(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if !checkWindow(c, req.LogType, req.StartTime, req.EndTime) {
+		return
+	}
 	resp, err := h.svc.Search(c.Request.Context(), tenantID, service.SearchRequest{
 		LogType:    logquery.LogType(req.LogType),
 		StartTime:  req.StartTime,
@@ -307,6 +311,9 @@ func (h *LogQueryHandler) Aggregate(c *gin.Context) {
 	}
 	tenantID, ok := tenantID(c)
 	if !ok {
+		return
+	}
+	if !checkWindow(c, req.LogType, req.StartTime, req.EndTime) {
 		return
 	}
 	resp, err := h.svc.Aggregate(c.Request.Context(), tenantID, service.AggregateRequest{
@@ -357,6 +364,9 @@ func (h *LogQueryHandler) Diagnose(c *gin.Context) {
 	}
 	tenantID, ok := tenantID(c)
 	if !ok {
+		return
+	}
+	if !checkWindow(c, req.LogType, req.StartTime, req.EndTime) {
 		return
 	}
 	resp, err := h.svc.Diagnose(c.Request.Context(), tenantID, service.DiagnoseRequest{
@@ -410,6 +420,9 @@ func (h *LogQueryHandler) CacheAnalyze(c *gin.Context) {
 	}
 	tenantID, ok := tenantID(c)
 	if !ok {
+		return
+	}
+	if !checkWindow(c, req.LogType, req.StartTime, req.EndTime) {
 		return
 	}
 	resp, err := h.svc.CacheAnalyze(c.Request.Context(), tenantID, service.CacheAnalyzeRequest{
@@ -488,4 +501,27 @@ func rejectBadRequest(c *gin.Context, stage string, msg string) {
 // writeError 错误信封(与 cert/web.WriteAPIError 同构;独立实现避免反向依赖)。
 func writeError(c *gin.Context, status int, msg string) {
 	c.JSON(status, gin.H{"code": status, "msg": msg, "data": nil})
+}
+
+// checkWindow 服务端窗口纵深防御(2026-10-28 口径确认):请求窗口超过该类型
+// /types 字典声明的 max_window_days 一律 400 拒绝,S2S 路由复用本 handler
+// 同样生效,不豁免。前端 clampWindow(url-state.ts)为第一道防线,此处拦截
+// 绕过前端直连 API 的调用;未知类型放行,交给 svc 层 invalid log type 校验。
+// 返回 false 表示已写 400 响应,调用方应立即 return。
+func checkWindow(c *gin.Context, rawType string, startMs, endMs int64) bool {
+	lt := logquery.LogType(rawType)
+	for i := range logTypes {
+		if logTypes[i].Type != lt {
+			continue
+		}
+		maxMs := int64(logTypes[i].MaxWindowDays) * 24 * 60 * 60 * 1000
+		if endMs-startMs > maxMs {
+			rejectBadRequest(c, "validate", fmt.Sprintf(
+				"time window %dms exceeds max_window_days %d for %s",
+				endMs-startMs, logTypes[i].MaxWindowDays, rawType))
+			return false
+		}
+		return true
+	}
+	return true
 }
