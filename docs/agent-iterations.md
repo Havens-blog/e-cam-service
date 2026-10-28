@@ -2043,3 +2043,78 @@
 **未执行(如实)**:app 数据仅 2 账号,无法构造 3+ 账号真实验证;账号选择未做 URL 持久化(口径外)。
 
 **环境备注**:api.github.com TLS 握手被持续阻断,改用 curl --resolve 备用 IP 完成 PR 建/合并。
+
+---
+
+## cam-iteration-20261028-cert-tables-narrow（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#31`，merge commit `e19f250`，2026-10-28 18:03 +08）
+**代码 PR**：`e-cam-web#31`（commits `9e06d7f` → `011578f`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- #29 修复台账后，审查指出另有 4 个证书表格（`DashboardTable`/`ChangeTable`/`ReportCards`/`Step5Progress`）仍用 1023 的 `.hide-sm` **仅 CSS 隐藏**，`el-table` colgroup 仍占宽，窄屏出现末端空白与横滚范围过大——与台账同类问题。
+- 实测基线：看板/变更 1440 内宽 1122px，1023 下列仍在 DOM、宽度不释放。
+
+### 需求卡
+
+- 目标用户：窄屏查看到期看板、变更管理、变更报告的用户。
+- 目标：≤1023 真正移除次级列（释放 colgroup），≥1024 列齐全；断点切换无闪烁。
+- 非目标：台账断点（768）统一、回滚表错误列策略、Step5 不可达状态的强测。
+- 规则：抽 `useMediaQuery`（同步初值、跨断点触发、卸载清理、旧浏览器 `addListener` 兜底），4 个组件改 `v-if="!isNarrow"` 并删除 `.hide-sm`。
+- API 契约：无。
+- 风险：动态列增删依赖 EP 的 insert/removeColumn（已验证）；单提交回滚。
+
+### 变更内容
+
+- `src/composables/useMediaQuery.ts`（新增）+ `useMediaQuery.test.ts`（2 例）。
+- `DashboardTable.vue`：托管类型/签发者/豁免 → `v-if`。
+- `ChangeTable.vue`：进度/发起人/时间 → `v-if`。
+- `ReportCards.vue`：原证书 ID/错误信息/批次 → `v-if`；回滚表的错误列保留并加注释（失败线索）。
+- `Step5Progress.vue`：错误信息 → `v-if`。
+
+### 验收（真实浏览器 + 真实后端）
+
+| 页面 | 1440 | 1023 | 1024 | 内宽变化 |
+|---|---|---|---|---|
+| 到期看板 | 7 列 | **4 列** | 7 列 | **1122→705**（−417） |
+| 变更管理 | 7 列 | **4 列** | 7 列 | **1122→705** |
+| 变更报告（直达 id） | 13 列 | **10 列**（无「错误信息」） | 恢复 | plan 810→670 |
+| 步骤 5 进度 | — | **无法验证** | — | 需 executing 状态，不可达 |
+
+- 动态 resize 1440↔1023：列 7↔4、行数 88 不变、CLS=0（0 条 entry）；
+- **M1 同步初值验证**：1023 冷加载 rAF 采样只有 4 列（无 7→4 翻转）；
+- 看板点证书抽屉、变更点报告均正常；页面溢出 0；console error/pageerror/5xx/失败 0。
+
+独立 QA：**31 PASS / 0 FAIL / 1 无法验证**（Step5 需 `POST /confirm`+`/execute`，按约束未触发）。审查：0 blocker/0 major，M1/M4/M6 已修。
+
+### 未验证
+
+- **Step5Progress 的窄屏列**：当前无 executing 状态变更单，stepbar 5/6/7 disabled；静态代码与其它三表同机制。
+- **旧 Safari addListener 分支**：Chromium 走新 API，仅代码审阅。
+- 1024 恢复全列后表格内部横滚（内容 960/1090 vs 容器 706）属必然结果，页面级仍 0。
+
+### 测试
+
+- `vitest run`：63 files / 1028 tests 通过（composable 2 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：无 blocker/major；确认 EP 动态列安全（4 表无 fixed/sortable/colspan 坑）、`readonly` 解包正常；提出 M1 双布局、M4 旧浏览器兜底、M5 组件级测试缺口、M6 卡3 策略需确认。
+- 独立 QA：31 PASS，含 resize CLS=0、M1 rAF 采样、报告页三表、抽屉/详情导航。
+- 总控：实现 + M1/M4/M6 修复，复跑矩阵。
+
+### 版本组合
+
+- 前端：`011578f`（合并为 `e19f250`）。
+- 后端：`main@5b81978`（无接口改动）。
+
+### 后续建议
+
+1. **P3 统一断点**：台账 768 与四表 1023 两套；建议把 `CertTable` 切到 `useMediaQuery` 并导出 `NARROW_QUERY` 常量。
+2. **P3 组件级测试（M5）**：补 DashboardTable 窄屏断言（stub matchMedia → 表头 7→4），锁住列接线。
+3. **P3 窄屏错误信息可达性（M3）**：报告/步骤 5 的「错误信息」窄屏移除后失败原因不可达，建议折入「资源」单元格或 tooltip。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
