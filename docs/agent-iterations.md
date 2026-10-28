@@ -2015,3 +2015,17 @@
 2. **P3 表头色差 F10**：给 sticky `th` 叠 header 背景色。
 3. **P3 列宽 F4/F5**：1440 列宽总和 1150 超出 1122；过期徽章 108 > 96。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261028-app-kpis(app 页专属 KPI,RCA 语义)
+
+**需求来源**:口径确认(2026-10-28 维护者选定"条数+错误占比+涉及服务数+exception 计数")。此前 app 页误用 cdnKpis 显示缓存命中率。
+
+**改动**:e-cam-web#28 —— buildKpis 增加 app 分支:条数(全窗精确)/错误占比(level=error 采样,≥5% danger)/涉及服务数(去重 service)/exception 条数(非空堆栈)。
+
+**验收**:vue-tsc 0/vitest 142/142/eslint 0;浏览器 UI(真实链路,worktree :3333+后端 :8888):t=app 联邦检索完成后 DOM 结构化断言四标签齐且配对正确(日志条数 3,000/错误占比 11% tone-danger 实数据触发/服务数 42/exception 33),旧 CDN 指标消失,0 页面错误。数值随窗口波动(两轮 17/5.6%/9 与 3,000/11%/42/33,语义一致)。
+
+**配套**:同日交付 e-cam-service#39(服务端超窗 400)+#40(记录);e-cam-web#30(账号级筛选)与本切片同为日志域口径确认需求。
+
+**环境备注**:当日 GitHub api.github.com TLS 握手持续被阻断(SNI 层),改用 curl + --resolve 备用 IP 完成 PR 创建/合并;github.com git 通道正常。
