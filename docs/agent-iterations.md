@@ -2408,3 +2408,78 @@
 3. e-cam-service 的 `Test` 失败为既知系统性(依赖版本未发布),与各在途 PR 表现一致,非本轮引入。
 
 **方法备注**:`check-runs` 报出的失败项若在 `actions/runs?head_sha=` 查不到运行记录,需改用 `actions/runs?per_page=N` 按时间列举,再取 `runs/{id}/jobs` 逐步骤定位失败步骤(本次即如此定位到 Registry 登录步骤)。
+
+---
+
+## cam-iteration-20261028-cert-filter-reset（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#38`，merge commit `b79f2f9`，2026-10-28 00:57 +08）
+**代码 PR**：`e-cam-web#38`（commits `d279842` → `8a0d69c` → `9136b24`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮 QA 观察：台账筛选只能逐个把下拉选回「全部」、手动清空搜索框；深链（`?daysLeft=le30`）或组合筛选后要清三次，且无专用重置入口。
+- 审查发现更深的问题：清空后 URL 仍带旧 query，刷新或「进详情→面包屑返回」会按旧 query **复活筛选**（`detail` 返回走 `router.back()`，`isCertListBackTarget` 接受带 query 的 `/certs?...`）。
+- QA 旧树实测：`?daysLeft=le30` 点清除后 URL 仍为 `?daysLeft=le30`，F5 回到 14 条并重现按钮；旧树还偶发清除时 2 次列表请求。
+
+### 需求卡
+
+- 目标用户：带筛选查看台账、想一键回到全量的运维。
+- 目标：有筛选时出现「清除筛选」，一次清空搜索+托管状态+剩余天数、只发一次查询；清空后 URL 去掉旧 query（刷新/返回不复活）；无筛选时不显示。
+- 非目标：筛选变更的完整 URL 写回（受控化，需 `router.replace` 每次重挂载，另评估）；`hiddenExpanded` 语义。
+- 规则：`resetFilters` 清三个 ref + 取消未触发防抖 + 单次 emit；父级 `onQueryChange` 检测「已清空且有旧 query」→ `router.replace({path:'/certs'})`（重挂载后由 onMounted 取数）。
+- API 契约：无。
+
+### 变更内容
+
+- `CertTable.vue`：按钮（`v-if="filterActive"`、`text type="primary"`、`aria-label`）、`resetFilters`（重入守卫）、`clearSearchTimer`（防抖回调置 null）。
+- `ledger/index.vue`：清空时 `router.replace('/certs')`；旧 query 判断改读 `route.query` 对象（避免新增 `route.query.search` 读取点触发上一轮契约测试）。
+
+### 验收（真实浏览器 + 真实后端，基线 `9136b24`）
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | `?daysLeft=le30` → 清除 | ✅ 14→88 条、下拉回「请选择」、按钮消失、请求 1 次、URL→`/cam/certs` |
+| 2 | 搜索 `jlcpcb` → 清除 | ✅ 88→5→88、输入框空 |
+| 3 | 仅指纹（25）→ 清除 | ✅ 25→88 |
+| 4 | 无筛选 | ✅ 按钮不存在（DOM/outerHTML 均无） |
+| 5 | 组合（le7+仅指纹）→ 清除 | ✅ 2→88、请求 1 次 |
+| 6 | 390×844 | ✅ 搜索框 204=204（Δ0 未挤压）、换行数不变、溢出 0、点击生效 |
+| 7 | console | ✅ error 0 / pageerror 0 / API≥400 0 |
+| 8 | 位置/样式/误触 | ✅ 纯 Element 样式、Tab+Enter 可触发、双击仅 1 次请求 |
+| 9 | 清空后返回/刷新 | ✅ 进详情→面包屑返回、浏览器后退、F5 均 88 条、按钮隐藏 |
+| 10 | 防抖取消 | ✅ 输入 `jlc` 后 250ms 内点清除 → 1 次请求、无 `search=` |
+
+独立 QA：**8/8 PASS**（冻结基线后重跑；旧树缺陷已消除，单请求连测 10 次恒为 1）。
+
+### 已知遗留
+
+- **筛选变更仍不回写 URL**：在 `/certs` 里筛到某一档后地址栏无 query，分享/收藏仍是全量；受控化需配合 `router-view :key=fullPath` 的重挂载代价评估。
+- **焦点**：点击后按钮被卸载，焦点落回 body；键盘用户需重新 Tab（审查 minor）。
+- **触控高度 32px**：低于 44px 建议值，但与同栏控件一致。
+- **390 工具栏换行**：「托管状态」下拉因 `toolbar-spacer` 右移 34px（无按钮时同样存在）。
+
+### 测试
+
+- `vitest run`：66 files / **1054 tests** passed（含上一轮 `searchPrefill` 契约）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：0 blocker；**major**（清空不回写 URL → 返回复活）→ 已修（`router.replace`）；minor（焦点丢失、测试缺口、390 布局）与 nit（死类名、`searchTimer` 语义、双击守卫）分别修复或记录。
+- 独立浏览器 QA：8/8 PASS；期间发现工作树被并发修改（我方应用评审意见），改用冻结基线复跑并对比旧树缺陷。
+- 总控：实现 + major 修复 + 全量 1054 复跑 + 浏览器 7 项复验。
+
+### 版本组合
+
+- 前端：`9136b24`（合并为 `b79f2f9`）。
+- 后端：`main@bd9b141`（无接口改动）。
+
+### 后续建议
+
+1. **P2 台账筛选受控化**：URL 单一真值（`router.replace` + `watch(route.query)`），一次性解决回显/分享/刷新/返回一致；需评估 fullPath key 重挂载的滚动/焦点代价（或改为不依赖重挂载的 key 策略）。
+2. **P3 焦点管理**：清除后把焦点交回搜索框（`nextTick` + ref），或用常驻 `:disabled` 替代 `v-if`。
+3. **P3 触控尺寸**：工具栏控件统一到 36–40px（移动端）。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
