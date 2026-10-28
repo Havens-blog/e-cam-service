@@ -2299,3 +2299,17 @@
 1. **P3 语义化守卫**：捕获 `const s = route.query.search` 的变量名，要求 RHS 使用同一变量；并校验 `v-model` 绑定，减少假红/假绿。
 2. **P3 CI 注释同步**：CI 文案「69 个测试文件」已陈旧（实际 66→67）。
 3. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261028-account-regression(账号筛选诊断路径回归测试 + loading 绑定实测证伪)
+
+**需求来源**:协议优先级 4(补齐当前功能相关回归测试)。闭环 #30 的验证缺口 —— 诊断/缓存分析路径此前仅代码级覆盖,且本环境 WAF 无日志源,无法取得 live 断言。
+
+**改动(e-cam-web#37,纯测试)**:LogDiagnoseCard.test.ts 的 context fixture 增加 account_ids(现有全量相等断言即覆盖 卡片→请求 透传);index.test.ts 新增 WAF Tab 用例,断言诊断请求携带所选账号。
+
+**重要实测结论(避免重复踩坑)**:**el-select 的 loading 属性在本项目 EP 版本下不产生任何可见反馈** —— 人为延迟源清单响应 3-4s 后,账号选择器(加 :loading)与源选择器(原本有 :loading)渲染的 DOM **完全一致**(均为 `el-select__suffix > i.el-select__caret`,无 spinner/is-loading)。原计划的 `:loading="sourcesLoading"` 属**视觉空操作**,已撤掉,不以 UI 改进名义交付。若确需加载反馈,应走 placeholder 文案或禁用态等真正可见方案(需产品口径)。
+
+**验收**:vue-tsc 0 / vitest 163/163(12 files) / eslint 0;CI 四项全绿后合并(web main=14c0c29)。浏览器回归(真实链路 :3333+真实后端,:1440×900):工具栏三选择器齐、账号筛选生效(search 携带 account_ids:[1])、0 页面错误。
+
+**未执行(如实)**:WAF 诊断 live 断言(环境无 WAF 源),本轮以单测覆盖该缺口。
