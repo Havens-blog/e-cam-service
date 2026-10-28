@@ -3319,3 +3319,72 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 - 未执行(如实):确认通道的**浏览器**实测(需 `LOGQUERY_CACHE_ANALYZE_ENABLED` 开启,当前关闭),该路径由单测 + 变异验证覆盖。
 
 **顺带复检**:#39 超窗守卫在运行实例上**仍生效**(live 30d → 400,文案精确)。
+
+---
+
+## cam-iteration-20261029-template-time（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#50`，merge commit `3f9cbd0`，2026-10-29 11:38 +08）
+**代码 PR**：`e-cam-web#50`（commits `0e4ded5` → `c9fa398` → `0455bc2` → `123a0d0`；CI 四项全绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮审查（用后端源码确认模板接口 `created_at` 为 `UnixMilli`）指出：`src/views/compute/template/index.vue` 的 `formatTime` 又 `new Date(ts * 1000)`，`diff` 变负数。
+- 本轮浏览器实测复现：模板页 7 张卡片时间均为 `-29562457753 分钟前` / `-29557096849 分钟前` 等负值。
+
+### 需求卡
+
+- 目标用户：查看/使用云主机模板的运维。
+- 目标：模板卡片时间显示正确（30 天内相对时间、超过 30 天绝对日期），不出现负数；未来时间戳（时钟偏移）显示「刚刚」。
+- 规则：抽 `src/utils/epoch.ts`（`normalizeEpochMs` + `formatEpochDateTime`，1e11 阈值、本地年越界）与 `compute/template/format.ts`（`formatTemplateTime`，可注入 `now`）；审计页复用同一 util。
+- 非目标：`cam/collect` 的 1e12 阈值（记录待统一）、`views/logs` 的同名不同输出函数。
+- API 契约：明确 `created_at` 为毫秒（无接口变更）。
+
+### 变更内容
+
+- `src/utils/epoch.ts`（新增）+ `epoch.test.ts`（8 例）：归一与固定格式，越界用**本地年**（修正原本 UTC 年配本地月日的跨年错一年）。
+- `src/views/compute/template/format.ts`（新增）+ `format.test.ts`（6 例）：`formatTemplateTime`（刚刚/分钟/小时/天/30 天/未来/秒级/空值），绝对日期改**固定 `YYYY/M/D`**（不再用 `toLocaleDateString`，避免 CI/locale 差异）。
+- `compute/template/index.vue`：`formatTime` 改为转调。
+- `audit/logs/format.ts`：改为复用 `epoch.ts`（保留 `formatAuditTime` 命名）。
+
+### 验收（独立 QA **5/5 PASS**；总控复验）
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | 卡片时间无负号 | ✅ 7/7 卡片为 `2026/4/7`、`2026/4/3`×2、`2026/3/28`×4；全页负号 0 |
+| 2 | 与接口 `created_at`(+8) 比对 | ✅ 7/7 EXACT（如 `1775540695374` → `2026/4/7`） |
+| 3 | CONTRACT `created_at = now` | ✅ `0 分钟前`；`now-5min`→`5 分钟前`；`now-3h`→`3 小时前`；负号 0 |
+| 4 | 1440 / 390 视口 | ✅ 7/7 时间可见、无裁剪、文档级无横向滚动 |
+| 5 | console / HTTP | ✅ error 0 / pageerror 0 / HTTP≥400 0 |
+| 6 | 修复前后对照 | ✅ `-29562457753 分钟前` → `2026/4/7`，布局与数据一致，仅时间文案变化 |
+| 7 | 审计页未回归 | ✅ 时间列仍 `2026-10-29 07:39:57` |
+
+### 过程中的两次 CI 红与修复（如实记录）
+
+1. **0905?**：`c9fa398` 的 Vitest 红 —— 模板测试用 `toLocaleDateString()` 断言 `YYYY/M/D`，CI（en-US locale）输出 `M/D/YYYY`。修复：代码改为手拼固定 `YYYY/M/D`。
+2. **`0455bc2` 仍红**：断言 `2026/9/28` 写死，CI（UTC）实际渲染 `2026/9/27`。修复：期望值改为「同一实例的本地年月日」推导，并断言不含「天前」，使测试与运行时时区无关。
+
+### 测试
+
+- 全量：**71 files / 1097 tests** passed（新增 epoch 8 例 + 模板 6 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立审查：Approve；major —— 模板格式化零测试、`getUTCFullYear` 配本地月日跨年错一年（已修）、未来时间戳为负（已修）；minor —— `cam/collect` 仍用 1e12（记录）、epoch 测试补边界（已补）。
+- 独立浏览器 QA：**5/5 PASS**，含接口 +8 逐条比对、CONTRACT 时间戳、双视口；并纠正我方脚本接口路径（真实为 `/api/v1/cam/templates`）。
+- 总控：实现 + 两轮 CI 修复，模板/审计两页复验。
+
+### 版本组合
+
+- 前端：`123a0d0`（合并为 `3f9cbd0`）。
+- 后端：`main@bb84d25`（无接口改动）。
+
+### 后续建议
+
+1. **P3 阈值统一**：`cam/collect/format.ts` 仍用 `1e12` 且 `ctime >`（与 `>=1e11` 语义不同），建议统一到 `@/utils/epoch`。
+2. **P3 路由守卫告警**（QA 附带发现）：未登录重定向时 `[Router] Navigation error: Invalid navigation guard`（`router/index.ts:38-59` 的 `async` 守卫声明 3 参但无 token 分支未调 `next()`），仅 DEV 可见，建议单独修。
+3. **P3 模板页 390 卡片**：卡片盒 360px 在 390 视口下右侧按钮被裁（由 `.main-content` 内部横滚承载），与本轮无关。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
