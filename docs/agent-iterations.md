@@ -1571,3 +1571,70 @@
 3. **P2 回归测试**：补「列表页 mount 带 ?search 预填」用例，锁住本次行为。
 4. **P3 空深链**：`AccountCard` 跳 `/iam/users?cloud_account_id=` 但用户页不读 query，属独立问题。
 5. **P1 仍待办**：任务生命周期治理、采集 running 超时、菜单死链。
+
+---
+
+## cam-iteration-20261028-dedupe-fetch（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#23`，merge commit `f303d27`，2026-10-28 12:32 +08）
+**代码 PR**：`e-cam-web#23`（commits `522e45b` → `ba10d47`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- QA 在 #21/#22 观测：任务页一次翻页出现 **2 条列表请求**（1 条完全重复）；类型切换 **10 次概览请求**（处理器 5 + 重挂载 5）。
+- 根因：`router-view :key="route.fullPath"`（#22 保留）使 URL 变更必然重挂载并由新实例从 URL 取数；处理器在 `router.replace` 后仍主动 fetch。
+
+### 需求卡
+
+- 目标用户：任务页高频翻页/筛选的运维。
+- 目标：URL 变化时只由重挂载取数；URL 未变（点已激活「全部」chip 等）仍本地取数。
+- 非目标：改变重挂载策略、概览后端聚合、其它页面。
+- 规则：`syncPaginationQuery()` 用 `router.resolve({query}).fullPath === route.fullPath` 判等；变化则处理器直接 return，未变才 fetch。
+- API 契约：无。
+- 风险：逻辑依赖「URL 变化→重挂载」；已在 `MainLayout` key 处加注释固化不变量。
+
+### 变更内容
+
+- `src/views/tasks/index.vue`：`syncPaginationQuery` 返回 boolean；翻页/改 size/类型/状态/chip/清空/越界收敛在 URL 变化时跳过本地 fetch。
+- `src/layouts/MainLayout.vue`：router-view key 处补注释（key 必须包含 query）。
+
+### 验收（真实浏览器 + 真实后端）
+
+| 场景 | 修复前 | 修复后 |
+|---|---|---|
+| 翻页 → 第 2 页 | 列表 2 次 | **列表 1 次、概览 5 次**，20 卡 |
+| 改每页 50 | — | 列表 1 次、50 卡、`size=50` |
+| 类型切换 | 概览 10 次、列表 2 次 | **概览 5 次、列表 1 次** |
+| chip「失败」 | 列表 2 次 | **列表 1 次、概览 5 次**，4 卡 |
+| 点已激活「全部」chip（URL 不变） | — | 列表 1 次（验证「未变才 fetch」分支） |
+| 越界 `?page=9999` | — | 列表 2 次（越界+收敛）、URL 收敛末页、有数据 |
+| 后退 | — | 列表 1 次、恢复上一状态 |
+| console | — | 0 error |
+
+> 口径修正：概览真实为 **5 次**（全部+待执行/执行中/已完成/失败）；此前把 `limit=100` 的最老等待请求误计为 `limit=1`，PR 中「12→6」应订正为「10→5」。
+
+### 测试
+
+- `vitest run`：62 files / 1022 tests 通过。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：无 blocker；1 major（刷新完全依赖 fullPath key，注释/测试不足）+ 3 minor（JSON 顺序敏感、replace 竞态、无单测）；已修 JSON → `resolve`、补 MainLayout 注释。
+- 独立 QA：7 PASS + 1 条「点当前页」不可达（Element 不发事件，非回归）；确认去重生效、URL 未变分支仍刷新、后退仅 1 次列表。
+- 总控：修正统计口径、复跑矩阵（1 列表 + 5 概览）、越界 2 次属预期。
+
+### 版本组合
+
+- 前端：`ba10d47`（合并为 `f303d27`）。
+- 后端：`main@5be3746`（无接口改动）。
+
+### 后续建议
+
+1. **P2 watcher 兜底**：把 `watch(route.query)` 改为对比「本实例已加载的 query 快照」，即使 key 改回 path 也不会静默不刷新（审查 M1 建议）。
+2. **P2 契约测试**：mount 任务页 + memory router，断言「URL 变→1 次请求、URL 不变→仍请求」。
+3. **P2 概览聚合**：5 个 status 各 limit=1 → 后端单端点。
+4. **P3 首屏双倍**：深链含默认/非法参数时，规范化 replace 会让首屏多一次挂载。
+5. **P1 仍待办**：任务生命周期治理、采集 running 超时、菜单死链。
