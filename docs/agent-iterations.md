@@ -1709,3 +1709,77 @@
 2. **P2 审计脚本修正**：`cam-audit-20261028-health/audit.cjs` 中 `/cam/certs/ledger` 改为 `/cam/certs`，避免再次自造证据。
 3. **P3 台账 390 头部按钮**：`.page-actions` 不换行导致 28px 溢出。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、菜单死链（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261028-cert-notfound（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#25`，merge commit `df0437c`，2026-10-28 13:57 +08）
+**代码 PR**：`e-cam-web#25`（commits `c999618` → `e6f99a5`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 本轮健康审计与上一轮重定向验证共同确认：`/certs/:id` 对无效 id 返回 400 `CERT_INVALID_ID`（1b：合法格式但不存在的 id 返回 404 `CERT_NOT_FOUND`），页面只显示「证书详情加载失败 + 重试」，无返回出口。
+- 上一轮的 `/certs/ledger` 只是其中一个特例；任意脏链接（旧书签、手误 id、看板中已删除证书）都会命中。
+
+### 需求卡
+
+- 目标用户：持旧链接、或从看板点进已删除证书的用户（含只读角色）。
+- 目标：无效/不存在 id 显示「证书不存在」并提供返回出口；服务端错误仍为「加载失败 + 重试」；有效 id 正常。
+- 规则：按 `CertRequestError.code` 区分 `CERT_INVALID_ID` / `CERT_NOT_FOUND`；只读角色返回 `/certs/dashboard`，管理角色返回 `/certs`。
+- 非目标：后端把 400 映射 404、台账筛选保持（见后续）。
+- API 契约：无（复用现有错误码，后端已定义）。
+
+### 变更内容
+
+- `src/views/cert/detail/index.vue`：新增「证书不存在」态与 CTA；按 readonly 分流；`loadDetail` 改为请求令牌（旧响应丢弃）；in-flight 布尔守卫移除。
+- `src/views/cert/detail/format.ts`：新增 `isCertNotFoundCode` 纯函数。
+- `src/views/cert/detail/format.test.ts`：+2 例。
+
+### 验收（真实浏览器 + 真实后端）
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | 无效 id `/certs/not-a-valid-id` | ✅「证书不存在」、无「加载失败」、CTA 可见、仅 1 次 400 |
+| 1b | 合法格式不存在 id（24 个 0） | ✅ 404 `CERT_NOT_FOUND` → 同样态、1 次请求 |
+| 2 | 点 CTA（管理角色） | ✅ `/cam/certs`、20 行 |
+| 3 | 有效 id 详情 | ✅ h1=证书 CN、detail/references 各 1 次 200 |
+| 4 | `/certs/ledger` | ✅ 仍走既有重定向到 `/certs`，0 次 ledger 请求 |
+| 5 | 模拟 500 | ✅「加载失败 + 重试」，不误判为不存在 |
+| 6 | 390×844 | ✅ 无溢出，CTA 在视口内 |
+| 7 | console | ✅ 应用错误 0、pageerror 0；无效 id 6s 后仍 1 次请求（无重试风暴） |
+| 8 | **只读角色 CTA** | ✅「返回到期看板」→ `/certs/dashboard`，无「无权限」toast（对照：直连 `/certs` 仍被拦） |
+| 9 | **同组件 A→B 切换** | ✅ 标题/ID/有效期/指纹全部换新，B 仅 1 次请求；B→无效正确进入不存在态 |
+
+独立 QA：**10/10 PASS**（快照 `e6f99a5`）。审查：2 major（只读 CTA 死路、布尔守卫吞参数切换）均已修复。
+
+### 已知遗留（非本轮）
+
+- 从详情返回台账不保留筛选：`goLedger()` 固定 `/certs`，`?daysLeft=le30` 场景返回后变全量 20 行；且 URL 带 `daysLeft` 时筛选控件仍显示「请选择」（既有）。
+- 390 顶部外壳被 `overflow-x:hidden` 裁剪（全站既有）。
+- 只读角色仅以前端 profile 改写模拟，后端 viewer 鉴权未实测。
+
+### 测试
+
+- `vitest run`：62 files / 1024 tests 通过（format 2 例新增）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：确认错误码真实（后端 `CERT_INVALID_ID`/`CERT_NOT_FOUND`）、状态互斥正确；提出只读 CTA 与 in-flight 布尔两个 major，均已修复并自测。
+- 独立 QA：`e6f99a5` 10/10 PASS，含 M1 对照实验（直连 `/certs` 仍被拦）、M2 同组件切换、500 与不存在区分、390。
+- 总控：复跑无效/有效 id、1 次 400、令牌守卫、全量测试。
+
+### 版本组合
+
+- 前端：`e6f99a5`（合并为 `df0437c`）。
+- 后端：`main@54fae75`（错误码既有，无接口改动）。
+
+### 后续建议
+
+1. **P3 返回保留台账筛选**：`goLedger()` 回退到进入详情前的台账 query（需记录来源 query）。
+2. **P3 台账 URL 筛选控件不同步**：`?daysLeft=le30` 时控件显示「请选择」。
+3. **P2 后端错误码统一**：无效 id 可由后端返回 404 语义（或前端把 400/404 统一为不存在），减少前端码值依赖。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
