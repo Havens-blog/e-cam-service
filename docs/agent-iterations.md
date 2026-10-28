@@ -2234,3 +2234,68 @@
 **结论**:#30 的"聚合/诊断请求补账号级筛选"在可验证路径(CDN 缓存分析)已闭环;WAF 诊断路径列为人工审核重点(环境无 WAF 源)。
 
 **附:并行会话协同核查** —— 核对我已合并改动在当前 main(386dbc3)上完好(appKpis/accountOptions/selectedAccounts/filter-accounts 均在),未被并行会话的 stats/url-state 改动覆盖;k8s-event 的 KPI 专项已由并行会话(#34)补齐,与本轮无重叠。
+
+---
+
+## cam-iteration-20261028-search-prefill-guard（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#35`，merge commit `d3cf094`，2026-10-28 22:47 +08）
+**代码 PR**：`e-cam-web#35`（commits `79b4f30` → `bb1bbd6`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮（#32）修复「深链 `?search` 不回显」时暴露出**同一 bug 漂移了三次**：7 页先修、8 页后补、ecs 再漏。审查建议加源码级守卫。
+- 独立审查复核：`src/views` 共 208 个 `.vue`，其中 **20 个**读取 `route.query.search`；读取处到最近可见写入的距离 59–135 字符。
+- 审查用 `git show <commit>^:<path>` **重放历史版本**：`13cb13c^`（6 页）、`b9602bc^`（8 页）、`e208495^`（ecs）喂给该测试全部变红并列出文件名——证明守卫能抓住三次真实漂移。
+
+### 需求卡
+
+- 目标：任何读取 `?search` 的页面，必须在读取点附近把关键字写入用户可见位置（输入框或条件 chip），否则 CI 失败。
+- 非目标：AST 语义分析、校验 chip 内容是否搜索条件、覆盖模板 first 绑定的死模式。
+- 规则：遍历**每个**读取点；500 字符窗口；`MIN_READERS=20` 下限；失败输出 `文件:行号`。
+
+### 变更内容
+
+- 新增 `src/views/__tests__/searchPrefill.contract.test.ts`（+73/-0，纯测试）。
+- 覆盖 3 种可见态写法：`searchKeyword.value = <var>`、`searchConditions.value.push`、`conditions.value.push`。
+
+### 验收
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | 干净树 | ✅ 1 passed（20 readers 全部有回显） |
+| 2 | 变异：删除 rds 的 `searchKeyword.value = s` | ✅ 失败并列出 `databases/rds/index.vue` |
+| 3 | 变异：追加一个无回显的 `watch(() => route.query.search)` | ✅ 失败并列出 `文件:行号`（第一版只看首个出现点会漏） |
+| 4 | 历史漂移重放（审查独立执行） | ✅ `13cb13c^`/`b9602bc^`/`e208495^` 全红并列出文件 |
+| 5 | 浏览器回归（独立 QA） | ✅ **6/6 PASS**：RDS `?search=ve-jlc` 2 行、ECS `?search=<asset_id>` chip 1 行、无 query 空输入、OSS 0 行、console 0、1440/390 页面溢出 0 |
+
+### 已知局限
+
+- 500 字符是硬预算：若在读取与赋值之间插入 >500 字符注释会假红（当前余量 3.7x）。
+- 纯文本匹配：`= typeof s === 'string' ? s : ''`、`= null` 会通过；`push` 不校验是否为搜索条件。
+- 不校验 ref 是否真的绑到模板（`v-model`）；`v-model="filters.keyword"` 模式已删除（本仓库 template-first，窗口取不到模板）。
+- 未上 AST（`typescript` 已是 devDep，约 70–90 行可覆盖更多语义，当前收益不足）。
+
+### 测试
+
+- 定向：1 passed；全量：66 files / **1053 tests** passed。
+- `vue-tsc -b` / `eslint src/views/__tests__` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：无 blocker；**major 1**（只看首个读取点 → 已改为遍历全部）、**major 2**（可空跑变绿 → 已加 `MIN_READERS`）；minor：500 硬预算、纯文本语义、死模式、未校验 v-model 绑定（记录）。
+- 独立浏览器 QA：6/6 PASS，两轮独立运行数值一致；确认 `git diff` 仅新增测试文件、无行为变化。
+- 总控：实现 + 两处增强，变异测试双向验证（删赋值 / 加二次读取均能变红）。
+
+### 版本组合
+
+- 前端：`bb1bbd6`（合并为 `d3cf094`）。
+- 后端：`main@05dcdc0`（无接口改动）。
+
+### 后续建议
+
+1. **P3 语义化守卫**：捕获 `const s = route.query.search` 的变量名，要求 RHS 使用同一变量；并校验 `v-model` 绑定，减少假红/假绿。
+2. **P3 CI 注释同步**：CI 文案「69 个测试文件」已陈旧（实际 66→67）。
+3. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
