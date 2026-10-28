@@ -2118,3 +2118,29 @@
 2. **P3 组件级测试（M5）**：补 DashboardTable 窄屏断言（stub matchMedia → 表头 7→4），锁住列接线。
 3. **P3 窄屏错误信息可达性（M3）**：报告/步骤 5 的「错误信息」窄屏移除后失败原因不可达，建议折入「资源」单元格或 tooltip。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## 2026-10-28 部署验证轮:服务端超窗 400(#39)真机确认
+
+**背景**:#39 合并时运行实例未含该改动,live 验证留待实例重建。
+
+**本轮状态**:service 检出(f19688a,main)已含 #39 的 squash 提交 99b90c4;后端进程 18:20:53 重启(晚于合并时刻),具备验证条件。
+
+**验证方法(零真实云调用)**:候选云取不存在的 `nonexistent-cloud-xyz` —— 守卫生效则立即 400;若未生效则为空结果 200,两种结果都不会触达真实云源。
+
+**结果(A 类:真实后端 :8001)**:
+| 用例 | 结果 |
+|---|---|
+| cdn 30d 窗口 | **400** `time window 2592000000ms exceeds max_window_days 7 for cdn` ✓ |
+| cdn 1h 窗口(对照,同候选云) | 200 `ok` ✓(证 400 归因于窗口而非云) |
+| cdn 恰 7d(边界) | 200 `ok` ✓(与前端钳制 `end-start <= max` 语义一致) |
+| 用户路由无凭据 | 401 `认证失败：会话无效或已过期`(鉴权链完好) |
+
+**服务端可观测性**:拒因日志落盘完整 —— `logquery request rejected` WARN,字段 `stage=validate / path=/api/v1/cam/logs/search / tenant_id=3 / client_ip / reason=time window 2592000000ms exceeds max_window_days 7 for cdn`。
+
+**S2S 路由(如实:未 live 验证)**:代码证据 `ioc/gin.go:307` 显示 `/api/s2s/logs` 复用同一 `logQueryModule.RegisterRoutes`(仅外层换 S2SAuth),守卫按设计同样生效;但本机无 eiam 签发的 S2S 服务令牌,直连 8001 得 401 `缺少服务令牌`,故 **S2S 路径未做 live 断言,仅代码级覆盖**(手工审核重点)。
+
+**探测陷阱(记录备查)**:经前端 dev server(:8888)请求 `/api/s2s/...` 返回 **200 + text/html**(vite 未代理该前缀,回退 index.html),不可用于 API 断言;API 探测须直连后端端口并校验 content-type。
+
+**环境观察**::8888 前端实例运行的是并行会话分支 `fix/logs-k8s-tab-ux`(其 WIP 提交),非 main —— 我合并的前端改动(#28/#30)不在该实例服务范围内;我的前端验收一直在自有 worktree 实例(:3333)+ 同源真实后端上完成(A 类)。
