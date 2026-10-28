@@ -2144,3 +2144,76 @@
 **探测陷阱(记录备查)**:经前端 dev server(:8888)请求 `/api/s2s/...` 返回 **200 + text/html**(vite 未代理该前缀,回退 index.html),不可用于 API 断言;API 探测须直连后端端口并校验 content-type。
 
 **环境观察**::8888 前端实例运行的是并行会话分支 `fix/logs-k8s-tab-ux`(其 WIP 提交),非 main —— 我合并的前端改动(#28/#30)不在该实例服务范围内;我的前端验收一直在自有 worktree 实例(:3333)+ 同源真实后端上完成(A 类)。
+
+---
+
+## cam-iteration-20261028-search-prefill（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#32`，merge commit `3d12837`，2026-10-28 19:03 +08）
+**代码 PR**：`e-cam-web#32`（commits `b9602bc` → `e208495`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 早前 QA 观察：全局搜索/详情「查看资产」带 `?search=` 跳转时，仅 7 个列表页把关键字回显到输入框；其余页面只把值写进 `filters.keyword` 过滤数据，输入框为空。
+- 本轮复测（RDS）：`/cam/databases/rds?search=zz-probe` 列表请求带 `name=zz-probe`、返回 0 行，但搜索框为空——用户看不到当前过滤条件。
+- 审查进一步发现 `compute/ecs` 同根因但机制不同（搜索框在 `InstanceSearchBar` 子组件内，页面层无法直接写 input）。
+
+### 需求卡
+
+- 目标用户：从全局搜索、资源详情跳转到列表页的运维。
+- 目标：深链后页面上能看到当前关键字（输入框或条件 chip）；无 query 时保持为空；过滤行为不变。
+- 非目标：`asset_id` 与 `name` 的语义统一（见后续）、抽公共 composable、其它模块。
+- 规则：8 页在 onMounted 预填 `filters.keyword` 时同步 `searchKeyword.value`；ecs 向 `searchConditions` 注入 `asset_name` 条件。
+- API 契约：无。
+- 风险：`searchKeyword` 在回车后会被清空（既有语义），回显后仅作可见提示；单提交回滚。
+
+### 变更内容
+
+- 8 个列表页（compute/security-group、databases/{mongodb,rds,redis}、middleware/{elasticsearch,kafka}、storage/{nas,oss}）：`searchKeyword.value = s`。
+- `compute/ecs/index.vue`：`searchConditions.value.push({ field:'asset_name', value:s, displayValue:s })`。
+
+### 验收（真实浏览器 + 真实后端）
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | 8 页 `?search=zz-probe` | ✅ 输入框 value=zz-probe，行数 0、请求带 `name=zz-probe` |
+| 2 | 8 页无 query | ✅ 输入框为空、行数 20、总数正常（RDS 50 / Redis 327 / MongoDB 53 / 安全组 936 / Kafka 21 / ES 37 / NAS 95 / OSS 896） |
+| 3 | 过滤真实生效 | ✅ 每页恰 1 次 `name=` 请求；行数 0 vs 20 |
+| 4 | RDS 手输回车 | ✅ `ve-jlc` → 20→2 行，输入框按既有逻辑清空 |
+| 5 | disk 对照页 | ✅ 回显正常（既有实现未回归） |
+| 6 | ecs 深链 | ✅ chip「名称: zz-probe-ecs」、0 行；无 query chips=[] |
+| 7 | console / 溢出 | ✅ error 0、pageerror 0、API 4xx/5xx 0；1440/390 页面级溢出 0 |
+| 8 | 回显额外请求 | ✅ 带/不带 search 均恰 1 次列表请求 |
+
+独立 QA：**31/31 PASS**（快照 `e208495`）。审查：approve，无 blocker；M1（ecs 漏修）已在本轮修复。
+
+### 已知遗留（既有/范围外）
+
+- **`asset_id` vs `name` 语义**：全局搜索传的是 `asset_id`（CommandPalette），8 页把 keyword 映射到后端 `name`；回显后输入框会显示 ID，需后端确认 `name` 能否匹配 ID（或与 vswitch 一样用 `asset_id` 条件）。
+- **`searchKeyword` 是待提交缓冲**：回车后清空；回显后 chips 为空，改动任一条件会让列表回全量而输入框仍留旧文本（既有 7 页同取舍）。
+- **15 处重复块**：建议抽 `useSearchQueryPrefill()`，但因存在三种形态（keyword/name/condition）未在本轮做。
+
+### 测试
+
+- `vitest run`：64 files / 1040 tests 通过。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：approve；M1（ecs 同根因）已修；minor：ID/名称语义、缓冲语义、composable 建议。
+- 独立 QA：31/31 PASS，含 8 页回显/无 query/过滤生效/手输不回归/ecs chip/请求计数。
+- 总控：实现 + ecs 补修，浏览器复验 chip 与 0 行。
+
+### 版本组合
+
+- 前端：`e208495`（合并为 `3d12837`）。
+- 后端：`main@2e87ac4`（无接口改动）。
+
+### 后续建议
+
+1. **P2 `asset_id` 深链语义**：与后端确认 `name` 是否支持 ID 精确匹配；否则改为 `asset_id` 条件（同 vswitch）。
+2. **P3 抽 `useSearchQueryPrefill()`**：统一 15 处重复块，减少漂移（本轮 ecs 就是漂移产物）。
+3. **P3 源码级防漂移断言**：仿 `MainLayout.test.ts` 的 grep 断言，要求读取 `route.query.search` 的页面必须同时设置显示态。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
