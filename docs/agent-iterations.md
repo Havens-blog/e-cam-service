@@ -1342,3 +1342,84 @@
 2. **P3 多入口**：若未来新增入口（如独立登录页用 Element 组件），需重复配置 provider；建议抽 `installElementLocale(app)`。
 3. **P3 测试**：`App.vue` 无挂载测试，建议补一条 locale 断言（或对命令式弹窗按钮文案断言）。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、菜单死链（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261028-pagination-compact（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#20`，merge commit `ccdce6c`，2026-10-28 08:38 +08）
+**代码 PR**：`e-cam-web#20`（commits `10f3588` → `19d3d4b` → `bdc094b` → `befcc0b`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮中文 locale 后 QA 实测：390 分页完整 layout 折 3 行 112px、768 折 2 行 72px。
+- 审查进一步指出：用视口宽度做断点会在 769（侧栏 64→220）后失效，769–950 仍折行（"窗口变大反而变高"）。
+- QA 复验又发现深页问题：390 末页出现两处省略号后单行需 283.5px > 可用 276px（56px 两行）；1024 深页完整 layout 需 ~740px（72px 两行）。
+
+### 需求卡
+
+- 目标用户：手机/平板运维。
+- 目标：分页在可用宽度不足时自动降级为单行紧凑形态；宽屏保持桌面完整 layout。
+- 非目标：页码 URL 同步（现状刷新回第 1 页）、其它页面分页统一、分页样式重设计。
+- 规则（按容器实测宽度）：
+  - `< 300px` → `prev, pager, next`（隐藏「共 N 条」，5 页码）；
+  - `< 740px` → `total, prev, pager, next`（5 页码）；
+  - `>= 740px` → `total, sizes, prev, pager, next, jumper`（7 页码）。
+- 技术：`ResizeObserver` 监听 `.pagination-container`；`:size` 替代已废弃的 `:small`；`pagerCount` 恒为 5（Element 要求 >4 奇数）。
+- API 契约：无。
+- 风险/回滚：≤1024 失去每页条数/跳页；390 不显示总数；单提交回滚。
+
+### 变更内容
+
+- `src/views/tasks/pagination.ts`（新增）：`paginationUiForContentWidth` + 三档 layout 常量 + 阈值。
+- `src/views/tasks/pagination.test.ts`（新增，3 例）。
+- `src/views/tasks/index.vue`：`ResizeObserver` + `paginationUi` 绑定 `:layout/:pager-count/:size`；small 页码 24px 兜底样式。
+
+### 验收（真实浏览器 + 真实后端）
+
+| 视口 | 容器宽 | 形态 | 高度 | 页码 | 说明 |
+|---|---|---|---|---|---|
+| 390 | 310 | 紧凑（无总数） | 24px | 5 | 首页/末页/深页均单行 |
+| 480 | 368 | 紧凑 | 24px | 5 | 含总数 |
+| 768 | 688 | 紧凑 | 24px | 5 | 含总数 |
+| 769 | 509 | 紧凑 | **72→24px** | 5 | 侧栏展开后不再折行 |
+| 900 | 640 | 紧凑 | 24px | 5 | |
+| 1024 | 730 | 紧凑 | 32→**24px** | 5 | 深页不再折行 |
+| 1440 | 1180 | 桌面 | 32px | 7 | sizes+jumper，未变 |
+
+- 390 翻页 1→2、上一页回 1 且列表一致；「…」步长 +3；跨 resize 页码保持。
+- console error/warning/pageerror 均为 0（修复前 3 页码方案有 99 条 `pagerCount` 警告）。
+- 边界：内容宽 296 无总数、301 有总数；320 视口（内容 206）仍 56px（低于验收集，仅记录）。
+
+独立 QA：**F1/F2/F3 全部关闭，`befcc0b` 验收通过**（3 轮递进验证）。
+
+### 测试
+
+- `vitest run`：64 files / 1016 tests 通过（pagination 3 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：无 blocker；**1 major**（视口断点在 769 失效）已修；minor 包含 pagerCount 校验、small 废弃、CSS 覆盖顺序、测试缺口。
+- 独立 QA：`19d3d4b` 发现 F1（390 深页 56px）、F2（1024 深页 72px）→ 修复后 `bdc094b` 又发现 F3（pagerCount=3 触发 99 warning + 省略号步长退化）→ `befcc0b` 全部通过。
+- 总控：处理 major + F1/F2/F3，自测 390/480/768/769/900/1024/1440 与深页矩阵。
+
+### 已知取舍（需产品确认）
+
+1. **390 不显示「共 N 条」**：为在 276px 内容宽内保持 5 页码 + 单行。
+2. **1024 为紧凑形态**：730px < 740px 阈值，失去每页条数/跳页，换取深页不折行。
+3. **页码不写 URL**：刷新回第 1 页（既有行为，未在本轮扩展）。
+
+### 版本组合
+
+- 前端：`befcc0b`（合并为 `ccdce6c`）。
+- 后端：`main@7a08622`（无接口改动）。
+
+### 后续建议
+
+1. **P3 页码 URL 同步**：`?page=&size=` 写入 query，刷新/分享保持（新需求）。
+2. **P3 分页公共组件**：其它页面仍用完整 layout，窄屏同样折行；建议抽 `<AppPagination>` 统一三档降级。
+3. **P3 超窄视口**：320/340 仍两行，可考虑 `pager-count=3`（但需绕过 Element 校验）或隐藏省略号。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、菜单死链（`menu-config.ts` 仍被并行会话占用）。
