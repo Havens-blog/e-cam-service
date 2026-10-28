@@ -3298,3 +3298,24 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 2. **P3 统一时间工具**：`src/utils/epoch.ts`（归一 + 固定格式），替换 collect/audit/logs 的三套实现。
 3. **P3 审计两页展示风格统一**：`toLocaleString` vs 固定格式。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261029-error-message(修复 [object Object]:恢复服务端原因与确认通道)
+
+**缺陷(真实链路实测)**:CDN 缓存分析失败时页面显示 **`分析失败[object Object]`**,而服务端返回的是可读原因(`cache-analyze is disabled: feature flag LOGQUERY_CACHE_ANALYZE_ENABLED is not enabled`)。
+
+**根因**:请求层对非 2xx **直接 reject 响应体**(`src/api/request/index.ts`: `reject(error.response ? error.response.data : error)`)→ 调用方拿到 `{code,msg,data}` **普通对象而非 Error**;`e instanceof Error ? e.message : String(e)` 于是插值成 `[object Object]`。
+
+**连带功能性影响**:`isScanConfirmError(msg)` 按文案正则匹配(`estimated scan volume|预估扫描量|confirm=true`),在 `[object Object]` 下**永不命中** → 「确认并继续分析」逃生通道**实际失效**(后端文案见 `cache_analyze.go:141`)。
+
+**修复(e-cam-web#51)**:新增 `format.errorMessage(unknown)` 纯函数(Error.message→msg→message→response.data.msg→可读兜底),替换日志域四处同类提取(useLogSearch 两处、CacheAnalyzeCard、LogDiagnoseCard)。
+
+**验收**:
+- 单测:format.test.ts +4 例;两卡补**真实形态(响应体对象 reject)**用例(既有测试用 `new Error(...)` 理想形态,**掩盖了真实路径**);
+- **变异验证**:回退修复 → 两条新用例失败(实测),恢复 → 通过;
+- 日志域全量 **177/177**(13 files)、vue-tsc 0、eslint 0、CI 四项全绿后合并;
+- **浏览器实测(A 类,worktree :3333 + 真实后端 :8001)**:文案由 `[object Object]` → 服务端原因为准 ✓,0 页面错误。
+- 未执行(如实):确认通道的**浏览器**实测(需 `LOGQUERY_CACHE_ANALYZE_ENABLED` 开启,当前关闭),该路径由单测 + 变异验证覆盖。
+
+**顺带复检**:#39 超窗守卫在运行实例上**仍生效**(live 30d → 400,文案精确)。
