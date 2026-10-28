@@ -1423,3 +1423,79 @@
 2. **P3 分页公共组件**：其它页面仍用完整 layout，窄屏同样折行；建议抽 `<AppPagination>` 统一三档降级。
 3. **P3 超窄视口**：320/340 仍两行，可考虑 `pager-count=3`（但需绕过 Element 校验）或隐藏省略号。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、菜单死链（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261028-page-url（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#21`，merge commit `58357f3`，2026-10-28 09:25 +08）
+**代码 PR**：`e-cam-web#21`（commits `9fe044c` → `4ce4a9e` → `484156c` → `551f722`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮分页验收记录：任务页页码不写 URL，刷新后回第 1 页，无法分享；实测 `/cam/tasks` 翻到第 3 页 URL 仍不变。
+- 审查指出：只持久化 page 而不持久化筛选，会让"刷新/分享/返回"恢复出与当时不一致的列表切片（筛选 failed 第 2 页 → 返回变成全部任务第 2 页）。
+
+### 需求卡
+
+- 目标用户：运维，需要把"某筛选条件下的某页"发给同事或刷新继续。
+- 目标：`page/size/type/status` 与 URL 双向同步；深链恢复；刷新保持；前进后退同步；非法值清理；越界收敛。
+- 非目标：其它页面分页、排序列入 URL、查询条件全量同步。
+- 规则：
+  - `page` 仅纯数字且 ≤1e6；`size` 仅 10/20/50/100；
+  - `type/status` 必须在选项白名单内，否则视为未筛选；
+  - 默认值（page=1、size=20、无筛选）不写入 URL；
+  - 页码超过总页数或结果为空时收敛到最后一页/第 1 页并更新 URL；
+  - 翻页/筛选用 `router.replace`（不制造历史记录）；外部导航/前进后退由 `watch(route.query)` 同步；仅类型变化才重刷概览与最老等待。
+- API 契约：无（offset/limit 仍由前端参数计算，后端已鉴权）。
+- 风险/回滚：URL 变更影响书签（新增参数，向后兼容）；单提交回滚。
+
+### 变更内容
+
+- `src/views/tasks/pagination.ts`：新增 `readPageQuery`、`readPageSizeQuery`、`readFilterQuery`、`buildPageQuery`、`clampPageToTotal`、`PAGE_SIZE_OPTIONS`。
+- `src/views/tasks/pagination.test.ts`：6 例（含非法页码、允许列表、空 filters 清理、数组保留、total=0 收敛）。
+- `src/views/tasks/index.vue`：初始化读 URL；`syncPaginationQuery`；翻页/改 size/类型/状态/chip/清空均同步；`watch(route.query)` 处理前进后退；越界收敛（silent 单次重取）；模板 page-sizes 用常量。
+- `src/layouts/MainLayout.vue`：`router-view :key` 由 `route.fullPath` 改为 `route.path`，query 变化不再销毁页面（QA #8）。
+
+### 验收（真实浏览器 + 真实后端）
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | 深链 `?type=cam:sync_assets&page=2&size=50` | ✅ 类型=同步资产、第 2 页、50 卡、URL 保持 |
+| 2 | 点第 3 页 | ✅ URL `page=3&size=50` |
+| 3 | 刷新 | ✅ 仍第 3 页/50 条 |
+| 4 | chip「失败」 | ✅ 回第 1 页、URL 去 page 并带 status |
+| 5 | 刷新 `?status=completed&page=2` | ✅ 状态=已完成、第 2 页 |
+| 6 | 非法 `type=bogus` / `size=7` | ✅ URL 清理、回退 20 条 |
+| 7 | `?page=9999` | ✅ 收敛末页 353、URL 更新 |
+| 8 | A→B→后退 | ✅ 恢复 A 的状态与页码 |
+| 9 | 默认 `/cam/tasks` | ✅ URL 无参数 |
+| 10 | console | ✅ 0 error |
+
+审查复核：M1（chip 未同步）、M2（筛选未进 URL）与 5 项 minor 全部关闭；补充「status-only 不重刷概览」「total Number 归一」「3 条 URL 测试」。
+
+独立 QA 终验（`551f722`）：**#8 修复有效** —— chip/翻页 summary=0、`.tasks-page` 节点未被销毁；类型变更 summary=5+oldest=1；详情 path 变化正常切换；深链分享、replace 历史、后退行为均 PASS；console 0。
+
+### 测试
+
+- `vitest run`：62 files / 1022 tests 通过（pagination 9 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：首轮 1 major（chip 漏同步）+ 1 major（筛选未进 URL）+ 7 minor；复核确认全部关闭，无阻塞。
+- 独立 QA：首轮深链/刷新/chip/后退验证；`484156c` 终验发现 #8（fullPath key 导致重挂载），修复后 `551f722` 复跑全部 PASS。
+- 未执行：390 视口下的 URL 深链（分页形态已在 #20 验证）。
+
+### 版本组合
+
+- 前端：`551f722`（合并为 `58357f3`）。
+- 后端：`main@1bdd3af`（无接口改动）。
+
+### 后续建议
+
+1. **P3 翻页历史语义**：当前 `router.replace` 不产生历史项，返回键离开页面；若产品希望逐步回退页码需改 `push` 并接受历史膨胀。
+2. **P3 查询条件全量同步**：其它页面（资产/日志）筛选仍不写 URL，可复用本模式。
+3. **P1 仍待办**：任务生命周期治理（pending 残留执行态、超时回收、持久化去重）、采集 running 超时、菜单死链（`menu-config.ts` 仍被并行会话占用）。
