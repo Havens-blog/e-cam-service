@@ -1938,3 +1938,80 @@
 2. **P3 窄屏头部统一**：`.page-actions` 各页各自定义，建议抽公共头部组件并内置 wrap。
 3. **P3 行距**：`row-gap: 12px` 或容器内归一 `.el-button + .el-button` 的 12px margin。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## cam-iteration-20261028-cert-cols-responsive（2026-10-28）
+
+**状态**：**已合并**（`e-cam-web#29`，merge commit `6f60368`，2026-10-28 17:18 +08）
+**代码 PR**：`e-cam-web#29`（commits `bcd9c99` → `035250a` → `6a49f3f`；CI 4/4 绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- QA 在 #27 验收中量化：390 下证书台账用 `.hide-sm` **仅 CSS 隐藏**列，`el-table` 的 colgroup 仍按 8 列占宽——表格横滚 **1150px**、末端约 **410px 空白**，sticky「操作」列在最右滚动时移出、中途与「托管状态」叠字。
+- 复验进一步发现：sticky 操作列 200px 在 390 占表宽 **79%**，覆盖域名列（仅剩 52px），且固定列背景透明导致表头渲染成「域名 / S操作」。
+
+### 需求卡
+
+- 目标用户：窄屏查看证书台账的运维。
+- 目标：窄屏真正移除次要列（释放 colgroup 宽度）、操作列不覆盖内容、固定列不透明；宽屏列齐全。
+- 非目标：其它表格组件同类问题、操作列改图标化、1440 内部 28px 横滚。
+- 规则：`matchMedia('(max-width:768px)')` + `v-if` 移除签发者/有效期至/引用数；`fixed` 仅 ≥1024 启用；固定列背景 `--bg-surface`，hover 补不透明 `#212223`。
+- API 契约：无。
+- 风险/回滚：仅本页表格组件；1440/769 列数不变；单提交回滚。
+
+### 变更内容
+
+- `src/views/cert/ledger/components/CertTable.vue`：
+  - `v-if` 真正移除三列（替代 `.hide-sm`），删除失效样式与空 `@media`；
+  - `fixed="right"` 仅 ≥1024（`stickyActions`）；
+  - 固定列背景 `--bg-surface`（与行一致）+ hover 不透明 `#212223`。
+
+### 验收（真实浏览器 + 真实后端）
+
+| 视口 | 列数 | 表格 scrollWidth | 操作列 | 页面溢出 |
+|---|---|---|---|---|
+| 390 | **8→5** | **1150→840**（−310=120+110+80） | relative（不覆盖） | 0 |
+| 768 | 5 | 840 | relative | 0 |
+| 769 | 8 | 1150 | relative | 0 |
+| 1023 | 8 | 1150 | relative | 0 |
+| 1024 | 8 | 1150 | sticky，bg rgb(25,26,27) α=1 | 0 |
+| 1440 | 8 | 1150 | sticky，α=1 | 0 |
+
+- 390 最右：`scrollLeft=588=max`、操作列右缘 353 < 390、末端空白 0；
+- 1024 hover：固定列 td `rgb(33,34,35)` α=1，红色徽章区域像素 **0/2600**（基线 403/2600 证明检测有效）；
+- 固定列与行底色一致（Δ=1，竖带消失）；console 0。
+
+独立 QA：**3 轮**（发现 F1 叠字 → 修复；F8 hover 透字 → 修复；F9 竖带 → 修复），最终 F10（表头 4% 色差）为低、记录。
+
+### 已知遗留（既有/低）
+
+- **F10**：表头固定列缺少 header 的 5% 白叠加，Δ≈4%，3× 放大才可辨。
+- **F4**：1440 表格仍有 28px 内部横滚（列宽总和 1150 > 1122）。
+- **F5**：「✗ 已过期 920 天」徽章 108px > 单元格 96px，所有视口右侧被裁。
+- 其它 4 个表格组件（Dashboard/Change/ReportCards/Step5Progress）仍用 1023 的 `.hide-sm`，同带 colgroup 占宽问题。
+
+### 测试
+
+- `vitest run`：62 files / 1026 tests 通过。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget 全 SUCCESS。
+
+### 子 Agent 与复核
+
+- 独立审查：Approve（0 blocker）；确认 v-if 动态列在 EP 2.11.7 安全（insert/remove 列、sticky 偏移重算）、`matchMedia` 仅跨断点触发；minor：首帧先 8 列后 5 列、断点与兄弟表不一致、无测试锁定。
+- 独立 QA：3 轮，最终 pass；用像素计数验证 hover 无透字（0 vs 403 基线），并用列宽差值 (−310) 证明 colgroup 释放。
+- 总控：实现 + 两轮修复（sticky 门控、hover 不透明），复跑矩阵与像素断言。
+
+### 版本组合
+
+- 前端：`6a49f3f`（合并为 `6f60368`）。
+- 后端：`main@b705768`（无接口改动）。
+
+### 后续建议
+
+1. **P2 其它表格统一**：`DashboardTable`/`ChangeTable`/`ReportCards`/`Step5Progress` 的 1023 `.hide-sm` 迁移为 `v-if` + 统一 `useNarrowViewport()`。
+2. **P3 表头色差 F10**：给 sticky `th` 叠 header 背景色。
+3. **P3 列宽 F4/F5**：1440 列宽总和 1150 超出 1122；过期徽章 108 > 96。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
