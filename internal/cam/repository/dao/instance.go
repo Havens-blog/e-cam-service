@@ -1,4 +1,4 @@
-﻿package dao
+package dao
 
 import (
 	"context"
@@ -269,13 +269,35 @@ func (d *instanceDAO) Upsert(ctx context.Context, instance Instance) error {
 }
 
 // buildQuery 构建查询条件
+// modelUIDOrPatternsWithBare 在注册表模式基础上，**始终**补上裸类型 id（如 `ecs`）的精确匹配。
+//
+// 缺陷（2026-10-29 实测）：注册表只给通用名（如 `cloud_vm`）与厂商后缀（如 `_ecs$`），
+// 而部分来源写入的 model_uid 就是**裸类型 id** —— 实测库 `ecam_instance` 中
+// `model_uid="ecs"` 的阿里云 ECS 有 711 台（provider=aliyun/account_id=1/tenant=3），
+// 仅匹配 `cloud_vm`+`/_ecs$/` 时它们被整类排除：云主机页列表 total=0、详情 404。
+// 与裸类型同名的通用名会去重，避免冗余条件；未注册类型仍走等值匹配（行为不变）。
+func modelUIDOrPatternsWithBare(pat domain.ModelUIDPattern, bareType string) []bson.M {
+	out := make([]bson.M, 0, len(pat.Generics)+len(pat.Suffixes)+1)
+	out = append(out, bson.M{"model_uid": bareType})
+	for _, g := range pat.Generics {
+		if g == bareType {
+			continue
+		}
+		out = append(out, bson.M{"model_uid": g})
+	}
+	for _, s := range pat.Suffixes {
+		out = append(out, bson.M{"model_uid": bson.M{"$regex": "_" + s + "$"}})
+	}
+	return out
+}
+
 func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 	query := bson.M{}
 
 	if filter.ModelUID != "" {
 		// 支持通用资产类型查询（注册表收敛：domain.ModelUIDPatternFor）
 		if pat, ok := domain.ModelUIDPatternFor(filter.ModelUID); ok {
-			query["$or"] = modelUIDOrPatterns(pat)
+			query["$or"] = modelUIDOrPatternsWithBare(pat, filter.ModelUID)
 		} else {
 			query["model_uid"] = filter.ModelUID
 		}
@@ -556,7 +578,8 @@ func (d *instanceDAO) buildSearchQuery(filter SearchFilter) bson.M {
 		for _, assetType := range filter.AssetTypes {
 			// 注册表收敛（含 cdn/waf/eni，修复与 buildQuery 的清单漂移）
 			if pat, ok := domain.ModelUIDPatternFor(assetType); ok {
-				typePatterns = append(typePatterns, modelUIDOrPatterns(pat)...)
+				// 裸类型 id 一并匹配（同 buildQuery：漏配会让整类资产在搜索里也不可见）
+				typePatterns = append(typePatterns, modelUIDOrPatternsWithBare(pat, assetType)...)
 			}
 		}
 		if len(typePatterns) > 0 {
