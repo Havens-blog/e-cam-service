@@ -4357,3 +4357,21 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 
 **同类口径沉淀**:资产类型的读取过滤必须同时覆盖 `裸类型 id`、`cloud_` 旧前缀、`{provider}_{type}` 三种 model_uid 写法;新增写入路径时优先统一写入侧命名,读取侧保持三种兼容。
 
+
+---
+
+## 2026-10-29 续:阿里云 ECS 不可见 —— 真正执行路径修复(cam 实例库过滤)+ 已上线验证
+
+**关键教训**:首修(#100)改的是 `internal/asset/repository/dao` 那份过滤,**但云主机页 `/compute/ecs` 实际走 `internal/cam/repository/dao` 的 `instanceDAO`(经 h.instanceSvc)** —— 判定依据:重启后二进制已含 #100 的 `typeModelUIDOr` 符号,而接口行为不变(仍 total=1155/aliyun=0) ⇒ 说明执行的是**另一份**同款过滤。
+
+**真正根因**:cam DAO 的类型过滤由 e-cloudx-sdk 注册表 `domain.ModelUIDPatternFor` 驱动,`modelUIDOrPatterns` 只产出「通用名精确(cloud_vm) + 厂商后缀正则(_ecs$)」;而库 `ecam_instance` 中阿里云 ECS 的 model_uid 是**裸类型 id `ecs`**(711 台, prov=aliyun/acct=1/tenant=3) ⇒ 整类被过滤(列表 0、详情 404)。
+
+**修复(e-cam-service#103,已合并)**:新增 `modelUIDOrPatternsWithBare(pat, bareType)`,在注册表模式前始终补裸类型 id 精确匹配(与通用名同名时去重);`buildQuery`/`buildSearchQuery` 统一使用;未注册类型行为不变。测试:更新既有精确期望(ecs/cdn/waf/eni/lb/slb/subnet/security-group 及搜索路径各例);**变异验证**(回退→用例失败)。
+
+**部署与验收(已上线)**:
+1. 维护者授权后 `origin/main` 合并进主检出(`8f9b54f` → `599dd6f`),其 3 个未提交 WIP 文件原样保留,无冲突(merge-tree 预演);
+2. CompileDaemon 重建(二进制 17:42:01,服务 PID 50140);
+3. **API(A 类真实链路)**:`/assets/ecs` total **1155→1866**;`provider=aliyun` **0→711**;`account_id=1` = 711;样本 "南凌SDWAN-乌兰察布POP-…"(cn-wulanchabu);
+4. **UI(:8888 → /cam/compute/ecs,1440×900)**:首屏 **20 行**渲染且**即阿里云主机**(与 provider=aliyun 接口样本一致),页面计数「共1866」,**0 个 4xx/5xx、0 控制台错误**,截图 `%TEMP%\ecam-ecs-aliyun.png`。
+
+**口径沉淀(二次)**:同一仓储层存在多份同构过滤(asset 与 cam 两处),**改前必须用符号/行为双证据确认执行路径**;类型过滤须兼容 `裸类型 id`、`cloud_` 旧前缀、`{provider}_{type}` 三种 model_uid。
