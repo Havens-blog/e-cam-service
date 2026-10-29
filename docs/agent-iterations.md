@@ -4237,3 +4237,26 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 4. **P3 390 列遮挡**：固定操作列在窄屏压住相邻列，建议窄屏取消 `fixed` 或改为下拉操作。
 5. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查。
 6. **方法教训**：前端「字段为空」类缺陷，先拉真实接口比对字段名，再做归一；同时**归一必须配接线测试**——只测纯函数会在「页面忘了调用」时全绿（本轮审查用变异实验证实了这一点）。
+
+---
+
+## 2026-10-29 环境故障处置:测试环境 504 Outdated Optimize Dep(多实例共享 vite 依赖缓存)
+
+**现象**(使用者反馈 + 实测复现):`http://localhost:8888` 打开失败,请求
+`/cam/node_modules/.vite/deps/element-plus_es_components_skeleton_style_css.js?v=<旧hash>` → **504 Outdated Optimize Dep**。
+
+**根因(时间线实证)**:
+| 时刻 | 事件 |
+|---|---|
+| 14:34:10 | 主 dev server `:5173` 启动(内存元数据 = 当时 dep hash) |
+| **15:36:49** | **验证实例重写共享 `.vite/deps`**(日志 `Re-optimizing dependencies because vite config has changed`) |
+| 16:27 | 打开 8888 → 旧 hash 依赖 504;**普通刷新无效**(服务端元数据仍指向已被替换文件) |
+
+机制:Vite 依赖预打包写 `cacheDir`(默认 `node_modules/.vite/deps`);**同一份 node_modules 上并行多实例**(主 dev server + 工作树验证实例,且工作树用目录联接共享 node_modules)会互相重写,导致**先启动实例已下发到浏览器的 hash 失效**。
+
+**处置**:按原方式(`npx vite --port 5173`,主检出色,**未改任何源码/工作区文件**)重启 dev server → 复验:8888 入口页面正常挂载(工具栏 4 控件 / 6 类型 Tab / 23 侧栏项),**0 个 4xx/5xx 资源、0 控制台错误**。
+
+**防护(e-cam-web#79)**:README 开发章节补说明 + 可复制的 `vite.verify.config.ts` 片段(**独立 cacheDir** + 独立端口 + `open:false`)。
+**防护自验**:以 `cacheDir: node_modules/.vite-verify-3333` 启动验证实例 → 共享 `.vite/deps` 时间戳**未被改动**(16:30:34 < 实例启动 16:30:49),主 dev server 同时仍 200 ✓
+
+**旁证**:仓库内已存在大量 `.vite-cam-iterN` 目录 —— 并行验证实例一直在用独立 cacheDir;本次把该约定写入文档。**我方后续所有验证实例一律改用独立 cacheDir 配置。**
