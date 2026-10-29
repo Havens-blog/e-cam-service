@@ -5187,3 +5187,75 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 2. 上一轮 `cloud_platform` 筛选"被忽略" → 审计页筛选区**根本没有云平台项**,后端也不读该参数(属未使用的类型字段)。
 
 **口径沉淀(重要)**:接口层审计**必须先从前端源码确认该接口真实发送的参数名/形态**(类型定义 + 页面构造请求处,如 `offset:(page-1)*pageSize`),再据此发探针;**用"看起来合理"的参数名探测会产出假阳性**(本轮两例),甚至把正常页面误判为缺陷。
+
+---
+
+## cam-iteration-20261030-audit-toast-dedupe（跨日轮，2026-10-30）
+
+**状态**：**已合并**（`e-cam-web#105`，merge commit `b284a3e`，2026-10-30 02:15 +08）
+**代码 PR**：`e-cam-web#105`（commit `f8a430b`；CI 四项全绿；审查 **APPROVE**）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮 QA 用 MutationObserver 实测：IAM 审计页导出成功后 DOM 中同时存在 **2 个** `.el-message`（rect 完全重叠，肉眼看像一条），`peakLive=2`；报告生成同理。
+- 根因：`ExportDialog.vue` / `ReportDialog.vue` 各自 `ElMessage.success(...)`，同时 `emit('success')` 又让父页面 `iam/audit/index.vue` 的 `handleExportSuccess` / `handleReportSuccess` 再弹一次。
+
+### 需求卡
+
+- 目标用户：使用 IAM 审计导出/报告功能的运维。
+- 目标：同一事件只提示一次；成功与失败路径均只 1 条；组件保持无副作用。
+- 规则：对话框只 `emit('success')`，成功提示由父页面统一负责；对话框内的**错误**提示保持不变。
+- 非目标：错误路径的双条提示（既有，需区分拦截器已提示过的错误）、报告格式（JSON vs PDF）。
+- API 契约：无。
+
+### 变更内容
+
+- `src/views/iam/audit/components/ExportDialog.vue`、`ReportDialog.vue`：各删除一处 `ElMessage.success`，只保留 `emit('success')`（+2/-2）。
+
+### 验收（独立 QA 27 项检查，全部 PASS/INFO；MutationObserver 记插入次数 + 10ms 采样峰值）
+
+| 场景 | 插入次数 | 峰值 | 结论 |
+|---|---|---|---|
+| 导出成功（真实后端 + 真实 CSV 下载） | **1** | **1** | ✅ |
+| 导出失败（route 200+`{code:500,msg:"x"}`） | 1 条 error「x」，0 条「导出成功」 | 1 | ✅ |
+| 失败后重试 | 1 | 1 | ✅ |
+| 报告成功（模拟 200 信封） | 1 | 1 | ✅ |
+| 空时间范围提交 | 提示「请选择时间范围」，0 请求 0 提示 | — | ✅ |
+
+- 对话框正常关闭、按钮 loading 复位（采样到请求中 `is-loading=true`、结束 0）、重开按钮回到「导出」。
+- 截图瞬间 DOM `.el-message` 数量为 1（1440 与 390 各一张 + 放大图确认无叠层）。
+- pageerror 0、HTTP≥400 仅 2 条（QA 自己注入的 403）。
+
+### 新发现（QA 本轮，均非本 PR 引入）
+
+1. **报告生成在本机 `:5232` 被后端 CORS 拦截**：`POST /api/v1/cam/iam/audit/reports` 返回 403 空体。根因已实验证明——`e-cam-service/ioc/gin.go` 的 `corsDefaultOrigins` 只有 8888/5173/3333，浏览器 POST 带 `Origin` 时被 `gin-contrib/cors` 直接 403（无 Origin→200、5232→403、8888→200）。**这意味着任何非白名单端口的本地 dev server 都无法真正验证 POST 类接口**，后续要用 8888 或改后端白名单。
+2. **错误路径仍是双条提示且完全重叠**：导出 403 / 报告 403 均 `peakLive=2`（「权限不足，请联系管理员」+ 英文 `Request failed with status code 403`），坐标相同、上层恰是英文串，中文提示被遮住。要贯彻「同一事件只提示一次」，需让对话框 catch 识别「拦截器已提示过」的错误。
+3. **报告「下载」内容是 `[object Object]`（15B `.pdf`）**：`ReportDialog` 用 `response.data` 构造 Blob，而后端 reports 返回 JSON 对象而非文件流（与上上轮记录的「报告格式需产品确认」同源）。
+4. **导出后列表不刷新**（请求 1→1、行数 20→20）：`handleExportSuccess` 只弹提示，无 `loadAuditLogs`；导出为只读操作，非缺陷但可讨论。
+
+### 测试
+
+- 全量：**89 files / 1209 tests** passed。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立代码审查：**APPROVE**（0 blocker/0 major/2 minor/3 nit）；确认两个对话框全仓仅 `iam/audit/index.vue` 使用且都绑了 `@success`（不存在「无监听者 → 零反馈」页面）、`emit` 时机仍在文件落盘之后、`ElMessage` import 未闲置、1s 延迟关闭不会打断提示。
+- 独立浏览器 QA：27 项检查 PASS；用 MutationObserver + 10ms 采样给出插入次数与峰值；并定位了 CORS 403 这一**影响所有本地验证**的环境问题。
+- 总控：实现 → 自测（MutationObserver 计数 2→1）→ 冻结 → 等审查/QA → 合并。
+
+### 版本组合
+
+- 前端：`f8a430b`（合并为 `b284a3e`）。
+- 后端：`main@c9478ff`（无接口改动）。
+
+### 后续建议
+
+1. **P2 错误提示去重**：让对话框 catch 区分「拦截器已提示」（例如给 Error 打 `handled` 标记），否则 403 类错误仍是两条且英文串盖住中文。
+2. **P2 本地验证环境**：把 `http://localhost:523x` 加入后端 `corsDefaultOrigins`（或统一用 8888 代理），否则所有 POST 类接口的本地验证都会被 403 阻断——这是**流程级阻塞**，比单个缺陷更值得先解决。
+3. **P3 报告格式**：后端返回 JSON 却按 `.pdf` 保存，需产品确认后统一（`[object Object]` 已实测）。
+4. **P3 导出后是否刷新列表**：只读操作，建议保持不刷新并在 PR/文档注明。
+5. **P1 后端时间过滤**：`dao/audit.go` 改 `ctime`（秒/毫秒归一）——连续多轮被 QA 复证「各范围只返回表头」，是当前最影响用户的缺陷，且必须后端改动 + 联调复测。
+6. **方法教训**：①「提示条数」这类视觉问题只有 MutationObserver 计数 + 峰值采样才能量准，事后查 DOM 会漏；②本地验证失败要先怀疑环境（CORS/端口白名单），而不是先怀疑代码——本轮 QA 用「同一 POST 仅换 Origin」的对照实验一步定位，值得复用。
