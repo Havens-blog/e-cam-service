@@ -4338,3 +4338,22 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 3. **P3 390 筛选区**：日期控件改 `max-width:100%`。
 4. **P3 筛选参数名**：`operator`/`provider` 与后端对齐。
 5. **方法教训**：①「格式 400」类修复要同时检查**所有入口**（列表/导出/报告共用同一契约）；②前端时间参数必须明确**UTC 还是本地**语义——Go `time.Parse` 默认 UTC，而 `ParseInLocation` 有本地约定，同一仓库两种写法并存；③修一个可见错误（400）可能把用户推进更隐蔽的错误（静默 0 条），必须在 PR 里写清楚。
+
+---
+
+## 2026-10-29 故障修复:阿里云 ECS 在云主机页"全部不见"(按类型过滤漏裸 model_uid)
+
+**现象**(使用者反馈):云主机页 `/compute/ecs` 阿里云主机全部不见(列表 total=0、详情 `404 instance not found`),而通用资产页/统计接口能看到阿里云 ECS。
+
+**根因(数据库级实证,库 `ecam_instance`)**:同一类型存在三种 `model_uid` 写法,实测分布 ——
+`volcano_ecs`(acct5)948、**`ecs`(裸类型 id, acct1/aliyun)711**、`huawei_ecs` 101、`aws_ecs` 82、`tencent_ecs` 24。
+`ListECS` 传 `ModelUID="ecs"`,`buildQuery` 仅展开 `$or:[{model_uid:"cloud_vm"},{model_uid:/_ecs$/}]` → **正则 `_ecs$` 匹配不到裸 `"ecs"`** → 阿里云 711 台被整类过滤。`buildSearchQuery` 的 `typePatterns` 同样遗漏(rds/redis/mongodb/vpc/eip/nas/oss 同构)。
+
+**修复(e-cam-service#100,已合并 `c1e12de`)**:抽 `typeModelUIDOr(bareType, cloudAlias)`,`$or` 覆盖 裸类型 id + 旧 `cloud_` 前缀名 + `{provider}_{type}` 正则;两处统一使用(ecs 历史名 `cloud_vm`)。
+
+**验收**:真实库只读对比(tenant_id=3) 旧过滤 `total=1155/aliyun=0` → **修复后 `total=1866`(=统计接口 ecs 总数)/`aliyun=711`**;新增单测 9 类型逐一断言三写法(未知类型仍等值匹配)+搜索路径;**变异验证**(还原旧写法→用例失败并报"缺少裸类型 ecs");CI 失败点仍为既有的 `Generate Wire code`(eiam/SDK,影响所有 PR,与本次无关)。
+
+**部署状态(未完成)**:修复已入远端 main,但**运行实例未重建** —— 主检出存在**并行会话的本地提交**(`48f03d2 fix(sync): 多云同步执行器接入模型别名归一,堵住孤儿实例主来源`),`git merge --ff-only origin/main` 因分支分叉失败;按"不争抢并行工作区"原则**未做任何改动**(其 3 个未提交文件原样保留)。即:**并行会话正在修同一根因的写入侧(model 别名归一),本单为读取侧兜底**,两者互补;需由维护者决定合并/推送顺序后重建后端方可对使用者生效。
+
+**同类口径沉淀**:资产类型的读取过滤必须同时覆盖 `裸类型 id`、`cloud_` 旧前缀、`{provider}_{type}` 三种 model_uid 写法;新增写入路径时优先统一写入侧命名,读取侧保持三种兼容。
+
