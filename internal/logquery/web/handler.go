@@ -160,6 +160,8 @@ var logTypes = []typeMeta{
 // LogQueryHandler 日志查询 HTTP handler。
 type LogQueryHandler struct {
 	svc *service.FederationService
+	// audit 可选:日志检索结构化审计落袋端(ioc 组合根注入;nil 时 no-op)。
+	audit LogAuditSink
 }
 
 // NewLogQueryHandler 创建 handler。
@@ -264,8 +266,11 @@ func (h *LogQueryHandler) Search(c *gin.Context) {
 		return
 	}
 	if !checkWindow(c, req.LogType, req.StartTime, req.EndTime) {
+		// 窗口越界属校验失败,同样落一条 failed 审计(不含关键字,记录请求范围)。
+		h.recordSearchAudit(c, req, nil, errInvalidWindow, time.Now())
 		return
 	}
+	started := time.Now()
 	resp, err := h.svc.Search(c.Request.Context(), tenantID, service.SearchRequest{
 		LogType:    logquery.LogType(req.LogType),
 		StartTime:  req.StartTime,
@@ -277,6 +282,7 @@ func (h *LogQueryHandler) Search(c *gin.Context) {
 		Filters:    req.Filters,
 		Limit:      req.Limit,
 	})
+	h.recordSearchAudit(c, req, resp, err, started)
 	if err != nil {
 		rejectBadRequest(c, "validate", err.Error())
 		return

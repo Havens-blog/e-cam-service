@@ -224,6 +224,8 @@ func InitWebServer(sp session.Provider, mdls []gin.HandlerFunc, psdk *sdk.SDK, s
 		logsGroup := server.Group("/api/v1/cam/logs")
 		logsGroup.Use(middleware.RequireTenant(logger))
 		logQueryModule.RegisterRoutes(logsGroup)
+		// 结构化检索审计:把 logquery 的 search 结果接到 audit DAO(审计页可见)。
+		WireLogQueryAudit(logQueryModule, auditModule)
 		logger.Info("日志查询功能域路由注册完成")
 	} else {
 		logger.Warn("日志查询功能域模块未初始化，跳过日志查询路由注册")

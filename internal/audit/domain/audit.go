@@ -15,6 +15,10 @@ const (
 	AuditOpAPIAlertUpdate   AuditOperationType = "api_alert_update"
 	AuditOpAPIAlertDelete   AuditOperationType = "api_alert_delete"
 	AuditOpAPIGeneric       AuditOperationType = "api_generic"
+	// AuditOpAPILogSearch 日志检索(多云统一日志查询 /cam/logs/search)。
+	// 由 logquery 域写入结构化记录(request_body 为脱敏后的查询范围摘要,
+	// 不含关键字 query 与字段筛选 filters 值),而非通用中间件的 api_* 标签。
+	AuditOpAPILogSearch AuditOperationType = "log_search"
 )
 
 // AuditResult 审计结果
@@ -23,6 +27,9 @@ type AuditResult string
 const (
 	AuditResultSuccess AuditResult = "success"
 	AuditResultFailed  AuditResult = "failed"
+	// AuditResultPartial 部分成功:联邦检索中至少一个源成功、至少一个源失败。
+	// 与 HTTP 状态码解耦(handler 仍返回 200 供 UI 逐源展示),审计侧单独区分。
+	AuditResultPartial AuditResult = "partial"
 )
 
 // AuditLog 审计日志领域模型

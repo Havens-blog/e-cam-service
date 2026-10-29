@@ -90,6 +90,14 @@ func (m *AuditMiddleware) Build() gin.HandlerFunc {
 			return
 		}
 
+		// 日志检索(search/aggregate)由 logquery 域写入结构化审计(含结果量与
+		// 部分成功状态),此处跳过:避免同一次查询双重记录,且不把关键字 query /
+		// 字段筛选 filters 值原文落库(可能含敏感检索词)。
+		if isLogQueryStructuredAuditPath(c.Request.URL.Path) {
+			c.Next()
+			return
+		}
+
 		start := time.Now()
 
 		// 读取并恢复 request body
@@ -192,6 +200,13 @@ func sanitizeMap(data map[string]interface{}) {
 			sanitizeMap(nested)
 		}
 	}
+}
+
+// isLogQueryStructuredAuditPath 判定该路径是否由 logquery 域写入结构化审计。
+// search/aggregate 是每次查询都会扇出调用的两个接口,请求体含 query/filters,
+// 由通用中间件落库会泄漏检索关键字,故在此跳过。
+func isLogQueryStructuredAuditPath(path string) bool {
+	return path == "/api/v1/cam/logs/search" || path == "/api/v1/cam/logs/aggregate"
 }
 
 // inferOperationType 根据 URL path 和 HTTP method 推断操作类型
