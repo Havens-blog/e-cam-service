@@ -65,13 +65,21 @@ func (s logQueryAuditSink) WriteLogQuery(ctx context.Context, e logqueryweb.LogQ
 	if e.Success {
 		status = http.StatusOK
 	}
+
+	opType := domain.AuditOpAPILogSearch
+	apiPath := "/api/v1/cam/logs/search"
+	if e.Operation == "export" {
+		opType = domain.AuditOpAPILogExport
+		apiPath = "/api/v1/cam/logs/export-audit"
+	}
+
 	_, err := s.dao.Create(ctx, domain.AuditLog{
-		OperationType: domain.AuditOpAPILogSearch,
+		OperationType: opType,
 		OperatorID:    e.OperatorID,
 		OperatorName:  e.OperatorName,
 		TenantID:      e.TenantID,
 		HTTPMethod:    http.MethodPost,
-		APIPath:       "/api/v1/cam/logs/search",
+		APIPath:       apiPath,
 		RequestBody:   e.Summary(),
 		StatusCode:    status,
 		Result:        result,

@@ -168,3 +168,58 @@ func TestRecordSearchAuditFailed(t *testing.T) {
 		t.Fatalf("result_count = %d, want 0", e.ResultCount)
 	}
 }
+
+func TestRecordExportAudit(t *testing.T) {
+	sink := &auditCaptureSink{}
+	h := &LogQueryHandler{audit: sink}
+	c := newAuditTestContext()
+	req := exportAuditRequest{
+		LogType:    "cdn",
+		StartTime:  1000,
+		EndTime:    2000,
+		Clouds:     []string{"aliyun"},
+		AccountIDs: []int64{1},
+		Resources:  []string{"a.example.com"},
+		Count:      42,
+	}
+	h.recordExportAudit(c, req)
+
+	e := sink.wait(t, 1)[0]
+	if e.Operation != "export" || !e.Exported || !e.Success {
+		t.Fatalf("export audit flags wrong: op=%s exported=%v success=%v", e.Operation, e.Exported, e.Success)
+	}
+	if e.ResultCount != 42 || e.LogType != "cdn" || e.TenantID != 3 || e.OperatorID != "7" {
+		t.Fatalf("export audit fields wrong: %+v", e)
+	}
+	if strings.Contains(e.Summary(), "query") || strings.Contains(e.Summary(), "filters") {
+		t.Fatalf("export audit summary leaked sensitive keys: %s", e.Summary())
+	}
+}
+
+// TestExportAuditHandler 端点契约:POST /export-audit 落一条 log_export 审计,
+// 返回 200;无租户上下文仍被组级 RequireTenant 语义外的 tenantID 防御拒绝。
+func TestExportAuditHandler(t *testing.T) {
+	sink := &auditCaptureSink{}
+	h := NewLogQueryHandler(service.NewFederationService(webAccountSource{}, nil))
+	h.SetAuditSink(sink)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	g := r.Group("/api/v1/cam/logs")
+	g.Use(func(c *gin.Context) { c.Set(middleware.TenantIDKey, int64(3)); c.Next() })
+	h.RegisterRoutes(g)
+
+	body := `{"log_type":"cdn","start_time":1000,"end_time":2000,"clouds":["aliyun"],"account_ids":[1],"resources":["a.example.com"],"count":42}`
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/cam/logs/export-audit", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d body=%s", w.Code, w.Body.String())
+	}
+
+	e := sink.wait(t, 1)[0]
+	if e.Operation != "export" || e.ResultCount != 42 {
+		t.Fatalf("handler audit wrong: %+v", e)
+	}
+}
