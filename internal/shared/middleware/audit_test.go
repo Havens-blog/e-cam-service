@@ -98,6 +98,48 @@ func TestAuditMiddleware_MultipartBodyOmitted(t *testing.T) {
 	assert.Equal(t, "success", log.Result)
 }
 
+// TestIsLogQueryStructuredAuditPath 日志检索端点由 logquery 域写结构化审计,
+// 通用中间件须跳过(避免关键字 query/filters 原文落库)。
+func TestIsLogQueryStructuredAuditPath(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"/api/v1/cam/logs/search", true},
+		{"/api/v1/cam/logs/aggregate", true},
+		{"/api/v1/cam/logs/diagnose", false},
+		{"/api/v1/cam/logs/cache-analyze", false},
+		{"/api/v1/cam/assets", false},
+	}
+	for _, tc := range cases {
+		if got := isLogQueryStructuredAuditPath(tc.path); got != tc.want {
+			t.Errorf("isLogQueryStructuredAuditPath(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+// TestAuditMiddleware_SkipsLogQuerySearch 通用中间件跳过 /cam/logs/search,
+// 不落任何审计(由 logquery 域负责结构化审计)。
+func TestAuditMiddleware_SkipsLogQuerySearch(t *testing.T) {
+	sink := &captureSink{}
+	mdl := NewAuditMiddleware(sink, elog.DefaultLogger)
+
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.Use(mdl.Build())
+	engine.POST("/api/v1/cam/logs/search", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/cam/logs/search", bytes.NewReader([]byte(`{"query":"secret"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// 等待异步写入窗口结束后断言仍为 0 条(跳过而非延迟)。
+	time.Sleep(50 * time.Millisecond)
+	require.Len(t, sink.entries, 0, "log query search must be skipped by generic audit middleware")
+}
+
 // TestAuditMiddleware_JSONBodySanitized JSON body 脱敏（既有行为回归：
 // password/secret 类字段掩码后入审计）。
 func TestAuditMiddleware_JSONBodySanitized(t *testing.T) {
