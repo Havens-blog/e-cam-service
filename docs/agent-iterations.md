@@ -3503,3 +3503,21 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 - `url-state`/`useLogUrlSync` 的静默 `catch` 属 URL 解析兜底,合理。
 
 **结论**:本轮未发现可复现缺陷,**未产生代码改动**。
+
+---
+
+## cam-iteration-20261029-error-contract-a(A 方案落地:请求失败归一为 Error)
+
+**来源**:#76 系统性质化后,维护者确认执行 **A(层内归一)**。
+
+**根因**:`HttpRequest.request<T>()` 的 catch `reject(error.response ? error.response.data : error)` 抛**响应体普通对象**给调用方;调用方按 Error/AxiosError 取值 → `[object Object]`(#51 实证)、文案分支失效(确认通道)、`response?.data` 取值点恒不可达(4 处)。
+
+**改动(e-cam-web#56)**:
+- 新增导出纯函数 `normalizeRequestError`:有响应 → `Error(msg||message||err.message||'请求失败')` 并附 `payload`/`status`/`response{data,status}`;取消 `ERR_CANCELED` **原样透传**;无响应(网络/超时)与既有 Error **原样透传**
+- `request<T>()` catch 改用该归一处;业务错误分支同步修正为 `message || msg || 'Error'`(信封字段是 msg,原写法丢失文案)
+
+**影响面(已核实)**:`service.ts` 的 HttpRequest 覆盖全部 CAM API 模块(本 PR 即修);cert/eiam 为独立裸 axios 客户端(自带解包)**不受影响**;handleApiError/parseError 在拦截器内消费 axios error,逻辑与入参不变;4 处 `response?.data` 取值点由不可达变为可用。
+
+**验收**:请求层单测 **14/14**(+5 例:msg/`message` 兼容/取消透传/网络透传/兜底链);**全量 72 files / 1107 tests 全绿**;vue-tsc 0;eslint 0;CI 四项全绿后合并。**live(A 类)**:失败文案=服务端原因(`[object Object]` 消失)、成功路径 KPI 4 卡、**取消路径仍显示「查询已取消」**、0 页面错误。
+
+**未执行(如实)**:401/403 拦截器路径未做 live 断言(逻辑未改,`response.status` 保留且有单测);cert/eiam 两套裸 axios 未纳入本次归一(各自已有本地解包,如需统一另开切片)。
