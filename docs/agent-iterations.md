@@ -4463,3 +4463,31 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 3. **P3 日期面板宽度**：面板 `popper-class` 限宽或改用 `teleported` 弹层定位。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查、导出/报告下载链路（blob 消费异常）。
 5. **方法教训**：①窄屏溢出要顺着「谁把父级撑宽」找（form-item 按内容定宽），只改目标元素无效；②取消固定列这类「把遮挡换成够不到」的改动必须同时评估**主操作的可发现性**——本轮审查与 QA 独立得出一致结论，说明这是真实风险而非偏好。
+
+---
+
+## 2026-10-29 需求:多云 DNS 补充"权重"字段 —— Step 1(SDK)已发布,Step 2 待定位落库入口
+
+**需求来源**:使用者明确要求"多云 DNS 补充 DNS 权重字段"。经确认口径:**按可写性分档**(可支持云展示数值,其余展示 "-";表单仅对可写云出现) + **随同步落库并在列表/详情展示**。
+
+**依赖事实(逐一核对各云 vendored SDK,非推测)**:
+| 云 | 读 | 写 |
+|---|---|---|
+| aliyun | ✅ `DescribeDomainRecords` 的 `Record` 含 `Weight int` | ❌ `AddDomainRecord`/`UpdateDomainRecord` 请求结构体无 Weight |
+| huawei | ❌ CreateRecordSet 无权重概念 | ❌ |
+| volcano | ❌ DNS 创建/更新未实现 | ❌ |
+| tencent / aws | 待核实 | 待核实(能力表暂 false) |
+服务端 DNS 列表读本地库 `ecam_dns_record`、创建/更新走适配器 ⇒ **SDK 必须先行**,否则只会造出"看着有、永远为空"的假字段。
+
+**Step 1(已完成、已发布)**:`Havens-blog/e-cloudx-sdk` PR **#10** 已合并,并打 **tag `v0.2.0`**(`613581e → 1d635bc`)。内容:
+- `types.DNSRecord`/`Create`/`Update` 增 `Weight *int`(nil=无权重概念/未返回,上层展示 "-");
+- `types.NewDNSWeight(v)`(v<=0 → nil,避免把"不支持"展示成假的 0)、`DNSWeightWritable`/`DNSWeightSupported` 能力矩阵(单一事实源);
+- `aliyun/dns.go` 列表映射 `Record.Weight`;Create/Update 对 `weight` **显式报错且不发云调用**;
+- 测试 `go test ./types/...` ok、build/vet 通过、gofmt 差异仅 CRLF;纯新增字段与函数,对既有调用方无影响。
+
+**Step 2(服务端)待办 + 阻塞点**:升级依赖到 `v0.2.0` 后,需把 `Weight` 贯通 `DnsRecordDoc`(落库)/`DNSRecordVO`(透出)/Create/Update 请求 + validator(0-100 且仅对可写云放行)。
+**阻塞点**:`internal/cam/dns/dao.go` 的 `DnsRecordDAO.UpsertRecord` **当前没有任何调用方**(全仓检索仅定义/装配处命中) ⇒ `ecam_dns_record` 的实际写入路径不在原假设位置,需先定位真实同步写入点(线索:`internal/cam/init.go:112` 装配、执行器 `expandAssetTypes` 中 dns 透传、账号级 syncDNS)再决定映射位置,否则"随同步落库"会改错地方。
+
+**Step 3(前端)待办**:`types/dns.ts` 增 `weight`;`RecordTable` 展示(无值 "-");表单仅在可写云出现(当前无可写云 ⇒ 本期仅展示,与口径一致)。
+
+**过程记录(环境纪律)**:本次误在 SDK **主检出**执行了 `git checkout --detach`,已立即恢复原分支 `fix/logquery-k8s-resource-cluster`(WIP 2 文件完好),后续对空仓库操作前先确认所在目录。
