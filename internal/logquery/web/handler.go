@@ -177,6 +177,7 @@ func (h *LogQueryHandler) RegisterRoutes(g *gin.RouterGroup) {
 	g.POST("/aggregate", h.Aggregate)
 	g.POST("/diagnose", h.Diagnose)
 	g.POST("/cache-analyze", h.CacheAnalyze)
+	g.POST("/export-audit", h.ExportAudit)
 }
 
 // Types GET /types 字段字典(逐类型并发探测可聚合字段填充白名单)。
@@ -291,6 +292,33 @@ func (h *LogQueryHandler) Search(c *gin.Context) {
 		resp.Entries = []logquery.LogEntry{}
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": resp})
+}
+
+// exportAuditRequest POST /export-audit 请求体(只承载脱敏后的导出范围与条数,
+// 不含 query 关键字与字段筛选值;CSV 仍由前端生成,本端点仅落审计)。
+type exportAuditRequest struct {
+	LogType    string   `json:"log_type" binding:"required"`
+	StartTime  int64    `json:"start_time" binding:"required"`
+	EndTime    int64    `json:"end_time" binding:"required"`
+	Clouds     []string `json:"clouds"`
+	AccountIDs []int64  `json:"account_ids"`
+	Resources  []string `json:"resources"`
+	Count      int      `json:"count"`
+}
+
+// ExportAudit POST /export-audit 记录一次日志导出审计。导出文件由前端本地
+// 生成,此端点只落脱敏审计(操作人/租户/范围/条数/是否导出),不生成文件。
+func (h *LogQueryHandler) ExportAudit(c *gin.Context) {
+	var req exportAuditRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		rejectBadRequest(c, "bind", "invalid request: "+err.Error())
+		return
+	}
+	if _, ok := tenantID(c); !ok {
+		return
+	}
+	h.recordExportAudit(c, req)
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": nil})
 }
 
 // aggregateRequest POST /aggregate 请求体(与 searchRequest 对齐,无 limit)。

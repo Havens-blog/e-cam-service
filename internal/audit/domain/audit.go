@@ -19,6 +19,9 @@ const (
 	// 由 logquery 域写入结构化记录(request_body 为脱敏后的查询范围摘要,
 	// 不含关键字 query 与字段筛选 filters 值),而非通用中间件的 api_* 标签。
 	AuditOpAPILogSearch AuditOperationType = "log_search"
+	// AuditOpAPILogExport 日志导出(/cam/logs/export-audit):CSV 仍由前端
+	// 生成,该端点只落一条脱敏的导出审计,不含关键字与字段筛选值。
+	AuditOpAPILogExport AuditOperationType = "log_export"
 )
 
 // AuditResult 审计结果
