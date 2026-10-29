@@ -4637,3 +4637,78 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 **附带发现(未处理,待确认)**:`views/network/dns/components/DomainTable.vue:218` 仍 `router.push('/topology?domain=...')`,而 `/topology` 路由已随迁移删除且未纳入跨应用前缀 → 点击即 404;与"服务树 3 条死链"同属一类,建议一并决定"删除 or 改指 `/cmdb/...`"。
 
 **过程教训(已执行)**:本轮用 PowerShell 字符串往返批量改 Go 源码,导致 `errs.go`/`dao.go` 的 TAB 被写成 `E`/`P`、BOM 丢失 → 已 `git checkout` 恢复并改用精确编辑工具重做;**源码编辑一律用编辑工具**。
+
+---
+
+## cam-iteration-20261029-striped-hover（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#88`，merge commit `8ccbb87`，2026-10-29 20:12 +08）
+**代码 PR**：`e-cam-web#88`（commit `02dab7b`；CI 四项全绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮 QA 附带发现（并在本轮复现）：1440 下悬停斑马纹行，单元格背景恒为 `rgba(255,255,255,0.03)`；普通行为 `rgba(0,0,0,0) → rgba(255,255,255,0.04)`。
+- 根因（审查定位，比初版判断更精确）：Element Plus 在有固定列时 `isComplex = true`，根节点**不再挂 `el-table--enable-row-hover`** → EP 的 `:hover` 规则整条失效，只剩 `.hover-row` 兜底规则（特异性 0,3,2）**弱于**斑马纹规则（0,4,2），于是斑马纹行 hover 被吃掉。也就是说该缺陷只在「有固定列的斑马纹表」上出现。
+
+### 需求卡
+
+- 目标用户：使用带固定列且开启斑马纹的表格（审计、资产等）的运维。
+- 目标：斑马纹行 hover 有可见反馈；普通行行为不变；不影响非斑马纹表；固定列仍不透明。
+- 规则：补 `.el-table.el-table--striped … tr.el-table__row--striped:hover > td.el-table__cell`（特异性 0,6,2，不使用 `!important`）。
+- 非目标：提升 hover 对比度（观察项）、令牌统一（minor）。
+- API 契约：无。
+
+### 变更内容
+
+- `src/assets/styles/element-theme.scss`：新增斑马纹 hover 规则；调整固定列 hover / 斑马纹 tint 的先后顺序（同为 `!important` 时后者胜出，原顺序使斑马纹 tint 抢赢）。
+
+### 验收（独立 QA **6/6 PASS**，HEAD `02dab7b`）
+
+| 项 | 结果 |
+|---|---|
+| 1440 `/cam/iam/audit` 普通行 / 斑马纹行 | ✅ 0→0.04 / **0.03→0.04**，8 个非固定列逐格穷举，终点集合均为 `{0.04}`，移开全部回落 |
+| 像素证据 | ✅ 斑马纹行 41,717/47,160 像素变化（maxΔ=2）；普通行 41,968（maxΔ=9）；基线亮度差 RGB+7，hover 后差 0 |
+| 1024 固定列（斑马纹行） | ✅ tint 0.03→0.04，`background-color` 三态恒为 rgb(15,16,17) **alpha=1**，无内容透出 |
+| 其它斑马纹表 `/cam/assets` | ✅ r1/r3/r5 均 0.03→0.04，20 次采样无闪烁、回落正常 |
+| 非斑马纹表（`/cam/audit/logs`、`/cam/certs/ledger`） | ✅ 新选择器命中 0 个元素，行为不变 |
+| console / HTTP | ✅ 0 / 0 / 0 / 0 |
+
+**决定性因果证据**：CDP 级联溯源显示斑马纹行 hover 的生效规则正是本次新增那条；**消融实验**（页面内临时删除该规则）后回到 0.03（= 修复前无反馈），恢复后 0.04，普通行不受影响。
+
+### 过程中的两次踩坑（如实记录）
+
+1. **Sass 嵌套写法错误**：首版写成 `.el-table--striped …` 放在 `.el-table {}` 内，编译为 `.el-table .el-table--striped …`（后代选择器，同元素不匹配）→ 实测仍无反馈。改为 `&.el-table--striped`（编译为 `.el-table.el-table--striped`）后生效。
+2. **tint 顺序**：两条 tint 同为 `!important`，先写的会被后写的覆盖；原顺序让斑马纹 tint 抢赢，hover 时固定列仍是 0.03。调整顺序后恢复正常。
+
+### 已知遗留
+
+- **感知强度**：终点都对齐 0.04，但斑马纹行只抬升 +2 RGB（普通行 +9），暗色底上反馈偏弱；若要观感一致需上调 hover token 而非仅对齐终点。
+- **令牌不统一（minor）**：新规则用应用令牌 `--table-row-hover`，而非 EP 的 `--el-table-row-hover-bg-color`（后者被 7 个组件覆盖）；当前 9 个「stripe+fixed」表都未覆盖该令牌，无实际影响，但将来会分叉。
+- **无自动化视觉守护**：仓库无 stylelint，eslint 不解析 scss，CI 对本类改动几乎无检出能力。
+- **任务描述里两处样本判断错误**（我给的）：`/cam/alert/channels` 实际**是**斑马纹表（且仅 1 行数据），`/cam/certs/*` 未开 stripe；QA 改用 `/cam/audit/logs` 与 `/cam/certs/ledger` 作真正对照。
+
+### 测试
+
+- 全量：**85 files / 1172 tests** passed。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立代码审查：**Approve**，无 blocker/major；用仓库 sass 实编验证选择器与特异性（0,6,2 压过 EP 各条），并指出更精确的根因（`isComplex` 导致 `enable-row-hover` 缺失），建议不加 `!important`——已采纳（未加）。
+- 独立浏览器 QA：**6/6 PASS**，含 CDP 级联溯源与消融实验；并纠正我给的样本错误。
+- 总控：复现 → 两轮修正（嵌套写法、tint 顺序）→ 实测 → 等 QA 结论后才合并（吸取上一轮「QA 基线漂移」的教训）。
+
+### 版本组合
+
+- 前端：`02dab7b`（合并为 `8ccbb87`）。
+- 后端：`main@89e7339`（无接口改动）。
+
+### 后续建议
+
+1. **P3 hover 对比度**：如需两种行观感一致，上调 `--table-row-hover`（并同步固定列 tint），而非只对齐终点。
+2. **P3 令牌统一**：三处（本行、普通 hover 行、固定列 tint）一起改用 EP 令牌，避免将来分叉。
+3. **P2 导出/报告下载**：blob 响应被按 JSON 消费（`response.data.code`）导致 `TypeError`，需单独修。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查。
+5. **方法教训**：①Sass 里修饰类必须用 `&.` 复合，否则静默变成后代选择器；②同 `!important` 的规则靠书写顺序决定胜负，调整顺序要有注释说明；③验收清单里的「非斑马纹样本」必须先用 DOM 核实（本轮两个样本都judge错了）。
