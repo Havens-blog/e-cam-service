@@ -3538,3 +3538,80 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 - **live(A 类,真实后端)**:成功路径回归(证书台账 20 行 / api/v1/certs 200;租户选择器 49 项 / api/iam 200);**失败路径实测**(页面内动态导入真实客户端只读 GET):cert 400 → `Error` message=`invalid document id`;eiam 403 → `Error` message=`路由未注册权限元数据，访问被拒绝`;0 页面错误
 
 **至此 Option A 覆盖**:主实例(全部 CAM 模块)+ cert + eiam。仅 `handleApiError`(拦截器内)与取消/网络语义保持不变。
+
+---
+
+## cam-iteration-20261029-redirect-target（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#55`，merge commit `80a895a`，2026-10-29 10:18 +08）
+**代码 PR**：`e-cam-web#55`（commits `0b9d11c` → `f3bad34` → `09e4658` → `5099035`；CI 四项全绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮 QA 实测：在 `/cam/certs/dashboard` 点「任务管理」→ 登录页 `redirect` 记的是 `/certs/dashboard`（来源页），登录后回到错误页面。
+- 根因有两层：
+  1. `redirectToLogin()` 读 `window.location.href`，SPA 内 `router.push` 尚未提交时它仍是当前页；
+  2. 审查发现更隐蔽的一层：`fetchUserInfo` 触发的 401 拦截器会**先于**守卫回调无参调用 `redirectToLogin()` 并占用 `isRedirectingToLogin` 闩锁，导致守卫随后带目标页的调用被静默丢弃。
+
+### 需求卡
+
+- 目标用户：会话失效时被踢回登录页的所有用户。
+- 目标：登录页 `redirect` 指向**目标页**；无 token、token 失效、SPA 内点击三种路径一致；保留 query/hash。
+- 规则：`appUrlForPath(fullPath)` 补 `/cam` base 生成绝对地址；`setPendingRedirectTarget()` 在守卫 `await fetchUserInfo()` **之前**登记；`redirectToLogin` 优先级 = 显式参数 > pending > 当前 URL，用后清空；`afterEach` 导航落地后清空。
+- 非目标：请求层 401 保持「当前 URL」回跳（正确语义）；跨源登录回跳（console 白名单约束）。
+- API 契约：无。
+
+### 变更内容
+
+- `src/api/request/index.ts`：`appUrlForPath`、`pendingRedirectTarget`/`setPendingRedirectTarget`、`redirectToLogin(redirectTo?)` 优先级链与用后清空、JSDoc 归位。
+- `src/router/index.ts`：守卫在 `hasToken` 判定后立即登记目标页；两条失败分支传目标页；`afterEach` 清空 pending。
+- 测试：`url.test.ts`（4）、`pending-redirect.test.ts`（4）、`guard-pending.test.ts`（3，含 `invocationCallOrder` 断言登记早于 `await`）。
+
+### 验收（独立 QA **11 项 PASS / 0 FAIL**；总控变异验证）
+
+| # | 场景 | 实测 redirect |
+|---|---|---|
+| 1 | 未登录直达 `/cam/audit/logs` | `…/cam/audit/logs` |
+| 2 | `/cam/audit/logs?x=1#top` | query/hash 完整保留 |
+| 3 | 清 cookie 后点「任务管理」 | `…/cam/tasks`（非 dashboard） |
+| 4 | 清 cookie 后点「证书台账」 | `…/cam/certs` |
+| 5 | 请求层 401（点刷新，4 个并发 401） | `…/cam/tasks`（当前页，符合预期） |
+| 6 | 绝对 URL / origin / 端口 / 无 `/cam/cam` | 7 样本全对 |
+| 7 | console error | 原始 20 条全为构造的 401，非预期 0 |
+| N1 | **无效 cookie** 直达 `/cam/audit/logs` | `…/cam/audit/logs`（profile 401 后仍正确） |
+| N2 | **无效 cookie** + SPA 点「任务管理」 | `…/cam/tasks` |
+| N3 | **无效 cookie** 直达根 `/cam/` | `…/cam/dashboard` —— 401 时地址栏仍是 `/cam/`，**只有 pending 机制能解释**该值 |
+
+变异验证（两轮）：守卫两处改回 `redirectToLogin()` → `guard-pending.test.ts` **2 例失败**；恢复后全绿。审查者复跑同一变异，结论一致。
+
+终审另指出一条「名不副实」用例：`pending-redirect.test.ts` 第 4 例断言「用后清空」，但 `vi.resetModules()` 会连 pending 与 latch 一起重置、同实例又被 latch 早退，**删掉生产代码里的清空语句该例仍绿**。已改名为「新模块实例不复用上一实例的 pending」，并在注释里写明原因。
+
+### 过程中的一次严重失误（如实记录）
+
+第一版提交（`0b9d11c`）声称"补 3 例单测"，但补丁脚本的替换锚点因中文编码未匹配，**用例根本没落盘**，而脚本无条件打印了 `ok`；审查者核对 `git show` 后指出"声称的用例不存在"。已在 `09e4658` 重做（独立测试文件，锚点无关），并补变异验证。教训：**测试落盘后必须用 `grep it(` 或 vitest 计数核对，不能相信脚本自报成功**。
+
+### 已知遗留
+
+- **跨源登录回跳**：5216→8888 跨端口时，haven-console `Login.vue` 的 `sanitizeRedirect` 要求同源，被判非法后回落 `/workbench`；生产同源部署（`:8888/cam`）不受影响（本轮实测同源路径可正确回跳）。
+- **`isRedirectingToLogin` 闩锁不重置**：首次跳转被取消后后续调用永久 no-op（既有缺陷）。
+- **`appUrlForPath` 分层**：纯 URL 函数放在 axios 模块，测试需拉起 element-plus/happy-dom；建议移到 `src/utils/url.ts`。
+- **origin 边界**：opaque origin 下 `window.location.origin === 'null'`；建议 `new URL(base + path, origin)` 归一化。
+- **`:8888/cam/` 反代指向**：当前反代到 `:5173`（`e-cam-web` main `3b802db`，无本 commit 代码），故 8888 路径不能作为本 commit 证据。
+
+### 测试
+
+- 全量：**78 files / 1113 tests** passed（新增 11 例：url 4 + guard-pending 3 + pending-redirect 4）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立审查（三轮）：第一轮 Approve 但指出 **M1**（401 抢答使 fetchUserInfo 分支修复失效）与 M2/M3（测试无效、零覆盖）；第二轮复核发现我声称的用例**根本没落盘**；第三轮确认用例存在且变异有效，并指出一条名不副实用例。三轮意见全部采纳并修复。
+- 独立浏览器 QA：**11/11 PASS**，并用 N3「无效 cookie 直达根路径」实证 pending 机制真实生效；同时纠正"工作区有未提交增量"的基线问题（该增量为我在并行写入，现已提交）。
+- 总控：实现 + 三轮修复 + 变异验证 + 复验。
+
+### 版本组合
+
+- 前端：`5099035`（合并为 `80a895a`）。
+- 后端：`main@367b086`（无接口改动）。
