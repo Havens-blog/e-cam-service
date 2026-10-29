@@ -4996,3 +4996,84 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 **本轮全形态审计结论(最新 main,全部 0 命中)**:字符串 push/replace/to= 0;对象式 {path}/:to="{path}"/href/window.open/location.href 0;路由 redirect 目标 0;按名跳转 0。
 
 **口径沉淀**:静态导航护栏应逐形态覆盖(字符串→对象→原生→路由表自身职责),且**每个形态都要带反例自检**,否则通配路由/正则失效都会造成"全绿但无效"。
+
+---
+
+## cam-iteration-20261029-blob-sniff-v3（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#100`，merge commit `242d092`，2026-10-29 23:56 +08）
+**代码 PR**：`e-cam-web#100`（commit `25bf263`；CI 四项全绿；审查无 blocker）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮（#98）QA 发现 **R2**：`>512B 前导空白 + 信封` 会绕过头部窗口被放行 —— 实测 `application/json` + 600 空格 + `{code:500,msg}` → 落盘 622 字节坏文件并提示「导出成功」；300 空格仍被拦。
+- 同时带上审查 minor-4：`code` 与 content-type 解耦后，合法导出对象（如 `{"code":"CN","rows":[...]}`）会被误判为信封。
+
+### 需求卡
+
+- 目标用户：所有导出/下载入口的运维。
+- 目标：消除空白绕过；`code` 必须是数字才算信封；小体积文件整份判断、大文件保持头部快路径。
+- 非目标：`>64KB + JSON` 分支的整份 parse（既有，见遗留）、第二下载入口、重复提示。
+- API 契约：不改后端。
+
+### 变更内容
+
+- `src/api/request/index.ts`：
+  1. **≤64KB 整份 `text()+parse`**（信封必然很小），覆盖任意前导空白；
+  2. **>64KB 只看 512B 头部**：非 `{` 开头放行；`{` 开头且非 JSON 类型放行；
+  3. **`code` 必须是数字或纯数字字符串**（`/^\d+$/`，先 trim），像 `{"code":"CN",...}` 的合法导出不再被误判；
+  4. `HEAD_BYTES` / `ENVELOPE_MAX_BYTES` 提为模块级常量。
+- `binary.test.ts`：14 → **17 例**（600 空格信封、`code` 非数字放行、>64KB 对象文件按头部放行）。
+
+### 验收（独立 QA **30/30 PASS，0 FAIL，0 OBSERVE**，HEAD `25bf263`）
+
+| 场景 | 结果 |
+|---|---|
+| 600 空格 + 信封（622B） | ✅ **0 下载**、单条提示、按钮可重试（上一轮落盘 622B） |
+| 300 空格 + 信封（322B） | ✅ 0 下载 |
+| `{"code":"CN","rows":[...]}`（31B） | ✅ 下载 31B，sha256 一致（上一轮被误判） |
+| `{"code":0,"data":[{"id":1}]}` | ✅ 下载 10B |
+| `{"code":0,"data":"a,b"}` | ✅ 0 下载 + 「接口未返回文件」 |
+| `text/plain` + 信封 | ✅ 0 下载 |
+| 真实导出 | ✅ 带范围 CSV 161B；无范围 JSON 3,984,950B / 7,340 条 |
+| ≤64KB 合法 CSV（52,009B） | ✅ 下载字节一致（验证小文件整份读不影响） |
+| console / pageerror / HTTP≥400 | ✅ 0 / 0 / 0（**Unhandled Rejection 本轮 0 次**） |
+
+**Unhandled Promise Rejection 归因**：上一轮出现 1 条，本轮 0 次。QA 交叉证据表明它来自 `src/plugins/error-handler.ts` 的全局监听，与 `504 Outdated Optimize Dep` + 动态导入失败成组出现，属 **vite dev-server 冷启动/依赖重优化噪声**，与本次改动无关（`25bf263` diff 只动 `request/index.ts` + 测试）。
+
+### 已知遗留（审查逐条给出，未在本 PR 修）
+
+1. **major：`>64KB + JSON 类型 + `{` 开头` 仍整份 parse**（4.7MB ≈51ms、5.1MB ≈64ms，50MB 会冻结 0.5–1s）。属既有行为，但与 `ENVELOPE_MAX_BYTES` 注释「超过这个体积的信封不合常理」自相矛盾，一行可修（该分支直接 `return`，或加 `PARSE_MAX_BYTES` 上限）。
+2. **minor：≤64KB 快路径丢失**（实测 60KB CSV 解码+parse 失败 ≈0.05ms，量级可忽略）；CSV 小文件是靠 `JSON.parse` 抛异常返回，PR 描述「第一段就返回」对 ≤64KB 不成立。
+3. **minor：数字 code 的数据对象仍误判**（如 `{"code":110000,"name":"北京市"}`）—— 非回归（基线对任何带 code 的对象都抛），可进一步要求「非 0/200 且存在 msg/message」才判错。
+4. **minor：判定不对称**：`"+200"`、`"2e2"`、`"-1"` 被放行（当作文件），`400`/`"400"` 被拒。
+5. **minor：「不解析全文」无 spy 证据**：大文件用例只断言 `resolves`，用例名比断言强；happy-dom 的 `Blob.prototype.text` 可 spy 验证。
+6. **边界**：`>64KB 且 >512B 前导空白` 的信封仍会漏（现实中不存在该体积的信封）。
+7. **R3 未修**：成功路径仍弹两次「导出成功」（`ExportDialog` + 父页面）。
+
+### 测试
+
+- 全量：**89 files / 1206 tests** passed（`binary.test.ts` 17 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立代码审查：无 blocker；用忠实复刻函数体 + 分支打点逐档确认执行路径，实测 `/^\d+$/` 判定矩阵、大文件 parse 耗时，指出 major（大 JSON 整份 parse 与注释矛盾）与 4 minor。
+- 独立浏览器 QA：**30/30 PASS**，含 sha256 校验、52KB CSV 边界、下载目录仅 5 个文件（4 个应拦用例零落盘），并把 Unhandled Rejection 归因为 dev-server 噪声。
+- 总控：实现 → 自测 → 冻结 → 等审查/QA → 合并。
+
+### 版本组合
+
+- 前端：`25bf263`（合并为 `242d092`）。
+- 后端：`main@caff744`（无接口改动）。
+
+### 后续建议
+
+1. **P2 大文件 parse 上限**：`>64KB` 已判 JSON 时直接放行或加 `PARSE_MAX_BYTES = 256KB`，消除 50MB 导出冻结风险。
+2. **P3 判定收敛**：非 0/200 且存在 `msg`/`message` 才判信封，避免 `{"code":110000}` 类数据对象误判；对 `"+200"`、`"2e2"` 统一处理。
+3. **P3 测试证据**：用 `vi.spyOn(Blob.prototype, 'text')` 断言大文件只读头部。
+4. **P3 提示去重**：成功路径去掉一次 `ElMessage.success`。
+5. **P1 后端时间过滤**：`dao/audit.go` 改 `ctime`（秒/毫秒归一），否则带范围筛选/导出恒空。
+6. **方法教训**：①「头部窗口 + 空白」这类绕过，根因是把「前缀检查」当成「整体判定」，正确做法是按体积选择判定策略（小文件整份、大文件只在能确认不是信封时放行）；②审查给出的「执行路径表」比逐条意见更有价值——它直接暴露了「注释宣称的快路径其实不存在」。
