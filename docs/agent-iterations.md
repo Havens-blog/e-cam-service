@@ -5368,3 +5368,90 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 ⇒ **口径沉淀**:做反例自检时,替换动作本身也要验证是否真的生效(先确认 diff 非空),否则会得到"假绿的自检"。
 
 **其它跳过项说明**:IAM 权限组列表 `data:[] total:0`(测试库确无数据)⇒ 审计标"∅ 跳过,不计失败",不把"无数据"当缺陷。
+
+---
+
+## cam-iteration-20261030-show-api-error（跨日轮，2026-10-30）
+
+**状态**：**已合并**（`e-cam-web#110`，merge commit `224eae6`，2026-10-30 04:05 +08）
+**代码 PR**：`e-cam-web#110`（commits `1e70bce` → `468da92`；CI 四项全绿；审查无 blocker，3 major 已在本 PR 内修复）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮（#107）合并后审查遗留 3 个 major：
+  1. 「响应无 code」分支弹了提示却**漏打标记**；
+  2. 401 分支 `redirectToLogin()` 内部会弹 warning，但未打标记；
+  3. 全仓 ~109 处 `catch` 仍是 `ElMessage.error(e.message || ...)`，**同域的 `/cam/audit/logs` 导出**是现成复现点。
+
+### 需求卡
+
+- 目标用户：所有会遇到请求失败的运维。
+- 目标：请求层已提示过的错误不再重复弹；提供一个统一入口，避免 109 处各自手写条件。
+- 规则：新增 `showApiError(error, fallback)`；请求层在每个弹过提示的分支打 `__apiErrorNotified`；`redirectToLogin()` 返回「本次是否真的弹过」。
+- 非目标：109 处全量迁移（审查建议分批 + 白名单）、fallback 与 `__apiError` 语义细化、README 文档。
+- API 契约：无。
+
+### 变更内容
+
+- `src/api/request/index.ts`：新增 `showApiError`；补 401 与「无 code」分支标记；`redirectToLogin()` 改为返回 `boolean`，仅在**真正弹过** warning 时打标。
+- `src/api/request/cert.ts` / `eiam.ts`：两个独立 axios 实例的 401 分支同样处理。
+- `src/views/audit/logs/index.vue`（加载 + 导出）、`ExportGroupsDialog.vue`（成员、全量、外层三处）接入。
+- 新增 `show-api-error.test.ts`（4 例）。
+
+### 验收（独立 QA **9/9 PASS**，最终 HEAD `468da92`）
+
+| 用例 | 插入次数 | 峰值 | 文案 | 结论 |
+|---|---|---|---|---|
+| `/cam/audit/logs` 导出 403 | 1 | 1 | 「权限不足，请联系管理员」，无英文 | ✅ |
+| `/cam/audit/logs` 列表 500 | 1 | 1 | 「服务器内部错误」 | ✅ |
+| IAM 导出对话框 403 | 1 | 1 | 「权限不足」 | ✅ |
+| IAM 导出成功（真实后端） | 1 | 1 | 「导出成功」+ 实际下载 | ✅ |
+| 401 会话失效 | 1（observer=1，pagehide 快照=1） | 1 | 「登录状态已失效」+ 跳转登录页 | ✅ |
+| **A：用户组成员接口 403** | 2（**1 error** + 1 success） | 2 | 「权限不足」；**本页成员失败文案 0 条** | ✅ |
+| **B：用户组全量接口 403** | 1 | 1 | 「权限不足」；「全量失败」0 条 | ✅ |
+| console / pageerror / HTTP≥400 | — | — | 非预期 0 | ✅ |
+| 仪器自校验（连点两次失败） | 2 | 2 | — | ✅ |
+
+- **A 的说明**：本环境真实用户组为 0，QA 用合成组抵达 `fetchGroupMembers`（成员 403 为真实拦截）；错误级 toast 恰好 1 条，改动前应为 2 条 error；总插入 2 条是因为「成员失败不阻断导出」的既有设计随后弹了 success。
+
+### 过程中的关键修正（如实记录）
+
+- 审查 **M1 指出我最初的判断与代码不符**：`ExportGroupsDialog` 真正会重复弹的是**两处内部 catch**（获取成员、获取全量），而我迁移的外层 catch **实际不可达**——即 commit message 里「实测 IAM 对话框 403 → 1 条中文」并不能证明该文件被修好。已按审查建议给两处内部 catch 加守卫，并请 QA 用新用例 A/B 专门验证。
+- **M2**：`cert.ts` / `eiam.ts` 两个独立 axios 实例的 401 未打标，`TenantSelector` 切租户是可复现双弹点 —— 已补。
+- **M3**：`redirectToLogin()` 早退时无法判断「本次是否弹过」，若跳转被打断（bfcache Back）会永久静默 —— 已改为返回 boolean，只在真正弹过时打标。
+
+### 审查提出的其余问题（未修，已记录）
+
+1. **fallback 优先级**：`error.message` 非空即用，中文 fallback 实际不生效；主实例 HTTP 错误都经 `handleApiError`（中文）并打标，因此 `'加载审计日志失败'` 等 fallback 目前是死代码。建议给归一产物打 `__apiError` 标记，只对请求层产物信任 message。
+2. `catch (e: any)` 未去掉（3 处），放弃 `unknown` 收窄收益。
+3. 跨 realm `instanceof Error` 会丢文案（理论风险），且缺「非 Error 但有 message」用例。
+4. element-plus 整模块 mock 缺 `ElNotification`（当前安全但脆弱）。
+5. **缺端到端契约测试**：去重契约是「一个 403 → 恰好 1 条 toast」，现只单测 helper。
+6. `src/api/README.md` 仍写旧约定，未同步 `showApiError`。
+7. 109 处未迁移，审查**不建议无脑 codemod**（很多 catch 带本地语义），建议白名单 + 每批 5–10 页并附改前/改后 toast 数。
+
+### 测试
+
+- 全量：**91 files / 1218 tests** passed。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立代码审查：无 blocker；指出 M1（迁移点不可达 + 真正重复点在内部 catch）、M2（cert/eiam 401）、M3（redirectToLogin 早退语义）—— 三项均在本 PR 内修复。
+- 独立浏览器 QA：**9/9 PASS**，含新增的 A/B 用例（专门验证 M1）、401 用 `pagehide` 快照作为第二证据链、以及仪器自校验（连点两次测到 2，证明峰值检测有效）。
+- 总控：实现 → 按审查修复 → 通知 QA 换基线 → 合并。
+
+### 版本组合
+
+- 前端：`468da92`（合并为 `224eae6`）。
+- 后端：`main@68ce01f`（无接口改动）。
+
+### 后续建议
+
+1. **P2 分批迁移 109 处 catch**：先出白名单（优先同域导出/列表加载），每批 5–10 页并附改前/改后 toast 数实测。
+2. **P2 补端到端契约测试**：mock adapter 覆盖 403 / 无 code / 业务错误各 1 次 `ElMessage.error`，401 断言「只 warning 不 error」。
+3. **P3 fallback 语义**：给归一产物打 `__apiError` 标记，中文 fallback 才会真正生效。
+4. **P2 后端导出空结果**：QA 复证 `/cam/iam/audit/logs/export` 真实后端连续多次（含 2000–2035 宽区间）只返回 161B 仅表头，而同页列表 7,354 条 —— 与 `create_time` 零值同源，仍是 P1 后端时间过滤问题。
+5. **方法教训**：①「我改的那个 catch 是不是真正执行路径」必须用调用链核实，否则会出现「改了但没修」——本轮 M1 正是如此，靠审查读代码 + QA 专门构造用例才暴露；②给 QA 换基线时要**明确新增用例**，否则复验仍覆盖不到新修复点。
