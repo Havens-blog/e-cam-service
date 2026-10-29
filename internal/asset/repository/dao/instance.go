@@ -1,4 +1,4 @@
-﻿// Package dao 资产数据访问层
+// Package dao 资产数据访问层
 package dao
 
 import (
@@ -296,26 +296,44 @@ func (d *instanceDAO) Search(ctx context.Context, filter SearchFilter) ([]Instan
 	return instances, total, err
 }
 
+// typeModelUIDOr 返回某资产类型在实例库中的 model_uid 候选集合（$or 子句）。
+//
+// 历史上同一类型存在三种 model_uid 写法，缺一都会让整类资产"消失"：
+//  1. 裸类型 id（如 `ecs`）——阿里云 ECS 现存 711 台即此形态（prov=aliyun/acct=1）；
+//  2. 旧 `cloud_` 前缀名（如 `cloud_vm`、`cloud_rds`）；
+//  3. `{provider}_{type}`（如 `aliyun_ecs`、`volcano_ecs`）——现行同步写入方式。
+//
+// 缺陷（2026-10-29 实测）：此前只匹配 2)、3)，漏了 1)，导致 `model_uid="ecs"` 的
+// 阿里云 ECS 在云主机页列表（total 0）与详情（404 instance not found）全部不可见，
+// 而数据一直就在库里。cloudAlias 为该类型的旧 `cloud_` 名（ecs 的历史名为 cloud_vm）。
+func typeModelUIDOr(bareType, cloudAlias string) []bson.M {
+	return []bson.M{
+		{"model_uid": bareType},
+		{"model_uid": cloudAlias},
+		{"model_uid": bson.M{"$regex": "_" + bareType + "$"}},
+	}
+}
+
 func (d *instanceDAO) buildQuery(filter InstanceFilter) bson.M {
 	query := bson.M{}
 	if filter.ModelUID != "" {
 		switch filter.ModelUID {
 		case "cloud_vm", "ecs":
-			query["$or"] = []bson.M{{"model_uid": "cloud_vm"}, {"model_uid": bson.M{"$regex": "_ecs$"}}}
+			query["$or"] = typeModelUIDOr("ecs", "cloud_vm")
 		case "cloud_rds", "rds":
-			query["$or"] = []bson.M{{"model_uid": "cloud_rds"}, {"model_uid": bson.M{"$regex": "_rds$"}}}
+			query["$or"] = typeModelUIDOr("rds", "cloud_rds")
 		case "cloud_redis", "redis":
-			query["$or"] = []bson.M{{"model_uid": "cloud_redis"}, {"model_uid": bson.M{"$regex": "_redis$"}}}
+			query["$or"] = typeModelUIDOr("redis", "cloud_redis")
 		case "cloud_mongodb", "mongodb":
-			query["$or"] = []bson.M{{"model_uid": "cloud_mongodb"}, {"model_uid": bson.M{"$regex": "_mongodb$"}}}
+			query["$or"] = typeModelUIDOr("mongodb", "cloud_mongodb")
 		case "cloud_vpc", "vpc":
-			query["$or"] = []bson.M{{"model_uid": "cloud_vpc"}, {"model_uid": bson.M{"$regex": "_vpc$"}}}
+			query["$or"] = typeModelUIDOr("vpc", "cloud_vpc")
 		case "cloud_eip", "eip":
-			query["$or"] = []bson.M{{"model_uid": "cloud_eip"}, {"model_uid": bson.M{"$regex": "_eip$"}}}
+			query["$or"] = typeModelUIDOr("eip", "cloud_eip")
 		case "cloud_nas", "nas":
-			query["$or"] = []bson.M{{"model_uid": "cloud_nas"}, {"model_uid": bson.M{"$regex": "_nas$"}}}
+			query["$or"] = typeModelUIDOr("nas", "cloud_nas")
 		case "cloud_oss", "oss":
-			query["$or"] = []bson.M{{"model_uid": "cloud_oss"}, {"model_uid": bson.M{"$regex": "_oss$"}}}
+			query["$or"] = typeModelUIDOr("oss", "cloud_oss")
 		default:
 			query["model_uid"] = filter.ModelUID
 		}
@@ -364,21 +382,21 @@ func (d *instanceDAO) buildSearchQuery(filter SearchFilter) bson.M {
 		for _, assetType := range filter.AssetTypes {
 			switch assetType {
 			case "ecs", "cloud_vm":
-				typePatterns = append(typePatterns, bson.M{"model_uid": "cloud_vm"}, bson.M{"model_uid": bson.M{"$regex": "_ecs$"}})
+				typePatterns = append(typePatterns, typeModelUIDOr("ecs", "cloud_vm")...)
 			case "rds", "cloud_rds":
-				typePatterns = append(typePatterns, bson.M{"model_uid": "cloud_rds"}, bson.M{"model_uid": bson.M{"$regex": "_rds$"}})
+				typePatterns = append(typePatterns, typeModelUIDOr("rds", "cloud_rds")...)
 			case "redis", "cloud_redis":
-				typePatterns = append(typePatterns, bson.M{"model_uid": "cloud_redis"}, bson.M{"model_uid": bson.M{"$regex": "_redis$"}})
+				typePatterns = append(typePatterns, typeModelUIDOr("redis", "cloud_redis")...)
 			case "mongodb", "cloud_mongodb":
-				typePatterns = append(typePatterns, bson.M{"model_uid": "cloud_mongodb"}, bson.M{"model_uid": bson.M{"$regex": "_mongodb$"}})
+				typePatterns = append(typePatterns, typeModelUIDOr("mongodb", "cloud_mongodb")...)
 			case "vpc", "cloud_vpc":
-				typePatterns = append(typePatterns, bson.M{"model_uid": "cloud_vpc"}, bson.M{"model_uid": bson.M{"$regex": "_vpc$"}})
+				typePatterns = append(typePatterns, typeModelUIDOr("vpc", "cloud_vpc")...)
 			case "eip", "cloud_eip":
-				typePatterns = append(typePatterns, bson.M{"model_uid": "cloud_eip"}, bson.M{"model_uid": bson.M{"$regex": "_eip$"}})
+				typePatterns = append(typePatterns, typeModelUIDOr("eip", "cloud_eip")...)
 			case "nas", "cloud_nas":
-				typePatterns = append(typePatterns, bson.M{"model_uid": "cloud_nas"}, bson.M{"model_uid": bson.M{"$regex": "_nas$"}})
+				typePatterns = append(typePatterns, typeModelUIDOr("nas", "cloud_nas")...)
 			case "oss", "cloud_oss":
-				typePatterns = append(typePatterns, bson.M{"model_uid": "cloud_oss"}, bson.M{"model_uid": bson.M{"$regex": "_oss$"}})
+				typePatterns = append(typePatterns, typeModelUIDOr("oss", "cloud_oss")...)
 			}
 		}
 		if len(typePatterns) > 0 {
