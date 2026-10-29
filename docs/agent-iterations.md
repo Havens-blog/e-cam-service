@@ -5474,3 +5474,80 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 **建议(证据支撑)**:前端当前**最大只请求 200**(limit/pageSize),故上限取 **500~1000 对现有客户端零影响**;决策后统一实施,并把审计中该项由"警告"改为"失败"判据。
 
 **脚本扩展(e-cam-web#115,已合并)**:新增 `--only=invalid` 与 `--only=limits`;README 记入"已知未决项"。全量审计 6 类:敏感字段/筛选/分页/详情/非法输入 全通过,另 3 项上限保护警告(不阻塞,exit 0)。
+
+---
+
+## cam-iteration-20261030-dedupe-contract-test（跨日轮，2026-10-30）
+
+**状态**：**已合并**（`e-cam-web#114`，merge commit `a8867b9`，2026-10-30 05:05 +08）
+**代码 PR**：`e-cam-web#114`（commits `833aecf` → `675f74e`；CI 四项全绿；审查无 blocker）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮（#110）审查指出：错误提示去重的契约**只单测了 helper** —— 把拦截器里的 `markErrorNotified` 删掉，4 例单测仍全绿（假绿）。
+- 本轮审查进一步实测：即使补了 5 例，**fallback（5xx）分支的 mark 删掉仍全绿**，因为 `handleApiError` 走的是函数式 `ElMessage({...})` 而不是 `ElMessage.error`，原 mock 观测不到 → 「删掉 mark 仍全绿」只修了 4/5。
+
+### 需求卡
+
+- 目标用户：维护者（防止去重逻辑被静默回退）。
+- 目标：装配级测试覆盖 403 / 无 code / 业务错误 / **5xx 兜底** / 401 / 成功；每条失败用例同时钉住「去重下游」。
+- 规则：用自定义 axios adapter 走真实 interceptor 链；mock 的 `ElMessage` 必须**可调用**并带 error/warning/success/closeAll；401 用仓库既有 `stubLocation`。
+- 非目标：cancel（`ERR_CANCELED`）用例（既有缺陷，见遗留）、109 处 catch 迁移。
+- API 契约：无（只加测试）。
+
+### 变更内容
+
+- 新增 `src/api/request/error-contract.test.ts`（6 例）。
+
+### 验收
+
+| 用例 | 断言 |
+|---|---|
+| 403 | 恰好 1 条「权限不足，请联系管理员」+ 带标记 + `showApiError` 后总数不变 |
+| 响应无 code | 恰好 1 条「接口响应格式错误」+ 带标记 |
+| 业务错误 `{code:500,msg}` | 恰好 1 条后端 msg + 带标记 |
+| **5xx（`handleApiError` 兜底）** | 函数式 `ElMessage` 恰好 1 次、`ElMessage.error` 0 次、带标记、`showApiError` 后总数不变 |
+| 401 | 只 warning、跳转含 `/console/login`、总提示数 = 1、带标记 |
+| 成功 | 不弹提示；并记录「无 once 拦截器时 resolve 得到响应体（含信封）」这一**既有类型不符现状** |
+
+**变异验证（本轮实测）**：
+- 403 分支去 mark → 403 用例失败；
+- **fallback 分支去 mark → 5xx 用例失败**（审查指出的存活变异体已消灭）；
+- 加一条 401 额外提示 → 401 用例失败（`totalToasts() === 1`）。
+
+### ⚠️ 环境事件（重要，需转告团队）
+
+本轮期间 **共享 `node_modules` 被外部进程改动**（审查在 04:37 观测到，我从 05:00 起复现）：
+- `@babel/parser@7.28.5` 丢失 → 全仓测试报 `Cannot find module '@babel/parser'`（含既有测试与 `vue-tsc -b`）；
+- `@antfu/utils@0.7.10` 丢失 → `vite build` 报 `Cannot find package '@antfu/utils'`（来自 unplugin-auto-import）。
+
+**处置**：未跑 `pnpm install`（其离线缓存与 pnpm 版本不兼容，且会大范围改动共享目录），改为从 `D:\Haven\haven-console\node_modules\.pnpm` 取**同版本**包定点复原到 `e-cam-web/node_modules/.pnpm` 并补建顶层 junction；未修改任何源码、未触碰他人未提交改动。修复后 1224 测试 + tsc/lint/build 全绿。
+
+**根因待确认**：磁盘上 `D:\.pnpm-store\v10` 有对应 index 记录，怀疑是并发的 pnpm 操作被中断。建议由环境负责人跑一次 `pnpm install --frozen-lockfile` 让 store 与链接完全一致。
+
+### 测试
+
+- 全量：**92 files / 1224 tests** passed（新增 6 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立代码审查：无 blocker；**用 7 个变异体**逐一验证（M1/M3/M4/M5/M6 被测试抓住，**M2/M7 存活**），据此指出「fallback 分支测不到」「加第二条提示也测不到」两个真问题，并给出根因（`handleApiError` 走函数式 `ElMessage`）；同时报告了共享 node_modules 被破坏。
+- 总控：按意见重写测试（可调用 mock、`totalToasts`、`stubLocation`、5xx 用例）→ 自己做 fallback 变异验证 → 修复环境 → 全套验证 → 合并。
+- 本轮未派浏览器 QA：改动**只涉及测试文件**，无运行时行为变化；浏览器侧证据沿用上一轮 #110 的 QA 结论（9/9 PASS）。
+
+### 版本组合
+
+- 前端：`675f74e`（合并为 `a8867b9`）。
+- 后端：`main@7ffe722`（无接口改动）。
+
+### 后续建议
+
+1. **P1 环境一致性**：由负责人执行一次 `pnpm install --frozen-lockfile`（我已定点修复但可能与 store 状态不完全一致）；并排查 04:37 前后的并发 pnpm 操作。
+2. **P2 cancel 用例**：`ERR_CANCELED` 会弹「网络连接失败」并被标记（既有缺陷），可在本文件新增用例把期望写成「不弹」，先记录缺陷。
+3. **P3 类型不符**：`request<T>` 声明 `Promise<ResponseData<T>>` 但 `resolve(res.data)` 实际返回响应体，已在用例注释与本文档记录，重构需跨 195 处调用点。
+4. **P2 109 处 catch 迁移**：白名单分批，每批 5–10 页并附改前/改后 toast 数。
+5. **P1 后端时间过滤**：`dao/audit.go` 改 `ctime`，仍是审计筛选/导出恒空的总根因。
+6. **方法教训**：①「补测试」必须做**变异验证**，且要覆盖「兜底/次要分支」——本轮 4/5 覆盖率就是靠审查的 7 个变异体才暴露；②观测手段决定能测到什么：`ElMessage.error` 计数看不见函数式 `ElMessage({...})`，因此要用「总提示数」；③破坏性环境事件（node_modules 被改）要先隔离根因再修，直接 `pnpm install` 可能让并发会话更乱。
