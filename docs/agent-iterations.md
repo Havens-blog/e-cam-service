@@ -5636,3 +5636,66 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 3. **P1 环境一致性**：后端 CORS 白名单需覆盖本地常用端口，否则 POST 类接口无法真机验证；`node_modules` 上次被破坏的根因仍待环境负责人确认。
 4. **P2 109 处 catch 迁移**、**P1 后端 `ctime` 过滤**、**P2 报告格式** 仍按前几轮记录待办。
 5. **方法教训**：①「取消不弹提示」这类修复必须证明**取消真的发生**（abortedCount）并做**基线/修复双跑**，否则容易把「没触发」当成「没弹」；②第二遍验证时要故意让请求变慢（route 延迟），否则请求太快根本来不及 abort；③判定条件要写清「刻意不判什么」——审查特别指出，若顺手把 `ECONNABORTED` 也当取消，会把真超时和真断网一起吞掉。
+
+---
+
+## cam-iteration-20261030-is-canceled-error（跨日轮，2026-10-30）
+
+**状态**：**已合并**（`e-cam-web#118`，merge commit `396af79`，2026-10-30 07:10 +08）
+**代码 PR**：`e-cam-web#118`（commit `e6347db`；CI 四项全绿；审查 **Approve**，0 blocker / 0 major）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮审查 minor-1：取消判定散落三处、口径不一致 —— 拦截器（`code` + 2 个 `name`）/ `normalizeRequestError`（仅 `code`）/ `useLogSearch.isCanceled`（仅 `code`）。纯 `AbortError` 形态下会「拦截器静默吞日志、页面却渲染英文 `canceled`」。
+- 本轮审查进一步用 axios 1.13.2 源码证实：`xhr.js` abort 恒构造 `CanceledError`，故 `name`-only / `__CANCEL__`-only 形态**当前不可达**（属防御性分支），但口径统一仍有价值。
+
+### 需求卡
+
+- 目标用户：维护者 + 使用取消查询的运维。
+- 目标：取消判定单一口径；`showApiError` 遇取消静默；不误伤真超时与真断网。
+- 规则：`isCanceledError()` 覆盖 `ERR_CANCELED` / `CanceledError` / `AbortError` / `__CANCEL__`；**刻意排除** `ECONNABORTED` 与 `signal.aborted`。
+- 非目标：`handleApiError` 的取消盲区、取消后错误卡片文案（见遗留）。
+- API 契约：无。
+
+### 变更内容
+
+- `src/api/request/index.ts`：新增导出 `isCanceledError()`；拦截器与 `normalizeRequestError` 改为复用它；`showApiError` 遇取消直接返回。
+- `src/views/logs/useLogSearch.ts`：`isCanceled` 改为委托 `isCanceledError`。
+- `src/api/request/error-contract.test.ts`：+3 例（四种取消形状 / 不误判超时断网 / `showApiError` 静默）。
+
+### 验收
+
+| 项 | 结果 |
+|---|---|
+| 单测 | ✅ 92 files / **1228 tests** passed（新增 3 例），删判定必红 |
+| 浏览器回归（`/cam/logs` 点「取消」） | ✅ toast **0 条**、console error **0 条**、页面无英文 `canceled`、`abortedCount=2` |
+| tsc / lint / build | ✅ 均 exit 0 |
+| PR CI | ✅ 四项全绿 |
+
+### 审查提出的遗留（未修，已记录）
+
+1. **minor-1 `handleApiError` 仍是取消盲区**：`utils/error-handler.ts` 无取消判定，`accounts`（5 处）、`iam/users`（5 处）、`plugins/error-handler.ts` 全局 `$handleError` 都走它 → 两个「面向用户兜底提示」入口口径再度分叉。
+2. **minor-2 被修的坑没有护栏**：`useLogSearch` 全仓零测试，把 `isCanceled` 改回 code-only 的变异 100% 存活；建议 mock `searchLogsApi` reject `{name:'AbortError'}` 断言 `searchError === '查询已取消'`。
+3. **minor-3 放宽行为未钉住**：`name`-only / `__CANCEL__`-only 的透传无断言，正例宜用真实 `new axios.CanceledError()` / `new DOMException('aborted','AbortError')`。
+4. **观察（建议下一轮做）**：取消后页面仍渲染「查询失败」标题 + 「请缩小时间范围…」描述 + 重试按钮，只有 state-raw 一行显示「查询已取消」（`friendlySearchError` 无 cancel 分支）。pre-existing、非本次回归，但**对真取消给出「排查网络/放宽筛选」是误导文案**。
+5. nit：JSDoc 错位（`normalizeRequestError` 的注释悬在 `isCanceledError` 头上）、`useLogSearch` 缩进 4 空格不一致、`AbortError` 注释应写明「防御性分支」。
+
+### 子 Agent 与复核
+
+- 独立代码审查：**Approve**；用 axios 1.13.2 源码逐一证实各取消形态的可达性、确认三处复用在现网无行为迁移（生产代码本无 `ERR_CANCELED` 语义消费点）、确认 `showApiError` 静默不丢提示、确认无循环依赖与体积增量；并提出 3 minor + 5 nit + 1 相邻观察。
+- 总控：实现 → 单测（3 例）→ 浏览器回归（取消路径仍 0 提示、无英文文案）→ 全套验证 → 合并。
+- 本轮未单独派浏览器 QA：回归实测由总控完成，审查已独立核实代码与单测（如实标注）。
+
+### 版本组合
+
+- 前端：`e6347db`（合并为 `396af79`）。
+- 后端：`main@631b1c9`（无接口改动）。
+
+### 后续建议
+
+1. **P2 取消后不要显示「查询失败」错误卡**：`friendlySearchError` 增加 cancel 分支（或取消时不出错误卡/重试按钮）—— 这是当前最贴近用户、且已有证据的文案缺陷。
+2. **P2 给 `useLogSearch` 补 composable 测试**：覆盖「取消 → `searchError='查询已取消'` 且不弹提示」，否则本轮的修复没有护栏。
+3. **P2 `handleApiError` 也加取消 guard**：两个兜底入口口径统一。
+4. **P1 后端 `ctime` 过滤**、**P2 109 处 catch 迁移**、**P2 报告格式** 仍待办。
+5. **方法教训**：①「统一口径」类重构要先确认**各形态在现网是否可达**（本轮 `AbortError`/`__CANCEL__` 分支实为防御性），否则容易高估收益、低估测试成本；②新增判定的价值取决于**消费点是否有测试**——本轮唯一真实消费点 `useLogSearch` 零测试，审查据此判「变异 100% 存活」。
