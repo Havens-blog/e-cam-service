@@ -4491,3 +4491,23 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 **Step 3(前端)待办**:`types/dns.ts` 增 `weight`;`RecordTable` 展示(无值 "-");表单仅在可写云出现(当前无可写云 ⇒ 本期仅展示,与口径一致)。
 
 **过程记录(环境纪律)**:本次误在 SDK **主检出**执行了 `git checkout --detach`,已立即恢复原分支 `fix/logquery-k8s-resource-cluster`(WIP 2 文件完好),后续对空仓库操作前先确认所在目录。
+
+---
+
+## 2026-10-29 需求:删除已迁移到 e-cmdb 的导航页(资源拓扑/告警中心/CMDB)
+
+**需求来源**:使用者指出这些页面已迁移到 e-cmdb,要求删除对应导航栏页面。
+
+**改动(e-cam-web#84,已合并 main 73161e6)**:仅删**导航入口**,不动路由/页面/API(可一键回滚)——
+- `layouts/menu-config.ts`:移除 概览组 `topology`、平台管理组 `alert`(告警事件/规则/通道)与 `cmdb`(资源模型/实例/关系/拓扑视图);
+- `components/PlatformNav/index.vue`:移除"告警中心"分区与其 3 条目,并从默认收藏 `defFavs` 去掉 `alert-events`;
+- 新增 `layouts/__tests__/menu-contract.test.ts`:①迁移项不得再出现在导航(键/标题/路径三重断言)②**非跨应用前缀的菜单项必须存在本地路由**(守根因:导航指向不存在路由=点击 404 死链)③锁定已知遗留项数量。
+
+**验收**:契约 4 例 + external-app + CommandPalette 全绿;layouts/components/router/utils 18 文件 193 例;vue-tsc/eslint 0;CI 四项全绿;**变异验证**(加回 cmdb → 用例失败);**live A 类**(worktree :3333 + 真实后端,1440x900):页面正常渲染、侧栏仍含 仪表盘/资产列表/成本概览、三项均消失、0 控制台错误。
+
+**取证与待确认(未擅自处理)**:
+1. `/cmdb/*` 是**设计内跨应用外开入口**(`layouts/external-app.ts`:EXTERNAL_APP_PREFIXES=['/cmdb/'],注释"CMDB 已拆分独立应用 e-cmdb-web,侧边栏新窗口打开并携带 tenant_id",有 external-app.test.ts 锁定) → 本次按需求移除入口但**保留机制**,如需保留平台→CMDB 入口只需回滚 cmdb 分组;
+2. **告警中心似未迁移**:本地 `/alert/*` 路由与页面仍在,后端 `/api/v1/cam/alert/rules` 仍返回真实数据,e-cmdb-web 内无告警页 → 仅下线导航、未删页面;
+3. **服务树同类死链(清单外)**:`/service-tree*` 3 条无本地路由且非外开(点即 404),代码注释与 e-cmdb-web/src/views/service-tree 均表明已迁出 → 测试中列为已知遗留,待定"删除 or 改指 /cmdb/service-tree"。
+
+**附带修正(e-cam-web#85)**:本人此前给 README 的验证实例配置片段含 `fs: { allow: [process.cwd(), ...] }` —— `process.cwd()` 在 npx 链路下不一定是项目根,会导致 Vite 不转换项目文件(浏览器 `Failed to resolve module specifier "vue"`)或页面 403;已改为"默认不写 fs.allow,确需放开用绝对字面路径"。修复后 main.ts 由原样 2393B 变为已转换 5866B,页面正常。
