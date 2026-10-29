@@ -4712,3 +4712,83 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 3. **P2 导出/报告下载**：blob 响应被按 JSON 消费（`response.data.code`）导致 `TypeError`，需单独修。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查。
 5. **方法教训**：①Sass 里修饰类必须用 `&.` 复合，否则静默变成后代选择器；②同 `!important` 的规则靠书写顺序决定胜负，调整顺序要有注释说明；③验收清单里的「非斑马纹样本」必须先用 DOM 核实（本轮两个样本都judge错了）。
+
+---
+
+## cam-iteration-20261029-audit-export-blob（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#91`，merge commit `4b02ffd`，2026-10-29 20:52 +08）
+**代码 PR**：`e-cam-web#91`（commit `94dd1e2`；CI 四项全绿；审查 0 blocker）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮实测：IAM 审计页点「导出」报 `TypeError: Cannot read properties of undefined (reading 'code')`；把取值改对后又下载出 **9 字节、内容为 "undefined"** 的文件。
+
+### 需求卡
+
+- 目标用户：导出审计日志的安全/运维人员。
+- 目标：导出产出真实文件（CSV/JSON），不再报错、不再产出坏文件。
+- 非目标：报告格式（后端返回 JSON 却按 pdf 保存，需产品确认）、后端时间过滤字段、`maxRecords/fields` 未下发。
+- API 契约：不改后端，仅修正前端对 blob 响应的消费方式。
+
+### 根因（三层）
+
+1. 全局响应拦截器 `src/api/request/index.ts` 对 blob **直接 `return apiData`**（Blob），破坏 AxiosResponse 形状 → 后续单次拦截器 `response.data` 为 undefined；
+2. IAM 单次拦截器按 `{ code }` 包装，对 blob 不适用；
+3. `ExportDialog` 取 `response.data`，而 blob 响应经请求层后本身就是 Blob。
+
+### 变更内容
+
+- `src/api/request/index.ts`：blob/arraybuffer 分支改为 `return response`，并补 `config.responseType` 兜底（fetch 适配器下 `request.responseType` 可能为空）。
+- `src/api/iam.ts`：拦截器对 blob 直接透传；`exportAuditLogsApi` 返回类型如实标注 `Promise<Blob>`。
+- `src/views/iam/audit/components/ExportDialog.vue`：按 Blob 消费（含兜底）。
+
+### 验收（独立 QA + 审查 harness）
+
+| 项 | 结果 |
+|---|---|
+| CSV（带时间范围） | ✅ 修复目标达成：`audit_logs_*.csv` **161 字节**、15 列中文表头，无 `undefined`/`[object Object]`；响应 200 `text/csv`、`attachment` |
+| JSON | ✅ 合法 JSON（`[]`，2 字节），200 `application/json` |
+| `/cam/audit/logs` 导出 | ✅ 966,434 字节、7,334 数据行（该页走另一条 API 路径，**改前同样是坏的**，本 PR 顺带修复） |
+| 无范围直调接口（对照） | ✅ CSV 1,237,525 字节 / 7,334 行；JSON 3,982,134 字节 → 证明序列化链路正确 |
+| 空范围校验 | ✅ 提示「请选择时间范围」，0 请求 0 下载 |
+| 真实双击 | ✅ 1 请求 1 文件（loading 禁用生效） |
+| console / HTTP | ✅ 0 / 0 |
+| 审查 harness（6 组） | ✅ 改前抛 TypeError、改后 Blob；fetch 适配器下 config 兜底生效；`''` 空串不被 `??` 兜底（已记录） |
+
+### 新发现（QA 与本轮实测，未在本 PR 修）
+
+1. **带时间范围的导出恒为空表头（P1，后端）**：`dao/audit.go` 用零值 `create_time` 过滤（记录实际是 `ctime`）→ 任何范围 0 条。因导出对话框时间范围必填，**IAM 导出 UI 路径永远只得到表头**。需后端改 `ctime` 并统一两个审计端点的时间契约。
+2. **「导出成功」toast 弹两次（P3）**：`ExportDialog` 自己弹一次 + `emit('success')` 让父页面再弹一次；DOM 中确有 2 个 `.el-message`（rect 重叠），但只发 1 个请求。
+3. **`最大记录数`/`包含字段` 从未下发**：实测导出固定 7,334 条、恒 15 列。
+4. **blob 短路绕过业务错误信封（审查 major）**：HTTP 200 + `{code:!0,msg}` 时会下载成内容为错误 JSON 的 `.csv` 并提示成功；非本次回归，但下次最可能的工单来源。
+5. **二进制分支零测试（审查 major）**：`request/index.test.ts` 无二进制用例，而全仓 193 处单次拦截器都经过该分支。
+6. **`??` 兜底顺序**：应 `config.responseType ?? request.responseType`（config 为权威来源，且 `??` 不兜 `''`）。
+
+### 测试
+
+- 全量：**86 files / 1176 tests** passed。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立代码审查：0 blocker，可合并；用独立 axios harness 复刻「全局拦截器 → once 拦截器 → `resolve(res.data)`」链路，实证改前抛错、改后 Blob，并发现 `/cam/audit/logs` 导出改前也是坏的（本 PR 隐式修复）；提出 2 major + 4 minor。
+- 独立浏览器 QA：7 项中 6 PASS + 1 FAIL（带范围仅表头，归因后端过滤），并确认重复 toast 根因、`maxRecords/fields` 未下发。
+- 总控：复现 → 三层根因定位 → 修复 → 实测 161 字节 CSV → 等 QA 结论后才合并（沿用上一轮教训，本轮基线未漂移）。
+
+### 版本组合
+
+- 前端：`94dd1e2`（合并为 `4b02ffd`）。
+- 后端：`main@dfa46db`（无接口改动）。
+
+### 后续建议
+
+1. **P1 后端时间过滤**：`dao/audit.go` 改 `ctime`（注意秒/毫秒混存）并统一两个审计端点的时间参数契约；在此之前 IAM 导出/筛选都不可用。
+2. **P2 blob 错误信封**：内容类型嗅探，命中 JSON 时按业务错误 reject，避免「下载成功但内容报错」。
+3. **P2 二进制分支单测**：~15 行锁定 `request/index.ts` 的 blob 行为（该类 bug 已两次变形态）。
+4. **P3 重复 toast**：删除 `ExportDialog` 内的一次 `ElMessage.success`，只留 `emit('success')`。
+5. **P3 `maxRecords`/`fields`**：要么下发到接口，要么从 UI 移除，避免「设置了但无效」。
+6. **P3 报告格式**：后端返回 JSON 却按 pdf/html/xlsx 保存，需产品确认。
+7. **方法教训**：①共享请求层的形状约定（AxiosResponse vs 解包体）必须有测试与文档，本类 bug 会以不同面貌反复出现；②修好「下载报错」不等于「下载可用」——必须校验文件字节数与内容，本轮正是靠 `161 字节仅表头` 才暴露后端过滤缺陷；③QA 基线冻结的价值再次验证：本轮未中途改代码，QA 结论与 HEAD 完全对应。
