@@ -4032,3 +4032,15 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 3. **P3 320 极��**：搜索 placeholder 与规格值在 320 下无空间，建议 320 采用更紧凑的排版（缩小图标/字号）。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查。
 5. **方法教训**：本轮「页面级溢出归零」被两次证明不足以代表「可用」——头部内容被 `overflow:hidden` 裁掉时 `scrollWidth` 仍是 0；需要同时观察**子元素几何（宽度/右缘/命中）**。此后窄屏验收固定加三项：卡片内关键控件宽度、`elementFromPoint` 命中、与容器右缘的余量。
+
+---
+
+## cam-iteration-20261029-saved-region(已存查询预置补上区域筛选)
+
+**来源**:#70 新增区域筛选后,#61 的预置捕获项**漏了区域** → 保存含区域的查询、还原后区域丢失(模块契约声称保存"当前查询条件";账号当初专门补了 `accounts`,区域漏了)。该模块由并行会话本日新增,但其当前已转向模板/计算域,故由我补齐并在 PR 标注请其复核。
+
+**改动(e-cam-web#76,镜像 accounts 模式)**:`SavedQueryState` 增 `regions: string[]`;`sanitizeState` 增 `pickStrings(s.regions)`(**旧条目无该字段归一为 []**,向后兼容);`useSavedQueries` options 增 `selectedRegions`、captureState 记录、applyQuery 显式回填;`index.vue` 传参。
+
+**验收**:单测增 2 例(区域保存/还原;旧版条目归一为 [] 且其余条件不丢)、既有 sanitize 用例补 regions 非法值 → 该文件 8/8;**变异验证**(移除 regions 落库 → 3 条失败);日志域 16 files/192 tests、tsc/eslint 0、CI 四项全绿后合并。**live(A 类,两会话)**:会话1 选区 cn-shenzhen 保存 → localStorage 含 regions:['cn-shenzhen'];会话2 新页(全部区域)还原 → 控件恢复 cn-shenzhen 且 search 载荷带 regions;0 页面错误。
+
+**环境备注**:本轮 SSH 推送抖动明显(多次 Connection reset,重试 6 次成功);另一次提交因消息内引号被 shell 解析失败,改用 `git commit -F <消息文件>` 后成功 —— 后续提交统一走消息文件。
