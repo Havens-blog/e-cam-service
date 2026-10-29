@@ -5277,3 +5277,78 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 2. 任务列表**本正常** —— 响应键是 `tasks`(非 `items`)、页面是**卡片列表**(非 el-table),我按错误键/选择器取值才得到"0 条"。
 
 **口径沉淀**:接口级审计的两个高频假阳性来源是**参数形态**与**响应键/组件形态**;审计工具必须把"无法判定"与"判定失败"区分开,并强制"⚠ 后人工核实"的闭环。
+
+---
+
+## cam-iteration-20261030-error-toast-dedupe（跨日轮，2026-10-30）
+
+**状态**：**已合并**（`e-cam-web#107`，merge commit `be00b45`，2026-10-30 02:52 +08）
+**代码 PR**：`e-cam-web#107`（commit `c8f9b80`；CI 四项全绿；审查无 blocker）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮 QA 实测：导出/报告 403 时 `peakLive=2` —— 请求层弹中文「权限不足，请联系管理员」，对话框 `catch` 又弹英文 `Request failed with status code 403`；两条 rect 完全相同（x=560,y=20），**英文串在上层把中文提示遮住**。
+
+### 需求卡
+
+- 目标用户：所有会遇到请求失败的运维。
+- 目标：同一错误只提示一次，且提示是中文可读文案；成功路径不受影响。
+- 规则：请求层弹过提示的错误打 `__apiErrorNotified` 标记；调用方 catch 先判标记再决定是否弹。
+- 非目标：其余 ~85 处 catch 的批量改造（记录）、401 是否打标（记录）、canceled 的噪声提示（记录）。
+- API 契约：无。
+
+### 变更内容
+
+- `src/api/request/index.ts`：新增 `markErrorNotified` / `isErrorNotified`；在业务错误、403、`handleApiError` 兜底分支打标；`normalizeRequestError` 生成新 Error 时透传标记。
+- `ExportDialog.vue` / `ReportDialog.vue`：catch 改为 `if (!isErrorNotified(error)) ElMessage.error(...)`。
+- `src/api/request/error-notified.test.ts`（新增 5 例）。
+
+### 验收（独立 QA 7 项全 PASS，含仪器自校验）
+
+| 场景 | 插入次数 | 峰值 | 文案 | 结论 |
+|---|---|---|---|---|
+| HTTP 403 | 1 | 1 | 「权限不足，请联系管理员」，**无英文串** | ✅ |
+| 200 + `{code:500,msg}` | 1 | 1 | 「业务失败」 | ✅ |
+| 真实 HTTP 500（兜底） | 1 | 1 | 「服务器内部错误」单条中文 | ✅ |
+| 真实成功导出 | 1 | 1 | 「导出成功」+ 实际下载 csv | ✅ |
+| 403 失败后重试 | 每次 1 | 每次 1 | 无残留叠加 | ✅ |
+| 报告生成（真实后端） | 1 | 1 | 「权限不足，请联系管理员」 | ✅（去重生效） |
+| console/pageerror/HTTP | — | — | pageerror 0、requestfailed 0、dev 504 **0** | ✅ |
+
+**方法学亮点**：QA 做了**仪器自校验**——同一表单间隔 0.8s 连点两次导出，测得 `insertions=2, peak=2`，证明峰值检测确实能捕获「完全重叠的两条」，从而排除「观察器永远只测到 1」的假通过。
+
+### 审查提出的问题（未在本 PR 修，已记录）
+
+1. **major：401 分支未打标**：`redirectToLogin()` 内会弹「登录状态已失效，请重新登录」，但 401 分支没打标记 → 两个对话框在 401 时仍可能再弹英文 401 串（是否可见取决于导航时机，未浏览器验证）。
+2. **major：「响应无 code」分支漏打标**：该分支 `ElMessage.error('接口响应格式错误')` 后未打标，与本 PR 声明的契约不一致。
+3. **major：范围**：全仓 ~85 处 `catch` 仍是 `ElMessage.error(e.message || ...)`，包括**同域的 `/cam/audit/logs` 导出**（页面内 handler）与证书用户组导出对话框 —— 原症状在这些页面照旧。建议抽 `showApiError(error, fallback)` 统一包装后批量替换，而非各自手写 `if`。
+4. **minor：单测是纯函数级，存在假绿**：删掉 `index.ts` 里两处 `markErrorNotified(...)`，5 例仍全绿；建议补装配级用例（`new HttpRequest({ adapter })` 返回 403 + `vi.mock('element-plus')` 断言只弹一次）。
+5. **minor：标记属性可枚举**：`JSON.stringify` 普通 Error 会得到 `{"__apiErrorNotified":true}`，污染 `error-logger.serializeData`；而 `AxiosError` 自带 `toJSON()` 反而丢标记。建议改 `defineProperty{enumerable:false}` 或模块级 `WeakSet`。
+6. **minor（既有）**：`ERR_CANCELED` 会走 `handleApiError` 弹「网络连接失败」，与 `logs/useLogSearch.ts` 的 AbortController 场景冲突。
+
+### 测试
+
+- 全量：**90 files / 1214 tests** passed（新增 5 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立代码审查：无 blocker；逐条核对 6 个提示点，指出「漏打 1 处、多打 0 处」，并给出 401 语义、范围、单测假绿、可枚举属性等 3 major + minor。
+- 独立浏览器 QA：7 项全 PASS，插入次数与峰值均为 1，并用仪器自校验证明测量有效；另记录「报告生成被后端真实 403」（非 CORS、非 504）。
+- 总控：实现 → 自测（403/业务/成功各 1 条）→ 冻结 → 等结论 → 合并。
+
+### 版本组合
+
+- 前端：`c8f9b80`（合并为 `be00b45`）。
+- 后端：`main@6b83408`（无接口改动）。
+
+### 后续建议
+
+1. **P2 抽 `showApiError(error, fallback)`** 并批量替换 ~85 处 catch（含 `/cam/audit/logs` 导出、用户组导出对话框），否则原症状会在其它页面复现。
+2. **P2 补 401 与「无 code」分支的标记**，并补装配级单测（adapter + mock element-plus）。
+3. **P3 标记属性改非枚举 / WeakSet**，避免污染日志序列化。
+4. **P2 后端权限**：`POST /api/v1/cam/iam/audit/reports` 对 admin 返回 403（QA 真实请求实测）—— 报告功能实际不可用，需后端确认权限设计。
+5. **P1 后端时间过滤**：`dao/audit.go` 改 `ctime`（秒/毫秒归一），仍是审计筛选/导出恒空的总根因。
+6. **方法教训**：①「去重」类修复必须先证明**测量手段能测出重复**（QA 的仪器自校验），否则「测到 1 条」可能是假绿；②请求层与调用方共享「谁负责提示」的契约时，用显式标记 + 单一 helper，比在各处手写条件可靠——本轮因只改 2 处，留下 85 处同类隐患。
