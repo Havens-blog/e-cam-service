@@ -4375,3 +4375,19 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 4. **UI(:8888 → /cam/compute/ecs,1440×900)**:首屏 **20 行**渲染且**即阿里云主机**(与 provider=aliyun 接口样本一致),页面计数「共1866」,**0 个 4xx/5xx、0 控制台错误**,截图 `%TEMP%\ecam-ecs-aliyun.png`。
 
 **口径沉淀(二次)**:同一仓储层存在多份同构过滤(asset 与 cam 两处),**改前必须用符号/行为双证据确认执行路径**;类型过滤须兼容 `裸类型 id`、`cloud_` 旧前缀、`{provider}_{type}` 三种 model_uid。
+
+---
+
+## 2026-10-29 修复波及面核验:类型过滤修复对所有资产类型的对账 + 一处待解异常(vswitch)
+
+**方法**:修复上线后,用真实库(`ecam_instance`,tenant=3)按 `model_uid` 全量分组,再与各类型接口 `total` 逐一对账。
+
+**库内形态分布(25,658 行,其中 17,520 行为无厂商前缀形态)**:
+`eni 5814`、`snapshot 4424`、`disk 3441`、`subnet 884`、`ecs 711`、`image 693`、`security_group 476`、`waf 421`、`cdn 363`、`lb 322`、`oss 294`、`nas 95`、`elasticsearch 37`、`kafka 21`;带前缀如 `volcengine_disk 1787`、`volcano_ecs 948`、`volcengine_ecs 947`、`aliyun_oss 610`、`aliyun_security_group 463`、`aliyun_vswitch 319`、`volcengine_vswitch 291`、`aliyun_lb 184`、`aliyun_slb 184`。
+
+**对账结果(接口 total 与库内预期完全相等)**:
+`disk 5228 = 裸 3441 + volcengine_disk 1787` ✓;`snapshot 4581 = 4424 + 157` ✓;`eni 5814 = 裸 5814` ✓;`image 718` ✓;`lb 694 ≈ 裸 322 + aliyun_lb 184 + aliyun_slb 184` ✓;`security-group 966 ≈ 裸 security_group 476 + aliyun_security_group 463` ✓;`ecs 2813`(含裸 711) ✓。**证明该修复对多种类型同时生效**。
+
+**待解异常(记录,未修)**:`/assets/vswitch` 返回 **884**,恰等于**裸 `subnet` 行数**,而 `aliyun_vswitch 319 + volcengine_vswitch 291` 似未计入 —— 该值无法由现有过滤解释(handler 传 `ModelUID:"vswitch"`,pin 的 e-cloudx-sdk v0.1.0 注册表中 vswitch 条目为 `Generics:[cloud_vswitch,cloud_subnet] + Suffixes:[vswitch,subnet]`,加上本次补的裸 id 后应同时命中带前缀行)。**已排除**:服务层无 vswitch→subnet 键归一;修复对 lb 家族正常。**下一轮待做**:核对 `cam/service.InstanceService.List` 是否对 ModelUID 做二次变换或走另一 DAO,必要时打印实际 Mongo 查询;确认后决定是否修。
+
+**口径沉淀(第三次)**:SDK 注册表已含 `BareNames`(裸类型名/查询别名),服务侧构造器曾仅取 Generics+Suffixes 而丢弃它 —— 消费方必须用尽注册表字段,否则"同名不同形态"的行会整类不可见。
