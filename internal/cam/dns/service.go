@@ -1,4 +1,4 @@
-﻿package dns
+package dns
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/Havens-blog/e-cloudx-sdk"
-	"github.com/Havens-blog/e-cloudx-sdk/types"
 	shareddomain "github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -121,10 +121,18 @@ func (s *dnsService) CreateRecord(ctx context.Context, tenantID int64, domainNam
 	if err := ValidateRecord(req.Type, req.RR, req.Value, req.TTL, req.Priority); err != nil {
 		return nil, err
 	}
+	if err := ValidateDNSWeight(req.Weight); err != nil {
+		return nil, err
+	}
 
 	account, adapter, err := s.findAdapterByAccountID(ctx, req.AccountID)
 	if err != nil {
 		return nil, err
+	}
+	// 按"可写性"分档：仅 SDK 声明可写的云允许提交权重，否则显式拒绝（不发云调用），
+	// 避免"表单能填但云端推不上去"的静默失败。
+	if req.Weight != nil && !types.DNSWeightWritable(string(account.Provider)) {
+		return nil, ErrDNSWeightNotWritable
 	}
 
 	created, err := adapter.CreateRecord(ctx, domainName, types.CreateDNSRecordRequest{
@@ -134,6 +142,7 @@ func (s *dnsService) CreateRecord(ctx context.Context, tenantID int64, domainNam
 		TTL:      req.TTL,
 		Priority: req.Priority,
 		Line:     req.Line,
+		Weight:   req.Weight,
 	})
 	if err != nil {
 		return nil, wrapCloudError(string(account.Provider), err)
@@ -146,9 +155,16 @@ func (s *dnsService) CreateRecord(ctx context.Context, tenantID int64, domainNam
 
 // UpdateRecord 修改解析记录（实时调用云 API）
 func (s *dnsService) UpdateRecord(ctx context.Context, tenantID int64, domainName string, recordID string, req UpdateRecordReq) (*DNSRecordVO, error) {
+	if err := ValidateDNSWeight(req.Weight); err != nil {
+		return nil, err
+	}
 	account, adapter, err := s.findAdapterByAccountID(ctx, req.AccountID)
 	if err != nil {
 		return nil, err
+	}
+	// 同 CreateRecord：仅可写云允许提交权重
+	if req.Weight != nil && !types.DNSWeightWritable(string(account.Provider)) {
+		return nil, ErrDNSWeightNotWritable
 	}
 
 	updated, err := adapter.UpdateRecord(ctx, domainName, recordID, types.UpdateDNSRecordRequest{
@@ -158,6 +174,7 @@ func (s *dnsService) UpdateRecord(ctx context.Context, tenantID int64, domainNam
 		TTL:      req.TTL,
 		Priority: req.Priority,
 		Line:     req.Line,
+		Weight:   req.Weight,
 	})
 	if err != nil {
 		return nil, wrapCloudError(string(account.Provider), err)
@@ -265,6 +282,7 @@ func recordDocToVO(doc DnsRecordDoc) DNSRecordVO {
 		Value:     doc.Value,
 		TTL:       doc.TTL,
 		Priority:  doc.Priority,
+		Weight:    doc.Weight,
 		Line:      doc.Line,
 		Status:    doc.Status,
 		Provider:  doc.Provider,
@@ -436,6 +454,7 @@ func recordToVO(r types.DNSRecord, provider string, accountID int64) DNSRecordVO
 		Value:     r.Value,
 		TTL:       r.TTL,
 		Priority:  r.Priority,
+		Weight:    r.Weight,
 		Line:      r.Line,
 		Status:    r.Status,
 		Provider:  provider,

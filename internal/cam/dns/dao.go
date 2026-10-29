@@ -1,4 +1,4 @@
-﻿package dns
+package dns
 
 import (
 	"context"
@@ -33,13 +33,15 @@ type DnsDomainDoc struct {
 
 // DnsRecordDoc DNS 解析记录 MongoDB 文档
 type DnsRecordDoc struct {
-	RecordID  string `bson:"record_id"`
-	Domain    string `bson:"domain"`
-	RR        string `bson:"rr"`
-	Type      string `bson:"type"`
-	Value     string `bson:"value"`
-	TTL       int    `bson:"ttl"`
-	Priority  int    `bson:"priority"`
+	RecordID string `bson:"record_id"`
+	Domain   string `bson:"domain"`
+	RR       string `bson:"rr"`
+	Type     string `bson:"type"`
+	Value    string `bson:"value"`
+	TTL      int    `bson:"ttl"`
+	Priority int    `bson:"priority"`
+	// Weight 权重（负载均衡解析，0-100）；nil = 无权重概念/未返回（不落库该字段）
+	Weight    *int   `bson:"weight,omitempty"`
 	Line      string `bson:"line"`
 	Status    string `bson:"status"`
 	Provider  string `bson:"provider"`
@@ -219,6 +221,12 @@ func (d *DnsRecordDAO) UpsertRecord(ctx context.Context, doc DnsRecordDoc) error
 		"$setOnInsert": bson.M{
 			"ctime": now,
 		},
+	}
+	if doc.Weight != nil {
+		update["$set"].(bson.M)["weight"] = *doc.Weight
+	} else {
+		// nil = 该云/该记录无权重概念或云端未返回：清除历史值，避免旧值被误读
+		update["$unset"] = bson.M{"weight": ""}
 	}
 	opts := options.Update().SetUpsert(true)
 	_, err := d.coll.UpdateOne(ctx, filter, update, opts)

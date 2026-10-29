@@ -3,7 +3,7 @@ module github.com/Havens-blog/e-cam-service
 go 1.25.5
 
 require (
-	github.com/Havens-blog/e-cloudx-sdk v0.1.0
+	github.com/Havens-blog/e-cloudx-sdk v0.2.0
 	github.com/Havens-blog/e-common-go v0.1.0
 	github.com/Havens-blog/e-iam v0.0.27
 	github.com/alicebob/miniredis/v2 v2.34.0
@@ -56,13 +56,13 @@ require (
 	github.com/alicebob/gopher-json v0.0.0-20230218143504-906a9b012302 // indirect
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible // indirect
 	github.com/aliyun/credentials-go v1.4.5 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.41.5 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.47.2 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.4 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.32.7 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.7 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.17 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.21 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.5 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.5 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/acm v1.38.0 // indirect
@@ -84,12 +84,13 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/rds v1.114.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.62.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.96.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/shield v1.43.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.13 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/wafv2 v1.71.1 // indirect
-	github.com/aws/smithy-go v1.24.2 // indirect
+	github.com/aws/smithy-go v1.28.4 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boj/redistore v1.4.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
@@ -143,7 +144,7 @@ require (
 	github.com/gorilla/sessions v1.4.0 // indirect
 	github.com/gotomicro/logrotate v0.0.0-20211108034117-46d53eedc960 // indirect
 	github.com/huaweicloud/huaweicloud-sdk-go-obs v3.25.9+incompatible // indirect
-	github.com/huaweicloud/huaweicloud-sdk-go-v3 v0.1.213 // indirect
+	github.com/huaweicloud/huaweicloud-sdk-go-v3 v0.1.218 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
@@ -181,6 +182,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/antiddos v1.3.131 // indirect
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/billing v1.3.42 // indirect
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cam v1.1.48 // indirect
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cbs v1.3.40 // indirect

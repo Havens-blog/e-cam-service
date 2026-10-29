@@ -13,13 +13,15 @@ type DNSDomainVO struct {
 
 // DNSRecordVO 解析记录视图对象
 type DNSRecordVO struct {
-	RecordID       string          `json:"record_id"`
-	Domain         string          `json:"domain"`
-	RR             string          `json:"rr"`
-	Type           string          `json:"type"`
-	Value          string          `json:"value"`
-	TTL            int             `json:"ttl"`
-	Priority       int             `json:"priority"`
+	RecordID string `json:"record_id"`
+	Domain   string `json:"domain"`
+	RR       string `json:"rr"`
+	Type     string `json:"type"`
+	Value    string `json:"value"`
+	TTL      int    `json:"ttl"`
+	Priority int    `json:"priority"`
+	// Weight 权重（负载均衡解析，0-100）；nil = 该云/该记录无权重概念或云端未返回，前端展示 "-"
+	Weight         *int            `json:"weight,omitempty"`
 	Line           string          `json:"line"`
 	Status         string          `json:"status"`
 	Provider       string          `json:"provider"`
@@ -60,6 +62,8 @@ type CreateRecordReq struct {
 	TTL       int    `json:"ttl"`
 	Priority  int    `json:"priority"`
 	Line      string `json:"line"`
+	// Weight 权重（可选，0-100）；nil = 不设置。仅对可写权重的云可提交，否则 400060
+	Weight *int `json:"weight"`
 }
 
 // UpdateRecordReq 修改解析记录请求
@@ -71,6 +75,8 @@ type UpdateRecordReq struct {
 	TTL       int    `json:"ttl"`
 	Priority  int    `json:"priority"`
 	Line      string `json:"line"`
+	// Weight 权重（可选，0-100）；nil = 不修改。仅对可写权重的云可提交，否则 400060
+	Weight *int `json:"weight"`
 }
 
 // BatchDeleteResult 批量删除结果
