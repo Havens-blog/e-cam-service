@@ -4152,3 +4152,88 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 1. `locator.click({ force: true })` 对 Element Plus `el-select` 选项**不触发 v-model 更新**(控件显示已选但请求无该参数)→ 下拉交互一律用普通点击。
 2. `locator('button', { hasText: 'A|B' })` 的 `hasText` 传字符串时是**子串匹配**,`|` 不会被当作"或" → 需单个纯文本或改用正则。
 3. 页面 URL 带任一查询参数(如 `?t=cdn`)即触发**加载时自动查询**,故请求数组的**首个**请求可能早于用户操作(不含刚选的筛选)→ 断言应取"操作后最后一次"请求。
+
+---
+
+## cam-iteration-20261029-iam-audit-fields（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#78`，merge commit `cb852ff`，2026-10-29 16:52 +08）
+**代码 PR**：`e-cam-web#78`（commits `b59e111` → `b3edd32`；CI 四项全绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮 QA 附带发现：`/cam/iam/audit` 的「操作时间 / 操作人」两列渲染为空（接口有数据、行列错位）。
+- 本轮实测确认根因（前后端字段不一致）：
+  - 接口 `/api/v1/cam/iam/audit/logs` 返回 `operator_name`、`ctime`（毫秒）、`result`；
+  - 表格绑定 `operator`、`operation_time`（均不存在）→ 两列恒空；
+  - 另有 `create_time` 字段是零值 `0001-01-01T00:00:00Z`，不可直接使用。
+
+### 需求卡
+
+- 目标用户：查看云账号 IAM 操作审计的安全/运维人员。
+- 目标：两列显示真实值与可读时间；详情弹窗一致；筛选不受影响；不改变接口契约。
+- 规则：`normalize.ts` 统一归一（`operator ← operator_name/operator_id`、`operation_time ← ctime` 经 `@/utils/epoch`、`provider ← cloud_platform`、`operation_result ← result`）。
+- 非目标：操作类型值域（`api_log_create` vs 字典 `create`）、时间范围筛选 400、操作人搜索参数名不一致（均记录为后续项）。
+- API 契约：不改后端，前端做兼容映射。
+
+### 变更内容
+
+- `src/views/iam/audit/normalize.ts`（新增）：字段归一 + 零值/空白/非字符串时间兜底 + `#id` 回退。
+- `src/views/iam/audit/index.vue`：列表赋值改为 `normalizeAuditLogs(...)`。
+- 测试：`normalize.test.ts`（10 例）+ `wiring.contract.test.ts`（3 例，锁住「页面消费归一结果」）。
+
+### 验收（独立 QA **13/14 PASS**）
+
+| 项 | 结果 |
+|---|---|
+| 首页 20 行「操作时间」 | ✅ 20/20 命中 `2026-\d{2}-\d{2} \d{2}:\d{2}:\d{2}`，首��� `2026-10-29 15:40:18` |
+| 首页 20 行「操作人」 | ✅ 20/20 非空（全 `admin`，无 `-`） |
+| 与接口 `ctime` 对照 | ✅ 抽 5 行字符串全等；直连 `:8001` 与代理返回 `items` 完全相同；全量 20 行亦一致 |
+| 第 2 页 | ✅ 抽 3 行一致（14:41:36 / 14:30:28 / 14:06:22），20 行均非空 |
+| 详情弹窗 | ✅ 表格 `2026-10-29 15:40:02 / admin` 与弹窗完全一致 |
+| 筛选 admin + 重置 | ✅ 请求带 `operator=admin`、仍显示两列；重置后恢复 20 行/7328 条 |
+| 1440 视口 | ✅ 两列可见、无溢出 |
+| 390 视口 | ⚠️ **FAIL（既有问题，非本 PR）**：页面无溢出、表格可横滑，但默认位置「操作人」列被右侧 `fixed` 操作列遮挡 88/150px，横滑 180px 后完整可见 |
+| console / HTTP | ✅ error 0、pageerror 0、HTTP≥400 0 |
+
+### 评审交互（Approve with comments）
+
+- **M1（单测不覆盖接线点）成立**：把页面赋值改回原始数组，原 6 例仍全绿。已补 `wiring.contract.test.ts`（源码契约，因 Element Plus 表格在 happy-dom 下无法挂载），并做变异验证（改回原始赋值 → 2 例失败）。
+- **M2（云平台列恒 `-`）**：归一已补 `provider ← cloud_platform`，但**实测接口 50/50 条 `cloud_platform` 为空** → 该列显示 `-` 是数据本身如此，不是缺陷。
+- **m5/m6 采纳**：时间有效性判断加固（空白串、非字符串不会抛错），补秒级 `ctime` 用例（后端 IAM 写入方用 `Unix()`，epoch 阈值 1e11 已兼容）。
+- **m4**：`operation_result` 归一保留（兼容旧绑定），但确认页面实际读 `result`。
+
+### 已知遗留
+
+- **操作类型列显示原始值** `api_log_create`（字典 value 是 `create`，值域不一致，需后端/产品确认）。
+- **时间范围筛选会 400**：前端 `toISOString()` vs 后端 `time.Parse("2006-01-02 15:04:05")`。
+- **操作人搜索参数名不一致**：前端 `operator`，后端只绑 `operator_id` → 搜索实际不生效（本轮 QA 观察到 20 行仍全为 admin，属巧合）。
+- **390 两列遮挡**：右侧固定「操作」列压住「操作人」，横滑可达；属既有响应式表格特征。
+- **云平台列**：数据源本身为空。
+
+### 测试
+
+- 全量：**82 files / 1161 tests** passed（新增 13 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立审查：Approve with comments；M1 经变异证实（并指出 happy-dom 无法挂载 EL 表格，建议页面级 mount——实际挂载报 MutationObserver 私有字段错误，改用源码契约）；M2 用后端源码推断，实测数据为空故不成立。
+- 独立浏览器 QA：**13/14 PASS**，含「直连 8001 与代理 items 相同」「分页后抽检」「筛选/重置」「详情弹窗一致」；390 FAIL 明确归因为既有布局。
+- 总控：复现 → 归一 → 变异验证 → 真机数据核对。
+
+### 版本组合
+
+- 前端：`b3edd32`（合并为 `cb852ff`）。
+- 后端：`main@8a3b6c0`（无接口改动）。
+
+### 后续建议
+
+1. **P2 操作人搜索**：前端 `operator` → 后端 `operator_id`，展示修好后搜索仍无效，最容易误判；建议前后端对齐参数（或后端支持按名字模糊查）。
+2. **P2 时间范围筛选 400**：统一时间参数格式（ISO 或 `YYYY-MM-DD HH:mm:ss`）。
+3. **P2 操作类型值域**：`api_log_create` vs 字典 `create`，需后端/产品确认后统一。
+4. **P3 390 列遮挡**：固定操作列在窄屏压住相邻列，建议窄屏取消 `fixed` 或改为下拉操作。
+5. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查。
+6. **方法教训**：前端「字段为空」类缺陷，先拉真实接口比对字段名，再做归一；同时**归一必须配接线测试**——只测纯函数会在「页面忘了调用」时全绿（本轮审查用变异实验证实了这一点）。
