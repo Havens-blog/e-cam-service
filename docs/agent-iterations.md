@@ -4391,3 +4391,75 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 **待解异常(记录,未修)**:`/assets/vswitch` 返回 **884**,恰等于**裸 `subnet` 行数**,而 `aliyun_vswitch 319 + volcengine_vswitch 291` 似未计入 —— 该值无法由现有过滤解释(handler 传 `ModelUID:"vswitch"`,pin 的 e-cloudx-sdk v0.1.0 注册表中 vswitch 条目为 `Generics:[cloud_vswitch,cloud_subnet] + Suffixes:[vswitch,subnet]`,加上本次补的裸 id 后应同时命中带前缀行)。**已排除**:服务层无 vswitch→subnet 键归一;修复对 lb 家族正常。**下一轮待做**:核对 `cam/service.InstanceService.List` 是否对 ModelUID 做二次变换或走另一 DAO,必要时打印实际 Mongo 查询;确认后决定是否修。
 
 **口径沉淀(第三次)**:SDK 注册表已含 `BareNames`(裸类型名/查询别名),服务侧构造器曾仅取 Generics+Suffixes 而丢弃它 —— 消费方必须用尽注册表字段,否则"同名不同形态"的行会整类不可见。
+
+---
+
+## cam-iteration-20261029-iam-audit-mobile（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#83`，merge commit `799808b`，2026-10-29 17:58 +08）
+**代码 PR**：`e-cam-web#83`（commit `0919926`；CI 四项全绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一�� QA 实测：IAM 审计页 390 下日期控件（内联 `width:380px`）整体超出视口，被 `PageContainer` 的 `overflow-x:hidden` 与 `.el-card{overflow:hidden}` 裁切，结束时间输入仅 39/124px 可见。
+- 进一步定位：inline 表单的 form-item 按内容定宽（380/200/150…），把卡片整体撑宽——**只改 picker 宽度无效**，必须让 form-item 占满一行。
+
+### 需求卡
+
+- 目标用户：手机查看 IAM 审计日志的安全/运维人员。
+- 目标：筛选区不超出视口、不产生页面级横向滚动；桌面不回归。
+- 规则：≤768 form-item 满宽 + content 可收缩 + picker `width:100%` + 区间输入可收缩。
+- 非目标：窄屏输入可读性（placeholder 裁剪）、日期面板宽度、表格固定列遮挡（均记录）。
+- API 契约：无。
+
+### 变更内容
+
+- `src/views/iam/audit/index.vue`：去掉 picker 内联 380px、加 `time-range-picker` 类；≤768 表单与控件自适应。
+
+### 验收（独立 QA 6 项：4 PASS + 2 FAIL，均有像素证据）
+
+| 项 | 结果 |
+|---|---|
+| 六档几何（320/360/390/768/1024/1440） | ✅ picker 右界 291/331/361/739/729/729，余量 29px；`document`、`.main-content`、`.filter-card` 溢出全 0 |
+| 390 结束时间可点可输入 | ✅ 可聚焦、可输入并清空；⚠️ 可见宽 47px，placeholder 需 56px（两侧各裁 4.5px） |
+| 390 操作列/操作人 | ✅（当时版本）操作列 relative、「操作人」15/15 命中自身；**本 PR 最终保留 fixed**，见「取舍」 |
+| 1024/1440 固定列 | ⚠️ FAIL：斑马纹行固定列背景 `rgba(255,255,255,0.03)` 半透明，1024 横滑 258px 时「操作结果」绿标签透过操作列与「详情」叠字（Δ>24 像素 15,716） |
+| 首屏跳动 | ✅ rAF 29 帧 position 恒为 relative，无 fixed 帧 |
+| console / HTTP | ✅ 0 / 0 / 0 |
+
+### 关键取舍（如实记录）
+
+初版**同时取消了窄屏操作列 `fixed`**，意图解决「固定列遮挡操作人」。审查（M1）与 QA 均指出：表格列宽合计 1210px，取消 fixed 后「详情」需横滑约 **942px**，而它是页面唯一的行操作，可发现性反而更差。**已回退该改动、保留 `fixed="right"`**，把「固定列遮挡」作为既有问题另立一轮（含 1024 下斑马纹背景半透明叠字）。
+
+### 已知遗留
+
+- **占位符裁剪**：390 输入可见 47px（需 56px），320 仅 24px；修的是溢出不是可读。
+- **日期面板溢出**：390 面板 646px、right=647，超出视口 257px，第二个月与右侧时间输入不可达。
+- **固定列遮挡**：1024 下斑马纹行背景半透明，横滑时叠字；属既有缺陷。
+- **桌面宽度变化**：picker 由内联 380 变为 EP 默认 400（20px）；769 处余量由 19px 变 0。
+
+### 测试
+
+- 全量：**84 files / 1168 tests** passed。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立代码审查：request changes（M1 取消 fixed 降低可操作性；另指出注释与桌面宽度不符、缺契约测试、冗余规则、占位符裁剪、commit 带 BOM 等）。M1 已采纳（回退 fixed）；
+- 独立浏览器 QA：**4 PASS + 2 FAIL**（占位符、1024 叠字），并给出 3x 像素证据；确认 390 首屏无跳动。
+- 总控：实现 + 3 轮调整（picker 宽度 → form-item → fixed 取舍）+ 6 档实测。
+
+### 版本组合
+
+- 前端：`0919926`（合并为 `799808b`）。
+- 后端：`main@ff88d77`（无接口改动）。
+
+### 后续建议
+
+1. **P2 固定列遮挡**：给 `.el-table__fixed-right` / 斑马纹行固定列强制不透明背景（`--el-table-tr-bg-color` 实色），1024 段验证不叠字。
+2. **P3 窄屏输入可读**：`format="MM-DD HH:mm"`（值仍是 Date，后端契约不变）或窄屏 label 置顶。
+3. **P3 日期面板宽度**：面板 `popper-class` 限宽或改用 `teleported` 弹层定位。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查、导出/报告下载链路（blob 消费异常）。
+5. **方法教训**：①窄屏溢出要顺着「谁把父级撑宽」找（form-item 按内容定宽），只改目标元素无效；②取消固定列这类「把遮挡换成够不到」的改动必须同时评估**主操作的可发现性**——本轮审查与 QA 独立得出一致结论，说明这是真实风险而非偏好。
