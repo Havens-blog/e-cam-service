@@ -4044,3 +4044,88 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 **验收**:单测增 2 例(区域保存/还原;旧版条目归一为 [] 且其余条件不丢)、既有 sanitize 用例补 regions 非法值 → 该文件 8/8;**变异验证**(移除 regions 落库 → 3 条失败);日志域 16 files/192 tests、tsc/eslint 0、CI 四项全绿后合并。**live(A 类,两会话)**:会话1 选区 cn-shenzhen 保存 → localStorage 含 regions:['cn-shenzhen'];会话2 新页(全部区域)还原 → 控件恢复 cn-shenzhen 且 search 载荷带 regions;0 页面错误。
 
 **环境备注**:本轮 SSH 推送抖动明显(多次 Connection reset,重试 6 次成功);另一次提交因消息内引号被 shell 解析失败,改用 `git commit -F <消息文件>` 后成功 —— 后续提交统一走消息文件。
+
+---
+
+## cam-iteration-20261029-pagination-wrap（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#74`，merge commit `7477ea3`，2026-10-29 15:12 +08）
+**代码 PR**：`e-cam-web#74`（commits `f42e76c` → `7a7aca6`；CI 四项全绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮审查/QA 指出：`el-pagination` 在窄屏会向左/向右溢出被容器裁切，而 `scrollWidth` 不计负向溢出，「页面无横滚」的检查永远发现不了。
+- 本轮实测复现（真实数据）：
+  - `/cam/audit/logs` @360：整组分页 `left=-344`，`clippedLeft=408` —— **prev/页码/下一页全部在视口左侧之外，完全不可达**；
+  - `/cam/assets` @360/390：右侧被裁 330/300px；
+  - 同时 `document` 溢出均为 0（正是「测不出来」的原因）。
+
+### 需求卡
+
+- 目标用户：小屏/分屏使用任意列表页的运维（43 处 `el-pagination`）。
+- 目标：分页控件全部可达；不新增横向滚动；桌面（1440）零影响。
+- 规则：全局 `.el-pagination{flex-wrap:wrap; row-gap:8px; max-width:100%; overflow-x:auto}`；≤768 `justify-content: safe center`。
+- 非目标：wrap-before-shrink 过渡带（480–600）的 sticky footer 高度变化、抽屉内分页、`overflow-x:auto` 的键盘焦点副作用。
+- API 契约：无。
+
+### 变更内容
+
+- `src/assets/styles/element-theme.scss`：全局分页换行/自滚动/safe center。
+- `src/views/network/dns/components/DomainTable.vue`、`RecordTable.vue`：`.pagination-bar` 加 `flex-wrap: wrap; row-gap: 12px`（修评审 major）。
+
+### 验收（6 页 × 5 档实测）
+
+| 页面 | 320 | 360 | 390 | 768 | 1440 |
+|---|---|---|---|---|---|
+| audit/logs | cl/cr −20/−20 | −20/−20 | −20/−20 | — | — |
+| assets | −32/−32 | −32/−32 | — | −32/−78 | −582/−44 |
+| tasks | −25/−25 | −25/−25 | −25/−25 | −25/−25 | −37/−37 |
+| iam/audit | −46/−46 | −46/−46 | −46/−46 | −46/−46 | −481/−58 |
+| alert/events | −32/−32 | −32/−32 | −32/−32 | −32/−32 | −44/−44 |
+| network/dns | −61/−61 | −61/−61 | −61/−61 | −177/−61 | −681/−73 |
+
+- 负值表示控件在容器内（无裁切）；全部 ≤0，`document` 溢出全 0。
+- 320 下点「下一页」：页码 1 → 2 成功（控件可操作）。
+- 1440 分页宽度与改前一致（assets 594、audit 684），单行不换行。
+- DNS caption 从 15px 竖排（bar 高 205px）恢复为 48×20 单行。
+
+### 过程中的评审交互
+
+- 审查（无 blocker，1 major + 4 minor + 4 nit）：
+  - **major 成立并已修**：`overflow-x:auto` 让分页成为滚动容器，`min-width:auto→0`，DNS 两表的 `space-between` bar 把「共 N 条」压成 15px 竖排——我实测确认（15/16/19px、高 59px、bar 205px）后加 `flex-wrap`。
+  - **minor 采纳**：`justify-content: center` 改为 `safe center`（内容仍溢出时回退 start，避免左侧不可达）；注释由 `/* */` 改 `//`（不进生产 CSS）；媒体查询提到顶层。
+  - **minor 记录**：480–600 过渡带、抽屉分页、`overflow-x:auto` 的 `overflow-y` 联动与键盘焦点。
+  - **被证伪**：`overflow-x:auto` 不会裁 sizes 下拉（EP `teleported` 默认 true，审查用 happy-dom 实测浮层挂 body）。
+
+### 已知遗留（P3）
+
+- **过渡带**：容器略小于分页 max-content 时（约 540–594 / 630–684）现在会先换行而不是压缩 sizes/jumper，sticky footer 高 +40px；1440 对照测不到。
+- **极窄容器**：单 item 宽于容器时仍可能不可达（`safe center` 已覆盖大部分），<300px 容器才触发。
+- **`overflow-x:auto` 的隐式契约**：`overflow-y` 计算值变 auto；容器内不可再放 `teleported:false` 的浮层。另 Chrome 会把它变成键盘焦点（多一个 tab stop）。
+- **换行行首多 16px**：EP 用 margin 作为项间距，`:first-child{margin-left:0}` 只作用于整条首项，换行后每行视觉右偏 ~8px。
+
+### 测试
+
+- 全量：**81 files / 1146 tests** passed（纯 CSS）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立代码审查：无 blocker；1 major（DNS caption）经实测证实并修复；9 条 minor/nit 中 3 条采纳（safe center、注释、媒体查询顺序），其余记录；并用 happy-dom 实测证明 sizes 浮层不会被 `overflow-x` 裁切。
+- 独立浏览器 QA：已派出并在 `f42e76c` 上运行，合并时**尚未返回**（见风险）。
+- 总控：实现 + 复现 + 6 页 × 5 档矩阵 + DNS 修复复测。
+
+### 版本组合
+
+- 前端：`7a7aca6`（合并为 `7477ea3`）。
+- 后端：`main@3cc657f`（无接口改动）。
+
+### 后续建议
+
+1. **P3 过渡带**：为 480–600 补测，必要时把 wrap 限定到 ≤480 或给 `.el-pagination` 设 `min-width: 0` 配合尺寸压缩。
+2. **P3 抽屉分页**：TagResourceDrawer / TagPolicyPanel（约 520 宽）走一遍，确认旧裁切是否已变好。
+3. **P3 键盘可达性**：`overflow-x:auto` 引入的 tab stop 与触屏下「可滚动但无提示」，建议加 `scroll-snap` 或可见滚动条。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查。
+5. **方法教训**：这类「负向溢出」缺陷必须先看**元素相对容器的 left/right**，而不是页面 `scrollWidth`；本轮把这个判据固化进了验收脚本（`clippedLeft/clippedRight`），后续列表页验收应默认带上。
