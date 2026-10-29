@@ -4511,3 +4511,80 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 3. **服务树同类死链(清单外)**:`/service-tree*` 3 条无本地路由且非外开(点即 404),代码注释与 e-cmdb-web/src/views/service-tree 均表明已迁出 → 测试中列为已知遗留,待定"删除 or 改指 /cmdb/service-tree"。
 
 **附带修正(e-cam-web#85)**:本人此前给 README 的验证实例配置片段含 `fs: { allow: [process.cwd(), ...] }` —— `process.cwd()` 在 npx 链路下不一定是项目根,会导致 Vite 不转换项目文件(浏览器 `Failed to resolve module specifier "vue"`)或页面 403;已改为"默认不写 fs.allow,确需放开用绝对字面路径"。修复后 main.ts 由原样 2393B 变为已转换 5866B,页面正常。
+
+---
+
+## cam-iteration-20261029-fixed-column-bg（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#86`，merge commit `36b4d59`，2026-10-29 19:35 +08）
+**代码 PR**：`e-cam-web#86`（commit `4c3074b`；CI 四项全绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮 QA 像素级证据：1024 下横滑 258px 时「操作结果-成功」绿色标签透过「操作」固定列，与「详情」叠字（3x 截图，Δmax 219，Δ>24 共 15,716 px）。
+- 根因：全局 `--el-table-tr-bg-color: transparent`；斑马纹行底色是 `rgba(255,255,255,0.03)` 叠加，固定列单元格继承后为半透明。
+
+### 需求卡
+
+- 目标用户：所有使用带固定列表格的运维（审计、资产、告警、证书台账等）。
+- 目标：横滑时固定列不透出下层内容；保留 hover / 斑马纹 / 表头视觉；各容器底色下不产生色带。
+- 规则：cell 实色底 `--table-fixed-bg`（默认 `--bg-elevated`），各状态用 `background-image` 叠 tint。
+- 非目标：浅色主题实测、`el-table__fixed-right-patch`（未触发）。
+- API 契约：无。
+
+### 变更内容
+
+- `src/assets/styles/element-theme.scss`：`:root` 定义 `--table-fixed-bg`；固定列 cell 实色底；表头 / hover / 斑马纹分别叠 tint；`--bg-surface` 容器集中覆盖 token。
+- `src/views/cert/ledger/components/CertTable.vue`：删除该页原有的固定列与 hover 局部 `!important` 规则（统一走全局 token）。
+
+### 验收（1024 实测）
+
+| 页面 | 固定列底色 | 容器底色 | 结论 |
+|---|---|---|---|
+| /cam/iam/audit | rgb(15,16,17) | rgb(15,16,17) | ✅ 一致 |
+| /cam/certs | rgb(25,26,27) | rgb(25,26,27) | ✅ 一致（token 覆盖生效） |
+| /cam/alert/channels | rgb(25,26,27) | rgb(25,26,27) | ✅ 一致 |
+| 表头（固定列） | 合成色 = rgb(15,16,17) | 非固定列表头 rgb(15,16,17) | ✅ 无接缝 |
+
+- hover / 斑马纹 tint 均生效（`background-image` 叠加后仍不透明）。
+- console 0、HTTP≥400 0。
+
+### 过程中踩的坑（如实记录）
+
+首版用 `--bg-base` 作固定列底色并直接 `!important` 覆盖，被审查判为 **1 blocker + 2 major**：
+- **B1**：8 个 `--bg-surface` 容器页面会出现常驻深色竖带，且压掉了证书台账页此前已修的固定列/hover 规则；
+- **M1**：`!important` 压死 hover / 当前行 / 搜索高亮态；
+- **M2**：选择器顺带命中 `th`，表头出现色块接缝。
+
+改为 token + tint 方案后，又踩到第二个坑：**token 声明在 `.el-table` 上会覆盖祖先的覆盖值**，导致台账页仍是深色竖带（实测 rgb(15,16,17) vs 容器 rgb(25,26,27)）；把默认值移到 `:root` 后容器覆盖才生效。
+
+### 已知遗留
+
+- **浅色主题未实测**：仓库有 light 变量，`--table-fixed-bg` 默认取 `--bg-elevated`，理论成立但未切换验证。
+- **证书台账未逐像素比对**：该页表格需筛选条件才渲染，仅验证了 token 计算值。
+- **`el-table__fixed-right-patch`**：EP 硬编码 `#fff`，本次未触发，暗色下若出现会是白块。
+
+### 测试
+
+- 全量：**85 files / 1172 tests** passed。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立代码审查：不建议合并（B1/M1/M2），逐条给出被覆盖规则与页面清单；采纳其「token + background-image tint」方案，并在第二轮修正 token 作用域。
+- 独立浏览器 QA：本轮未返回（合并依据为总控 1024 三页实测 + CI 全绿），遗留「浅色主题/台账页逐像素」待补。
+- 总控：实现 + 两轮修正 + 三页 1024 实测。
+
+### 版本组合
+
+- 前端：`4c3074b`（合并为 `36b4d59`）。
+- 后端：`main@7d0c2bd`（无接口改动）。
+
+### 后续建议
+
+1. **P3 浅色主题**：切换 light 主题验证固定列与表头色带。
+2. **P3 台账页逐像素**：造筛选条件后 1024 横滑截图比对。
+3. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链、导出/报告下载链路（blob 消费异常）。
+4. **方法教训**：①全局 `!important` 会压掉页面级修复，改全局样式前必须 grep 现有 `!important` 覆盖点；②CSS 自定义属性声明在**使用它的元素**上会屏蔽祖先覆盖，默认值应放 `:root`；③「修一个叠字」要同时验证 hover/斑马纹/表头三类状态，否则会把一个问题换成三个。
