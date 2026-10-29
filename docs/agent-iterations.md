@@ -4808,3 +4808,77 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 - 仍缺:**A 类数值样例** —— 需后端镜像包含 #109 且账号下存在"负载均衡"记录(云端返回 weight>0);当前运行后端仍为 18:49:56 构建(未重建),故该项标记为**未执行**
 
 **环境备注**:我的隔离验证实例首次加载会因**自身依赖预优化**产生 504/未处理拒绝噪声(与"多实例共享 .vite"是不同成因,单实例首次优化也会出现),**预热后重载并清零噪声**再断言,已固化为脚本模式(本轮一次误判即由此纠正)。
+
+---
+
+## cam-iteration-20261029-blob-error-envelope（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#95`，merge commit `0e1482b`，2026-10-29 21:58 +08）
+**代码 PR**：`e-cam-web#95`（commit `408eb24`；CI 四项全绿；审查 Approve，0 blocker / 0 major）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮评审 major：二进制下载接口在 **HTTP 200 时也可能返回业务信封**（`{code:500,msg}`），旧实现走 blob 短路直接落盘 → 用户得到一个内容为错误 JSON 的 `.csv`，并看到「导出成功」。
+
+### 需求卡
+
+- 目标用户：使用任何导出/下载入口的运维。
+- 目标：信封响应 → 报错、**不产出文件**；合法 CSV / JSON 导出不受影响；失败后可重试。
+- 非目标：`content-type` 错配场景（O1）、`maxRecords/fields` 未下发、报告格式（JSON vs PDF）。
+- API 契约：不改后端。
+
+### 变更内容
+
+- `src/api/request/index.ts`：新增 `assertBinaryPayload` —— 仅当响应是 JSON 且**顶层为带 `code` 字段的对象**时判为信封并抛错；顶层数组与无 `code` 的对象原样放行。`responseType` 兜底改为 **config 优先**。
+- `src/api/request/binary.test.ts`（新增，7 例）：CSV 放行 / JSON 数组放行 / 错误信封 / 成功信封 / 响应头识别 / 非 Blob / 非法 JSON。
+- `src/views/iam/audit/components/ExportDialog.vue`：fail-loud（非 Blob 或 0 字节直接报错）。
+- 提示只在调用方弹一次（拦截器内不 `ElMessage`，避免重复提示）。
+
+### 验收（独立 QA **22 项断言全 PASS**，HEAD `408eb24`）
+
+| 场景 | 结果 |
+|---|---|
+| 200 + `{code:500,msg:"模拟无权限"}` | ✅ **download 事件 0**、提示 **1 条**、无 `[object Object]`/`undefined` |
+| 200 + `{code:0,data:null}` | ✅ 无下载、提示「接口未返回文件，请稍后重试」 |
+| 真实 CSV（带范围） | ✅ 161 字节、15 列中文表头；同请求去掉范围 → **1,237,900 字节 / 7,339 行** |
+| JSON 导出（无范围） | ✅ **3,984,389 字节**、合法数组、7,339 条，未被误判为信封 |
+| `application/octet-stream` | ✅ 正常下载 23 字节，不误判 |
+| 失败后重试 | ✅ 按钮未卡 loading、对话框保持打开、重试成功 |
+| console / HTTP / pageerror | ✅ pageerror 0、HTTP≥400 0，console.error 仅调用方自身的「导出失败」 |
+
+### 新发现（本轮 QA 与审查，未在本 PR 修）
+
+1. **O1 content-type 错配仍会落盘坏文件**：200 + 信封但 `content-type: text/csv` 时放行 → 复现原缺陷（工单限定 JSON 类型，故不计失败）。审查同样指出 `text/plain`、`text/html` 信封不被拦截。
+2. **成功信封被一律判失败**：`{code:0,data:[...]}` 会抛「接口未返回文件」；若后端将来改为标准信封，JSON 导出会不可用（当前后端返回顶层数组，已实测）。
+3. **4MB JSON 导出开销**：`text()+JSON.parse` ≈ 37ms 主线程阻塞；审查建议先 `slice(0,512)` 看首字符，仅 `{` 开头且小体积才全量解析（可降到 ~0.16ms）。
+4. **第二个下载入口未加 fail-loud**：`views/audit/logs/index.vue` 仍是 `new Blob([res])`，200+空 body 会下载 0 字节并提示成功。
+5. **可观测性**：信封拒绝不打日志，而生产构建 `esbuild.drop:['console']` 会剥掉调用方的 `console.error` → 线上零痕迹。
+6. **成功路径仍有 2 条「导出成功」**（对话框 + 父页面各一次，既有）；HTTP 500 时会弹 2 条提示（`服务器内部错误` + `Request failed with status code 500`，既有）。
+7. **`maxRecords`/`fields` 从未下发**（P3，既有）。
+
+### 测试
+
+- 全量：**89 files / 1195 tests** passed。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立代码审查：**Approve**（0 blocker / 0 major / 5 minor / 6 nit）；用仓库外 axios 探针复刻拦截器接线，实证信封 reject、合法数组/CSV 直通、`text/plain` 信封漏拦，并确认异步 interceptor 抛错后 `normalizeRequestError` 不会把消息退化成 `[object Object]`。
+- 独立浏览器 QA：**22/22 PASS**，含 `octet-stream` 不误判、失败后重试、提示条数精确计数（失败路径 1 条、成功路径仍是 2 条）。
+- 总控：实现 → 自测（模拟信封 + 真实 CSV + 3.98MB JSON）→ 冻结基线 → 等审查/QA 结论后合并。
+
+### 版本组合
+
+- 前端：`408eb24`（合并为 `0e1482b`）。
+- 后端：`main@c90f9e7`（无接口改动）。
+
+### 后续建议
+
+1. **P2 嗅探加固**：`slice(0,512)` 预判 + 成功信封 `data` 重建 Blob + 覆盖 `text/plain`/`text/html`（后端/网关错配时仍有兜底）。
+2. **P2 第二个入口 fail-loud**：`views/audit/logs/index.vue` 套用同一守卫。
+3. **P3 日志**：信封拒绝补 `logWarn({url, code, msg})`。
+4. **P3 重复提示**：成功路径去掉一次 `ElMessage.success`；HTTP 500 去重。
+5. **P1 后端时间过滤**：`dao/audit.go` 改 `ctime`（秒/毫秒归一），否则带范围的导出/筛选恒为空。
+6. **方法教训**：①「HTTP 200」不等于「成功」——二进制下载必须校验内容形态，错误信封会被当成文件；②拦截器层的修复要同时评估「抛错后调用方能否正确展示」，本轮因在拦截器里也弹提示会与调用方重复，改为只抛错；③边界测试要包含「不该拦的」（顶层数组 3.98MB JSON、`octet-stream`），否则修复本身会变成新缺陷。
