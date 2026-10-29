@@ -4260,3 +4260,81 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 **防护自验**:以 `cacheDir: node_modules/.vite-verify-3333` 启动验证实例 → 共享 `.vite/deps` 时间戳**未被改动**(16:30:34 < 实例启动 16:30:49),主 dev server 同时仍 200 ✓
 
 **旁证**:仓库内已存在大量 `.vite-cam-iterN` 目录 —— 并行验证实例一直在用独立 cacheDir;本次把该约定写入文档。**我方后续所有验证实例一律改用独立 cacheDir 配置。**
+
+---
+
+## cam-iteration-20261029-iam-audit-time-filter（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#80`，merge commit `9c789f3`，2026-10-29 17:02 +08）
+**代码 PR**：`e-cam-web#80`（commits `953413b` → `9458aef` → `d7f856d`；CI 四项全绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- IAM 审计页选「时间范围」后整页报错。实测：前端 `toISOString()` 发 `2026-10-29T00:00:00.000Z`，后端 `audit_handler.go` 按 `2006-01-02 15:04:05` 解析 → **400**，响应体 `开始时间格式错误: parsing time ... cannot parse "T00:00:00.000Z"`。
+- 审查补出两处同源问题：`ExportDialog` / `ReportDialog` 仍用 `toISOString()`（导出、生成报告 100% 400）；且发**本地墙钟**会被 Go 按 **UTC** 解释，UTC+8 下窗口整体后移 8 小时。
+
+### 需求卡
+
+- 目标用户：使用 IAM 审计筛选/导出的安全与运维人员。
+- 目标：时间参数被后端接受（不再 400）；时区语义正确；列表、导出、报告三处一致。
+- 规则：新增 `toBackendDateTime`（UTC 墙钟、秒精度、无 T/Z）；三处统一调用；契约测试扫描整个 `iam/audit` 目录。
+- 非目标：后端过滤字段错配（返回 0 条）、导出/报告下载链路、390 筛选区宽度。
+- API 契约：沿用后端 `2006-01-02 15:04:05`（UTC 语义），不改后端。
+
+### 变更内容
+
+- `src/utils/epoch.ts`：新增 `toBackendDateTime`（含越界值兜底，避免 `RangeError`）。
+- `src/views/iam/audit/index.vue`、`components/ExportDialog.vue`、`components/ReportDialog.vue`：统一改用该函数。
+- 测试：`epoch.test.ts`（+4 例，含硬编码 UTC 期望与 ±1e17 越界）、`timeRange.contract.test.ts`（递归扫描 `.vue`、断言三处使用、断言精确 UTC 输出）。
+
+### 验收（独立 QA **6/7 PASS**；总控补充实测）
+
+| 项 | 结果 |
+|---|---|
+| 选范围后请求 | ✅ `start_time=2026-10-28 16:00:00&end_time=2026-10-29 15:59:59`（UTC）→ **200**（此前 400） |
+| 无错误提示 | ✅ 无「加载审计日志失败」，空态「暂无数据」 |
+| 契约对照（直连 8001） | ✅ ISO → 400；`YYYY-MM-DD HH:mm:ss` → 200 |
+| 重置 | ✅ 请求无 start/end_time，恢复 20 行 / 7334 条 |
+| 1440 | ✅ 筛选区完整可用 |
+| 390 | ⚠️ **FAIL**：`.el-date-editor` 固定 380px，右界 499 超出视口 109px，结束时间输入仅 39/124px 可见（既有布局） |
+| console / HTTP | ✅ error 0、pageerror 0 |
+
+### 过程中的关键发现（均如实记录）
+
+1. **B1 成立**：两个对话框确实仍在用 `toISOString()`；已同批修复并把契约测试扩到 `**/*.vue`。
+2. **M1 成立**：发本地墙钟会被后端按 UTC 解析（偏 8 小时）；已改为 UTC 墙钟，并用 `Date.UTC(...)` 硬编码期望锁住语义。
+3. **导出/报告下载链路另有缺陷（实测）**：点「导出」报 `TypeError: Cannot read properties of undefined (reading 'code')` —— blob 响应与拦截器按 `response.data.code` 取值冲突。属既有问题，本 PR 未改，已在 PR 描述与本节记录。
+4. **后端时间过滤恒空**：`dao/audit.go` 用 `create_time`（无写入者，中间件只写 `ctime` 毫秒）→ 任何范围 0 条（实测含 0001→2030 超宽窗口）。后端改 `ctime` 时必须先做**秒/毫秒归一**（IAM 老路径 `Unix()` 秒、中间件 `UnixMilli()` 毫秒，混存）。
+
+### 已知遗留
+
+- **P1 后端时间过滤**：见上；当前用户看到「暂无数据」而非报错，语义上比 400 更隐蔽。
+- **P2 导出/生成报告下载链路**：blob 消费异常 + 报告接口返回 JSON 却按 `.pdf` 保存。
+- **P3 390 筛选区**：日期控件固定 380px。
+- **P3 筛选参数名不一致**：`operator` / `provider` vs 后端 `operator_id` / `cloud_platform`（静默无效）。
+
+### 测试
+
+- 全量：**84 files / 1168 tests** passed。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立代码审查（两轮）：第一轮不建议合并（B1 两处对话框、M1 时区错向、M2 后端死字段）；第二轮复核确认「请求格式闭环 ✔、UTC 语义与 `time.Parse` 一致 ✔、无其它错格式入口 ✔」，并建议实测下载——实测证明确有问题（见上）。
+- 独立浏览器 QA：**6/7 PASS**，390 一项归因既有布局；并用直连 8001 证明「ISO→400 / 空格→200」契约反转。
+- 总控：实现 + 两轮修复 + 导出实测（发现 blob 缺陷）+ 请求参数核对。
+
+### 版本组合
+
+- 前端：`d7f856d`（合并为 `9c789f3`）。
+- 后端：`main@dad4e89`（无接口改动）。
+
+### 后续建议
+
+1. **P1 后端时间过滤**：`dao/audit.go` 改 `ctime`，并统一秒/毫秒；建议与前端同批发布，否则筛选仍恒空。
+2. **P2 导出/报告**：修 blob 分支的响应消费（`resolve(res.data)` 对 Blob 的处理）与报告格式（JSON vs PDF）。
+3. **P3 390 筛选区**：日期控件改 `max-width:100%`。
+4. **P3 筛选参数名**：`operator`/`provider` 与后端对齐。
+5. **方法教训**：①「格式 400」类修复要同时检查**所有入口**（列表/导出/报告共用同一契约）；②前端时间参数必须明确**UTC 还是本地**语义——Go `time.Parse` 默认 UTC，而 `ParseInLocation` 有本地约定，同一仓库两种写法并存；③修一个可见错误（400）可能把用户推进更隐蔽的错误（静默 0 条），必须在 PR 里写清楚。
