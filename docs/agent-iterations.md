@@ -4130,3 +4130,25 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 3. **P3 键盘可达性**：`overflow-x:auto` 引入的 tab stop 与触屏下「可滚动但无提示」，建议加 `scroll-snap` 或可见滚动条。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查。
 5. **方法教训**：这类「负向溢出」缺陷必须先看**元素相对容器的 left/right**，而不是页面 `scrollWidth`；本轮把这个判据固化进了验收脚本（`clippedLeft/clippedRight`），后续列表页验收应默认带上。
+
+---
+
+## 2026-10-29 协同验证轮:分页(#69)与筛选口径的端到端巡验 + 自动化脚本踩坑记录
+
+**背景**:并行 #69 把「加载更早」的游标钳制重构为 `pagination.ts` 纯函数(`canLoadEarlierTs`/`earlierEndMs`,消除旧内联 `-1000`);核对其是否留下重复/死代码 → **无残留**(调用点已全部改走新 helper,`EARLIER_END` 常量集中),并做端到端巡验。
+
+**① 代码级**:`git grep 'oldestTs.value - 1000'` 无残留;`canLoadEarlier` 仅经 `canLoadEarlierTs` 判定;`loadEarlier` 用 `earlierEndMs` 且 `null` 时置 `pageBottom` + 提示 —— 与后端 `end<=start` 拒绝形成互补。
+
+**② 端到端(A 类:worktree :3333 + 真实后端 :8001,admin,1440×900,CDN Tab)——PAGINATION-PASS**:
+| 检查项 | 实测 |
+|---|---|
+| 我触发的首查 | `account_ids=[1]` ✓ |
+| 展开明细后「加载更早」可见并可点 | ✓ |
+| 翻页请求 | `account_ids=[1]`(**口径保持**)、`end_time` 前移 ✓ |
+| 明细行数 | 3000 → **5500**(追加)✓ |
+| 页面错误 | **0** ✓ |
+
+**③ 自动化脚本踩坑记录(本轮两次假失败,均为脚本问题,非产品缺陷)**:
+1. `locator.click({ force: true })` 对 Element Plus `el-select` 选项**不触发 v-model 更新**(控件显示已选但请求无该参数)→ 下拉交互一律用普通点击。
+2. `locator('button', { hasText: 'A|B' })` 的 `hasText` 传字符串时是**子串匹配**,`|` 不会被当作"或" → 需单个纯文本或改用正则。
+3. 页面 URL 带任一查询参数(如 `?t=cdn`)即触发**加载时自动查询**,故请求数组的**首个**请求可能早于用户操作(不含刚选的筛选)→ 断言应取"操作后最后一次"请求。
