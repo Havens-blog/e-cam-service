@@ -3388,3 +3388,24 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 2. **P3 路由守卫告警**（QA 附带发现）：未登录重定向时 `[Router] Navigation error: Invalid navigation guard`（`router/index.ts:38-59` 的 `async` 守卫声明 3 参但无 token 分支未调 `next()`），仅 DEV 可见，建议单独修。
 3. **P3 模板页 390 卡片**：卡片盒 360px 在 390 视口下右侧按钮被裁（由 `.main-content` 内部横滚承载），与本轮无关。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
+
+---
+
+## 2026-10-29 系统性建议:请求层异常契约与调用方假设不一致(55 处受影响)
+
+**来源**:修复 #51(`[object Object]`)时发现根因在**共享请求层**,故量化其全站影响面,供维护者决策。
+
+**事实(逐条核实)**:
+1. `src/api/request/index.ts` 对 **HTTP 非 2xx** 的 reject 形态是**响应体本身**:
+   `reject(error.response ? error.response.data : error)` → 调用方拿到 `{code,msg,data}` **普通对象**,而非 `Error`/`AxiosError`。
+2. 对 **HTTP 200 且业务 code ≠ 0** 的 reject 是 `new Error(apiData.message || 'Error')` —— 而接口信封字段是 **`msg`**,`message` 常缺失 → **用户看到字面量 "Error"**,同样丢失服务端原因。
+3. 调用方写法与之不匹配:`git grep -c 'instanceof Error'` 全站 **57 处**(日志域 2 处已修,域外 **55 处**),典型 `err instanceof Error ? err.message : '<通用兜底>'` → 因不匹配而**一律走通用兜底**,服务端具体原因被静默丢弃。
+4. 另有 **4 处**按 `AxiosError` 取值(`response?.data?.msg`):`src/api/cert.ts:68`、`compute/provision/index.vue:1193/1242/1309` —— 在当前 reject 形态下 `err.response` **恒为 undefined**,该分支实际不可达。
+
+**影响(用户可感知)**:平台多数失败提示是通用文案(如"保存模板失败"),丢失后端给出的具体原因;个别基于文案的判断会失效(#51 实证:`isScanConfirmError` 的"确认并继续"通道曾整条失效)。
+
+**建议(二选一,维护者定夺;本轮不擅自改共享层)**:
+- **A. 层内归一(推荐)**:HTTP 错误统一 `reject(Object.assign(new Error(apiData?.msg || apiData?.message || '请求失败'), { payload: body, status }))`;业务错误同样用 `msg || message`。一次性修复全部 57 处;需同步更新那 4 处 `response?.data` 取值点。
+- **B. 共享提取器**:把 #51 新增的 `format.errorMessage()` 上提为 `src/utils/` 共享纯函数,各域逐步替换(风险最低,但需逐处改造)。
+
+**本轮边界**:仅记录与量化,**未改动 `src/api/request/index.ts`**(共享基础设施,跨切面影响,且并行会话同期在改路由/审计/证书等区域,避免争抢)。
