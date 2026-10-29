@@ -3720,3 +3720,17 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 2. **P2 造数据验收分页**：本地缺用户组数据，建议用后端 seed 或测试专用账号造 ≥7 页，才能验收分页换行。
 3. **P3 app shell 顶栏小屏**：`.navbar-right` 在 ≤768 溢出到视口外，属 shell 级问题，影响所有页面。
 4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查。
+
+---
+
+## cam-iteration-20261029-disable-auto-open(dev/preview 不再自动打开浏览器)
+
+**来源**:使用者反馈「测试环境不要自动打开 http://localhost:3333/cam/dashboard」。
+
+**根因(实测定位)**:`vite.config.ts` 的 **`server.open: true`** —— 因 `base: '/cam/'` + SPA 默认路由跳转,弹窗落在 `/cam/dashboard`;自动化验收**每小时**以 `--port 3333` 拉起实例,于是每次都弹窗干扰使用者。旁证:并行会话的 `vite.verify.config.ts` 早已自行设 `open: false`(同一痛点的既有绕法)。
+
+**改动(e-cam-web#60)**:`server.open`/`preview.open` 均改 `false`(需要时显式 `vite --open`);新增 `src/config/vite-dev-server.test.ts` 契约断言(server/preview 的 open 必须 false、npm scripts 不得隐式 `--open`)。
+
+**验收**:**变异验证**(回退 `open: true` → 用例失败);`vue-tsc` 0;**全量 78 files/1131 tests 全绿**;`vite build` **exit 0**;运行时以新配置启动 3333 → 200 正常,且**未见由 vite 拉起的浏览器进程**(当刻新增 chrome 子进程的父进程均为既有 Chrome、命令行 `--type=renderer`)。CI 四项全绿后合并。
+
+**排查副产物(记录备查)**:检查端口监听确认 3333 无遗留(**我的验证实例已随任务结束**);5173 为主检出 dev server;`vite.verify.config.ts` 的三个常驻实例属并行会话工作树(端口 5188、已 `open:false`),非弹窗来源。
