@@ -1,4 +1,4 @@
-﻿package executor
+package executor
 
 import (
 	"context"
@@ -105,6 +105,13 @@ func (e *SyncAssetsExecutor) syncDNS(
 					"utime":      now,
 				},
 				"$setOnInsert": bson.M{"ctime": now},
+			}
+			// 权重：云端有值才落库；无值(不支持的云/非负载均衡记录)则清除历史值，
+			// 避免旧数据被误读为"当前权重"。
+			if r.Weight != nil {
+				rUpdate["$set"].(bson.M)["weight"] = *r.Weight
+			} else {
+				rUpdate["$unset"] = bson.M{"weight": ""}
 			}
 			rOpts := options.Update().SetUpsert(true)
 			if _, err := e.dnsRecordColl.UpdateOne(ctx, rFilter, rUpdate, rOpts); err != nil {

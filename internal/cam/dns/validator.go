@@ -89,6 +89,18 @@ func ValidateMXPriority(priority int) error {
 	return nil
 }
 
+// ValidateDNSWeight 校验 DNS 权重范围 [0, 100]（负载均衡解析）。
+// 入参为 nil 表示"未提供/不修改"，直接放行。
+func ValidateDNSWeight(weight *int) error {
+	if weight == nil {
+		return nil
+	}
+	if *weight < 0 || *weight > 100 {
+		return ErrDNSWeightRange
+	}
+	return nil
+}
+
 // ValidateTXTLength 校验 TXT 记录值长度 <= 512
 func ValidateTXTLength(value string) error {
 	if len(value) > 512 {
