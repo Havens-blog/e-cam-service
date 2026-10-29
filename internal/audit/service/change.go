@@ -146,28 +146,57 @@ func (t *ChangeTracker) ListByAssetID(ctx context.Context, filter domain.ChangeF
 
 // GetSummary 获取变更统计汇总
 func (t *ChangeTracker) GetSummary(ctx context.Context, filter domain.ChangeFilter) (*domain.ChangeSummary, error) {
-	total, err := t.dao.Count(ctx, filter)
-	if err != nil {
-		return nil, fmt.Errorf("统计变更总数失败: %w", err)
+	// 容错策略：各项统计相互独立。任一项失败（如 540 万条记录上聚合超时、
+	// 服务端断开连接）时只记告警并跳过，其余项照常返回。
+	//
+	// 原实现是全有或全无：任一聚合失败即整接口 500，前端顶部统计条完全不可用
+	// （实测数据量大时该接口 46s 后返回 500）。改为部分成功，让能算出的先展示。
+	// 若全部失败则返回错误，避免用空数据误导调用方。
+	var (
+		summary   = &domain.ChangeSummary{}
+		failed    int
+		succeeded int
+	)
+
+	if total, err := t.dao.Count(ctx, filter); err != nil {
+		failed++
+		t.logger.Warn("统计变更总数失败，已跳过", elog.FieldErr(err))
+	} else {
+		succeeded++
+		summary.Total = total
 	}
-	byResource, err := t.dao.CountByModelUID(ctx, filter)
-	if err != nil {
-		return nil, fmt.Errorf("按资源类型统计失败: %w", err)
+
+	if byResource, err := t.dao.CountByModelUID(ctx, filter); err != nil {
+		failed++
+		t.logger.Warn("按资源类型统计失败，已跳过", elog.FieldErr(err))
+	} else {
+		succeeded++
+		summary.ByResourceType = byResource
 	}
-	byField, err := t.dao.CountByField(ctx, filter)
-	if err != nil {
-		return nil, fmt.Errorf("按字段统计失败: %w", err)
+
+	if byField, err := t.dao.CountByField(ctx, filter); err != nil {
+		failed++
+		t.logger.Warn("按字段统计失败，已跳过", elog.FieldErr(err))
+	} else {
+		succeeded++
+		summary.ByField = byField
 	}
-	byProvider, err := t.dao.CountByProvider(ctx, filter)
-	if err != nil {
-		return nil, fmt.Errorf("按云厂商统计失败: %w", err)
+
+	if byProvider, err := t.dao.CountByProvider(ctx, filter); err != nil {
+		failed++
+		t.logger.Warn("按云厂商统计失败，已跳过", elog.FieldErr(err))
+	} else {
+		succeeded++
+		summary.ByProvider = byProvider
 	}
-	return &domain.ChangeSummary{
-		ByResourceType: byResource,
-		ByField:        byField,
-		ByProvider:     byProvider,
-		Total:          total,
-	}, nil
+
+	if succeeded == 0 {
+		return nil, fmt.Errorf("变更统计全部失败（%d 项）", failed)
+	}
+	if failed > 0 {
+		t.logger.Warn("变更统计部分失败", elog.Int("failed", failed), elog.Int("succeeded", succeeded))
+	}
+	return summary, nil
 }
 
 func toJSON(v interface{}) string {
