@@ -5566,3 +5566,73 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 
 **为何不直接合并**:`limit`/`size` 读取点合计仍分布于 25 个文件(成本/证书/IAM/标签等),全量铺开属**跨模块契约变更**;且后端近期有并行改动。**待确认**:① 上限取 1000 是否合适;② 是否铺开到其余模块。
 **铺开后的复核方式**:仓库审计脚本 `node scripts/audit/cam-api-audit.mjs --only=limits`(将由 ⚠ 转为 ✓)。
+
+---
+
+## cam-iteration-20261030-cancel-no-toast（跨日轮，2026-10-30）
+
+**状态**：**已合并**（`e-cam-web#116`，merge commit `485cadf`，2026-10-30 05:52 +08）
+**代码 PR**：`e-cam-web#116`（commit `bc06f63`；CI 四项全绿；审查 **PASS**，零 blocker / 零 major）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮审查实测（代码阅读 + 单测）：`ERR_CANCELED` 会落到错误拦截器兜底的 `handleApiError` → 弹「网络连接失败，请检查网络连接后重试」并被标记「已提示」。
+- 本轮**浏览器对照实测**（Playwright + `page.route` 延迟 1.2s 制造在飞请求，点「取消」触发 `AbortController.abort()`）：
+
+| 版本 | toast | console error | abortedCount |
+|---|---|---|---|
+| 基线 `a8867b9` | **2 条**「网络连接失败，请检查网络连接后重试」 | **2 条** `[API] API Error … message: canceled` | 2 |
+| 修复后 `bc06f63` | **0 条** | **0 条** | 2 |
+
+（`abortedCount=2` 证明取消确实发生，不是「没触发」的假绿。）
+
+### 需求卡
+
+- 目标用户：使用「取消查询」的运维（`/cam/logs` 联邦检索）。
+- 目标：取消不弹错误提示、不以 error 级别记日志；调用方仍能识别取消。
+- 规则：取消判定前移到 `logError` 之前，只记 `info` 并原样 reject；**刻意不判** `ECONNABORTED` / `signal.aborted`（否则真超时、真断网会被一起吞掉）。
+- 非目标：三处取消判定口径统一、`showApiError` 忽略取消、日志级别断言。
+- API 契约：无。
+
+### 变更内容
+
+- `src/api/request/index.ts`：错误拦截器开头新增取消早退（`code === 'ERR_CANCELED' || name === 'CanceledError' || name === 'AbortError'`），`logInfo` 后原样 `reject`。
+- `src/api/request/error-contract.test.ts`：+1 例（取消不弹、错误原样透传、不带「已提示」标记）。
+
+### 验收
+
+- 浏览器对照（见上表）：修复前后 toast 2 → 0、console error 2 → 0。
+- 单测变异验证：屏蔽取消分支 → 该用例失败（1 failed / 6 passed），恢复后全绿。
+- 全量：**92 files / 1225 tests** passed；`vue-tsc -b` / `eslint` / `vite build` 均 exit 0；PR CI 四项全绿。
+
+### 环境说明（延续上一轮）
+
+- 本机后端 `corsDefaultOrigins` 只白名单 **8888 / 5173 / 3333**，本轮验证因此把 dev server 从 5235 换到 **3333**；非白名单端口的 POST 会 403（上一轮已记录，仍是后续本地验证的硬约束）。
+- 上一轮修复的 `@babel/parser` / `@antfu/utils` 本轮全程正常（1225 测试与 build 均通过），未见新的 node_modules 破坏。
+
+### 审查提出的遗留（未修，已记录）
+
+1. **取消判定有 3 份口径**：拦截器（code + 2 个 name）/ `normalizeRequestError`（仅 code）/ `useLogSearch.isCanceled`（仅 code）。纯 `AbortError` 形态下拦截器静默吞日志，但页面会渲染英文 message。建议导出统一 `isCanceledError()` 三处复用，并让 `showApiError` 忽略取消。
+2. **单测没钉住「不以 error 级别记日志」这半个目标**：把取消分支挪到 `logError` 之后仍全绿，建议 spy 日志。
+3. **只覆盖合成形状**（code 与 name 同时给）：两个 name-only 分支无覆盖，建议用 `new axios.CanceledError()` 或真正读 `config.signal` 的 adapter。
+4. nit：可用 `axios.isCancel(error)` 替代手写字符串比对；`logInfo` 少带 `method`。
+
+### 子 Agent 与复核
+
+- 独立代码审查：**PASS**（零 blocker / 零 major）；核实了 axios 1.13.2 的 `CanceledError` 形状与 xhr adapter 行为，确认本项目唯一取消路径被 `code === 'ERR_CANCELED'` 覆盖；确认早退无状态泄漏（`useLogSearch` 三处 `finally` 均复位）、无「调用方弹英文 canceled」回归、无日志风暴（取消由人点按钮触发，非输入防抖）；并提出 3 minor + nit。
+- 总控：复现（先用 `/cam/logs` 的「取消」按钮触发）→ 修复 → **基线/修复双跑对照** → 变异验证 → 全套验证 → 合并。
+- 本轮**未单独派浏览器 QA**：对照实测由总控完成（上表）；审查已独立核实代码与单测。按惯例在此如实标注。
+
+### 版本组合
+
+- 前端：`bc06f63`（合并为 `485cadf`）。
+- 后端：`main@d2d1904`（无接口改动）。
+
+### 后续建议
+
+1. **P3 统一 `isCanceledError()`**：三处口径合并，并让 `showApiError` 忽略取消（顺手消除「将来 signal + showApiError 混用会弹英文 canceled」的潜在陷阱）。
+2. **P3 日志级别断言**：单测加 spy，钉住「取消不写 error 日志」。
+3. **P1 环境一致性**：后端 CORS 白名单需覆盖本地常用端口，否则 POST 类接口无法真机验证；`node_modules` 上次被破坏的根因仍待环境负责人确认。
+4. **P2 109 处 catch 迁移**、**P1 后端 `ctime` 过滤**、**P2 报告格式** 仍按前几轮记录待办。
+5. **方法教训**：①「取消不弹提示」这类修复必须证明**取消真的发生**（abortedCount）并做**基线/修复双跑**，否则容易把「没触发」当成「没弹」；②第二遍验证时要故意让请求变慢（route 延迟），否则请求太快根本来不及 abort；③判定条件要写清「刻意不判什么」——审查特别指出，若顺手把 `ECONNABORTED` 也当取消，会把真超时和真断网一起吞掉。
