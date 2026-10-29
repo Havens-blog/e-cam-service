@@ -58,7 +58,9 @@ func (h *AuditHandler) ListAuditLogs(c *gin.Context) {
 		RequestID:     c.Query("request_id"),
 		StatusCode:    int(parseIntDefault(c.Query("status_code"), 0)),
 		Offset:        parseIntDefault(c.Query("offset"), 0),
-		Limit:         parseIntDefault(c.Query("limit"), 20),
+		// 单页上限：实测 limit=999999 会返回 7360 条 / 4.5MB（绕过翻页、放大内存与带宽）。
+		// 前端最大只请求 200，故 1000 的硬上限对现有客户端零影响。
+		Limit: min(parseIntDefault(c.Query("limit"), 20), int64(maxPageLimit)),
 	}
 	if st := c.Query("start_time"); st != "" {
 		v := parseIntDefault(st, 0)
@@ -152,6 +154,10 @@ func (h *AuditHandler) GenerateReport(c *gin.Context) {
 	}
 	c.JSON(200, gin.H{"code": 0, "msg": "success", "data": report})
 }
+
+// maxPageLimit 审计日志单页返回条数上限（理由见 ListAuditLogs 内注释：
+// 实测 limit=999999 返回 7360 条/4.5MB；前端最大只请求 200）。
+const maxPageLimit = 1000
 
 func parseIntDefault(s string, defaultVal int64) int64 {
 	if s == "" {
