@@ -5699,3 +5699,17 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 3. **P2 `handleApiError` 也加取消 guard**：两个兜底入口口径统一。
 4. **P1 后端 `ctime` 过滤**、**P2 109 处 catch 迁移**、**P2 报告格式** 仍待办。
 5. **方法教训**：①「统一口径」类重构要先确认**各形态在现网是否可达**（本轮 `AbortError`/`__CANCEL__` 分支实为防御性），否则容易高估收益、低估测试成本；②新增判定的价值取决于**消费点是否有测试**——本轮唯一真实消费点 `useLogSearch` 零测试，审查据此判「变异 100% 存活」。
+
+---
+
+## 2026-10-30 缺陷修复:每页 profile 请求 2 次 → 1 次(单飞去重)+ 环境问题发现
+
+**缺陷(逐页实测)**:每个页面加载都把 `GET /api/iam/user/profile` 请求 **2 次**(9/9 页面复现)。
+**根因**:两个触发点在同一次导航内**并发** —— `main.ts:58 userStore.initUserState()` 与 `router/index.ts:65 userStore.fetchUserInfo()`。
+
+**修复(e-cam-web#119,已合并)**:store 内加**单飞**(并发复用同一在途 Promise;结束后清空,**不做结果缓存**,租户变更/重登仍真实重取)。
+**验证**:新增 3 例单测(并发只发 1 次、结束后可重取、失败路径同样单飞)→ 文件 6/6;**变异验证**(条件改恒真 → 两条并发用例失败);`vue-tsc -b` 0;eslint 0;CI 四项全绿。
+**浏览器 A/B(真实后端)**:未修复(8888)整页加载 profile=**2**;已修复(3335)整页加载 profile=**1**(`/cam/dashboard`、`/cam/assets` 均以干净整页加载复测)。
+**未改**:SPA 页内跳转仍由路由守卫复查一次 profile(既有设计),如需"会话内只取一次"属行为决策。
+
+**附带环境发现(需处理,未擅自修)**:主检出 `node_modules/.bin` **为空(0 项)** ⇒ `npx vitest`/`npx vite`/`pnpm dev` 全线不可用(工作树用目录联接共享同一 node_modules,故一并受影响)。本次改用 pnpm store 内的**直连入口**完成验证(`node node_modules/.pnpm/<pkg>/node_modules/<pkg>/...`)。**建议主检出执行 `pnpm install` 恢复**。
