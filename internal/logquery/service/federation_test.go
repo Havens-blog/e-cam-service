@@ -1,7 +1,8 @@
-﻿package service
+package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -467,6 +468,36 @@ func TestAllTransientFailed(t *testing.T) {
 
 // TestWarmupOnce 预热遍历活跃账号 × 已注册类型调源清单;未注册组合跳过,
 // 至少完成一个 provider 记成功。
+func TestEffectiveResources(t *testing.T) {
+	p := &fakeProvider{
+		listed: []logquery.LogSource{
+			{Region: "cn-shenzhen", ResourceID: "a.com"},
+			{Region: "cn-hangzhou", ResourceID: "b.com"},
+			{Region: "cn-shenzhen", ResourceID: "c.com"},
+		},
+	}
+	acc := &domain.CloudAccount{ID: 1}
+
+	// 无 region:原样返回 resources
+	if got := effectiveResources(context.Background(), p, acc, nil, []string{"x.com"}); len(got) != 1 || got[0] != "x.com" {
+		t.Fatalf("no region: got %v", got)
+	}
+	// 仅 region:命中区域的所有资源
+	if got := effectiveResources(context.Background(), p, acc, []string{"cn-shenzhen"}, nil); len(got) != 2 {
+		t.Fatalf("region only: got %v", got)
+	}
+	// region + resources 交集
+	got := effectiveResources(context.Background(), p, acc, []string{"cn-shenzhen"}, []string{"a.com", "b.com"})
+	if len(got) != 1 || got[0] != "a.com" {
+		t.Fatalf("intersect: got %v", got)
+	}
+	// 列源失败:回退原 resources
+	p.listErr = errors.New("boom")
+	if got := effectiveResources(context.Background(), p, acc, []string{"cn-shenzhen"}, []string{"x.com"}); len(got) != 1 || got[0] != "x.com" {
+		t.Fatalf("list err fallback: got %v", got)
+	}
+}
+
 func TestWarmupOnce(t *testing.T) {
 	now := time.Now().UnixMilli()
 	calls := 0

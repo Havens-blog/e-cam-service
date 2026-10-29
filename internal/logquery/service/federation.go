@@ -1,4 +1,4 @@
-﻿// Package service 联邦日志查询编排(Phase 1.4,plan.md §4.4)。
+// Package service 联邦日志查询编排(Phase 1.4,plan.md §4.4)。
 //
 // 职责:解析租户内活跃云账号 -> 按 (cloud, logType) 构造 provider ->
 // 并发 fan-out -> 归并排序 -> 截断。单源失败/超时隔离,不阻塞其他源
@@ -39,6 +39,7 @@ type SearchRequest struct {
 	Query      string                 // 可选,原生检索式透传
 	Clouds     []domain.CloudProvider // 可选,限定云
 	AccountIDs []int64                // 可选,限定云账号
+	Regions    []string               // 可选,限定区域(各云区域标识,如 cn-shenzhen)
 	Resources  []string               // 可选,限定资源(域名/LB ID)
 	Filters    []logquery.FieldFilter // 可选,结构化字段筛选(AND 叠加)
 	Limit      int                    // 每日志源上限(默认 100,硬顶 500;ADR D4)
@@ -76,6 +77,7 @@ type AggregateRequest struct {
 	Query      string
 	Clouds     []domain.CloudProvider
 	AccountIDs []int64
+	Regions    []string
 	Resources  []string
 	Filters    []logquery.FieldFilter // 可选,字段筛选(可下推源生效,否则显式标注)
 	Dimension  string                 // 分组维度(/types 字段 key;空=kind 默认)
@@ -247,7 +249,7 @@ func (s *FederationService) aggregateUncached(ctx context.Context, tenantID int6
 					EndTime:   req.EndTime,
 					Query:     req.Query,
 					BucketSec: bucketSec,
-					Resources: req.Resources,
+					Resources: effectiveResources(gctx, p, &acc, req.Regions, req.Resources),
 					Filters:   req.Filters,
 					Dimension: req.Dimension,
 					Metric:    req.Metric,
@@ -553,6 +555,44 @@ func (s *FederationService) warmupOnce(ctx context.Context) bool {
 	return warmed > 0
 }
 
+// effectiveResources 区域筛选 → 资源 ID:各云对区域的内部表达不同,统一在
+// 联邦层按「源清单的区域字段」过滤,再把命中的资源 ID 交给 provider 的资源过滤
+// (所有 provider 都支持 Resources)。regions 为空时不改 resources;列源失败时
+// 回退原 resources(区域筛选降级为不生效,不伪造结果)。
+func effectiveResources(ctx context.Context, p logquery.LogProvider, acc *domain.CloudAccount, regions, resources []string) []string {
+	if len(regions) == 0 {
+		return resources
+	}
+	srcs, err := p.ListLogSources(ctx, acc)
+	if err != nil {
+		return resources
+	}
+	regionSet := make(map[string]bool, len(regions))
+	for _, r := range regions {
+		regionSet[r] = true
+	}
+	regionRes := make([]string, 0, len(srcs))
+	for _, s := range srcs {
+		if regionSet[s.Region] {
+			regionRes = append(regionRes, s.ResourceID)
+		}
+	}
+	if len(resources) == 0 {
+		return regionRes
+	}
+	want := make(map[string]bool, len(resources))
+	for _, r := range resources {
+		want[r] = true
+	}
+	out := regionRes[:0]
+	for _, id := range regionRes {
+		if want[id] {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // searchUncached 真实联邦查询(无缓存路径)。
 func (s *FederationService) searchUncached(ctx context.Context, tenantID int64, req SearchRequest) (*SearchResponse, error) {	perSource := req.Limit
 	if perSource <= 0 {
@@ -601,7 +641,7 @@ func (s *FederationService) searchUncached(ctx context.Context, tenantID int64, 
 					EndTime:   req.EndTime,
 					Query:     req.Query,
 					Limit:     perSource,
-					Resources: req.Resources,
+					Resources: effectiveResources(gctx, p, &acc, req.Regions, req.Resources),
 					Filters:   req.Filters,
 				})
 			}

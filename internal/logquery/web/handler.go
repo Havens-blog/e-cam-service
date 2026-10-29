@@ -250,6 +250,7 @@ type searchRequest struct {
 	Query      string                 `json:"query"`
 	Clouds     []string               `json:"clouds"`
 	AccountIDs []int64                `json:"account_ids"`
+	Regions    []string               `json:"regions"`
 	Resources  []string               `json:"resources"`
 	Filters    []logquery.FieldFilter `json:"filters"` // 结构化字段筛选(AND 叠加)
 	Limit      int                    `json:"limit"`
@@ -279,6 +280,7 @@ func (h *LogQueryHandler) Search(c *gin.Context) {
 		Query:      req.Query,
 		Clouds:     toProviders(req.Clouds),
 		AccountIDs: req.AccountIDs,
+		Regions:    req.Regions,
 		Resources:  req.Resources,
 		Filters:    req.Filters,
 		Limit:      req.Limit,
@@ -329,6 +331,7 @@ type aggregateRequest struct {
 	Query      string                 `json:"query"`
 	Clouds     []string               `json:"clouds"`
 	AccountIDs []int64                `json:"account_ids"`
+	Regions    []string               `json:"regions"`
 	Resources  []string               `json:"resources"`
 	Filters    []logquery.FieldFilter `json:"filters"`   // 字段筛选(可下推源生效)
 	Dimension  string                 `json:"dimension"` // 分组维度(/types 字段 key)
@@ -357,6 +360,7 @@ func (h *LogQueryHandler) Aggregate(c *gin.Context) {
 		Query:      req.Query,
 		Clouds:     toProviders(req.Clouds),
 		AccountIDs: req.AccountIDs,
+		Regions:    req.Regions,
 		Resources:  req.Resources,
 		Filters:    req.Filters,
 		Dimension:  req.Dimension,
