@@ -3409,3 +3409,71 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 - **B. 共享提取器**:把 #51 新增的 `format.errorMessage()` 上提为 `src/utils/` 共享纯函数,各域逐步替换(风险最低,但需逐处改造)。
 
 **本轮边界**:仅记录与量化,**未改动 `src/api/request/index.ts`**(共享基础设施,跨切面影响,且并行会话同期在改路由/审计/证书等区域,避免争抢)。
+
+---
+
+## cam-iteration-20261029-router-guard（2026-10-29）
+
+**状态**：**已合并**（`e-cam-web#52`，merge commit `9fe0225`，2026-10-29 09:50 +08）
+**代码 PR**：`e-cam-web#52`（commits `9d8cf9a` → `76976dc`；CI 四项全绿）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮 QA 在未登录重定向时观测到 `[Router] Navigation error: Error: Invalid navigation guard`，并经隔离定性为既有问题（匿名访问任意页面均触发、登录后不再新增、`src/router/index.ts` 不在改动清单内）。
+- 根因：全局守卫声明为 `async (to, from, next)`，但无 token / 取用户信息失败两个分支只调用 `redirectToLogin()` 后 `return` —— 既没调 `next()` 也没返回值。vue-router 4 依据**形参个数**（`Function.length >= 3`）走 `next` 路径，未调用即 `reject(new Error('Invalid navigation guard'))`。
+
+### 需求卡
+
+- 目标用户：所有访问受保护页面的用户（尤其登录态失效时）。
+- 目标：守卫不再产生 `Invalid navigation guard`；未登录仍被正确重定向；只读角色拦截仍生效。
+- 规则：守卫改为**返回值风格**（`return false` / `return '/certs/dashboard'` / `return true`），形参个数 ≤ 2；命名导出 `authGuard` 以便测试。
+- 非目标：`redirect=` 记录的是点击时页面而非目标页（既有行为，另记）。
+- API 契约：无。
+
+### 变更内容
+
+- `src/router/index.ts`：`beforeEach` 由 `async (to, from, next)` 改为导出的 `async function authGuard(to)`，三处出口改为 `return false` / `return CERT_VIEWER_FALLBACK_PATH` / `return true`；注册改为 `router.beforeEach(authGuard)`；注释写明「形参个数必须 ≤2」。
+- `src/router/guard.test.ts`（新增 4 例）：形参 ≤2 契约、无 token → `false` + 调 `redirectToLogin`、已登录 → `true`、只读角色 → 返回看板路径。
+
+### 验收（独立 QA **6/6 PASS / 10 场景**；总控复验 4 项）
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | 未登录访问 `/certs` | ✅ 267ms 跳 `console/login?redirect=…`，守卫报错 **0** |
+| 2 | 未登录访问 `/tasks`、`/audit/logs` | ✅ 258/287ms 跳转，报错 0 |
+| 3 | 已登录 4 路径 | ✅ 页面正常渲染，console error **0**（本轮无 dev 504 噪声） |
+| 4 | 清 cookie 后点菜单 / 硬导航 | ✅ 119/115ms 跳登录，报错 0 |
+| 5 | 已登录刷新 | ✅ URL 不变、正常渲染、报错 0 |
+| 6 | **灵敏度对照（关键）** | ✅ 用 SUT 同一份 vue-router 构造修复前形态 → 确实报 `Invalid navigation guard`；修复后形态 → resolved。证明「0 报错」是真阴性，非检测器失灵 |
+
+### 已知遗留
+
+- **popstate 竞态（审查 M1，理论）**：登录态失效后按浏览器后退，vue-router abort 后会补发 `history.go(-delta)`，可能顶掉已排队的登录页跳转；触发条件窄（页面在手 + cookie 过期 + 后退），仍优于旧实现（旧实现此时 URL 与视图彻底错乱）。
+- **回退用 push（M3）**：`return CERT_VIEWER_FALLBACK_PATH` 与旧 `next(path)` 一致为 push，被拦截 URL 留在历史里，连按后退会反复提示；可改 `{ path, replace: true }`。
+- **首屏 abort 会让 `router.isReady()` reject（M4）**：当前无调用方，安全。
+- **`redirect=` 语义**：记录的是点击时所在页（`window.location.href` 在 push 生效前读取），非目标页。
+
+### 测试
+
+- 全量：**72 files / 1102 tests** passed（新增守卫 4 例）。
+- `vue-tsc -b` / `eslint` / `vite build` 均 exit 0。
+- PR CI：Typecheck & Build、Vitest、ESLint、Gzip Budget **全 SUCCESS**。
+
+### 子 Agent 与复核
+
+- 独立审查：Approve；用 vue-router 4.6.3 源码证明返回值与 `next` **严格等价**（同一 `next` 实现，非近似）；minor —— popstate 竞态、守卫零测试、回退是 push、isReady reject；nit —— 收尾缩进、注释精确化。M2 与 nit 已修（导出 + 4 例测试 + 注释/格式）。
+- 独立浏览器 QA：**6/6 PASS / 10 场景**，并做**灵敏度对照**（修复前形态确实报错，修复后不报）；透明纠正自身两次测试方法问题。
+- 总控：实现 + 评审修复 + 4 项复验（未登录 0 报错、已登录 console 干净）。
+
+### 版本组合
+
+- 前端：`76976dc`（合并为 `9fe0225`）。
+- 后端：`main@e0c01ec`（无接口改动）。
+
+### 后续建议
+
+1. **P3 popstate 竞态**：手工用例「登录后清 cookie → 按后退」验证是否落到登录页；若被顶掉，改为 abort 完成后再跳转或允许闩锁重试。
+2. **P3 回退 `replace: true`**：避免被拦截 URL 留在历史。
+3. **P3 `redirect=` 语义**：跳登录时应记录目标页（可在守卫内传 `to.fullPath`）。
+4. **P1 仍待办**：任务生命周期治理、采集 running 超时、真实菜单死链排查（`menu-config.ts` 仍被并行会话占用）。
