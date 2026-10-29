@@ -3615,3 +3615,25 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 
 - 前端：`5099035`（合并为 `80a895a`）。
 - 后端：`main@367b086`（无接口改动）。
+
+---
+
+## 2026-10-29 验证轮:Option A 后的 401 路径与证书失败态(A 类实测)
+
+**背景**:#56(A 方案)合并时如实标注「401/403 拦截器路径未做 live 断言」。本轮补齐该缺口,并顺带验证 cert 域失败态未因归一退化。
+
+**① 会话失效(401)路径** —— **A401-PASS**(web main 955bd26,worktree :3333 + 真实后端 :8001):
+- 做法:正常登录后把共享 cookie `ecmdb-token-key` 改为失效值(仅该浏览器上下文),再打开 `/cam/certs`
+- 实测:跳转 `http://localhost:8888/console/login?redirect=http%3A%2F%2Flocalhost%3A3333%2Fcam%2Fcerts`
+  —— **落点正确、`redirect` 回跳参数保留、无 `[object Object]`、0 页面错误** ✓
+- 结论:#56 归一未影响 401 跳登录语义(401 判定在归一之前)
+
+**② 证书详情非法 id 失败态** —— **CERT-BADID-PASS**:
+- `/cam/certs/does-not-exist-xyz` → 后端 **400** → 页面呈现「不存在/未找到」态(该页按 `error.code` 分支的 not-found 路径),**无 `[object Object]`、0 页面错误** ✓
+- 结论:cert 信封/not-found 契约在归一后保持有效(`response.data` 原貌保留,`unwrapCertEnvelope` 仍按 `{success,error}` 解包)
+
+**静态基线**:web main 955bd26 —— 全量 **73 files / 1114 tests**、`vue-tsc` 0、`eslint src` 0。
+
+**至此异常契约主题收口**:主实例(全部 CAM 模块)+ cert + eiam 统一归一;401/403、取消语义、信封解包契约均有实测或单测覆盖。
+
+**环境备注**:本机 git 配置了本地代理 `127.0.0.1:7890`(当前未运行)→ HTTPS 推送失败;本轮改用 **SSH 推送成功**(github.com:22 可用时)。后续推送优先尝试 SSH。
