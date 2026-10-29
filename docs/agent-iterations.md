@@ -4616,3 +4616,24 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 ### 证据
 
 `D:\Haven\.browser-verify\qa-fixed-column-bg\`（report.md、results.json、截图）。
+
+---
+
+## 2026-10-29 需求闭环:DNS 权重字段 Step2(服务端#109)+ Step3(前端#90)
+
+**需求**:多云 DNS 补充权重字段(口径已确认:可支持云显示数值、其余 "-";表单仅对可写云出现;随同步落库)。
+
+**Step 2 服务端(e-cam-service#109,已合并)**
+- 依赖 `e-cloudx-sdk v0.1.0 → v0.2.0`(go mod tidy 补传递依赖;go.mod +8/-6、go.sum +17/-12);
+- **关键定位**:`ecam_dns_record` 真实写入是 `internal/cam/task/executor/sync_dns.go` 的**内联 mongo upsert**(不走 DAO,此前 `DnsRecordDAO.UpsertRecord` 查无调用方);权重落库点即在此,云端无值时 `$unset` 清除历史值避免误读;
+- 贯通:`DnsRecordDoc.Weight *int` → `recordDocToVO/recordToVO` → `CreateRecordReq/UpdateRecordReq.Weight *int`;`ValidateDNSWeight`([0,100],nil 放行);Create/Update **按可写性分档**(非可写云提交权重→400060 且不发云调用);`weight.go` 透出 SDK 能力矩阵防前后端口径漂移;
+- 验证:`go build`/`go test ./internal/cam/dns/...` 通过;变异验证(上界 100→99 用例失败);CI 失败点仍为既有 `Generate Wire code`。
+
+**Step 3 前端(e-cam-web#90,已合并)**
+- `types/dns.ts` 增 `weight`;新增 `views/network/dns/format.ts::formatWeight`(**无值/非有限数→"-",绝不显示 0**);`RecordTable.vue` 在 TTL 后新增"权重"列;`format.test.ts` 单测(边界 0/100、null/undefined、NaN/Infinity、显式"不得渲染为 0");
+- **浏览器验收(A 类)**:`/cam/network/dns/easyeda.com/records`,表头(含空选择列)`["","主机记录","记录类型","记录值","TTL","权重","线路","状态","操作"]`,权重列序号 5、首行取值 `-` 且**同行 TTL=86400/线路=默认**(证明落在正确列;此前按无空表头取列曾错位一次,已修正重测),前 5 行均 `-`,控制台 0 错误,截图 `%TEMP%\ecam-dns-weight3.png`;
+- **边界**:运行中后端镜像早于 #109(响应无 weight),线上暂无数值样例;数值分支由单测+模板接线覆盖,待后端重建自然生效(本轮尝试 mtime 触发 CompileDaemon 未成功,未改动源码内容强触)。
+
+**附带发现(未处理,待确认)**:`views/network/dns/components/DomainTable.vue:218` 仍 `router.push('/topology?domain=...')`,而 `/topology` 路由已随迁移删除且未纳入跨应用前缀 → 点击即 404;与"服务树 3 条死链"同属一类,建议一并决定"删除 or 改指 `/cmdb/...`"。
+
+**过程教训(已执行)**:本轮用 PowerShell 字符串往返批量改 Go 源码,导致 `errs.go`/`dao.go` 的 TAB 被写成 `E`/`P`、BOM 丢失 → 已 `git checkout` 恢复并改用精确编辑工具重做;**源码编辑一律用编辑工具**。
