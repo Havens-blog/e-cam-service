@@ -3521,3 +3521,20 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 **验收**:请求层单测 **14/14**(+5 例:msg/`message` 兼容/取消透传/网络透传/兜底链);**全量 72 files / 1107 tests 全绿**;vue-tsc 0;eslint 0;CI 四项全绿后合并。**live(A 类)**:失败文案=服务端原因(`[object Object]` 消失)、成功路径 KPI 4 卡、**取消路径仍显示「查询已取消」**、0 页面错误。
 
 **未执行(如实)**:401/403 拦截器路径未做 live 断言(逻辑未改,`response.status` 保留且有单测);cert/eiam 两套裸 axios 未纳入本次归一(各自已有本地解包,如需统一另开切片)。
+
+---
+
+## cam-iteration-20261029-error-contract-cert-eiam(cert/eiam 客户端纳入同一失败归一)
+
+**来源**:维护者要求承接 #56,把 cert/eiam 两套独立 axios 客户端也纳入 Option A 归一。
+
+**改动(e-cam-web#57)**:
+- `cert.ts`/`eiam.ts` 响应错误拦截器统一改 `reject(normalizeRequestError(error))`;**401 跳登录保持在归一之前**(顺序不变)
+- 归一提器补**证书域信封取值**:message 链 `msg` → `message` → **`error.msg`/`error.message`**(api-handbook `{success,data,error,meta}`)→ `err.message` → 通用文案。该缺口由**新增客户端测试当场暴露**(原实现会对证书信封回退到 axios 泛化文案)
+- `response.data` 原貌保留 → `unwrapCertEnvelope` 的 `{success,error}` 解包契约不变
+
+**验收**:
+- 新增 `clients.test.ts` 6 例(stub adapter 走真实拦截器链);`index.test.ts` 补证书信封用例 → **21/21**;**全量 73 files/1114 tests 全绿**;tsc/eslint 0;CI 四项全绿后合并
+- **live(A 类,真实后端)**:成功路径回归(证书台账 20 行 / api/v1/certs 200;租户选择器 49 项 / api/iam 200);**失败路径实测**(页面内动态导入真实客户端只读 GET):cert 400 → `Error` message=`invalid document id`;eiam 403 → `Error` message=`路由未注册权限元数据，访问被拒绝`;0 页面错误
+
+**至此 Option A 覆盖**:主实例(全部 CAM 模块)+ cert + eiam。仅 `handleApiError`(拦截器内)与取消/网络语义保持不变。
