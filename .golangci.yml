@@ -2,7 +2,14 @@
 # 代码质量检查工具配置
 
 run:
-  timeout: 5m
+  # 5m 不足以完成包加载。CI 实测（run 41030420479）报：
+  #   level=error msg="Running error: context loading failed:
+  #     failed to load with go/packages: context deadline exceeded"
+  #   level=error msg="Timeout exceeded: try increasing it by passing --timeout option"
+  #   ##[error]Process completed with exit code 4
+  # 该步骤在约 5 分钟处被杀，导致所有 PR（含 main）恒红。
+  # 提高到 15m 以覆盖包加载 + 实际检查所需时间。
+  timeout: 15m
   issues-exit-code: 1
   tests: true
   skip-dirs:
@@ -21,14 +28,39 @@ output:
   print-linter-name: true
 
 linters-settings:
+  # depguard：使用「允许清单」显式列出本项目实际依赖。
+  #
+  # 背景：此前未配置 depguard，其默认 deny 列表会禁止所有非标准库导入，
+  # 导致 `github.com/Havens-blog/e-cloudx-sdk/types` 等本项目自有 SDK 被误报
+  # （该 SDK 全项目 206 个文件引用、其中 99 个 import 其 types 子包，
+  #  属既定架构，不应禁止）。
+  depguard:
+    rules:
+      main:
+        list-mode: lax
+        allow:
+          - $gostd
+          - github.com/Havens-blog
+          - github.com/gin-gonic
+          - github.com/gotomicro
+          - github.com/ecodeclub
+          - github.com/prometheus
+          - github.com/spf13
+          - github.com/swaggo
+          - github.com/stretchr
+          - github.com/google
+          - github.com/go-playground
+          - github.com/redis
+          - github.com/pkg
+          - go.mongodb.org
+          - go.uber.org
+          - golang.org
+          - google.golang.org
+          - gopkg.in
   govet:
     check-shadowing: true
-  golint:
-    min-confidence: 0
   gocyclo:
     min-complexity: 15
-  maligned:
-    suggest-new: true
   dupl:
     threshold: 100
   goconst:
@@ -57,12 +89,10 @@ linters-settings:
 linters:
   enable:
     - bodyclose
-    - deadcode
     - depguard
     - dogsled
     - dupl
     - errcheck
-    - exportloopref
     - exhaustive
     - gochecknoinits
     - goconst
@@ -70,40 +100,34 @@ linters:
     - gocyclo
     - gofmt
     - goimports
-    - golint
-    - gomnd
+    - mnd
     - goprintffuncname
     - gosec
     - gosimple
     - govet
     - ineffassign
-    - interfacer
     - lll
     - misspell
     - nakedret
     - noctx
     - nolintlint
     - rowserrcheck
-    - scopelint
     - staticcheck
-    - structcheck
     - stylecheck
     - typecheck
     - unconvert
     - unparam
     - unused
-    - varcheck
     - whitespace
 
   disable:
-    - maligned
     - prealloc
 
 issues:
   exclude-rules:
     - path: _test\.go
       linters:
-        - gomnd
+        - mnd
         - goconst
         - dupl
     - path: cmd/
