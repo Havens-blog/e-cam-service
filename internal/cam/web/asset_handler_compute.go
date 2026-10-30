@@ -50,6 +50,7 @@ func (h *AssetHandler) ListECS(ctx *gin.Context) {
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
 	limit = clampLimit(limit)
+	limit = clampLimit(limit)
 
 	var accountID int64
 	if accountIDStr != "" {
@@ -152,6 +153,7 @@ func (h *AssetHandler) ListDisk(ctx *gin.Context) {
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
 	limit = clampLimit(limit)
+	limit = clampLimit(limit)
 
 	var accountID int64
 	if accountIDStr != "" {
@@ -243,6 +245,7 @@ func (h *AssetHandler) ListSnapshot(ctx *gin.Context) {
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	limit = clampLimit(limit)
 	limit = clampLimit(limit)
 
 	var accountID int64
@@ -340,6 +343,7 @@ func (h *AssetHandler) ListImage(ctx *gin.Context) {
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	limit = clampLimit(limit)
 	limit = clampLimit(limit)
 
 	var accountID int64
@@ -495,6 +499,7 @@ func (h *AssetHandler) ListSecurityGroup(ctx *gin.Context) {
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	limit = clampLimit(limit)
 	limit = clampLimit(limit)
 
 	var accountID int64

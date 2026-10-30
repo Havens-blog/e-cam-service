@@ -289,6 +289,7 @@ func (h *InstanceHandler) List(ctx *gin.Context) {
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	limit = clampLimit(limit)
 
 	var accountID int64
 	if accountIDStr != "" {

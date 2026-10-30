@@ -46,6 +46,7 @@ func (h *AssetHandler) ListNAS(ctx *gin.Context) {
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
 	limit = clampLimit(limit)
+	limit = clampLimit(limit)
 
 	var accountID int64
 	if accountIDStr != "" {
@@ -141,6 +142,7 @@ func (h *AssetHandler) ListOSS(ctx *gin.Context) {
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	limit = clampLimit(limit)
 	limit = clampLimit(limit)
 
 	var accountID int64

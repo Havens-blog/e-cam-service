@@ -10,6 +10,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
 	"github.com/gin-gonic/gin"
 )
 
@@ -150,6 +151,7 @@ func (h *DictHandler) ListTypes(ctx *gin.Context) {
 	status := ctx.Query("status")
 	offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
 	limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "20"), 10, 64)
+	limit = paging.ClampInt64(limit)
 
 	filter := TypeFilter{
 		Keyword: keyword,

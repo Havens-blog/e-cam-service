@@ -7,8 +7,9 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
-	"github.com/Havens-blog/e-cloudx-sdk"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
+	cloudx "github.com/Havens-blog/e-cloudx-sdk"
 	"github.com/gin-gonic/gin"
 )
 
@@ -93,6 +94,7 @@ func (h *TemplateHandler) ListTemplates(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
 	limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "20"), 10, 64)
+	limit = paging.ClampInt64(limit)
 	accountID, _ := strconv.ParseInt(ctx.DefaultQuery("cloud_account_id", "0"), 10, 64)
 
 	filter := TemplateFilter{
@@ -186,6 +188,7 @@ func (h *TemplateHandler) ListProvisionTasks(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
 	limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "20"), 10, 64)
+	limit = paging.ClampInt64(limit)
 	templateID, _ := strconv.ParseInt(ctx.DefaultQuery("template_id", "0"), 10, 64)
 	startTime, _ := strconv.ParseInt(ctx.DefaultQuery("start_time", "0"), 10, 64)
 	endTime, _ := strconv.ParseInt(ctx.DefaultQuery("end_time", "0"), 10, 64)

@@ -7,6 +7,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/alert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/alert/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -110,7 +111,7 @@ func (h *AlertHandler) ListRules(c *gin.Context) {
 		TenantID: tenantID,
 		Type:     domain.AlertType(c.Query("type")),
 		Offset:   parseIntDefault(c.Query("offset"), 0),
-		Limit:    parseIntDefault(c.Query("limit"), 20),
+		Limit:    paging.ClampInt64(parseIntDefault(c.Query("limit"), 20)),
 	}
 
 	rules, total, err := h.alertService.ListRules(c.Request.Context(), filter)
@@ -268,7 +269,7 @@ func (h *AlertHandler) ListEvents(c *gin.Context) {
 		Severity: domain.Severity(c.Query("severity")),
 		Status:   domain.EventStatus(c.Query("status")),
 		Offset:   parseIntDefault(c.Query("offset"), 0),
-		Limit:    parseIntDefault(c.Query("limit"), 20),
+		Limit:    paging.ClampInt64(parseIntDefault(c.Query("limit"), 20)),
 	}
 
 	events, total, err := h.alertService.ListEvents(c.Request.Context(), filter)
@@ -333,7 +334,7 @@ func (h *AlertHandler) ListChannels(c *gin.Context) {
 		TenantID: tenantID,
 		Type:     domain.ChannelType(c.Query("type")),
 		Offset:   parseIntDefault(c.Query("offset"), 0),
-		Limit:    parseIntDefault(c.Query("limit"), 20),
+		Limit:    paging.ClampInt64(parseIntDefault(c.Query("limit"), 20)),
 	}
 
 	channels, total, err := h.alertService.ListChannels(c.Request.Context(), filter)
