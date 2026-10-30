@@ -75,7 +75,10 @@ func TestStep5_VerifyReferenceList_PartialFailureRescanRefresh(t *testing.T) {
 	})
 	anchor := h.Ledger()[0]
 	triggered := h.Post("/api/v1/certs/"+anchor.ID.Hex()+discoverytest.RouteCertScanSuffix, nil)
-	require.Equal(t, http.StatusOK, triggered.StatusCode, triggered.Body)
+	// 触发扫描是异步语义：接口返回 202 + status=running（同包其余用例一致）；
+	// 随后由 FinishScanDone 驱动完成，再断言最终落库结果。
+	require.Equal(t, http.StatusAccepted, triggered.StatusCode, triggered.Body)
+	require.Equal(t, "running", triggered.DataMap(t)["status"], "触发即返回异步 running")
 	h.FinishScanDone(triggered.DataMap(t)["snapshotId"].(string))
 
 	// The cloud-side problem is fixed; the rerun converges the remainder.
