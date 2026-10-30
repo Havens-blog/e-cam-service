@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Havens-blog/e-cam-service/internal/logquery/export"
 	"github.com/Havens-blog/e-cam-service/internal/logquery/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
@@ -162,11 +163,18 @@ type LogQueryHandler struct {
 	svc *service.FederationService
 	// audit 可选:日志检索结构化审计落袋端(ioc 组合根注入;nil 时 no-op)。
 	audit LogAuditSink
+	// exportSvc 可选:日志异步导出任务服务(ioc 组合根注入;nil 时导出端点 503)。
+	exportSvc *export.Service
 }
 
 // NewLogQueryHandler 创建 handler。
 func NewLogQueryHandler(svc *service.FederationService) *LogQueryHandler {
 	return &LogQueryHandler{svc: svc}
+}
+
+// SetExportService 注入导出任务服务。
+func (h *LogQueryHandler) SetExportService(s *export.Service) {
+	h.exportSvc = s
 }
 
 // RegisterRoutes 组内注册(挂 /api/v1/cam/logs 前缀)。
@@ -178,6 +186,10 @@ func (h *LogQueryHandler) RegisterRoutes(g *gin.RouterGroup) {
 	g.POST("/diagnose", h.Diagnose)
 	g.POST("/cache-analyze", h.CacheAnalyze)
 	g.POST("/export-audit", h.ExportAudit)
+	g.POST("/export", h.CreateExport)
+	g.GET("/export/:id", h.GetExport)
+	g.POST("/export/:id/cancel", h.CancelExport)
+	g.GET("/export/:id/download", h.DownloadExport)
 }
 
 // Types GET /types 字段字典(逐类型并发探测可聚合字段填充白名单)。
