@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"sync/atomic"
 	"context"
 	"fmt"
 	"math"
@@ -359,10 +360,12 @@ func TestProperty14_FilterCorrectness(t *testing.T) {
 		filteredRatio := rapid.Float64Range(0, 1).Draw(rt, "filteredRatio")
 		filteredAmount := unfilteredAmount * filteredRatio
 
-		callCount := 0
+		// 服务端 GetCostSummary 会并发扇出多次 SumAmount；此处必须原子计数，
+		// 否则 -race 下报 DATA RACE（曾在 CI 里打挂 TestProperty14_FilterCorrectness）
+		var callCount atomic.Int64
 		dao := &propertyMockBillDAO{
 			sumAmountFn: func(_ context.Context, f repository.UnifiedBillFilter) (float64, error) {
-				callCount++
+				callCount.Add(1)
 				if f.Provider != "" || f.ServiceType != "" || f.Region != "" {
 					return filteredAmount, nil
 				}
