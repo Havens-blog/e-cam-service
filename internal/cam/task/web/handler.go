@@ -7,6 +7,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/task"
 	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
 	"github.com/Havens-blog/e-common-go/ginx"
 	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gin-gonic/gin"
@@ -161,6 +162,7 @@ func (h *TaskHandler) ListTasks(ctx *gin.Context) {
 
 	offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
 	limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "20"), 10, 64)
+	limit = paging.ClampInt64(limit)
 
 	filter := taskx.TaskFilter{
 		Type:      taskx.TaskType(taskType),

@@ -216,6 +216,7 @@ func (h *DashboardHandler) Expiring(ctx *gin.Context) {
 	days, _ := strconv.Atoi(ctx.DefaultQuery("days", "30"))
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	limit = clampLimit(limit)
 
 	if days <= 0 {
 		days = 30

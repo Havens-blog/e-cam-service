@@ -4,8 +4,8 @@ import (
 	"strconv"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
-	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-common-go/ginx"
 	"github.com/gin-gonic/gin"
 )
@@ -105,6 +105,7 @@ func (h *Handler) ListCloudAccounts(ctx *gin.Context) {
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	limit = clampLimit(limit)
 
 	filter := domain.CloudAccountFilter{
 		Provider:    domain.CloudProvider(provider),

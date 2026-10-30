@@ -7,6 +7,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -45,6 +46,7 @@ func (h *DNSHandler) ListDomains(ctx *gin.Context) {
 
 	offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
 	limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "20"), 10, 64)
+	limit = paging.ClampInt64(limit)
 	accountID, _ := strconv.ParseInt(ctx.DefaultQuery("account_id", "0"), 10, 64)
 
 	filter := DomainFilter{
@@ -77,6 +79,7 @@ func (h *DNSHandler) ListRecords(ctx *gin.Context) {
 
 	offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
 	limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "20"), 10, 64)
+	limit = paging.ClampInt64(limit)
 
 	filter := RecordFilter{
 		Keyword:    ctx.Query("keyword"),
@@ -186,6 +189,7 @@ func (h *DNSHandler) SearchRecords(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	keyword := ctx.Query("keyword")
 	limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "50"), 10, 64)
+	limit = paging.ClampInt64(limit)
 
 	if keyword == "" {
 		ctx.JSON(http.StatusOK, web.Result(gin.H{"items": []interface{}{}, "total": 0}))

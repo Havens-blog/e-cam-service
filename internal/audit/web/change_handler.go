@@ -4,6 +4,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
 	"github.com/Havens-blog/e-cam-service/internal/audit/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -41,7 +42,7 @@ func (h *ChangeHandler) ListAssetChanges(c *gin.Context) {
 		TenantID:  tenantID,
 		FieldName: c.Query("field_name"),
 		Offset:    parseIntDefault(c.Query("offset"), 0),
-		Limit:     parseIntDefault(c.Query("limit"), 20),
+		Limit:     paging.ClampInt64(parseIntDefault(c.Query("limit"), 20)),
 	}
 	if st := c.Query("start_time"); st != "" {
 		v := parseIntDefault(st, 0)

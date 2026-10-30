@@ -11,6 +11,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -100,6 +101,7 @@ func (h *TagHandler) ListTags(ctx *gin.Context) {
 
 	offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
 	limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "20"), 10, 64)
+	limit = paging.ClampInt64(limit)
 	accountID, _ := strconv.ParseInt(ctx.DefaultQuery("account_id", "0"), 10, 64)
 
 	filter := TagFilter{
@@ -148,6 +150,7 @@ func (h *TagHandler) ListTagResources(ctx *gin.Context) {
 
 	offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
 	limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "20"), 10, 64)
+	limit = paging.ClampInt64(limit)
 
 	filter := TagResourceFilter{
 		Key:          key,
@@ -275,6 +278,7 @@ func (h *TagHandler) ListPolicies(ctx *gin.Context) {
 
 	offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
 	limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "20"), 10, 64)
+	limit = paging.ClampInt64(limit)
 
 	filter := PolicyFilter{
 		Offset: offset,
@@ -357,6 +361,7 @@ func (h *TagHandler) CheckCompliance(ctx *gin.Context) {
 
 	offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
 	limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "100"), 10, 64)
+	limit = paging.ClampInt64(limit)
 
 	filter := ComplianceFilter{
 		PolicyID:     policyID,
@@ -410,6 +415,7 @@ func (h *TagHandler) ListRules(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	offset, _ := strconv.ParseInt(ctx.DefaultQuery("offset", "0"), 10, 64)
 	limit, _ := strconv.ParseInt(ctx.DefaultQuery("limit", "20"), 10, 64)
+	limit = paging.ClampInt64(limit)
 	items, total, err := h.svc.ListRules(ctx.Request.Context(), tenantID, RuleFilter{Offset: offset, Limit: limit})
 	if err != nil {
 		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
