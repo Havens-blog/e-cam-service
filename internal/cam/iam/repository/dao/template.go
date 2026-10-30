@@ -168,7 +168,10 @@ func (dao *policyTemplateDAO) List(ctx context.Context, filter TemplateFilter) (
 	if filter.Limit > 0 {
 		opts.SetLimit(filter.Limit)
 	}
-	opts.SetSort(bson.M{"is_built_in": -1, "ctime": -1})
+	// 多键排序必须用**有序**的 bson.D：驱动对多键 bson.M 会直接报
+	// "multi-key map passed in for ordered parameter sort"，
+	// 这曾让「策略模板列表」接口 **100% 返回 500**（实测 2026-10-31，页面完全不可用）。
+	opts.SetSort(bson.D{{Key: "is_built_in", Value: -1}, {Key: "ctime", Value: -1}})
 
 	cursor, err := dao.db.Collection(CloudPolicyTemplatesCollection).Find(ctx, query, opts)
 	if err != nil {
@@ -218,7 +221,8 @@ func (dao *policyTemplateDAO) ListBuiltInTemplates(ctx context.Context) ([]Polic
 	var templates []PolicyTemplate
 
 	query := bson.M{"is_built_in": true}
-	opts := options.Find().SetSort(bson.M{"category": 1, "ctime": 1})
+	// 同上：多键排序用 bson.D（bson.M 会被驱动拒绝）
+	opts := options.Find().SetSort(bson.D{{Key: "category", Value: 1}, {Key: "ctime", Value: 1}})
 
 	cursor, err := dao.db.Collection(CloudPolicyTemplatesCollection).Find(ctx, query, opts)
 	if err != nil {
