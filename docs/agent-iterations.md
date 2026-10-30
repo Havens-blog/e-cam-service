@@ -7092,3 +7092,59 @@ INFO adapter/factory.go:24 CMDB 适配器: 远程模式 {"remote_url": "http://e
 (`local changes would be overwritten`)——其 3 个 WIP 文件与主干改动重叠(`scripts/audit/cam-api-audit.mjs`、
 `src/views/accounts/index.vue`、`src/views/iam/groups/components/ExportGroupsDialog.vue`)。
 按"不覆盖他人修改"约定**未强合并、未触碰其 WIP** ⇒ 该前端改动在本地 8888 上**暂未生效**(等其 WIP 落定后可补点击 E2E)。
+
+---
+
+## cam-rejection-toast-20261031（前端：未捕获 rejection 的提示节流）
+
+**状态**：**已合并**（`e-cam-web#134`，merge `c2ee74f`）
+
+### 来源与关键插曲：先修仪器，再下结论
+
+前两轮我都记录过「全局 `unhandledrejection` 会弹『操作失败，请重试』」但没量化。本轮先量化，结果**差点得出反向结论**：
+
+1. 第一次测量（`addInitScript` 里注册 MutationObserver）→ **0 条 toast**，看起来「提示根本没弹」。
+2. 我没有直接下结论，而是做了**仪器自检**：手工往 `document.body` 插一个 `.el-message` 节点 → **观测器也没捕获**。
+3. 结论：观测器失效 —— 它绑在**导航前**的 `documentElement` 上，页面导航后被替换，回调永不触发。
+4. 改为**页面加载后注册 + 先跑自检**，再测，得到真实数据。
+
+| 站点 | 仪器自检 | 连发 5 个 `Promise.reject` → toast 数 |
+|---|---|---|
+| 修复前（main） | ✅ 捕获到 `SELF-CHECK` | **5 条** |
+| 修复后（本 PR） | ✅ 捕获到 `SELF-CHECK` | **1 条** |
+
+过 10s 窗口再触发 1 次：两者均 **1 条** → 证明节流**不是永久静默**。
+
+### 变更
+
+- 新增 `src/plugins/rejection-toast.ts`：纯函数 `shouldToastRejection(now, lastToastAt, interval=10s)`，
+  处理两个边界：时钟回拨（`now < lastToastAt` 允许弹，避免永久静默）、非法时间戳（不弹）。
+- `src/plugins/error-handler.ts`：`unhandledrejection` 中**日志逐条照旧**（诊断能力不变），
+  仅当节流判定为真时才弹 toast。
+
+### 验收
+
+| 项 | 结果 |
+|---|---|
+| `vitest run` 全量 | ✅ **1253 passed**（新增 5 例） |
+| `vue-tsc -b` / `eslint src` / `vite build` | ✅ 均 exit 0 |
+| PR CI（Typecheck & Build / Vitest / ESLint / Gzip Budget） | ✅ 四项全绿（diff +70/−2） |
+| 浏览器前后对照（仪器均自检通过） | ✅ 5 → 1；过窗口仍可再弹 |
+
+证据：`D:\Haven\.browser-verify\cam-rejection-toast\compare.json`。
+
+### 未验证 / 边界
+
+- 未改提示文案本身（「操作失败，请重试」是否该更具体，属产品口径）。
+- 未改 `window.onerror` 分支的提示（另一条路径）。
+- 10s 窗口是经验值，未做用户调研。
+
+### 方法教训（本轮最重要的一条）
+
+**没有自检的观测器等于没有观测器。** 本轮差点因为观测器失效而得出「提示不弹」的反向结论；
+是「手工插入一个目标节点看能否被捕获」这个 10 秒钟的自检把它拦住了。
+
+这与此前的教训连成一条线：
+- 前几轮：`getComputedStyle` 的 color **不能**证明字形是单色（测量手段与结论不对应）；
+- 本轮：MutationObserver **看不见**导航后的 DOM（测量器本身失效）；
+- 共同点：**先证明「我测得到」，再谈「我测到了什么」。**
