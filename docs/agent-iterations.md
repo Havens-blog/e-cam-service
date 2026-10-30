@@ -7469,3 +7469,33 @@ changes.value = filterChangeOrders(res.items, { id: detail.value.id, fingerprint
 **「我操作不下去」本身就是缺陷证据。** 上一轮我把「找不到下拉」当成自己的脚本问题（`select found = 0`），
 只记录为「未完成校验」；本轮反过来想：**如果连自动化都定位不到，真实用户凭什么知道该点哪个？**
 一次操作失败，可能是证据而不是噪音。
+
+---
+
+## 2026-10-31 缺陷修复:IAM 权限模板页**完全不可用**(接口 100% 500)——已修并实测
+
+**发现路径**:把"前端类型 vs 接口实际字段"比对扩到 cert/finops/logs/collect 等模块时,`GET /api/v1/cam/iam/templates`
+**返回 500** 而非字段缺失 ⇒ 顺着接口错误查到根因。
+
+**根因(运行期错误,编译期看不见)**:
+```
+{"code":500,"msg":"获取模板列表失败: multi-key map passed in for ordered parameter sort"}
+internal/cam/iam/repository/dao/template.go:171  opts.SetSort(bson.M{"is_built_in": -1, "ctime": -1})
+internal/cam/iam/repository/dao/template.go:221  options.Find().SetSort(bson.M{"category": 1, "ctime": 1})
+```
+mongo-driver 要求**多键排序**用**有序** `bson.D`;传多键 `bson.M` 会在运行期直接报错 ⇒ 模板列表接口恒 500,
+IAM 权限模板页完全不可用(与此前冒烟中该页文本量异常偏小吻合)。
+
+**修复(#188)**:
+- 两处改 `bson.D{{Key:..., Value:...}}` 并注释说明驱动要求与后果;
+- **新增类级守卫** `internal/shared/daocheck/dao_sort_test.go`:静态扫描全仓 `.go`,发现**多键** `SetSort(bson.M{...})`
+  即失败并给出改法(单键 `bson.M` 驱动接受,故只禁多键)。
+
+**验证**:
+- `go build` 通过;守卫用例 PASS;**变异自检**(把一处改回多键)⇒ 守卫精确报出该文件与写法 ✓;
+- 全仓扫描:多键 `bson.M` 排序**仅此 2 处**(已修),其余 16 处均单键(驱动接受);
+- **线上实测(部署后)**:`GET /api/v1/cam/iam/templates` 由 **500 → 200**(`{"code":200,"data":[],"total":0}`,
+  该库确无模板 ⇒ 空态正确);页面 `/cam/iam/templates`:**apiErrors 0、consoleErrors 0、hasError false** ✓。
+
+**部署提醒**:主检出 `git merge origin/main` 首次 Fast-forward 到**旧提交**(本地 origin/main ref 未更新)⇒ 重建产物不含修复;
+重新 fetch 并核对 `修复已在主检出: True` 后才重建重启 —— **部署必须核对代码是否真的进了工作区,不能只看 merge 成功**。
