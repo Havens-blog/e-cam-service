@@ -181,11 +181,11 @@ func ComputeExpiryLevel(notAfter, now time.Time, levels []int) domain.ExpiryAler
 // daysLeftCeil daysLeft = ceil((notAfter-now)/24h)：部分天向上取整
 // （29.5 天 → 30）；notAfter <= now 返回 0（调用方先行判 expired）。
 func daysLeftCeil(notAfter, now time.Time) int {
-	d := notAfter.Sub(now)
-	if d <= 0 {
+	if !notAfter.After(now) {
 		return 0
 	}
-	return int((d + expiryDayDuration - 1) / expiryDayDuration)
+	// 复用 daysLeft（同为 ceil 口径），避免两处重复算术再次分叉。
+	return daysLeft(notAfter, now)
 }
 
 // normalizeExpiryLevels 阈值清理：剔除非正值、降序排序；空集回退 DEFAULT [30,14,7]。
