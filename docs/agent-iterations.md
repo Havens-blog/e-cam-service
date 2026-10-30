@@ -8099,3 +8099,74 @@ nginx 上游不可用对前端表现为 **500(空响应体)** ⇒ 那些"500 模
 `/cert*`、`/models`、`/instances`、`/relations`、`/service-tree` 等页面渲染文本量仅 29(空壳)。
 其中 CMDB 类路径是**已迁出**到 e-cmdb-web 的旧入口,`/cert*` 可能是我从 router 里取到的**非导航路径**(此前我有"发明路径"的前科,
 故**不据此报缺陷**);如需结论应在下一轮按"导航可用性"专项核对(以侧边栏可达路径为准)。
+
+---
+
+## cam-uselistfetch-20261031（架构：抽出 useListError，DNS 域名列表试点迁移）
+
+**状态**：**已合并**（`e-cam-web#152`，merge `ac1d98d`）
+
+### 为什么做
+
+「列表请求失败 → 渲染成『暂无数据』」这个缺陷已被逐页手工修过 8 次：
+
+| PR | 页面 |
+|---|---|
+| #141 | compute/disk、databases/rds、network/lb、network/vpc 等 5 页 |
+| #144 | compute/snapshot |
+| #146 | network/cdn |
+| #148 | compute/image |
+| #150 | network/eip |
+
+每页形状都是 +11/−3。这是系统性欠账，本轮开始偿还 —— 只做**最小可验证的一步**：抽公共组合式函数 + 迁移 1 页试点。
+
+### 变更
+
+**新增 `src/composables/useListError.ts`**：刻意只封装「持久错误态」一件事，不接管 loading/分页/数据本身。
+
+```ts
+const { errorInfo, run, reset } = useListError()
+const res = await run(() => listXApi(params), '获取X列表失败')
+if (res === undefined) { list.value = []; total.value = 0; return }
+```
+
+成功 → 清空错误态并返回结果；失败 → 置 `ErrorInfo` 并返回 `undefined`。
+**为什么返回 `undefined` 而不是自动清空列表**：让「失败清空数据」在调用处显式可见 —— 这正是缺陷根源（失败被当成了空数据）。
+
+**试点迁移 `network/dns/components/DomainTable.vue`**：失败不再只弹 toast，改为 `<ErrorDisplay>` 持久错误态 + 重试；空态加 `!errorInfo` 守卫。
+
+### 一次自己造成的 CI 失败（如实记录）
+
+首次 CI：**Gzip Budget failure** —— `element-plus` 分块 **286.9 KB / 200 KB [OVER]**。
+
+原因是我在 `useListError` 失败分支写了 `await import('element-plus')`（为兼容老页面的 `toast` 选项），
+这让 element-plus 被拆成独立异步 chunk 并把该桶撑爆（原本 171.3 KB）。
+
+**处置**：删掉 `toast` 选项与动态 import。该分支无测试覆盖、也无调用方需要 ——
+保留一个「能编译但压爆预算」的选项没有价值。相应删除对应单测用例（它测的是被移除的特性，不是弱化既有断言）。
+
+本地复跑 `build + generate-gz + gzip-budget` 全部 [OK]：element-plus 171.3/200 KB，全量 2114.7/2300 KB（exit 0）。
+
+### 验收
+
+| 项 | 结果 |
+|---|---|
+| `vitest run` 全量 | ✅ **1275 passed（99 文件）**（新增 4 例） |
+| `vue-tsc -b` / `eslint src` / `vite build` | ✅ 均 exit 0 |
+| `gzip-budget`（本地 build:gz + 报告） | ✅ 全部桶 [OK]，exit 0 |
+| PR CI（含 Gzip Budget） | ✅ 四项全绿 |
+| 浏览器：失败态（只注入 `/api/v1/cam/dns/domains` 500） | ✅ 不再显示「暂无数据」；显示「获取域名列表失败 错误代码: 500」+ 重试 |
+| 浏览器：点重试恢复 | ✅ 20 行数据 |
+
+证据：`D:\Haven\.browser-verify\cam-uselistfetch\{dns-fixed.png,verify.json,budget.log}`。
+
+### 范围与回滚
+
+- **只迁移 1 页**（DNS）。其余 4 页仍用各自内联实现，行为一致、互不冲突。
+- 回滚成本 = 删除一个文件 + 还原一页。
+- 未做：把已迁移的 4 页也改用该组合式函数（刻意留作后续轮次，避免一次性大改）。
+
+### 未验证
+
+- 390 视口未复测。
+- 未验证「连续两次失败 + 一次成功」在真实页面上的表现（单测已覆盖序列语义）。
