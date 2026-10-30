@@ -7293,3 +7293,30 @@ vitest 冒烟与全量均通过。
 
 **教训**：把「一个需求里混着的两件事」拆开，往往能让其中一件立刻可做；
 用「这件事涉及设计决策」整体搁置，容易让确定性的缺陷长期躺着。
+
+---
+
+## 2026-10-30 缺陷类:"前端类型 vs 接口实际字段"不一致(e-cam-web#137 已合并)
+
+**方法**:取前端 `api/types/*.ts` 的**必填**字段与真实接口响应的键比对,再核实这些字段**是否真被组件渲染**
+(避免把"未使用的类型字段"误报成缺陷)。
+
+**3 处确认的不一致(全部被组件渲染)**:
+1. `GET /iam/users` 无 `cloud_account_name`(只有 cloud_account_id/provider) ⇒
+   IAM 用户**详情/抽屉**"云账号"渲染成 `-`(列表页早有 provider 兜底,详情漏了);
+2. 同接口权限组字段是 **`user_groups`**,详情组件读 `permission_groups` ⇒ 权限组区块永远为空(数据来了也显示不出);
+3. `GET /cloud-accounts` 只有 **`regions[]`**,无单数 `region` ⇒ 账户**编辑表单**区域留空、账号卡片单数区域永远为空。
+
+**修复(#137)**:新增 `src/utils/display-fallbacks.ts`(纯函数 userAccountLabel / userPermissionGroups /
+accountRegionLabel) + 12 例单测(含 3 条回归断言) + 类型标注为可选并注释替代取法;
+`UserDetail`/`UserDetailDrawer`/`accounts/form.vue`/`AccountCard.vue` 接线。
+`vue-tsc` 0、eslint 0、CI 四项全绿。
+
+**验证边界(如实)**:单测 12/12 与类型检查全绿;**浏览器精确渲染值未取到** —— IAM 用户详情页的标签与值
+**不是同一元素**、账户"编辑"位于**下拉菜单**内,两轮探针未命中 ⇒ **未声称已验证**。
+
+**顺带修复环境**:e-cam-web 主检出 `node_modules/.bin` **再次为空**(npx vue-tsc/eslint 不可用)⇒
+`pnpm install --frozen-lockfile --offline` 恢复(.bin 27 项),未改源码。**该问题今日已复发两次**,建议纳入 dev 例行检查。
+
+**另注**:`AccountCard.vue` 经排查**未被任何页面引用**(页面用的是 AccountCardView/AccountListView)⇒
+其改动无用户可见效果,仅统一取法留存。
