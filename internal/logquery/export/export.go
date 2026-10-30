@@ -18,8 +18,8 @@ import (
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cloudx-sdk/logquery"
 	"github.com/Havens-blog/e-common-go/mongox"
-	"github.com/gotomicro/ego/core/elog"
 	"github.com/google/uuid"
+	"github.com/gotomicro/ego/core/elog"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -294,29 +294,17 @@ func (s *Service) pullAll(ctx context.Context, task *Task, w *csv.Writer) (int, 
 			Filters:   task.filters,
 		}
 		// 优先流式导出能力;无此能力回退 Search(采样,能力边界)。
-		if ex, ok := p.(logquery.LogExporter); ok {
-			n, err := ex.Export(ctx, &acc, params, func(batch []logquery.LogEntry) error {
-				return s.writeBatch(w, &total, batch)
-			})
-			if err != nil {
-				if ctx.Err() != nil {
-					break
-				}
-				s.logger.Warn("[logquery-export] export account failed",
-					elog.String("cloud", string(acc.Provider)), elog.Int64("account", acc.ID), elog.FieldErr(err))
-				continue
-			}
-			_ = n
-		} else {
-			entries, err := p.Search(ctx, &acc, params)
-			if err != nil {
-				s.logger.Warn("[logquery-export] search fallback failed",
-					elog.String("cloud", string(acc.Provider)), elog.Int64("account", acc.ID), elog.FieldErr(err))
-				continue
-			}
-			if err := s.writeBatch(w, &total, entries); err != nil {
-				return total, err
-			}
+		// 注：SDK 尚未发布 logquery.LogExporter（e-cloudx-sdk v0.1.0 / v0.2.0 均无此接口），
+		// 故此处只能走 Search（采样，受单次上限约束）。等 SDK 提供流式导出能力后，
+		// 可在此恢复 type assertion 快路径。
+		entries, err := p.Search(ctx, &acc, params)
+		if err != nil {
+			s.logger.Warn("[logquery-export] search fallback failed",
+				elog.String("cloud", string(acc.Provider)), elog.Int64("account", acc.ID), elog.FieldErr(err))
+			continue
+		}
+		if err := s.writeBatch(w, &total, entries); err != nil {
+			return total, err
 		}
 		if total >= s.maxEntries {
 			break
@@ -454,5 +442,3 @@ func CanExport(isAdmin bool, codes []string) bool {
 	}
 	return len(codes) == 0
 }
-
-
