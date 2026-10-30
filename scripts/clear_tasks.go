@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -12,8 +13,11 @@ import (
 )
 
 func main() {
-	// MongoDB 连接配置
-	uri := "mongodb://ecmdb:123456@106.52.187.69:27017/?authSource=admin"
+	// 连接信息来自环境变量（源码不再内置生产地址与口令）
+	uri := os.Getenv("ECAM_MONGODB_DSN")
+	if uri == "" {
+		log.Fatal("缺少连接信息：请设置环境变量 ECAM_MONGODB_DSN（脚本不再内置生产地址/口令）")
+	}
 	databaseName := "ecam"
 	collectionName := "ecam_task"
 

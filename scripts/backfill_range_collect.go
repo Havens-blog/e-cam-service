@@ -38,16 +38,16 @@ import (
 	"strings"
 	"time"
 
-	accountdao "github.com/Havens-blog/e-cam-service/internal/account/repository/dao"
 	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
+	accountdao "github.com/Havens-blog/e-cam-service/internal/account/repository/dao"
 	accountservice "github.com/Havens-blog/e-cam-service/internal/account/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/collector"
-	costdao "github.com/Havens-blog/e-cam-service/internal/cam/cost/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/normalizer"
+	costdao "github.com/Havens-blog/e-cam-service/internal/cam/cost/repository/dao"
+	shareddomain "github.com/Havens-blog/e-cloudx-sdk/domain"
+	_ "github.com/Havens-blog/e-cloudx-sdk/providers" // 注册各云 BillingAdapter（init）
 	"github.com/Havens-blog/e-common-go/crypto"
 	"github.com/Havens-blog/e-common-go/mongox"
-	_ "github.com/Havens-blog/e-cloudx-sdk/providers" // 注册各云 BillingAdapter（init）
-	shareddomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
@@ -55,15 +55,31 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const (
-	mongoURI  = "mongodb://ecmdb:123456@106.52.187.69:27017/ecam?authSource=admin"
-	mongoDB   = "ecam"
-	redisAddr = "106.52.187.69:6379"
-	redisPass = "1234567890"
+// 连接信息一律来自环境变量（源码不再内置任何生产地址与口令）：
+//
+//	ECAM_MONGODB_DSN      生产 Mongo DSN（必填）
+//	ECAM_MONGODB_NAME     Mongo 库名，默认 ecam
+//	ECAM_REDIS_ADDR       Redis 地址（必填）
+//	ECAM_REDIS_PASSWORD   Redis 口令（按部署实际情况，可为空）
+var (
+	mongoURI  = os.Getenv("ECAM_MONGODB_DSN")
+	mongoDB   = envOr("ECAM_MONGODB_NAME", "ecam")
+	redisAddr = os.Getenv("ECAM_REDIS_ADDR")
+	redisPass = os.Getenv("ECAM_REDIS_PASSWORD")
 	redisDB   = 1
 )
 
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
 func main() {
+	if mongoURI == "" || redisAddr == "" {
+		log.Fatal("缺少连接信息：请设置环境变量 ECAM_MONGODB_DSN 与 ECAM_REDIS_ADDR（脚本不再内置生产地址/口令）")
+	}
 	provider := flag.String("provider", "", "云厂商（tencent/volcengine/huawei/aws/aliyun），必填")
 	startStr := flag.String("start", "", "账期范围起始日 YYYY-MM-DD，必填")
 	endStr := flag.String("end", "", "账期范围结束日 YYYY-MM-DD，默认今天")
