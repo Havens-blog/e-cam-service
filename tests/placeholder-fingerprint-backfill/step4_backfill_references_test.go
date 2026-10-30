@@ -13,8 +13,8 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/tests/discoverytest"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -113,7 +113,10 @@ func TestStep4_BackfillReferences_WrongBackfillRescanRecoverable(t *testing.T) {
 	h.Scan.SetRefsToWrite([]discoverytest.RefSpec{placeholderRefSpec("tencent", "acct-tx", "ssl-9", "res-wrong", "")})
 	cert := h.SeedCert(discoverytest.FP("phb-recover-anchor"), time.Date(2027, 5, 1, 0, 0, 0, 0, time.UTC))
 	triggered := h.Post("/api/v1/certs/"+cert.ID.Hex()+discoverytest.RouteCertScanSuffix, nil)
-	require.Equal(t, http.StatusOK, triggered.StatusCode, triggered.Body)
+	// 触发扫描是异步语义：接口返回 202 + status=running（同包其余用例一致）；
+	// 随后由 FinishScanDone 驱动完成，再断言最终落库结果。
+	require.Equal(t, http.StatusAccepted, triggered.StatusCode, triggered.Body)
+	require.Equal(t, "running", triggered.DataMap(t)["status"], "触发即返回异步 running")
 	h.FinishScanDone(triggered.DataMap(t)["snapshotId"].(string))
 
 	ph := discoverytest.PlaceholderFP("tencent", "acct-tx", "ssl-9")
