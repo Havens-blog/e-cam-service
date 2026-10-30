@@ -6319,3 +6319,80 @@ internal/shared/middleware/audit_test.go:38 (写)  vs :94 / :162 (读)
 `shared/middleware`、`tests/*`)。
 判断:该批构建失败**不是**本轮 `scripts` 改动引入(scripts 包在 CI 中正常编译),疑似并行会话在飞的 CI 修复
 与主干近期合并叠加所致 ⇒ **留给他们处置,我不介入**;若下一轮仍在,建议优先恢复主干可构建性。
+
+---
+
+## cam-ci-repair-20261031c（main 编译失败 + 能力码权限缺陷）
+
+**状态**：**已合并**（`e-cam-service#155`，merge `48a3694`）
+
+### 来源与证据
+
+对最新 main 的 CI 日志做失败分类时发现 9 个包是 `[build failed]`（不是测试失败）：
+
+```
+##[error]internal/logquery/export/export.go:297:28: undefined: logquery.LogExporter
+# 连带 root / cmd / cmd/endpoint / cmd/start / cmd/probe-applog / ioc / logquery/{export,web} 全部 [build failed]
+```
+
+本地 `GOWORK=off go build ./...` 一字不差复现 → **main 编译不过**（P1）。
+
+### 问题 1：SDK 未发布被引用的接口
+
+- `logquery` 来自外部 SDK `github.com/Havens-blog/e-cloudx-sdk/logquery`；
+- `go list -m -versions` 只列出 **v0.1.0 / v0.2.0**（即全部已发布版本），两者 `logquery` 包里都**没有 `LogExporter`**（逐个 grep 确认）；
+- 代码却写了 `if ex, ok := p.(logquery.LogExporter); ok { ... }` → 编译期即失败。
+
+**修**：删掉这段快路径，保留原代码中已写好的 `Search` 回退分支，并注释「等 SDK 发布该接口后可恢复」。
+**为什么是行为等价**：现网没有任何 Provider 能实现一个不存在的接口，`ok` 恒为 `false`，原本就总是走 `Search`。这不是「简化实现」，而是**把不可编译的分支去掉**。
+
+### 问题 2（意外收获）：能力码未 trim → 有权限的用户被 403
+
+编译修好后，`export_test.go` 又报 `undefined: parseClaimCodes` —— 该函数实际在 `internal/logquery/web`（`export` 包里没有）。把测试**搬到函数所在包**（不是删掉）后立即失败：
+
+```
+parseClaimCodes(["", "  ", "x"]) = ["  ", "x"], want ["x"]
+```
+
+`logquery/web.parseClaimCodes` 没做 `TrimSpace`（`cert/web` 的同名实现做了），而 `export.CanExport` 是**精确匹配**：
+
+```go
+if c == "cam:logs:export" { return true }
+```
+
+→ claims 里若是 `" cam:logs:export"` / `"cam:logs:export "`，**该用户会被判无导出权限**（false denial，不是越权，但同样是可用性缺陷）。
+
+**修**：对整体与逗号分段都 `TrimSpace` 并跳过空项。
+
+### 改动
+
+| 文件 | 改动 |
+|---|---|
+| `internal/logquery/export/export.go` | `+12/-26`：移除不可编译的 `LogExporter` 快路径，保留 Search 回退 |
+| `internal/logquery/export/export_test.go` | `+0/-26`：`TestParseClaimCodes` 搬出（未删除） |
+| `internal/logquery/web/export_handler.go` | `+8/-11`：`parseClaimCodes` 补 trim |
+| `internal/logquery/web/export_handler_claimcodes_test.go` | 新增 `+31`：搬入的测试，断言原样保留 |
+
+### 验证
+
+| 项 | 结果 |
+|---|---|
+| `GOWORK=off go build ./...` | ✅ exit 0（修复前 `internal/logquery/export` 即失败） |
+| `go vet ./internal/logquery/...` | ✅ exit 0 |
+| `go test ./internal/logquery/...` | ✅ 全部 ok（含搬移后的测试） |
+| `gofmt -l` | ✅ 干净 |
+| CI `[build failed]` 包数 | **9 → 0** |
+| CI `WARNING: DATA RACE` | 0（承上两轮修复） |
+| CI `Unauthorized` | 仍 38（5 个 Mongo 用例，需 DSN） |
+| `-race` 本地 | **未执行**（无 gcc） |
+
+### 仍未解决
+
+- 5 个 Mongo 鉴权用例：需在 `.github/workflows/ci.yml` 的 `jobs.test` 加 `CERT_TEST_MONGODB_DSN`（本会话 token 缺 `workflow` scope，写 workflow 文件返回 404，已交由用户手工应用）。
+- `internal/cert/{repository,web}`、`tests/no-snapshot-guidance`、`tests/placeholder-fingerprint-backfill` 尚未逐个定性（可能是 Mongo 连带，需 DSN 落地后重看）。
+
+### 方法教训
+
+1. **先区分 `[build failed]` 与测试失败**：这批里有 9 个包是编译失败，若只看「CI 红了」会误判成测试问题，白跑排查。
+2. **「引用外部 SDK 的符号」是本仓库反复出现的破坏源**（本轮 `LogExporter`，前几轮 `e-iam` 的 `ISyncer`/`IPermissionProvider`）。遇到 `undefined: xxx.Yyy` 且 `xxx` 是外部模块，第一件事是 **`go list -m -versions` + 在模块缓存里 grep 该符号**，而不是怀疑本地环境。
+3. **测试报 `undefined: 某函数` 时，先想「这个函数是不是在别的包」**：本例把测试搬到正确包后，**立刻暴露了生产代码的真实缺陷**（未 trim）。删测试或加个同名桩函数会把缺陷永久埋掉。
