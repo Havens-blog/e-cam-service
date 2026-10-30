@@ -5805,3 +5805,74 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
 2. **P2 取消态文案打磨**：标题与 desc 语义重复，可压成一句。
 3. **P2 `handleApiError` 加取消 guard**、**P1 后端 `ctime` 过滤**、**P2 109 处 catch 迁移**、**P2 报告格式** 仍待办。
 4. **方法教训**：①**插入样式的锚点必须锚到结构（顶层块的结束花括号），不能锚到某行属性值** —— 否则极易落进嵌套块，只有 `vite build` 才能发现；②浏览器验证失败时先查**端口被谁占用**（`Get-CimInstance` 看命令行与父进程），本轮 4 项全 FAIL 的真因是遗留 dev server 服务旧代码；③`job_kill` 只杀外层 pwsh，子进程可能仍占用端口 —— 清理后要验证端口已释放。
+
+---
+
+## cam-iteration-20261030-cancel-a11y（跨日轮，2026-10-30）
+
+**状态**：**已合并**（`e-cam-web#122`，merge commit `2437d24`，2026-10-30 09:25 +08）
+**代码 PR**：`e-cam-web#122`（commits `29dcb97` → `3bfce00`；CI 四项全绿；审查有条件通过，major 已按意见重做）
+**记录 PR**：本 PR（无后端代码改动）
+
+### 需求来源与证据
+
+- 上一轮（#121）审查遗留：**M3 取消完成对读屏不可感知**（`.state-card` 无 `role`/`aria-live`）、**nit `⏹` 单色渲染未验证**（`getComputedStyle` 的 color 不能证明字形单色）。
+- 本轮审查进一步指出我的第一版修法**不可靠**：`role="status"` 与内容**同时插入 DOM**，MDN 明确只有 `role="alert"` 有「随内容注入也播报」的豁免，`status` 没有；且本仓库已有常驻 live region 惯例（`cert/changes/new`、`cert/dashboard`）。
+
+### 需求卡
+
+- 目标用户：使用读屏的运维。
+- 目标：取消完成能被播报；**失败态零变化**；不引入不可靠模式。
+- 规则：页面根节点常驻 `<p class="sr-only" role="status" aria-live="polite">{{ canceledAnnounce }}>`，取消时赋「查询已取消」、其余为空（清空以便连续两次取消都能再播报）。
+- 非目标：取消后焦点管理（pre-existing）、真实 AT（NVDA/JAWS/VoiceOver）验证。
+- API 契约：无。
+
+### 变更内容
+
+- `src/views/logs/useLogSearch.ts`：导出 `CANCELED_ANNOUNCE`；新增 `canceledAnnounce` 计算属性并导出。
+- `src/views/logs/index.vue`：根节点常驻 sr-only 通告区 + `.sr-only` 样式；卡片去掉动态 `role`/`aria-live`；图标简化为单分支 `span`；去掉对 U+23F9 实为 no-op 且 Safari 不支持的 `font-variant-emoji: text`。
+- `src/views/logs/useLogUrlSync.ts`：**修真实缺陷** —— 400ms 防抖定时器在卸载时未清理，组件销毁后仍调用 `window.history.replaceState`。
+- `src/views/logs/index.test.ts`：断言常驻通告区文本（取消/失败态）+ 失败态卡片无 role。
+
+### 验收
+
+| 断言 | 结果 |
+|---|---|
+| 初始状态通告区存在且为空、卡片无 role | ✅ 浏览器实测 |
+| 取消后通告区文本 = 「查询已取消」、glyph = ⏹ | ✅ 浏览器实测 |
+| 失败态通告区为空、卡片无 role、仍显示「原始错误」行 | ✅ 单测 + 浏览器 |
+| CI（GitHub Actions） | ✅ 四项全绿 |
+
+### 本轮最关键的发现：CI 失败的真因
+
+- 首次推送后 **Vitest 在 CI 上失败**，日志显示「1234 tests passed」但 `Errors 1`：`ReferenceError: window is not defined`，栈指向 `useLogUrlSync.ts:104` 的 `setTimeout`。
+- 根因：`useLogUrlSync` 的防抖定时器**没有在卸载时清理**，测试环境销毁后定时器仍触发 `window.history.replaceState`。本地为什么没暴露？本地该文件测试时序恰好未触发；CI 上（单文件粒度不同）触发了。
+- 修复：`onBeforeUnmount` 清理 `urlTimer`。这不仅是测试问题 —— **生产里组件卸载后仍会写历史记录**，属真实泄漏。
+
+### 审查提出的其余意见（未修，已记录）
+
+1. **minor：取消后焦点丢失**（pre-existing）：`取消` 按钮 `v-if="searching"`，取消即被移除 → focus 回落 body；全页无 `.focus()`/`tabindex`/`nextTick` 焦点管理。建议 `.state-card` 加 `tabindex="-1"` 并程序化 focus。
+2. **nit：不对称**：同图标的 `⚠`（U+26A0，同为文本默认）未做同样处理（按规范两者都不需要）。
+3. **nit：测试强度**：能抓「固定 role/aria-live」回退，抓不到「是否真播报」「glyph 文本是否 ⏹」。
+4. **未验证（重要）**：真实读屏（NVDA+Chrome、JAWS+Chrome、VoiceOver+Safari）**均未跑**；「是否真的播报」「Safari 上是否彩色」「取消后焦点落点」都属未验证。
+
+### 子 Agent 与复核
+
+- 独立代码审查：**有条件通过**；用 MDN 规范 + Vue 运行时源码证明我第一版 `role="status"` 与内容同插不可靠（`status` 无 `alert` 的豁免）、`undefined` 省略属性在 `patchAttr` 里确实 `removeAttribute`（等价性成立）、`font-variant-emoji` 对 U+23F9 是 no-op 且 Safari 不支持（73.69% 非 Baseline）；并给出常驻 live region 的正解。
+- 总控：实现 → 按审查重做 → 修 CI 暴露的定时器泄漏 → 全套验证 + 浏览器实测通告区 → 合并。
+- 本轮未单独派浏览器 QA：实测由总控完成（通告区初始/取消两态）；审查已独立核实属性等价性与规范依据。
+
+### 版本组合
+
+- 前端：`3bfce00`（合并为 `2437d24`）。
+- 后端：`main@6d3caf7`（无接口改动）。
+
+### 后续建议
+
+1. **P3 焦点管理**：取消后聚焦 `.state-card` 或「重新查询」，让键盘用户有落点。
+2. **P3 真实 AT 验证**：至少 NVDA+Chrome 走一次取消流程；把结论写回本节。
+3. **P2 `handleApiError` 加取消 guard**、**P1 后端 `ctime` 过滤**、**P2 109 处 catch 迁移**、**P2 报告格式** 仍待办。
+4. **方法教训（本轮最重要的三条）**：
+   - **①「属性存在」不等于「行为生效」**：`role="status"` 写上去、单测断言通过，但按规范它不会播报 —— 无障碍类改动必须以规范 + 真实 AT 为准，不能以 DOM 断言结案。
+   - **②CI 与本地的差异会掩盖真实缺陷**：本地 1234 全绿、CI 报 1 个 uncaught error，真因是**组件卸载后定时器仍在跑**（生产同样有问题）。凡「本地绿 / CI 红」，优先找**未清理的副作用**（定时器、监听、订阅），而不是先怀疑 CI 环境。
+   - **③上一轮我用 `getComputedStyle` 论证字形单色是无效证据**，这一轮审查再次指出 —— 颜色可读不等于字形是文本呈现；这类「看起来能证明」的弱证据必须换成截图或规范依据。
