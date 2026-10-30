@@ -1,10 +1,10 @@
 package web
 
 import (
-	"encoding/json"
 	"strings"
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
+	"github.com/Havens-blog/e-cam-service/internal/shared/authz"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
 )
@@ -99,25 +99,10 @@ func isValidRole(r Role) bool {
 	return false
 }
 
-// parseClaimCodes 解析能力码声明：JSON 数组字符串或逗号分隔（eiam claims
-// 为 map[string]string，数组以序列化形态携带）；全部解析失败返回 nil。
+// parseClaimCodes 委托 internal/shared/authz.ParseClaimCodes（单一实现）。
+// 历史上这里与 logquery/web 各有一份副本，且已分叉出「未 trim 导致 403」的缺陷。
 func parseClaimCodes(raws ...string) []string {
-	var codes []string
-	for _, raw := range raws {
-		raw = strings.TrimSpace(raw)
-		if raw == "" {
-			continue
-		}
-		if strings.HasPrefix(raw, "[") {
-			var arr []string
-			if err := json.Unmarshal([]byte(raw), &arr); err == nil {
-				codes = append(codes, arr...)
-				continue
-			}
-		}
-		codes = append(codes, strings.Split(raw, ",")...)
-	}
-	return codes
+	return authz.ParseClaimCodes(raws...)
 }
 
 // containsCode 能力码命中判定。
