@@ -6,9 +6,9 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cloudx-sdk"
 	"github.com/Havens-blog/e-cloudx-sdk/types"
-	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 )
@@ -42,6 +42,7 @@ func (h *AssetHandler) ListCDN(ctx *gin.Context) {
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	limit = clampLimit(limit)
 
 	var accountID int64
 	if accountIDStr != "" {
@@ -224,6 +225,7 @@ func (h *AssetHandler) GetCDNTopDomains(ctx *gin.Context) {
 		ctx.JSON(400, ErrorResultWithMsg(errs.FieldInvalid, "limit 必须为正整数"))
 		return
 	}
+	limit = clampLimit(limit)
 
 	rows, err := h.cdnQuery.GetTopDomains(ctx.Request.Context(), tenantID, days, limit)
 	if err != nil {
@@ -252,6 +254,7 @@ func (h *AssetHandler) ListWAF(ctx *gin.Context) {
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	limit = clampLimit(limit)
 
 	var accountID int64
 	if accountIDStr != "" {
@@ -311,6 +314,7 @@ func (h *AssetHandler) ListDDOS(ctx *gin.Context) {
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	limit = clampLimit(limit)
 
 	var accountID int64
 	if accountIDStr != "" {
