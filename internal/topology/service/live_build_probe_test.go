@@ -4,7 +4,6 @@ package service
 import (
 	"context"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +16,8 @@ import (
 func TestProbeLiveBuildWAFtoALB(t *testing.T) {
 	dsn := loadProbeDSN(t)
 	if dsn == "" {
-		t.Skip("无 mongo DSN")
+		// 显式给 NAS_PROBE_MONGODB_DSN 才运行；不再回退读 config/prod.yaml（避免测试连生产库）
+		t.Skip("未设置 NAS_PROBE_MONGODB_DSN，跳过 live probe")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -64,34 +64,17 @@ func TestProbeLiveBuildWAFtoALB(t *testing.T) {
 	}
 }
 
+// loadProbeDSN 只认显式环境变量 NAS_PROBE_MONGODB_DSN。
+//
+// 【为什么不再回退读配置文件】原实现在未设置该 env 时会去解析 `config/prod.yaml`，
+// 并连接其中的**生产** Mongo（106.52.187.69:27017）。这带来两个后果：
+//  1. 测试会触碰**生产数据**（本 probe 只读，但"默认连生产"本身不可接受）；
+//  2. CI 未设置该 env 时连生产库，30s 后超时失败（`Test` 任务红灯来源之一）。
+//
+// 需要跑该 probe 时显式提供 DSN，例如：
+//
+//	NAS_PROBE_MONGODB_DSN='mongodb://user:pass@host:27017/ecam?authSource=admin' \
+//	  go test ./internal/topology/service/ -run TestProbeLiveBuildWAFtoALB -v
 func loadProbeDSN(t *testing.T) string {
-	if v := os.Getenv("NAS_PROBE_MONGODB_DSN"); v != "" {
-		return v
-	}
-	raw, err := os.ReadFile("../../../config/prod.yaml")
-	if err != nil {
-		t.Logf("未找到 config/prod.yaml: %v", err)
-		return ""
-	}
-	var dsn, user, pass string
-	inMongo := false
-	for _, line := range strings.Split(string(raw), "\n") {
-		tr := strings.TrimSpace(line)
-		switch {
-		case strings.HasPrefix(tr, "mongodb:"):
-			inMongo = true
-		case inMongo && strings.HasPrefix(tr, "dsn:"):
-			dsn = strings.TrimSpace(strings.TrimPrefix(tr, "dsn:"))
-		case inMongo && strings.HasPrefix(tr, "username:"):
-			user = strings.TrimSpace(strings.TrimPrefix(tr, "username:"))
-		case inMongo && strings.HasPrefix(tr, "password:"):
-			pass = strings.TrimSpace(strings.TrimPrefix(tr, "password:"))
-		case inMongo && !strings.HasPrefix(tr, " ") && tr != "" && !strings.HasPrefix(tr, "dsn:") && !strings.HasPrefix(tr, "username:") && !strings.HasPrefix(tr, "password:") && !strings.HasPrefix(tr, "db:"):
-			inMongo = false
-		}
-	}
-	if dsn != "" && user != "" {
-		dsn = strings.Replace(dsn, "mongodb://", "mongodb://"+user+":"+pass+"@", 1)
-	}
-	return dsn
+	return os.Getenv("NAS_PROBE_MONGODB_DSN")
 }
