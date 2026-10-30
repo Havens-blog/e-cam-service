@@ -1,4 +1,4 @@
-﻿// @feature disk-ops-insight @api-functional
+// @feature disk-ops-insight @api-functional
 //
 // Contract shared-disk-multi-account-metrics step-1-shared-disk-persist: the
 // shared disk persists as two independent rows ( one per account ), an

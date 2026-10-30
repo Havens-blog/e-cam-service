@@ -1,4 +1,4 @@
-﻿package normalizer
+package normalizer
 
 import (
 	"context"

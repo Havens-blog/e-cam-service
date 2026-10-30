@@ -1,4 +1,4 @@
-﻿// @feature disk-ops-insight @api-functional
+// @feature disk-ops-insight @api-functional
 //
 // Journey fixtures for shared-disk-multi-account-metrics contract tests: two
 // accounts sharing one disk_id, per-account queriers with independent fault

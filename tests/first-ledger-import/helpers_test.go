@@ -1,4 +1,4 @@
-﻿// @feature cert-cloud-discovery-import @api-functional
+// @feature cert-cloud-discovery-import @api-functional
 //
 // Shared world builders for the first-ledger-import journey tests.
 // SKIP_EVAL_GATE: generated without eval-contract verification. Review with extra scrutiny.

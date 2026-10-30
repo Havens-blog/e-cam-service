@@ -1,4 +1,4 @@
-﻿// Package audit 审计模块 - 独立实现
+// Package audit 审计模块 - 独立实现
 // 提供全链路 API 操作审计和资产变更历史追踪能力
 package audit
 

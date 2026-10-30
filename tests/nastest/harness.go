@@ -1,4 +1,4 @@
-﻿// @feature nas-ops-insight @api-functional
+// @feature nas-ops-insight @api-functional
 //
 // Shared journey harness for the nas-ops-insight API functional test
 // suites ( tests/<journey>/ ). It wires the exported production surfaces —

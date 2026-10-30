@@ -1,4 +1,4 @@
-﻿// aws_deployer_test.go AWS CloudDeployer 单元测试：fake ACM 适配覆盖五方法 ×
+// aws_deployer_test.go AWS CloudDeployer 单元测试：fake ACM 适配覆盖五方法 ×
 // 三产品（含上传 CDN 口径、限流退避有界、ListReferences 指纹三级解析、经
 // CloudAPIChannel 端到端两段式与绑定失败补偿）（cert-multicloud-deployers 任务 2）。
 package deployer

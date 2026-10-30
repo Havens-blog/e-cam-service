@@ -1,4 +1,4 @@
-﻿package normalizer
+package normalizer
 
 import (
 	shareddomain "github.com/Havens-blog/e-cloudx-sdk/domain"

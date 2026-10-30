@@ -1,4 +1,4 @@
-﻿// @feature nas-ops-insight @api-functional
+// @feature nas-ops-insight @api-functional
 //
 // Contract step-1-daily-collect-trigger: 触发当日 NAS 指标采集 — the
 // persistent gate claims the day once, restarts never re-claim, concurrent

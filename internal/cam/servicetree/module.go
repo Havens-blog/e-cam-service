@@ -1,4 +1,4 @@
-﻿package servicetree
+package servicetree
 
 import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository/dao"

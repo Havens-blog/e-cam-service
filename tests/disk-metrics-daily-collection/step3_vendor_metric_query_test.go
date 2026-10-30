@@ -1,4 +1,4 @@
-﻿// @feature disk-ops-insight @api-functional
+// @feature disk-ops-insight @api-functional
 //
 // Contract disk-metrics-daily-collection step-3-vendor-metric-query: per-vendor
 // region-scoped metric queries with executor-side AccountID/Provider backfill

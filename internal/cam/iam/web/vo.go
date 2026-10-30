@@ -1,4 +1,4 @@
-﻿package web
+package web
 
 import (
 	"github.com/Havens-blog/e-cloudx-sdk/domain"

@@ -1,4 +1,4 @@
-﻿// Package service RDS 指标读取服务(纯读 ecam_rds_metric 指标表,不走厂商 API)。
+// Package service RDS 指标读取服务(纯读 ecam_rds_metric 指标表,不走厂商 API)。
 //
 // 平移蓝本:internal/cam/service/asset_nas_query.go / asset_disk_query.go
 // (租户校验、窗口逐日展开、缺失日 data_status 标注、latest/average 汇总

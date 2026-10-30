@@ -1,4 +1,4 @@
-﻿// aliyun_deployer.go 阿里云 CloudDeployer 实现（任务 5.4）。
+// aliyun_deployer.go 阿里云 CloudDeployer 实现（任务 5.4）。
 //
 // 分层定位：将 3.1 cloudx 阿里云证书五方法适配（CertAdapter，SDK 单次调用
 // 封装）组装为 deployer 层 CloudDeployer 端口实例，经 5.3 CloudAPIChannel

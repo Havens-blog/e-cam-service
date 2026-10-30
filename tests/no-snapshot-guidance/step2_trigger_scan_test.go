@@ -1,4 +1,4 @@
-﻿// @feature cert-cloud-discovery-import @api-functional
+// @feature cert-cloud-discovery-import @api-functional
 //
 // Contract: docs/features/cert-cloud-discovery-import/testing/no-snapshot-guidance/contracts/step-2-trigger-scan.md
 // SKIP_EVAL_GATE: generated without eval-contract verification. Review with extra scrutiny.

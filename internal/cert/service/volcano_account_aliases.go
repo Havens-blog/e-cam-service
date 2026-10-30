@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"

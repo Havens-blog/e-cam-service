@@ -1,4 +1,4 @@
-﻿// @feature oss-ops-insight @api-functional
+// @feature oss-ops-insight @api-functional
 //
 // Journey fixtures for oss-metric-insight-lifecycle contract tests: the
 // persistent daily gate ( resource_type=oss key ), the collect executor and a

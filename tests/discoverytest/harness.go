@@ -1,4 +1,4 @@
-﻿// @feature cert-cloud-discovery-import @api-functional
+// @feature cert-cloud-discovery-import @api-functional
 //
 // Package discoverytest provides the hermetic API-functional test harness for
 // the cert-cloud-discovery-import feature ( journeys under tests/<journey>/ ).

@@ -1,4 +1,4 @@
-﻿// @feature nas-ops-insight @api-functional
+// @feature nas-ops-insight @api-functional
 //
 // Contract step-3-metric-upsert: 指标行落库(首写生效+补采覆盖) — today rows
 // are first-write-wins via the insert-if-absent path, yesterday rows are

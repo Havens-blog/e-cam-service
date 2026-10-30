@@ -1,4 +1,4 @@
-﻿// Package service 直接跑 LiveTopologyBuilder.BuildFromDNS 验证 WAF→ALB 边是否重建出来(manual probe,只读)。
+// Package service 直接跑 LiveTopologyBuilder.BuildFromDNS 验证 WAF→ALB 边是否重建出来(manual probe,只读)。
 package service
 
 import (

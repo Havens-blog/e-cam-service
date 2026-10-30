@@ -1,4 +1,4 @@
-﻿// @feature cert-volcano-import-sync @api-functional
+// @feature cert-volcano-import-sync @api-functional
 //
 // Package synctest provides the hermetic API-functional test harness for the
 // cert-volcano-import-sync feature ( journeys under tests/<journey>/ ).

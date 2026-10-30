@@ -1,4 +1,4 @@
-﻿// @feature disk-ops-insight @api-functional
+// @feature disk-ops-insight @api-functional
 //
 // Journey fixtures for disk-day-gate-resilience contract tests: the persistent
 // daily gate ( resource_type=disk key ) wired to in-memory fakes, plus a real

@@ -1,4 +1,4 @@
-﻿// @feature cert-cloud-discovery-import @api-functional
+// @feature cert-cloud-discovery-import @api-functional
 //
 // Journey smoke test: first-ledger-import ( happy path through all six
 // steps + one error path ). Source journey:

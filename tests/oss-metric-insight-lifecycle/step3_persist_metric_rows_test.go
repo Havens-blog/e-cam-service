@@ -1,4 +1,4 @@
-﻿// @feature oss-ops-insight @api-functional
+// @feature oss-ops-insight @api-functional
 //
 // Contract step-3-persist-metric-rows: 指标行落库(唯一键 upsert 首写生效) —
 // today rows insert-if-absent, yesterday rows are overwritten by the next-day

@@ -1,4 +1,4 @@
-﻿// @feature disk-ops-insight @api-functional
+// @feature disk-ops-insight @api-functional
 //
 // Contract shared-disk-multi-account-metrics step-4-ops-card-aggregation: the
 // ops-card aggregation ( derived from the deduped Top surface — the API-side

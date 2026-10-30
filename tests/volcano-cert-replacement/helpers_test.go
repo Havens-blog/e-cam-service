@@ -1,4 +1,4 @@
-﻿// @feature cert-volcano-deployer @api-functional
+// @feature cert-volcano-deployer @api-functional
 //
 // Journey fixtures for the volcano-cert-replacement contract tests: the
 // volcano two-phase / verify-window / rollback / orphan-closure journeys

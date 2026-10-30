@@ -1,4 +1,4 @@
-﻿// @feature cert-cloud-discovery-import @api-functional
+// @feature cert-cloud-discovery-import @api-functional
 //
 // Contract: docs/features/cert-cloud-discovery-import/testing/duplicate-concurrent-mapping/contracts/step-3-first-entry-register.md
 // SKIP_EVAL_GATE: generated without eval-contract verification. Review with extra scrutiny.

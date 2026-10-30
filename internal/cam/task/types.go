@@ -1,4 +1,4 @@
-﻿package task
+package task
 
 import "github.com/Havens-blog/e-common-go/taskx"
 

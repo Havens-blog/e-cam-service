@@ -1,4 +1,4 @@
-﻿// Package alert 告警通知模块
+// Package alert 告警通知模块
 package alert
 
 import (

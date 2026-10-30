@@ -1,4 +1,4 @@
-﻿// @feature nas-ops-insight @api-functional
+// @feature nas-ops-insight @api-functional
 //
 // Contract step-4-restart-no-duplicate: 服务重启验证当日不重复提交 — restarts
 // never re-claim an already-claimed day ( nas and cdn keys independently ),

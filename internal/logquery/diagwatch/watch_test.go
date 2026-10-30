@@ -1,4 +1,4 @@
-﻿package diagwatch
+package diagwatch
 
 import (
 	"context"
