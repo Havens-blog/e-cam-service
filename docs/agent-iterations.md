@@ -7712,6 +7712,35 @@ go: github.com/tencentcloud/tencentcloud-sdk-go/...@v1.3.40: read "https://proxy
 
 ---
 
+## 2026-10-31 自我修正:分页上限铺开破坏了仓库边界规则(#173 引入,#196 修复)
+
+### 现象与定位
+#191 的 CI 在 **depcheck 步骤**失败(起初被我误判为"基础设施抖动"——**那次是抖动,这次不是**,重跑后失败稳定):
+```
+depcheck: 3 NEW cross-domain boundary violation(s):
+  [R4] internal/cert/web/change_handler.go   imports internal/shared/paging   ← 我引入
+  [R4] internal/cert/web/ledger_handler.go   imports internal/shared/paging   ← 我引入
+  [R4] internal/cert/web/role_middleware.go  imports internal/shared/authz     ← 非我引入
+  internal/cert is extraction-ready (zero cross-domain outbound); it must not import internal/shared
+```
+⇒ 我上一轮的"分页上限铺开到全部模块"(#173)让 `internal/cert/web` **import 了 `internal/shared/paging`**,
+违反该仓 **R4:可抽取模块零跨域出向**的规则。同一次日志显示 **lint 步骤已通过** ⇒ 上一轮 lint 修复有效 ✓。
+
+### 修复(#196)
+- `internal/cert/web/page_limit.go`:**模块内本地实现**(maxPageSize=1000 + clampPageSize),两处调用改为本地函数并移除 import;
+- 注释写明"因 R4 不得 import shared/**",并声明数值须与 `internal/shared/paging.MaxLimit` 一致(两处互相指引);
+- 新增 2 条单测(钳制边界 + "上限必须覆盖前端 200")。
+**验证**:`go build ./internal/cert/...` 通过;`go test ./internal/cert/web/` 全包 ok;2 条新用例 PASS;
+**`go run ./scripts/depcheck` 违规 3 → 1**(仅剩 authz 那条,非我引入,未触碰)。
+
+### 教训(重要)
+1. **跨模块"统一单源"必须先查该模块是否受边界规则保护**:本仓有 depcheck R4(可抽取模块零跨域出向)与 lint 两道静态门,
+   我在"铺开"时只看"单源更干净",忽略了 `internal/cert` 的边界约束 ⇒ 一次改动同时踩了**功能**与**架构边界**两类门;
+2. **CI 失败要区分抖动与真实失败**:同一 job 前一次是 `go mod download` 抖动,重跑后变成稳定的 depcheck 失败 —— 重跑既是排除抖动,也是**让真实失败显形**的手段;
+3. **本地能复现的检查优先本地跑**:`go run ./scripts/depcheck` 本地 3 秒可跑,却是在 CI 失败后才第一次执行 ⇒ 新增/改动模块时先把仓库自带的检查脚本跑一遍。
+
+---
+
 ## cam-snapshot-error-state-20261031（前端：快照页失败不再渲染成「暂无数据」）
 
 **状态**：**已合并**（`e-cam-web#144`，merge `81ed41a`）
