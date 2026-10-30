@@ -6396,3 +6396,72 @@ if c == "cam:logs:export" { return true }
 1. **先区分 `[build failed]` 与测试失败**：这批里有 9 个包是编译失败，若只看「CI 红了」会误判成测试问题，白跑排查。
 2. **「引用外部 SDK 的符号」是本仓库反复出现的破坏源**（本轮 `LogExporter`，前几轮 `e-iam` 的 `ISyncer`/`IPermissionProvider`）。遇到 `undefined: xxx.Yyy` 且 `xxx` 是外部模块，第一件事是 **`go list -m -versions` + 在模块缓存里 grep 该符号**，而不是怀疑本地环境。
 3. **测试报 `undefined: 某函数` 时，先想「这个函数是不是在别的包」**：本例把测试搬到正确包后，**立刻暴露了生产代码的真实缺陷**（未 trim）。删测试或加个同名桩函数会把缺陷永久埋掉。
+
+---
+
+## cam-ci-classify-20261031（43 个 CI 失败用例的归因分类）
+
+**状态**：**分析完成**（无代码改动；3 个独立失败均为「等待产品确认」的口径问题）
+
+### 背景
+
+前几轮已修：wire 接口名（#141）、304 个 BOM（#145）、测试竞态 6 处（#147/#153）、main 编译失败（#155）。
+本轮对剩余失败做**逐用例归因**，回答一个具体问题：**那 4 行 Mongo DSN 到底能解决多少？**
+
+### 结论：43 个失败用例中，40 个是 Mongo 鉴权连带，3 个独立
+
+方法：从 CI 日志里提取每个 `--- FAIL: <name>`，回溯其前 25 行上下文，判断是否出现 `authentication` / `Unauthorized`。
+
+| 分类 | 数量 | 典型用例 |
+|---|---|---|
+| Mongo 鉴权连带 | **40** | `TestCertificateRepo_*`、`TestChangeOrderRepo_*`、`TestScanSnapshotRepo_*`、`TestEnsureIndexes_*`、`TestCrdRegistrationRepo`、`TestChangeOrderAuditDAO_*`、`TestInitCertModule_BootSmoke` 等 |
+| 独立缺陷 | **3** | `TestDashboard_ItemsFields`、`TestStep4_BackfillReferences_WrongBackfillRescanRecoverable`、`TestStep5_VerifyReferenceList_PartialFailureRescanRefresh` |
+
+**因此：用户手工应用 4 行 `CERT_TEST_MONGODB_DSN` 后，40/43 应转绿**，剩下的才是真正需要改代码的。
+
+### 3 个独立失败：全部是口径决策，本轮不擅自改
+
+**1. `TestDashboard_ItemsFields`：`DaysLeft` 期望 12，实得 11**
+
+同包内存在两套取整口径：
+
+| 函数 | 口径 | 用途 |
+|---|---|---|
+| `daysLeft`（`ledger_service.go:328`） | `math.Floor((notAfter-now)/24h)`，过期为负 | dashboard 的 `DaysLeft` 字段 |
+| `daysLeftCeil`（`inspection_service.go:183`） | `ceil`，过期返 0 | 到期分级 `Level` |
+
+测试种子是 `NotAfter = now + 12*24h`，计算时已过几毫秒 → floor 得 11，而 `Level` 用 ceil 得 12 → **同一响应里「显示 11 天」却按 12 天分级**（`le14`）。
+
+- 代码注释明确写了 `daysLeft` 是「向下取整、已过期为负值」→ 现状是有意为之；
+- 测试期望 12，等于要求显示层改用 ceil；
+- 两种都说得通（「剩余整天数」vs「不足一天算一天」），**但这是用户可见的到期文案口径**，改动会影响所有证书卡片显示的数字与「7 天内到期」的表述。
+
+→ **等待产品确认**：显示天数用 floor 还是 ceil？（建议与分级统一为 ceil，避免「显示 11 天却归到 14 天档」的自相矛盾。）
+
+**2 & 3. 两个 e2e：期望 HTTP 200，实际 202**
+
+```
+step4_backfill_references_test.go:116: expected: 200, actual: 202
+step5_verify_reference_list_test.go:78:  expected: 200, actual: 202
+响应体：{"success":true,"data":{"snapshotId":"...","status":"running","referencesWritten":1,...}}
+```
+
+端点在触发**重新扫描**时返回 202 + `status: running`（异步任务），测试期望 200（同步拿到结果）。
+
+- 202 对「已启动异步任务」语义正确；
+- 但「错误回填可恢复」「部分失败后刷新」这两个场景，测试想要的是**同步可见的恢复结果**；
+- 改实现（202→200）是行为契约变更；改测试（200→202 再轮询）是放宽断言。
+
+→ **等待产品确认**：这两个接口在「触发 rescan」时应返回 200（同步）还是 202（异步）？确认后按契约改实现或补齐轮询断言。
+
+### 其他待办（沿用前几轮）
+
+- **P1（阻塞在用户）**：`.github/workflows/ci.yml` 的 `jobs.test` 加 `env: CERT_TEST_MONGODB_DSN: mongodb://admin:password@127.0.0.1:27017/?authSource=admin`（复用 service 已声明的凭据）。token 缺 `workflow` scope，我推不了 workflow 文件。
+- **P2**：`cert/web` 与 `logquery/web` 的 `parseClaimCodes` 是两份复制实现（上轮已见它们**已经分叉**：一份 trim、一份不 trim，导致过 403 缺陷）。建议抽公共包。
+- **P2**：#132 的 1000 上限是否铺开；`.gitattributes` 固化 BOM/行尾。
+
+### 方法教训
+
+1. **「CI 红了」必须先分成 `[build failed]` / 测试失败 / 基础设施失败**，再谈具体用例；本轮把 43 个失败拆成 40 + 3，才看清「4 行配置解决 93%」。
+2. **归因要用日志上下文而不是用例名猜**：`*Repo*` 看起来都像 Mongo，但仍逐条回溯了上下文，避免把 3 个真缺陷误归为环境问题。
+3. **遇到「测试期望 vs 代码注释」冲突时，先判断是不是口径问题**：本例代码注释写明 floor 是刻意的，测试要求 ceil —— 这属于产品口径，不是"测试写错了"，**擅自改任一侧都会把分歧固化**。
