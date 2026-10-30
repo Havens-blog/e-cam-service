@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cloudx-sdk"
-	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-common-go/taskx"
 )
 
@@ -48,12 +49,24 @@ type metricCapableRDS struct {
 	err     error
 	// 调用参数记录(区间/region/engine 透传断言用;RDS 是地域性资源且多引擎
 	// 分派,querier 签名带 region+engine,均须按实例真实值透传)
+	//
+	// mu 保护下列字段：go test -race 检出 DATA RACE —— collectAccount 会并发
+	// 调用 GetRDSMetrics（sync_rds_metrics.go 内 goroutine），多个 goroutine
+	// 并发写同一组字段。测试 fake 必须自身并发安全，否则 -race 下用例失败。
+	mu         sync.Mutex
 	lastRDSID  string
 	lastName   string
 	lastRegion string
 	lastEngine string
 	lastStart  string
 	lastEnd    string
+}
+
+// lastCall 在锁保护下读取最近一次 GetRDSMetrics 的调用参数（供断言使用）。
+func (d *metricCapableRDS) lastCall() (rdsID, name, region, engine, start, end string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.lastRDSID, d.lastName, d.lastRegion, d.lastEngine, d.lastStart, d.lastEnd
 }
 
 func (d *metricCapableRDS) ListInstances(context.Context, string) ([]types.RDSInstance, error) {
@@ -75,7 +88,9 @@ func (d *metricCapableRDS) GetRDSMetrics(_ context.Context, rdsID, instanceName,
 	if d.err != nil {
 		return nil, d.err
 	}
+	d.mu.Lock()
 	d.lastRDSID, d.lastName, d.lastRegion, d.lastEngine, d.lastStart, d.lastEnd = rdsID, instanceName, region, engine, startDate, endDate
+	d.mu.Unlock()
 	out := make([]types.RDSMetric, 0, len(d.metrics))
 	for _, m := range d.metrics {
 		if m.RdsID != rdsID {
@@ -349,20 +364,22 @@ func TestSyncRDSMetrics_RegionEnginePassthrough(t *testing.T) {
 		t.Fatalf("create adapter: %v", err)
 	}
 	q := adapter.RDS().(*metricCapableRDS)
-	if q.lastRDSID != "rm-a" || q.lastName != "rm-a" {
-		t.Fatalf("rds/name 透传 = %s/%s, want rm-a/rm-a", q.lastRDSID, q.lastName)
+	// 通过 lastCall() 在锁保护下读取（GetRDSMetrics 会被并发调用）
+	gotRDSID, gotName, gotRegion, gotEngine, gotStart, gotEnd := q.lastCall()
+	if gotRDSID != "rm-a" || gotName != "rm-a" {
+		t.Fatalf("rds/name 透传 = %s/%s, want rm-a/rm-a", gotRDSID, gotName)
 	}
-	if q.lastRegion != "ap-southeast-1" {
-		t.Fatalf("region 透传 = %s, want ap-southeast-1", q.lastRegion)
+	if gotRegion != "ap-southeast-1" {
+		t.Fatalf("region 透传 = %s, want ap-southeast-1", gotRegion)
 	}
-	if q.lastEngine != "PostgreSQL" {
-		t.Fatalf("engine 透传 = %s, want PostgreSQL", q.lastEngine)
+	if gotEngine != "PostgreSQL" {
+		t.Fatalf("engine 透传 = %s, want PostgreSQL", gotEngine)
 	}
 	// 区间与执行器 [startDate, endDate] 一致(默认 days=2 → [昨日, 今日])
 	today := time.Now().In(nasMetricsCSTZone).Format("2006-01-02")
 	yesterday := time.Now().In(nasMetricsCSTZone).AddDate(0, 0, -1).Format("2006-01-02")
-	if q.lastStart != yesterday || q.lastEnd != today {
-		t.Fatalf("date range 透传 = %s ~ %s, want %s ~ %s", q.lastStart, q.lastEnd, yesterday, today)
+	if gotStart != yesterday || gotEnd != today {
+		t.Fatalf("date range 透传 = %s ~ %s, want %s ~ %s", gotStart, gotEnd, yesterday, today)
 	}
 }
 
