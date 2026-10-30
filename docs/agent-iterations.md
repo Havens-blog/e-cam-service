@@ -7174,3 +7174,67 @@ INFO adapter/factory.go:24 CMDB 适配器: 远程模式 {"remote_url": "http://e
 
 **仍未完成(角色外)**:e-cam-web 主检出有并行会话的 3 个 WIP 文件与主干改动重叠,`git merge` 被安全拒绝 ⇒
 迁移收尾(#133)的前端改动**在本地 8888 暂未生效**,其"点击→新窗口"E2E 亦无法补做(等其 WIP 落定)。
+
+---
+
+## cam-error-toast-20261031（前端：补齐 JS 异常与资源失败的提示节流 + 环境二次损坏）
+
+**状态**：**已合并**（`e-cam-web#135`，merge `8f0b4e0`）
+
+### 来源与证据（真实实测，仪器经 SELF-CHECK 自检）
+
+上一轮（`#134`）只节流了 `unhandledrejection`。本轮量化另外两条通道：
+
+| 场景 | 修复前 | 修复后 |
+|---|---|---|
+| 连发 5 个未捕获 JS 异常（`setTimeout(() => { throw ... })`） | **5 条**「页面出现异常，请刷新重试」 | **1 条** |
+| 连发 5 个资源加载失败（script 404） | **5 条**「资源加载失败」通知 | **1 条** |
+
+发版后多个 chunk 同时失效时，正是这种批量场景。
+
+### 变更（`src/plugins/error-handler.ts`，+21/−3）
+
+复用上一轮已测的纯函数 `shouldToastRejection`，为两条新通道各加 10s 时间窗：
+- `window 'error'`（未捕获 JS 异常）→ `ElMessage`
+- 资源加载失败（`SCRIPT`/`LINK`）→ `ElNotification`
+
+**三条通道各自独立的时间窗**：共用会互相吞掉（一次 JS 异常会把随后的资源通知窗口吃掉）。日志仍逐条记录。
+
+### 一次改错位置的记录（值得记）
+
+文件里有两处**相同文案**：Vue `errorHandler` 分支（包在 `!import.meta.env.DEV` 内，生产才执行）与 `window 'error'` 分支。
+我第一次按字符串匹配节流到了前者，**复测（dev 环境）仍是 5 条** —— 若只看「代码改了」就会误报已修复。补到 `window` 分支后复测通过。
+
+### 环境二次损坏（需环境负责人处理）
+
+本轮开始共享 `node_modules` **再次被破坏**：`@antfu/utils`、`@babel/parser`、`@vue/compiler-sfc` 从 `.pnpm` 消失，
+dev server 启动即失败（`Cannot find package '@antfu/utils'`），vitest/build 不可用。
+
+按与此前同类事故相同的方式定点复原（从 `haven-console/.pnpm` 拷贝**同版本**目录 + 建顶层 junction），未运行 `pnpm install`。
+复原后 `@antfu/utils`、`@babel/parser`、`@vue/compiler-sfc`、`unplugin-auto-import`、`vite`、`vitest`、`element-plus` 解析全部正常，
+vitest 冒烟与全量均通过。
+
+**建议**：排查是什么进程在并发改动 `node_modules`；由环境负责人跑一次 `pnpm install --frozen-lockfile` 对齐 store。
+
+### 验收
+
+| 项 | 结果 |
+|---|---|
+| `vitest run` 全量 | ✅ **1258 passed** |
+| `eslint src` / `vue-tsc -b` / `vite build` | ✅ 均 exit 0 |
+| PR CI（Typecheck & Build / Vitest / ESLint / Gzip Budget） | ✅ 四项全绿 |
+| 浏览器前后对照（自检 1/1 通过） | ✅ JS 异常 5→1；资源通知 5→1 |
+
+证据：`D:\Haven\.browser-verify\cam-error-toast\{before,after,after2}.json`。
+
+### 未验证 / 边界
+
+- 提示文案未改动；10s 窗口为经验值。
+- 未复测「窗口过后能否再弹」（同一纯函数已在上一轮 rejection 通道验证过）。
+
+### 方法教训
+
+1. **同一文案出现在多处时，改一处不代表改对了**：本例两处 `ElMessage.error('页面出现异常…')`，一处在 DEV 不执行的分支里。
+   **必须以「复测数值是否变化」为准**，不能以「代码里出现节流代码」为准。
+2. **环境损坏要按「同版本 + 最小复原」处理**：只从本地已有副本拷同版本、建 junction，不跑 `pnpm install`（会与并行会话互相破坏）。
+3**第二次遇到同一环境事故**说明有外部进程在动 `node_modules`，这已经是环境治理问题，应升级给环境负责人，而不是每轮手动救火。
