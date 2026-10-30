@@ -11,12 +11,14 @@ import (
 	"context"
 
 	"github.com/Havens-blog/e-cam-service/internal/logquery/diagwatch"
+	"github.com/Havens-blog/e-cam-service/internal/logquery/export"
 	"github.com/Havens-blog/e-cam-service/internal/logquery/service"
 	"github.com/Havens-blog/e-cam-service/internal/logquery/web"
 
 	// 云 provider 注册:统一经 import manifest 触发(新增云在 providers 包补一行)
 	_ "github.com/Havens-blog/e-cloudx-sdk/providers"
 
+	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -26,6 +28,8 @@ type Module struct {
 	// Svc 联邦编排服务(暴露给潜在的任务面/脚本调用;HTTP 面为主)。
 	Svc *service.FederationService
 	Hdl *web.LogQueryHandler
+	// ExportSvc 日志异步导出任务服务(db 非 nil 才启用;nil 时导出端点 503)。
+	ExportSvc *export.Service
 	// Watch 定时诊断看护(env 开启才非 nil;生命周期同进程,Stop 可手动停止)。
 	Watch *diagwatch.Watcher
 }
@@ -36,8 +40,9 @@ type Module struct {
 //   - accounts:云账号只读源(service.AccountSource 消费端口;生产实现由
 //     account 仓储结构性满足,凭证解密在仓储读取路径完成。diagwatch.AccountSource
 //     方法集与之一致,同一值通喂两个编排器)
+//   - db:同一 Mongo(导出任务台账落库;nil 时导出服务不启用,查询仍可用)
 //   - logger:日志组件(nil 回退默认)
-func InitLogQueryModule(accounts service.AccountSource, logger *elog.Component) (*Module, error) {
+func InitLogQueryModule(accounts service.AccountSource, db *mongox.Mongo, logger *elog.Component) (*Module, error) {
 	if accounts == nil {
 		return nil, errNilAccounts
 	}
@@ -45,11 +50,18 @@ func InitLogQueryModule(accounts service.AccountSource, logger *elog.Component) 
 	// 启动预热 + 周期保温(后台):填充 provider 进程级缓存,消除首查冷启动
 	// (实测冷进程 /types 探测超时返回空、冷聚合 82s)。进程生命周期。
 	svc.Warmup(context.Background())
-	return &Module{
+
+	m := &Module{
 		Svc:   svc,
 		Hdl:   web.NewLogQueryHandler(svc),
 		Watch: diagwatch.Start(svc, accounts, logger), // env 开启才非 nil
-	}, nil
+	}
+	if db != nil {
+		m.ExportSvc = export.NewService(accounts, db, logger, "")
+		m.Hdl.SetExportService(m.ExportSvc)
+		m.ExportSvc.StartCleanupLoop(context.Background())
+	}
+	return m, nil
 }
 
 // RegisterRoutes 在 server 上挂载日志查询路由(/api/v1/cam/logs 前缀,

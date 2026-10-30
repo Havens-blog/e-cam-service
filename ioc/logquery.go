@@ -14,5 +14,5 @@ import (
 // 仅用于云账号仓储;日志本体联邦实时查询不落库(ADR D1)。
 func InitLogQueryModule(db *mongox.Mongo) (*logquery.Module, error) {
 	accounts := accountrepo.NewCloudAccountRepository(accountdao.NewCloudAccountDAO(db))
-	return logquery.InitLogQueryModule(accounts, elog.DefaultLogger)
+	return logquery.InitLogQueryModule(accounts, db, elog.DefaultLogger)
 }
