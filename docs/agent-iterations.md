@@ -6760,3 +6760,35 @@ INFO adapter/factory.go:24 CMDB 适配器: 远程模式 {"remote_url": "http://e
 2. 该 dev 环境依赖 hosts 映射(`127.0.0.1 e-cmdb-service`)——`go.work`/配置里 e-cam-service 以**主机名**访问 e-cmdb-service,
    名字一旦解析不了,仪表盘统计、model alias 等跨服务功能会成片失败;排查时先 `ping e-cmdb-service` 比看应用日志更快;
 3. 备选:把 `cmdb.remote_url` 直连 `http://127.0.0.1:8002` 可绕开 hosts 依赖(需维护者确认,当前不动该配置)。
+
+---
+
+## 2026-10-30 事故后全面回归:21 页冒烟**全绿** + 跨服务主机名健康检查
+
+今日经历两次环境问题(① 8001 因 `go.work` 本地 SDK 落后致编译失败不重启;② `e-cmdb-service` 主机名负缓存致仪表盘统计失败),
+两者均已修复。本轮在**当前后端二进制(15:52 重建)** + **当前前端主干**组合下做整体回归。
+
+### 一、21 条真实路由浏览器冒烟(1440x900,登录后)
+| 指标 | 结果 |
+|---|---|
+| 页面数 | 21 |
+| 空白页 | **0** |
+| 有控制台错误的页 | **0**(含此前会报 CMDB 失败的 `/cam/dashboard` — 已消失) |
+| API 5xx | **0** |
+
+数据抽样(与接口 total 一致):资产 **760**、ECS **2808**、磁盘 **5413**、快照 **5204**、云账号 89 卡片、
+任务/审计/证书台账/标签/成本采集等均正常渲染。
+
+### 二、跨服务主机名健康检查
+遍历两份服务的 `config/*.yaml` 中所有 `http://host:port` 依赖:
+- `e-cmdb-service:8002`(**唯一生效的跨服务依赖**)解析 => **127.0.0.1** ✓(flushdns 后);
+- `asset-service:8080`、`audit-service:8080` 仅出现在 **示例配置 `config/cert-server.example.yaml`** 中,
+  非生效配置,解析不到属**预期** ✓;
+- `localhost:9000` 直连 ✓。
+
+### 口径沉淀
+1. **跨服务用主机名**时,`hosts` 变更必须配 `ipconfig /flushdns`,否则负缓存会让调用**持续失败且现象分散**
+   (仪表盘统计、model alias 刷新等一起红);
+2. 事故后的验证不能只看"服务起来了",要跑**整体冒烟**才能发现被掩盖的连带失败(本次即确认 CMDB 错误态已消失);
+3. `go.work` 本地 SDK 落后会让守护进程**静默不重启**,排查入口应是 `dev.ps1 status`(能显示 COMPILE-FAILED)
+   与 `logs/dev/<svc>.err.log` 的 `Error while building`。
