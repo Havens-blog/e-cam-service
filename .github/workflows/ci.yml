@@ -76,6 +76,13 @@ jobs:
         wire gen ./internal/endpoint
 
     - name: Run tests
+      env:
+        # 集成测试通过该环境变量获取 Mongo DSN。
+        # services.mongodb 启用了 root 认证（admin/password），而测试代码缺省回退到
+        # 「无凭据的 127.0.0.1:27017」；该连接能 ping 通，因此不会触发 t.Skipf，
+        # 但执行到 createIndexes 时会报 (Unauthorized)，
+        # 导致大量 DAO 集成测试失败（change_order_audit / cert / changeorder 等）。
+        CERT_TEST_MONGODB_DSN: mongodb://admin:password@127.0.0.1:27017/?authSource=admin
       run: |
         go test -v -race -coverprofile=coverage.out ./...
 
