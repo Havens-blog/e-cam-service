@@ -6163,3 +6163,63 @@ change_order_audit_test.go:68: unexpected error: (Unauthorized) Command createIn
 `ci.yml` 的 Mongo 鉴权(最小修法:去掉一次性 CI 实例的鉴权 env)与 cost analysis 竞争均属**并行会话在飞范围**,我未介入,
 只消除"测试连生产 + 超时失败"这一独立项。**遗留高优先项**:`scripts/*.go` 与 `config/prod.yaml` 中的**生产凭证明文入库** ⇒
 建议改为 env/Secrets 注入并**轮换**口令(已在 git 历史中)。
+
+---
+
+## cam-ci-repair-20261031（第三层：CI 剩余失败分类与部分修复）
+
+**状态**：**部分完成**（代码 PR #147 **待合并**；CI 配置改动**被 token 权限阻塞**）
+
+### 本轮任务
+
+承接上一轮（`cam-ci-repair-20261030`）：wire 与 BOM 修复后，CI 首次跑到测试阶段，需处理暴露出的 7 个失败。
+
+### 结论：7 个失败实为 **11 个包**、分两类
+
+| 类别 | 数量 | 现象 | 定性 |
+|---|---|---|---|
+| A. Mongo 鉴权 | 5 个用例（`TestChangeOrderAuditDAO_*` ×3、`TestInitCertModule_BootSmoke`、`TestUnavailableDispatcher_QueuelessBootDegradation`） | `(Unauthorized) Command createIndexes\|create requires authentication` | **CI 配置缺口** |
+| B. 数据竞争 | 3 处 race（cost/analysis ×2、cam/task/executor ×1），另有 cert/service 等 | `WARNING: DATA RACE` | **测试 mock 缺陷** |
+
+### A 类根因与修法（未落地，被阻塞）
+
+- `ci.yml` 的 `mongodb` service 用 `MONGO_INITDB_ROOT_USERNAME/PASSWORD` 启用了鉴权；
+- 但 **整个 Test job 没有任何 DSN 环境变量**（全文件 grep `CERT_TEST_MONGODB_DSN` = 0 命中）；
+- 测试缺省连 `mongodb://127.0.0.1:27017`（无凭据）→ 必然 Unauthorized。
+
+修法（1 处，4 行）：`jobs.test` 加
+```yaml
+    env:
+      CERT_TEST_MONGODB_DSN: mongodb://admin:password@127.0.0.1:27017/?authSource=admin
+```
+（复用 service 里已声明的同一组凭据，非新增密钥。）
+
+**阻塞原因**：本会话 token 的 scopes 为 `admin:public_key, gist, read:org, repo`，**缺 `workflow`**。写 `.github/workflows/*` 会被 GitHub 直接返回 **404**（不是 403），这个 404 极具误导性 —— 我先误判为 API 路径问题，靠「同一个 commit 里只推 Go 文件成功、推 workflow 失败」才定位。已用 `js-yaml` 校验过改动后的 YAML 结构与缩进（`jobs.test.env` 正确、services/steps 完整），但推不上去。
+
+### B 类：已修 3 处（PR #147）
+
+| 文件:行 | 形态 | 修法 |
+|---|---|---|
+| `internal/cam/cost/analysis/analysis_property_test.go:365` | mock 的 `callCount++`，而 `GetCostSummary` 并发扇出 `SumAmount` | `atomic.Int64` + `Add(1)` |
+| `internal/cam/cost/analysis/service_test.go:161` | 同因（另一个 mock）；**该计数在 184 行被断言** | `atomic.Int64`；断言改 `callCount.Load()`（否则 `assert.Equal` 复制带锁结构，`go vet` 报 copylocks） |
+| `internal/cam/task/executor/sync_cdn_metrics_test.go:82` | mock `GetDomainMetrics` 并发写 `c.lastStart, c.lastEnd` | 写点加 `sync.Mutex`；断言处锁内取快照 |
+
+**本地验证**：`go vet` exit 0；`go test ./internal/cam/task/executor/` ok；`go test -run 'TestGetCostSummary_Cache|TestProperty14_FilterCorrectness' ./internal/cam/cost/analysis/` ok。
+**未验证**：本机无 gcc，`-race` 需 cgo，无法本地复现竞争；以 CI 为准。
+
+### 仍未修（下一轮）
+
+- `internal/cert/service`：`fakeProbeRepo.Create` 并发写与测试主 goroutine 读冲突（`probe_service_test.go:108` vs `:810`）——同类测试 mock 竞态。
+- 其余 `internal/cert/{repository,web,service}`、`internal/shared/middleware`、`internal/topology/service`、`tests/no-snapshot-guidance`、`tests/placeholder-fingerprint-backfill` 等失败，**尚未逐个定性**。
+- A 类的 5 个用例（需先解决 token 权限或由人工应用 DSN 改动）。
+
+### 过程中的一个真实事故：CRLF 污染
+
+首次用 GitHub Contents API 推送三个文件时，内容来自 Windows 工作区（**CRLF**），而仓库存的是 **LF** → PR 显示 `+493/-490`、`+569/-567`… 整文件重写。用 `git diff` 看不出来（本地 git 有 autocrlf），只有看 **PR 的 per-file additions/deletions** 才暴露。重新以 LF 推送后恢复为 `+5/-2`、`+5/-3`、`+8/-1`（合计 +18/−6）。
+
+**教训**：通过 API 写文件时，**必须先规范化行尾**（`.replace(/\r\n/g,'\n')`），并且**用 PR 的 files 接口核对逐文件 diff 规模**，不能只看「推送成功」。
+
+### 版本与依赖
+
+- 代码 PR `#147`（分支 `cam-iteration-20261030-ci-dsn-race`），含 3 个 commit（首提交 + 2 个补充 + 1 个行尾修正），净改动 **+18/−6**。
+- 与 `#141`/`#145` 无冲突（不同文件）。
