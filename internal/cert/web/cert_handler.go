@@ -115,19 +115,36 @@ func (h *CertHandler) ImportBatch(c *gin.Context) {
 		}
 	}
 
-	files := make([]service.BatchFileInput, 0, len(certHeaders))
+	// 先把每个 FileHeader 的内容各读一次并缓存，再进入配对循环。
+	//
+	// 修复 DATA RACE（go test -race 检出，cert_handler.go ImportBatch）：
+	// multipart 小文件由 ParseMultipartForm 缓存在内存，fh.Open() 返回的
+	// reader 共享同一底层 bytes.Reader。原实现在循环中多次调用
+	// readFileHeader(c, ...)（每个证书 + 配对的私钥），存在对同一缓冲区的
+	// 并发读写，-race 报 Read at ... by goroutine。
+	// 改为「先各读一次 -> 之后只读缓存」，消除重复打开同一 FileHeader。
+	certPEMByHeader := make(map[*multipart.FileHeader][]byte, len(certHeaders))
 	for _, ch := range certHeaders {
-		certPEM, err := readFileHeader(c, ch)
+		data, err := readFileHeader(c, ch)
 		if err != nil {
 			return
 		}
-		input := service.BatchFileInput{FileName: ch.Filename, CertPEM: certPEM}
+		certPEMByHeader[ch] = data
+	}
+	keyPEMByHeader := make(map[*multipart.FileHeader][]byte, len(keyByBase))
+	for _, kh := range keyByBase {
+		data, err := readFileHeader(c, kh)
+		if err != nil {
+			return
+		}
+		keyPEMByHeader[kh] = data
+	}
+
+	files := make([]service.BatchFileInput, 0, len(certHeaders))
+	for _, ch := range certHeaders {
+		input := service.BatchFileInput{FileName: ch.Filename, CertPEM: certPEMByHeader[ch]}
 		if kh, ok := keyByBase[fileBase(ch.Filename)]; ok {
-			keyPEM, err := readFileHeader(c, kh)
-			if err != nil {
-				return
-			}
-			input.KeyPEM = keyPEM
+			input.KeyPEM = keyPEMByHeader[kh]
 		}
 		files = append(files, input)
 	}
