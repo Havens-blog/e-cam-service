@@ -7970,3 +7970,28 @@ CDN 1050KB、镜像 1869KB。根因是后端无聚合参数，需后端接口，
 
 另一个观察：这已是连续第四页同一模式。剩余 `eip`、`dns` 等页可预期同样需要迁移，
 但每轮只推一页、每页都有独立 before/after 与恢复验证 —— 慢，但每一页都确实验证过。
+
+---
+
+## 2026-10-31 logs(统一日志查询)模块按契约探活:全绿,本轮无可执行需求
+
+按"端点/参数只能来自代码"的口径,从 `src/api/logs.ts` 读出契约(`baseURL=/api/v1` + `BASE=/cam/logs`,
+`LogSearchRequest{log_type,start_time,end_time,…}`、`LogSource{cloud,account_id,account_name,region,log_type,resource_id,name,enabled,stale}`)
+后逐项探活(全部**只读**):
+
+| 端点 | 参数 | 结果 | 字段核对 |
+|---|---|---|---|
+| `GET /cam/logs/types` | — | **200**,6 类 | 必填 `type/label/fields/max_window_days` 全在(+`aggregatable`) ✓ |
+| `GET /cam/logs/sources` | `log_type=waf/slb/cdn/app` | **200**,264/270/296/811 条 | `LogSource` 9 个必填字段全在(+`note`) ✓ |
+| `POST /cam/logs/search` | `{log_type,start_time,end_time}`(1h 窗) | **200**,waf total=2668、slb total=2924,`truncated=false`,`sources` 5 个源状态 | `LogSearchResponse` 结构符合 ✓,无单源异常 |
+
+⇒ logs 模块(联邦实时查询:类型字典/源清单/检索)**当前健康**;本轮**未发现可复现缺陷**,也未产生代码改动。
+
+### 观察(仅建议,未实施)
+- `search` 一次返回 2668 条(entries=total,`truncated=false`)⇒ 该窗口未触及后端上限,属**设计内**行为;
+  但大窗口下响应体积/前端渲染成本值得后续关注(是否加"结果集上限/分页"**属产品决策**,我不擅自改)。
+- `sources` 返回的 `note` 字段不在前端类型里(后端多返回不算缺陷,如需展示可后续补类型)。
+
+### 本轮状态
+**无可执行需求**:已确认需求(分页铺开/资产数重算/迁移收尾)全部完成;三处静态门+两仓基线已体检(前端全绿、后端仅剩他人在飞的 authz 违规);
+本轮新探的 logs 模块无缺陷 ⇒ 按协议**不为产生提交而改代码**。
