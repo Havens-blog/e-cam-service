@@ -2,15 +2,16 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	auditdomain "github.com/Havens-blog/e-cam-service/internal/audit/domain"
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
-	"github.com/Havens-blog/e-cloudx-sdk"
-	"github.com/Havens-blog/e-cloudx-sdk/types"
+	cloudx "github.com/Havens-blog/e-cloudx-sdk"
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/assert"
@@ -833,4 +834,39 @@ func TestConvertEIPToInstance(t *testing.T) {
 	assert.Equal(t, "prod-eip", result.AssetName)
 	assert.Equal(t, "47.100.1.1", result.Attributes["ip_address"])
 	assert.Equal(t, 100, result.Attributes["bandwidth"])
+}
+
+// countAccountAssets:asset_count 必须写"该账号的存量总数",而不是"本次同步写入的条数"。
+//
+// 背景(实测 2026-10-30):腾讯云账号在账号页显示 4593,而按账号实时统计仅 ~309 —— 因为原实现把
+// 同步运行中累加的 accountSynced(增量、且按资产类型互斥,跳过/报错的类型不计)写进了 asset_count。
+func TestCountAccountAssets_UsesStoreTotal(t *testing.T) {
+	repo := new(mockInstanceRepo)
+	e := newTestExecutor(repo)
+	acc := testAccount()
+	acc.ID = 100
+	acc.TenantID = 6
+
+	repo.On("Count", mock.Anything, camdomain.InstanceFilter{TenantID: 6, AccountID: 100}).Return(int64(309), nil)
+
+	got := e.countAccountAssets(context.Background(), *acc)
+	assert.Equal(t, int64(309), got, "应写入实例库中的存量总数")
+	repo.AssertExpectations(t)
+}
+
+// 统计失败时必须保留上一次的值:不能写 0(会把"资产 N"打成 0),也不能退回本次同步条数。
+func TestCountAccountAssets_FallsBackToPreviousOnError(t *testing.T) {
+	repo := new(mockInstanceRepo)
+	e := newTestExecutor(repo)
+	acc := testAccount()
+	acc.ID = 100
+	acc.TenantID = 6
+	acc.AssetCount = 4593 // 上一次同步写入的旧值
+
+	repo.On("Count", mock.Anything, camdomain.InstanceFilter{TenantID: 6, AccountID: 100}).
+		Return(int64(0), errors.New("mongo timeout"))
+
+	got := e.countAccountAssets(context.Background(), *acc)
+	assert.Equal(t, int64(4593), got, "统计失败应保留旧值,避免把展示清零")
+	repo.AssertExpectations(t)
 }
