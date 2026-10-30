@@ -6861,3 +6861,37 @@ INFO adapter/factory.go:24 CMDB 适配器: 远程模式 {"remote_url": "http://e
 2. **先找仓库里已有的正确范式**：`cert_handler.go` / `discovery_handler.go` 早就用 `operator(c)` + `"unknown"` 回落，
    本条链路只是漏传。**照抄既有范式**比新发明取用户方式更安全。
 3. **审计字段缺失是"静默失败"**：不会报错、不影响主流程，只是那一列恒为空 —— 只有真实数据巡检才能发现，单测不会。
+
+---
+
+## 2026-10-30 需求交付:单页上限铺开到全部模块(#173)——**已上线并 A 类实测**
+
+**需求来源**:维护者批复「**铺开其余模块**」(草稿 #132 仅覆盖资产列表+审计日志)。
+
+**交付**:`internal/shared/paging`(**全仓单源**,MaxLimit=1000 + Clamp/ClampInt64/Normalize/NormalizeInt64 + 单测,
+含"上限必须覆盖前端最大请求 200"防回归断言);`cam/web/page_limit.go` 收敛为**薄适配层**(消除第二套实现);
+**27 个解析点**全部钳制(cam/web、cost、dns、tag、task、template、dictionary、cert/web、alert、audit/web)。
+语义保持:<=0/非法值仍走既有"默认 20",钳制仅对**超上限**生效。
+
+**A 类实测(运行环境,登录后)**:
+| 请求 | 修复前 | 现在 |
+|---|---|---|
+| `/assets/disk?limit=999999` | 5228 条/6.4MB | **1000 条** ✓ |
+| `/audit/logs?limit=999999` | 7360 条 | **1000 条** ✓ |
+| `/tags?limit=999999` | 3889 条 | **1000 条** ✓ |
+| `/assets/disk?limit=20` / `limit=200` | 20 / 200 | **20 / 200(无回归)** ✓ |
+| 审计脚本 `--only=limits` | "另 3 项已知未决警告" | **全部通过** ✓ |
+
+### 上线过程中暴露并处置的两件事(如实记录)
+1. **CompileDaemon 崩溃**:监控进程报 `fatal error: sync: unlock of unlocked mutex`(其 v1.4.0 在 Windows 的
+   已知竞态缺陷,与本改动无关),导致守护式重启失效 ⇒ 8001 一度 DOWN。
+2. **又一次 go.work 本地检出落后(这次是 e-iam)**:主检出构建报
+   `ioc/gin.go: undefined: syncerpkg.Syncer`、`ioc/policy.go: undefined: capability.PermissionProvider` ——
+   这两个包来自 **e-iam**,而本地 `eiam` 检出在 `feat/cli` 分支(落后 main 2、领先 32、**WIP 86 个文件**),
+   缺新包。**未触碰其 86 个 WIP**:改用 `GOWORK=off`(模块版本,与 CI 一致)构建成功(46s),再以**脱离方式**
+   直接运行二进制恢复 8001。
+   **代价/遗留**:该服务当前**不由 CompileDaemon 托管**(改代码不会自动重编译重启);要恢复守护式流程,需
+   ① 把 eiam 检出的分支追平 main(**较危险:86 个 WIP 可能与合并冲突**),或 ② 给 `dev.ps1` 的 e-cam-service
+   加 `GoWorkOff = $true`(需确认其他本地联调是否依赖 workspace),或 ③ 换用不受 go.work 影响的构建方式。
+   **建议**:在 dev 流程里加一步"**workspace 各仓追平主干**"的检查(或在 `dev.ps1 status` 里显示各 sibling 的
+   落后提交数),这类"本地检出落后 ⇒ 编译不过 ⇒ 守护进程静默不重启/崩溃"已在同一天发生**两次**。

@@ -24,18 +24,19 @@ import (
 	"sync"
 	"time"
 
+	"strings"
+
 	auditdomain "github.com/Havens-blog/e-cam-service/internal/audit/domain"
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
-	"github.com/Havens-blog/e-cloudx-sdk"
+	cloudx "github.com/Havens-blog/e-cloudx-sdk"
 	"github.com/Havens-blog/e-cloudx-sdk/aliyun"
 	"github.com/Havens-blog/e-cloudx-sdk/asset"
-	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gotomicro/ego/core/elog"
 	"go.mongodb.org/mongo-driver/mongo"
-	"strings"
 )
 
 // 定义任务类型常量
@@ -53,7 +54,7 @@ type SyncAssetsExecutor struct {
 	dnsDomainColl  *mongo.Collection // DNS 域名集合 (c_dns_domain)
 	dnsRecordColl  *mongo.Collection // DNS 记录集合 (c_dns_record)
 	changeTracker  ChangeTracker     // 资产同步变更追踪（nil 不追踪，由 ioc 注入）
-	ruleExecutor   RuleAutoExecutor // 服务树规则引擎（同步完成后自动执行规则，nil 关闭，由 ioc 注入）
+	ruleExecutor   RuleAutoExecutor  // 服务树规则引擎（同步完成后自动执行规则，nil 关闭，由 ioc 注入）
 	logger         *elog.Component
 	// syncingNow 资产类型级同步互斥("account_id:asset_type" -> task_id)。
 	// 手动连点/调度器/重试会产生同一账号同一资产类型的并发同步任务,互相踩踏
@@ -310,8 +311,8 @@ func (e *SyncAssetsExecutor) Execute(ctx context.Context, t *taskx.Task) error {
 			}
 		}
 
-		// 更新该账号的最后同步时间
-		if err := e.accountRepo.UpdateSyncTime(ctx, account.ID, time.Now(), int64(accountSynced)); err != nil {
+		// 更新该账号的最后同步时间与**资产总数**（详见 countAccountAssets 注释）
+		if err := e.accountRepo.UpdateSyncTime(ctx, account.ID, time.Now(), e.countAccountAssets(ctx, account)); err != nil {
 			e.logger.Error("更新同步时间失败",
 				elog.Int64("account_id", account.ID),
 				elog.FieldErr(err))
@@ -541,6 +542,29 @@ func (e *SyncAssetsExecutor) diffAndUpsert(
 	}
 
 	return synced, deleted, nil
+}
+
+// countAccountAssets 统计该账号**当前**在实例库中的资产总数，用于写入账号的 asset_count。
+//
+// 【为什么不再写"本次同步条数"】原实现把 `accountSynced`（本次同步写入的条数）写进 asset_count，
+// 而该字段的语义是"该账号的资产数量"（账号页展示"资产 N"、详情抽屉"N 个资产"）。同步是
+// **增量 + 按资产类型互斥**的：被锁跳过的类型、报错的类型都不计入，于是这个数字既不是总量、
+// 还会随最后一次同步的写入量跳动。实测（2026-10-30）：腾讯云账号显示 4593，而按账号实时统计仅 ~309。
+//
+// 现在改为同步结束时**按账号重新统计存量**：数字与实例库一致，且不受本次同步是否部分跳过影响。
+// 统计失败时**保留上一次的值**（不写 0、也不写本次条数），避免一次统计抖动把展示打坏。
+func (e *SyncAssetsExecutor) countAccountAssets(ctx context.Context, account domain.CloudAccount) int64 {
+	total, err := e.instanceRepo.Count(ctx, camdomain.InstanceFilter{
+		TenantID:  account.TenantID,
+		AccountID: account.ID,
+	})
+	if err != nil {
+		e.logger.Error("统计账号资产数失败,保留上次同步的值",
+			elog.Int64("account_id", account.ID),
+			elog.FieldErr(err))
+		return account.AssetCount
+	}
+	return total
 }
 
 // enrichResourceGroupName 阿里云资源组名称补采：把资源组 ID（resource_group_id，或部分阿里云
