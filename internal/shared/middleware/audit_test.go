@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,20 +22,31 @@ func waitForAuditLogs(t *testing.T, sink *captureSink, n int) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if len(sink.entries) >= n {
+		if len(sink.all()) >= n {
 			return
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatalf("audit logs not written within deadline: got %d want %d", len(sink.entries), n)
+	t.Fatalf("audit logs not written within deadline: got %d want %d", len(sink.all()), n)
 }
 
 // captureSink 捕获中间件产出的 AuditEntry（领域无关，验证边界解耦后行为不变）。
 type captureSink struct {
+	mu      sync.Mutex
 	entries []AuditEntry
 }
 
+// all 返回条目快照（加锁）：sink 由 handler goroutine 写入、测试主 goroutine 读取，
+// 直接读 s.entries 会被 -race 捕获（曾导致本包在 CI 上 FAIL）。
+func (s *captureSink) all() []AuditEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]AuditEntry(nil), s.entries...)
+}
+
 func (s *captureSink) Write(_ context.Context, e AuditEntry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.entries = append(s.entries, e)
 	return nil
 }
@@ -91,7 +103,7 @@ func TestAuditMiddleware_MultipartBodyOmitted(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	waitForAuditLogs(t, sink, 1)
-	log := sink.entries[0]
+	log := sink.all()[0]
 	assert.Equal(t, "api_cert_create", log.OperationType)
 	assert.Equal(t, "[multipart/form-data body omitted]", log.RequestBody)
 	assert.NotContains(t, log.RequestBody, "PRIVATE KEY")
@@ -137,7 +149,7 @@ func TestAuditMiddleware_SkipsLogQuerySearch(t *testing.T) {
 
 	// 等待异步写入窗口结束后断言仍为 0 条(跳过而非延迟)。
 	time.Sleep(50 * time.Millisecond)
-	require.Len(t, sink.entries, 0, "log query search must be skipped by generic audit middleware")
+	require.Len(t, sink.all(), 0, "log query search must be skipped by generic audit middleware")
 }
 
 // TestAuditMiddleware_JSONBodySanitized JSON body 脱敏（既有行为回归：
@@ -159,7 +171,7 @@ func TestAuditMiddleware_JSONBodySanitized(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	waitForAuditLogs(t, sink, 1)
-	log := sink.entries[0]
+	log := sink.all()[0]
 	assert.Contains(t, log.RequestBody, "***")
 	assert.NotContains(t, log.RequestBody, "p@ss")
 	assert.Equal(t, "api_settings_update", log.OperationType)
