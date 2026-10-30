@@ -10,7 +10,6 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/deployer"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -329,7 +328,7 @@ func (h *ChangeHandler) ListChanges(c *gin.Context) {
 	}
 	page, _ := strconv.Atoi(c.Query("page"))
 	pageSize, _ := strconv.Atoi(c.Query("pageSize"))
-	pageSize = paging.Clamp(pageSize)
+	pageSize = clampPageSize(pageSize)
 	res, err := h.query.ListOrders(c.Request.Context(), service.ListChangesQuery{
 		Status:   status,
 		Page:     page,
