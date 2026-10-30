@@ -62,11 +62,29 @@ type metricCapableRDS struct {
 	lastEnd    string
 }
 
+// rdsCallArgs 记录一次 GetRDSMetrics 的调用参数（供断言使用）。
+// 用结构体而非多返回值，避免 gocritic tooManyResultsChecker（返回值 >5 个）。
+type rdsCallArgs struct {
+	rdsID  string
+	name   string
+	region string
+	engine string
+	start  string
+	end    string
+}
+
 // lastCall 在锁保护下读取最近一次 GetRDSMetrics 的调用参数（供断言使用）。
-func (d *metricCapableRDS) lastCall() (rdsID, name, region, engine, start, end string) {
+func (d *metricCapableRDS) lastCall() rdsCallArgs {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.lastRDSID, d.lastName, d.lastRegion, d.lastEngine, d.lastStart, d.lastEnd
+	return rdsCallArgs{
+		rdsID:  d.lastRDSID,
+		name:   d.lastName,
+		region: d.lastRegion,
+		engine: d.lastEngine,
+		start:  d.lastStart,
+		end:    d.lastEnd,
+	}
 }
 
 func (d *metricCapableRDS) ListInstances(context.Context, string) ([]types.RDSInstance, error) {
@@ -365,21 +383,21 @@ func TestSyncRDSMetrics_RegionEnginePassthrough(t *testing.T) {
 	}
 	q := adapter.RDS().(*metricCapableRDS)
 	// 通过 lastCall() 在锁保护下读取（GetRDSMetrics 会被并发调用）
-	gotRDSID, gotName, gotRegion, gotEngine, gotStart, gotEnd := q.lastCall()
-	if gotRDSID != "rm-a" || gotName != "rm-a" {
-		t.Fatalf("rds/name 透传 = %s/%s, want rm-a/rm-a", gotRDSID, gotName)
+	got := q.lastCall()
+	if got.rdsID != "rm-a" || got.name != "rm-a" {
+		t.Fatalf("rds/name 透传 = %s/%s, want rm-a/rm-a", got.rdsID, got.name)
 	}
-	if gotRegion != "ap-southeast-1" {
-		t.Fatalf("region 透传 = %s, want ap-southeast-1", gotRegion)
+	if got.region != "ap-southeast-1" {
+		t.Fatalf("region 透传 = %s, want ap-southeast-1", got.region)
 	}
-	if gotEngine != "PostgreSQL" {
-		t.Fatalf("engine 透传 = %s, want PostgreSQL", gotEngine)
+	if got.engine != "PostgreSQL" {
+		t.Fatalf("engine 透传 = %s, want PostgreSQL", got.engine)
 	}
 	// 区间与执行器 [startDate, endDate] 一致(默认 days=2 → [昨日, 今日])
 	today := time.Now().In(nasMetricsCSTZone).Format("2006-01-02")
 	yesterday := time.Now().In(nasMetricsCSTZone).AddDate(0, 0, -1).Format("2006-01-02")
-	if gotStart != yesterday || gotEnd != today {
-		t.Fatalf("date range 透传 = %s ~ %s, want %s ~ %s", gotStart, gotEnd, yesterday, today)
+	if got.start != yesterday || got.end != today {
+		t.Fatalf("date range 透传 = %s ~ %s, want %s ~ %s", got.start, got.end, yesterday, today)
 	}
 }
 

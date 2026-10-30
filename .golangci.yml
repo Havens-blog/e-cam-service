@@ -28,6 +28,35 @@ output:
   print-linter-name: true
 
 linters-settings:
+  # depguard：使用「允许清单」显式列出本项目实际依赖。
+  #
+  # 背景：此前未配置 depguard，其默认 deny 列表会禁止所有非标准库导入，
+  # 导致 `github.com/Havens-blog/e-cloudx-sdk/types` 等本项目自有 SDK 被误报
+  # （该 SDK 全项目 206 个文件引用、其中 99 个 import 其 types 子包，
+  #  属既定架构，不应禁止）。
+  depguard:
+    rules:
+      main:
+        list-mode: lax
+        allow:
+          - $gostd
+          - github.com/Havens-blog
+          - github.com/gin-gonic
+          - github.com/gotomicro
+          - github.com/ecodeclub
+          - github.com/prometheus
+          - github.com/spf13
+          - github.com/swaggo
+          - github.com/stretchr
+          - github.com/google
+          - github.com/go-playground
+          - github.com/redis
+          - github.com/pkg
+          - go.mongodb.org
+          - go.uber.org
+          - golang.org
+          - google.golang.org
+          - gopkg.in
   govet:
     check-shadowing: true
   gocyclo:
