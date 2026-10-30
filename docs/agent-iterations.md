@@ -6792,3 +6792,72 @@ INFO adapter/factory.go:24 CMDB 适配器: 远程模式 {"remote_url": "http://e
 2. 事故后的验证不能只看"服务起来了",要跑**整体冒烟**才能发现被掩盖的连带失败(本次即确认 CMDB 错误态已消失);
 3. `go.work` 本地 SDK 落后会让守护进程**静默不重启**,排查入口应是 `dev.ps1 status`(能显示 COMPILE-FAILED)
    与 `logs/dev/<svc>.err.log` 的 `Error while building`。
+
+---
+
+## cam-change-creator-20261031（变更单发起人字段从未写入）
+
+**状态**：**已合并**（`e-cam-service#170`，merge `a0273dc`）
+
+### 来源与证据（全部来自真实环境实测）
+
+1. **浏览器巡检** `/cam/certs/changes`：列表 3 行「发起人」列全为 `—`，其余列（单号 / 旧→新指纹 / 状态 / 进度 / 时间）正常。
+2. **直连接口**（带会话）`GET /api/v1/certs/changes?page=1&pageSize=3`：
+   ```json
+   {"id":"6aaf9b9a...","status":"pending_confirm","creator":"","createdAt":"2026-09-20T08:38:50Z"}
+   ```
+   字段**存在但值恒为空串** → 前端 `ChangeTable.vue:57` 渲染 `row.creator` 得到空 → 显示 `—`。
+3. **代码追因**：`internal/cert/service/changelist_generator.go` 构造 `domain.ChangeOrder` 时**没有赋 `Creator`**；
+   `GenerateChangeList` 签名里也没有发起人入参。而 web 层早就具备取当前用户的能力
+   （`authz.go:107` 的 `operator(c)` / `operatorUsername(c)`），`cert_handler.go`、`discovery_handler.go` 都在用 ——
+   **只有这条链路漏传**。
+
+运维平台里「谁发起的变更」是审计刚需（页面自己写着「所有配置变更留审计」），该列恒为空使审计链断裂。
+
+### 变更
+
+| 文件 | 改动 |
+|---|---|
+| `internal/cert/service/change_service.go` | 接口签名加 `creator` 形参 |
+| `internal/cert/service/changelist_generator.go` | 实现签名同步；`order` 构造补 `Creator: creator` |
+| `internal/cert/web/change_handler.go` | `GenerateList` 取 `operator(c)`，空则回落 `"unknown"`（与 `cert_handler` 同口径） |
+| `internal/cert/service/changelist_generator_test.go` | 补断言：生成后订单 `creator` 必须为 `"op"` |
+
+### 验收
+
+| 项 | 结果 |
+|---|---|
+| `go build ./...` | ✅ exit 0 |
+| `go vet ./internal/cert/...` | ✅ exit 0 |
+| `go test ./internal/cert/service/` | ✅ ok（含新增 creator 落库断言） |
+| `go test ./internal/cert/web/` | ✅ ok |
+| CI（PR #170）：`cert/service` / `cert/web` | ✅ 均 OK；`[build failed]` 0、`DATA RACE` 0 |
+| CI 剩余 | 38 处 `Unauthorized`（Mongo 鉴权，需 4 行 DSN，见下） |
+| `gofmt -l` | ✅ 干净 |
+
+### 必须说清的边界
+
+**「新单发起人有值」未做浏览器/接口实测**：运行中的 `:8001` 是旧二进制，要看到效果必须重启后端，
+而重启会干扰同机并行的其它会话。因此本轮验收到「编译 + 单测落库断言」为止，**该场景标记为未验证**。
+
+### 历史数据
+
+已存在的 3 条变更单 `creator` 为空串，**无法回填**（原始发起人未落库，无处恢复）。
+若需要历史单显示，只能显示 `—` 或「未知」，属产品口径，本轮未改。
+
+### 仍未解决（阻塞在 owner）
+
+`.github/workflows/ci.yml` 的 `jobs.test` 需加：
+```yaml
+    env:
+      CERT_TEST_MONGODB_DSN: mongodb://admin:password@127.0.0.1:27017/?authSource=admin
+```
+这是 38 处 `Unauthorized`（约 40 个用例）与整条 CI 首次全绿的唯一剩余项。
+
+### 方法教训
+
+1. **「字段存在」不等于「字段有值」**：接口返回里有 `creator` 字段，很容易误判为「后端已支持、前端没渲染」。
+   实际是值为空串 —— 必须先看**值**，再判断是消费端还是生产端的锅。
+2. **先找仓库里已有的正确范式**：`cert_handler.go` / `discovery_handler.go` 早就用 `operator(c)` + `"unknown"` 回落，
+   本条链路只是漏传。**照抄既有范式**比新发明取用户方式更安全。
+3. **审计字段缺失是"静默失败"**：不会报错、不影响主流程，只是那一列恒为空 —— 只有真实数据巡检才能发现，单测不会。
