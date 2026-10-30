@@ -6223,3 +6223,75 @@ change_order_audit_test.go:68: unexpected error: (Unauthorized) Command createIn
 
 - 代码 PR `#147`（分支 `cam-iteration-20261030-ci-dsn-race`），含 3 个 commit（首提交 + 2 个补充 + 1 个行尾修正），净改动 **+18/−6**。
 - 与 `#141`/`#145` 无冲突（不同文件）。
+
+---
+
+## cam-ci-repair-20261031b（第三层续：cert/service 与 shared/middleware 竞态）
+
+**状态**：**代码 PR #153 待合并**（CI 轮询中）
+
+### 来源与证据
+
+承 `#147`（已合并 `36c7ffb`，修了 cost/analysis ×2 与 cam/task/executor ×1 三处测试竞态）。合并后 CI 日志仍剩 **6 处 `WARNING: DATA RACE`**，栈定位到：
+
+```
+internal/cert/service/probe_service_test.go:108 (写) vs :810 (读)
+internal/shared/middleware/audit_test.go:38 (写)  vs :94 / :162 (读)
+```
+
+### 需求卡
+
+- 目标：消除这 6 处竞态告警，使这两个包在 `-race` 下不再 FAIL。
+- 规则：**只改测试代码**，产品行为不变；不得用 `-race` 屏蔽、`t.Skip` 或弱化断言来「通过」。
+- 非目标：其余包（`cert/{repository,web}`、`topology/service`、`tests/*`）的失败定性；Mongo 鉴权用例。
+
+### 根因（两处形态不同，容易误判）
+
+**1. `cert/service`：写方早已加锁，问题在读方**
+
+`fakeProbeRepo.Create` 本来就有 `f.mu.Lock()`，且文件里早有加锁快照 `all()`（L174）。但测试主 goroutine **绕过锁直接读** `probes.created`：
+- `for len(probes.created) < 2`（轮询）
+- `len(probes.created)`（错误信息）
+- `for _, r := range probes.created`（断言）
+- `assert.Empty(t, probes.created, ...)`
+
+→ 与后台探测轮 goroutine 的写入竞争。修法：4 处统一改走 `probes.all()`（复用既有访问器，不新增 API）。
+
+**教训**：看到 race 报告里 `Create` 有锁，**不要以为「已经修过了」** —— 要成对看「写点是否加锁 + 读点是否也加锁」。
+
+**2. `shared/middleware`：`captureSink` 完全无锁**
+
+中间件在 handler goroutine 里 `Write` 追加 `entries`，测试 goroutine 读 `len(sink.entries)` 与 `sink.entries[0]`。→ 加 `sync.Mutex` + `all()` 快照访问器，`Write` 与 5 处读点统一走锁。
+
+### 改动量
+
+`+21/-9`，2 文件，仅测试代码：
+- `internal/cert/service/probe_service_test.go`：`+4/-4`
+- `internal/shared/middleware/audit_test.go`：`+17/-5`
+
+### 验收
+
+| 项 | 结果 |
+|---|---|
+| `gofmt -l` | ✅ 两文件干净 |
+| `go vet ./internal/cert/service/ ./internal/shared/middleware/` | ✅ exit 0 |
+| `go test` 两包 | ✅ ok / ok |
+| `-race` | **未执行**（本机无 gcc，需 cgo），以 CI 为准 |
+| CI `Test` | 轮询中（另有 5 个 Mongo 鉴权用例仍会红，见下） |
+
+### 仍未解决（阻塞在非代码侧）
+
+5 个 `(Unauthorized) createIndexes/create requires authentication` 用例需要 `.github/workflows/ci.yml` 的 `jobs.test` 加：
+
+```yaml
+    env:
+      CERT_TEST_MONGODB_DSN: mongodb://admin:password@127.0.0.1:27017/?authSource=admin
+```
+
+本会话 token 缺 `workflow` scope（写 workflow 文件返回 404），已交由用户手工应用。
+
+### 方法教训（本轮新增）
+
+1. **读方漏锁是最常见的竞态形态**：`Create` 有 `mu.Lock()` 会误导人以为已修好；`-race` 的「Write at … / Read at …」必须**两行都看**，只修写方等于没修。
+2. **既有访问器优先复用**：`cert/service` 里已有 `all()`，直接用比新增 `Mutex` 更好 —— diff 更小（+4/−4）、语义更清楚。
+3. **API 推文件必须规范化行尾**（承上一轮教训）：本次推送前统一 `.replace(/\r\n/g,'\n')`，PR 的 per-file diff 稳定在 `+4/-4`、`+17/-5`，没有再现整文件重写。
