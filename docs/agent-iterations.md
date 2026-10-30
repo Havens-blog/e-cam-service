@@ -7320,3 +7320,73 @@ accountRegionLabel) + 12 例单测(含 3 条回归断言) + 类型标注为可�
 
 **另注**:`AccountCard.vue` 经排查**未被任何页面引用**(页面用的是 AccountCardView/AccountListView)⇒
 其改动无用户可见效果,仅统一取法留存。
+
+---
+
+## cam-detail-sweep-20261031（只读巡检：4 个详情页 + 交互层，无代码改动）
+
+**状态**：**本轮无代码改动**（未发现满足「真实证据 + 可浏览器验收」门槛的 P1/P2 缺陷；记录 1 个潜在风险）
+
+### 巡检范围与结果
+
+**A. 详情页（4 个）**
+
+| 页面 | 正文长度 | 4xx | console 错误 | 结论 |
+|---|---|---|---|---|
+| 证书详情 `/cam/certs/:id` | 885 | 0 | 0 | 正常，含证书要素/有效期/引用关系/覆盖率/关联变更 |
+| 变更详情 `/cam/certs/changes/:id` | 5474 | 0 | 0 | 正常（内容最丰富） |
+| IAM 用户详情 `/cam/iam/users/:id` | 443 | 0 | 0 | 正常（用户名/显示名/类型/状态/云平台/云账号/邮箱/租户/时间/权限组） |
+| 资产详情（借用证书 id） | 346 | 0 | 0 | 非法 id 的兜底页，符合预期 |
+
+**附带验证**：证书详情正确显示「**已过期 921 天**」，说明上一轮 `daysLeftBadge` 文案修复（`e-cam-web#136`）在该页生效。
+
+**B. 重复请求复测（纠正一次误判）**
+
+dev server 日志里曾看到证书详情对 `/certs/:id`、`/references`、`/changes` 各请求**两次**，
+我怀疑是重复请求缺陷。**干净测量后证伪**：预热依赖优化、单次导航，计数结果为每个 API **各 1 次**（`dup.json`）。
+两次的来源是 Vite「optimized dependencies changed. reloading」触发的整页 reload。
+
+**C. 交互层**
+
+ECS 列表分页元素存在；IAM 用户页 5 个筛选控件、20 行数据正常渲染。
+
+### 记录一个潜在风险（未修，需后端契约变更）
+
+`src/views/cert/detail/index.vue:150`：
+
+```ts
+const res = await listChangesApi({ page: 1, pageSize: 100 })
+changes.value = filterChangeOrders(res.items, { id: detail.value.id, fingerprint: detail.value.fingerprint })
+```
+
+而 `ListChangesParams` 只有 `status` / `page` / `pageSize`，**没有证书维度过滤**（`src/api/cert.ts`），
+所以只能「拉首页 100 条 → 客户端过滤」。
+
+**风险**：当系统内变更单总量 **> 100** 时，某证书较早的关联变更会**静默消失**，页面显示「暂无关联变更单」或列表不完整。
+
+**为什么本轮不修**：
+- 本地当前变更单总量仅 3 条，**该问题当前不可观测**，不满足「真实证据」门槛；
+- 正确修法是后端 `GET /certs/changes` 支持 `oldFingerprint`/`newCertId` 过滤（契约变更），
+  或前端翻页拉全量（性能更差）。
+- 调大 `pageSize` 只是把阈值推后，属掩盖。
+
+→ 记为 **P2 潜在风险，等待后端接口排期**。
+
+### 未验证项（沿用）
+
+- 变更向导 390 视口（上一轮文本变长 2 字符后未复测）。
+- 证书详情「覆盖率」出现「阿里云/腾讯云/unknown 分母不可用」，仅华为云/AWS 有百分比 ——
+  页面已自带「asset 盘点滞后」说明，**是否为数据口径问题需产品确认**，未深究。
+
+### 方法教训
+
+1. **「看到两次请求」先排除 dev 工具干扰**：本轮 dev server 日志的重复请求来自 Vite 依赖重优化引发的整页 reload，
+   干净测量后是 1 次。**在没有排除工具噪音前不要报缺陷。**
+2. **巡检也要有"不修"的答案**：这轮扫了 4 个详情页 + 交互层，没有够格修的缺陷 ——
+   诚实地输出「无代码改动 + 1 个潜在风险」，比硬凑一个改动更有价值。
+
+### 版本
+
+- e-cam-web `c001294`（巡检基线），e-cam-service `21b6eb5`。
+- 巡检环境：worktree + Vite `:3336` + 真实后端；Chromium 141；1440。
+- 证据：`D:\Haven\.browser-verify\cam-detail-sweep\`（`details.json`、`dup.json`、`iam-user-detail.png`、`cert-detail.png`）。
