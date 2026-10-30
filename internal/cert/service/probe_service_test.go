@@ -800,14 +800,14 @@ func TestTriggerProbeRootAsyncFiltersByRoot(t *testing.T) {
 	require.NoError(t, svc.TriggerProbeRootAsync(context.Background(), " EASYEDA.com "))
 	// 轮询等待后台轮完成（dialer 立即失败 → 两条 unreachable 全部落库）
 	deadline := time.Now().Add(2 * time.Second)
-	for len(probes.created) < 2 {
+	for len(probes.all()) < 2 {
 		if time.Now().After(deadline) {
-			t.Fatalf("expected 2 persisted results, got %d", len(probes.created))
+			t.Fatalf("expected 2 persisted results, got %d", len(probes.all()))
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 	domains := map[string]bool{}
-	for _, r := range probes.created {
+	for _, r := range probes.all() {
 		domains[r.Domain] = true
 	}
 	assert.True(t, domains["www.easyeda.com"], "根域子域名应命中")
@@ -821,7 +821,7 @@ func TestTriggerProbeRootAsyncNoTargets(t *testing.T) {
 	})
 	err := svc.TriggerProbeRootAsync(context.Background(), "easyeda.com")
 	require.ErrorIs(t, err, ErrNoProbeTargets)
-	assert.Empty(t, probes.created, "无目标不应起后台轮")
+	assert.Empty(t, probes.all(), "无目标不应起后台轮")
 }
 
 func TestTriggerProbeRootAsyncEmptyEqualsFull(t *testing.T) {
