@@ -1,13 +1,12 @@
 package web
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/logquery/export"
+	"github.com/Havens-blog/e-cam-service/internal/shared/authz"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cloudx-sdk/logquery"
 	"github.com/ecodeclub/ginx/session"
@@ -167,28 +166,8 @@ func (h *LogQueryHandler) recordExportTaskAudit(c *gin.Context, req createExport
 	h.writeAudit(entry)
 }
 
-// parseClaimCodes 解析能力码声明(JSON 数组/逗号分隔)。
+// parseClaimCodes 委托 internal/shared/authz.ParseClaimCodes（单一实现）。
+// 历史上这里与 logquery/web 各有一份副本，且已分叉出「未 trim 导致 403」的缺陷。
 func parseClaimCodes(raws ...string) []string {
-	var codes []string
-	for _, raw := range raws {
-		// 必须 TrimSpace：能力码可能来自 header/claims，带首尾空格时
-		// CanExport 的精确匹配（c == "cam:logs:export"）会失败，导致有权限的用户被拒。
-		raw = strings.TrimSpace(raw)
-		if raw == "" {
-			continue
-		}
-		if raw[0] == '[' {
-			var arr []string
-			if err := json.Unmarshal([]byte(raw), &arr); err == nil {
-				codes = append(codes, arr...)
-				continue
-			}
-		}
-		for _, part := range strings.Split(raw, ",") {
-			if part = strings.TrimSpace(part); part != "" {
-				codes = append(codes, part)
-			}
-		}
-	}
-	return codes
+	return authz.ParseClaimCodes(raws...)
 }
