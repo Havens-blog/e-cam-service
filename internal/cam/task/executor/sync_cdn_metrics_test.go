@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"sync"
 	"context"
 	"fmt"
 	"testing"
@@ -59,6 +60,7 @@ func (m *cdnMetricTaskRepo) UpdateProgress(_ context.Context, _ string, _ int, _
 type metricCapableCDN struct {
 	instances []types.CDNInstance
 	metrics   []types.CDNMetric
+	mu        sync.Mutex // 保护 lastStart/lastEnd：GetDomainMetrics 会被并发调用
 	lastStart string
 	lastEnd   string
 }
@@ -79,7 +81,9 @@ func (c *metricCapableCDN) ListInstancesWithFilter(_ context.Context, _ string, 
 	return c.instances, nil
 }
 func (c *metricCapableCDN) GetDomainMetrics(_ context.Context, domainName, _ string, startDate, endDate string) ([]types.CDNMetric, error) {
+	c.mu.Lock()
 	c.lastStart, c.lastEnd = startDate, endDate
+	c.mu.Unlock()
 	out := make([]types.CDNMetric, 0, len(c.metrics))
 	for _, m := range c.metrics {
 		copied := m
@@ -260,7 +264,10 @@ func TestSyncCDNMetrics_PassesDateRange(t *testing.T) {
 	}
 	adapter, _ := e.cloudxFactory.CreateAdapter(&account)
 	cdn := adapter.CDN().(*metricCapableCDN)
-	if cdn.lastStart != "2026-09-13" || cdn.lastEnd != "2026-09-15" {
+	cdn.mu.Lock()
+	startSnap, endSnap := cdn.lastStart, cdn.lastEnd
+	cdn.mu.Unlock()
+	if startSnap != "2026-09-13" || endSnap != "2026-09-15" {
 		t.Fatalf("date range = %s ~ %s", cdn.lastStart, cdn.lastEnd)
 	}
 	_ = written
