@@ -7064,3 +7064,31 @@ INFO adapter/factory.go:24 CMDB 适配器: 远程模式 {"remote_url": "http://e
 1. **偶发噪声值得追**：这个 rejection 我连续几轮都记成「偶发、未复现」。本轮做受控复现（拦截请求）一次就抓住，且发现了真正的用户影响（白屏无提示）。**「间歇出现」往往意味着「特定条件下必现」，条件是可以人造的。**
 2. **白屏类问题要看「用户能不能自己恢复」**：技术上只是 router 报了个错，但用户看到的是白屏且无任何出路 —— 判定缺陷应按用户体验，而不是按「是否抛异常」。
 3. **提示要防循环**：`chunkReloadPrompted` 一次性标记很关键；否则发版异常持续存在时会变成无限弹窗/无限刷新，比白屏更糟。
+
+---
+
+## 2026-10-30 需求交付:迁移收尾(服务树菜单 + DNS 查看拓扑改指 e-cmdb-web)——e-cam-web#133 已合并
+
+**需求来源**:维护者对迁移收尾 4 项的批复「继续」。
+
+**改动**(三类死链一次性消除):
+1. `menu-config` 服务树三条 `/service-tree*` → **`/cmdb/service-tree`、`/cmdb/service-tree/environments`、`/cmdb/service-tree/rules`**
+   ⇒ 命中 `EXTERNAL_APP_PREFIXES`,由 AppSidebar 经 `resolveMenuTarget` 新窗口打开并自动带 `?tenant_id=`;
+2. DNS 域名表「查看拓扑」`router.push('/topology?...')`(本仓无该路由) → 跨应用打开;URL 构造抽为纯函数
+   `buildDomainTopologyUrl(domain, tenantId)` + 单测;
+3. `menu-contract` 用例删除 `KNOWN_DANGLING_PENDING` 豁免(**零豁免**)并新增"服务树三条必须指向 /cmdb/service-tree*"锚点。
+
+**依据与边界**:e-cmdb-web 真实路由确认为 `/service-tree`、`/service-tree/environments`、`/service-tree/rules`、`/topology`
+(应用 base=/cmdb/ ⇒ 实际 URL 为 `/cmdb/...`)。按批复:`/cmdb` 入口保留;告警中心页面保留(未迁移,删则丢功能)。
+
+**验收**:
+- 单测 5 文件 26 例全通过(menu-contract 4、external-app 8、topology-link 5、navigation-targets 5、dns-format 4);
+  `vue-tsc` 0;eslint 0;CI 四项全绿;
+- 浏览器实测目标页:`/cmdb/service-tree?tenant_id=3`、`/cmdb/topology?tenant_id=3` 均正常渲染(标题「息壤 · CMDB」),
+  `/cmdb/topology` 控制台 0 错误;
+- ⚠️ **未执行**:侧栏/行内按钮的"点击→新窗口"E2E(Element Plus 子菜单懒渲染 + 行操作时序未捕获)⇒ 以单测锚定 URL + 目标页实测为准,**未声称跑通**。
+
+**未完成的一环(角色外)**:把 origin/main 合并进 **e-cam-web 主检出**以让 8888 立即生效时,git **安全拒绝**
+(`local changes would be overwritten`)——其 3 个 WIP 文件与主干改动重叠(`scripts/audit/cam-api-audit.mjs`、
+`src/views/accounts/index.vue`、`src/views/iam/groups/components/ExportGroupsDialog.vue`)。
+按"不覆盖他人修改"约定**未强合并、未触碰其 WIP** ⇒ 该前端改动在本地 8888 上**暂未生效**(等其 WIP 落定后可补点击 E2E)。
