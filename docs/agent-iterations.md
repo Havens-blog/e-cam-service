@@ -7009,3 +7009,58 @@ INFO adapter/factory.go:24 CMDB 适配器: 远程模式 {"remote_url": "http://e
 
 **口径沉淀**:上一轮"数值对不上"是**基准口径不同**造成的**假阴性**;换成同集合同过滤的基准后一次性对齐。
 ⇒ 验证"某字段 = 存量总数"时:**基准必须复刻实现的查询(filter/集合/租户)**,不要用相邻指标近似。
+
+---
+
+## cam-chunk-load-20261031（前端：懒加载 chunk 失效不再白屏）
+
+**状态**：**已合并**（`e-cam-web#131`，merge `36f40a9`）
+
+### 来源与证据（确定性复现）
+
+上一轮巡检时**偶然复现**过一次 `Unhandled Promise Rejection`，本轮顺着它做了受控复现：用 Playwright 拦截路由懒加载 chunk（`**/src/views/iam/users/**`）模拟「发版后旧哈希失效」。
+
+| 观测项 | 修复前 |
+|---|---|
+| 页面正文长度 | **0**（整页白屏） |
+| 未捕获 rejection | `TypeError: Failed to fetch dynamically imported module: .../src/views/iam/users/index.vue` |
+| console | `[Router] Navigation error: TypeError: Failed to fetch...` |
+| 用户提示 | **无**（toasts = `[]`） |
+
+**为什么没救**：
+- `router.onError` 只 `console.error('[Router] Navigation error:', error)`，不做任何用户侧处置；
+- 全局 `unhandledrejection` 弹的是「操作失败，请重试」，且此时应用可能尚未挂载，用户既不知道是「版本旧了」，也没有刷新入口。
+
+这是**每次发版都会遇到**的场景（用户长时间挂着页面后点其它菜单）。
+
+### 变更
+
+1. 新增 `src/router/chunk-error.ts`：`isChunkLoadError()` 集中识别三类真实文案
+   （Chromium/Firefox `failed to fetch dynamically imported module`、Safari `importing a module script failed`、Webpack `loading chunk ... failed`）。
+2. `router.onError` 命中时弹确认框：文案「页面资源已更新或网络异常，需要刷新后继续访问。」，按钮「立即刷新 / 返回上一页」；
+   **同一会话只提示一次**（`chunkReloadPrompted`），点「返回上一页」时复位，避免「刷新仍失败 → 无限弹窗」。
+
+### 验收
+
+| 项 | 结果 |
+|---|---|
+| `vitest run` 全量 | ✅ **1248 passed**（新增 4 例） |
+| `vue-tsc -b` / `eslint src` / `vite build` | ✅ 均 exit 0 |
+| PR CI（Typecheck & Build / Vitest / ESLint / Gzip Budget） | ✅ 四项全绿（diff +81/−1） |
+| 浏览器：chunk 失败时出现可操作提示框 | ✅ `title=需要刷新页面`，按钮 `[返回上一页, 立即刷新]` |
+| 浏览器：文案含「需要刷新」 | ✅ |
+| 浏览器：点「立即刷新」后恢复正常 | ✅ 重新加载出「云账号用户」，正文 1640 字 |
+
+证据：`D:\Haven\.browser-verify\cam-chunk-load\`（`chunk-fail-prompt.png`、`after-reload.png`、`results.json`）。
+
+### 未验证 / 边界
+
+- 未在**真实发版**场景验证（本轮用请求拦截等价复现）。
+- 「返回上一页」分支只实现并复位标记，**未做自动化断言**。
+- 未改动全局 `unhandledrejection` 的「操作失败，请重试」文案（另一条路径，改动面更大，另评估）。
+
+### 方法教训
+
+1. **偶发噪声值得追**：这个 rejection 我连续几轮都记成「偶发、未复现」。本轮做受控复现（拦截请求）一次就抓住，且发现了真正的用户影响（白屏无提示）。**「间歇出现」往往意味着「特定条件下必现」，条件是可以人造的。**
+2. **白屏类问题要看「用户能不能自己恢复」**：技术上只是 router 报了个错，但用户看到的是白屏且无任何出路 —— 判定缺陷应按用户体验，而不是按「是否抛异常」。
+3. **提示要防循环**：`chunkReloadPrompted` 一次性标记很关键；否则发版异常持续存在时会变成无限弹窗/无限刷新，比白屏更糟。
