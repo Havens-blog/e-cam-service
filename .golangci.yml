@@ -2,7 +2,14 @@
 # 代码质量检查工具配置
 
 run:
-  timeout: 5m
+  # 5m 不足以完成包加载。CI 实测（run 41030420479）报：
+  #   level=error msg="Running error: context loading failed:
+  #     failed to load with go/packages: context deadline exceeded"
+  #   level=error msg="Timeout exceeded: try increasing it by passing --timeout option"
+  #   ##[error]Process completed with exit code 4
+  # 该步骤在约 5 分钟处被杀，导致所有 PR（含 main）恒红。
+  # 提高到 15m 以覆盖包加载 + 实际检查所需时间。
+  timeout: 15m
   issues-exit-code: 1
   tests: true
   skip-dirs:
