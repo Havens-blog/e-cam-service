@@ -6528,3 +6528,66 @@ Mongo 鉴权（阻塞在 owner）：`.github/workflows/ci.yml` 的 `jobs.test` �
 1. **「测试期望 vs 代码注释」冲突多半是口径问题，不要急着判谁错**：本例注释明写 floor 是有意的、测试要求 ceil —— 这是产品口径，owner 一句话就能定。若我按"测试写错了"直接改断言，就会把「显示 11 天却归 14 天档」的矛盾固化下来。
 2. **「陈旧断言」要靠同包内的一致性来证明**：不是我猜 202 更对，而是同包另外三处早就断言 202 —— 这种**内部一致性证据**比任何论证都硬。
 3. **改口径时顺手消除重复实现**：`daysLeft`/`daysLeftCeil` 本是两套算术；统一后既修了 bug，又去掉一处未来会分叉的地方（`parseClaimCodes` 的教训）。
+
+---
+
+## cam-claims-shared-20261031（能力码解析收敛为单一实现）
+
+**状态**：**已合并**（`e-cam-service#162`，merge `a8b6ca4`）
+
+### 来源与证据（这是一次"同一缺陷第二次出现"的预防）
+
+`parseClaimCodes` 在仓库里有**两份副本**，且已经分叉：
+
+| 位置 | 是否 TrimSpace |
+|---|---|
+| `internal/cert/web/role_middleware.go` | ✅ 整体 trim |
+| `internal/logquery/web/export_handler.go` | ❌ 曾经完全不 trim |
+
+授权判定用的是**精确匹配**（`export.CanExport`: `if c == "cam:logs:export"`），因此 claims 为 `" cam:logs:export"` 时：
+logquery 侧解析出带空格的码 → 与目标码不等 → **有权限的用户被 403**。
+
+该缺陷已在 `#155` 就地修掉（logquery 侧补 trim），并顺带由搬移后的单测暴露。**但副本仍在**——
+下一个复制这段逻辑的人会再踩一次。本轮把根因（重复实现）消掉。
+
+### 变更
+
+- 新增 `internal/shared/authz`：`ParseClaimCodes(raws ...string) []string`
+  - 支持 JSON 数组字符串（`["a","b"]`）与逗号分隔（`a,b,c`）两种携带形态（eiam claims 是 `map[string]string`）；
+  - 整体与每个分段都 `TrimSpace`，丢弃空项；
+  - 注释写明「为何逐段 trim」：授权判定用精确匹配，带空格会静默失配。
+- `cert/web`、`logquery/web` 的 `parseClaimCodes` 改为**委托**（调用点零改动，diff 最小），注释标注历史分叉。
+- 测试**迁至** `internal/shared/authz/claims_test.go` 并**扩充 4 例 → 9 例**：
+  首尾空格、逗号两侧空格、空分段、无输入、非法 JSON 回退为逗号切分；
+  另加一条专门守住「trim 后能精确匹配 `cam:logs:export`」的回归用例。
+  原 `internal/logquery/web/export_handler_claimcodes_test.go` 删除（内容已并入且更全，非弱化）。
+
+### 语义安全性论证
+
+新实现是旧两份的**超集**：只补充 trim 与丢弃空分段，不改变任何既有「已匹配」的判定方向。
+
+- `cert/web`：其 `containsCode` 本来就在比较时 `TrimSpace`，故该侧**行为完全等价**；
+- `logquery/web`：与 `#155` 修复后的行为一致。
+
+### 验收（CI 实测，非自述）
+
+| 包 | CI 结果 |
+|---|---|
+| `internal/shared/authz` | ✅ **ok，coverage 100.0%** |
+| `internal/logquery/web` | ✅ ok，coverage 62.9% |
+| `internal/cert/web` | ✅ ok，coverage 79.8%（含 role matrix / contract 测试） |
+
+本地另跑：`go build ./...` = 0；`go vet` 两包 = 0；`gofmt -l` 干净。
+CI 其余：`[build failed]` 0 个、`DATA RACE` 0 处、`Unauthorized` 仍 38（Mongo 鉴权，与本 PR 无关）。
+
+### 未验证
+
+- `-race`（本机无 gcc）。
+- 未做浏览器验证：后端纯重构，无 API 契约与 UI 变更。
+- 归一化范围：仅这两处副本；未扫描仓库中是否还有其它类似「同一小工具函数多份复制」的情况（建议后续用脚本扫一遍）。
+
+### 方法教训
+
+1. **修好一处 bug 不等于修好根因**：`#155` 修的是「logquery 那份漏 trim」，但**副本还在**就会复发。判断标准应是「同一逻辑是否只剩一份」，而不是「当前用例是否变绿」。
+2. **重构类 PR 的验收要给出"语义是超集/等价"的论证**，而不是只贴"测试通过"：本例逐条说明 cert/web 的 `containsCode` 本已 trim，故等价；logquery 侧与已修版本一致。
+3. **删测试时必须说明"已并入且更全"**：本例 4 例 → 9 例 + 1 条定向回归，覆盖不减反增。
