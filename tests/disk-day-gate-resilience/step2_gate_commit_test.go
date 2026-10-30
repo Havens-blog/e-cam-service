@@ -1,4 +1,4 @@
-﻿// @feature disk-ops-insight @api-functional
+// @feature disk-ops-insight @api-functional
 //
 // Contract disk-day-gate-resilience step-2-gate-commit: committing today's
 // gate after a successful collect stops further same-day triggers, read

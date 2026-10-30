@@ -1,4 +1,4 @@
-﻿// @feature disk-ops-insight @api-functional
+// @feature disk-ops-insight @api-functional
 //
 // Contract disk-metrics-daily-collection step-4-metric-persistence: today rows
 // go through BulkInsertIfAbsent ( first write wins ), past rows through

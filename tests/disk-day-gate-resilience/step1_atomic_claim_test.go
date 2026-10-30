@@ -1,4 +1,4 @@
-﻿// @feature disk-ops-insight @api-functional
+// @feature disk-ops-insight @api-functional
 //
 // Contract disk-day-gate-resilience step-1-atomic-claim: the disk key claims
 // each day exactly once via an atomic conditional write, concurrent claims

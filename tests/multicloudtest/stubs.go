@@ -1,4 +1,4 @@
-﻿// @feature cert-multicloud-deployers @api-functional
+// @feature cert-multicloud-deployers @api-functional
 //
 // Cloud-port stubs for the cert-multicloud-deployers API-functional harness.
 // The three per-cloud adapter stubs satisfy the unexported deployer adapter

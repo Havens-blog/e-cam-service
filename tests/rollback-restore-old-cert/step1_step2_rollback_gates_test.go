@@ -1,4 +1,4 @@
-﻿// @feature cert-multicloud-deployers @api-functional
+// @feature cert-multicloud-deployers @api-functional
 //
 // Contracts: rollback-restore-old-cert / Step 1 — 对已完成替换的条目发起回滚;
 // Step 2 — GetCert 校验旧云证书仍有效.

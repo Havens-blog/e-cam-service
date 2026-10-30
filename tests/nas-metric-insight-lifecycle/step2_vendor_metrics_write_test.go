@@ -1,4 +1,4 @@
-﻿// @feature nas-ops-insight @api-functional
+// @feature nas-ops-insight @api-functional
 //
 // Contract step-2-vendor-metrics-write: 厂商指标按 GB 口径落库 — vendor byte
 // values converted at the collect boundary land as capacity/used_capacity GB

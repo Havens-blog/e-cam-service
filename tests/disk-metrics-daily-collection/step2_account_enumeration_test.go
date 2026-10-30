@@ -1,4 +1,4 @@
-﻿// @feature disk-ops-insight @api-functional
+// @feature disk-ops-insight @api-functional
 //
 // Contract disk-metrics-daily-collection step-2-account-enumeration: the
 // active-account enumeration is driven by ecam_instance disk assets ( not the

@@ -1,4 +1,4 @@
-﻿// @feature oss-ops-insight @api-functional
+// @feature oss-ops-insight @api-functional
 //
 // Shared journey harness for the oss-ops-insight API functional test suites
 // ( tests/<journey>/ ). It wires the exported production surfaces —

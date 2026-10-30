@@ -1,4 +1,4 @@
-﻿// @feature nas-ops-insight @api-functional
+// @feature nas-ops-insight @api-functional
 //
 // Journey fixtures for daily-metrics-collection contract tests: the
 // persistent daily gate, the collect executor and a real taskx.Queue wired

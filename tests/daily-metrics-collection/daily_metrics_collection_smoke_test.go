@@ -1,4 +1,4 @@
-﻿// @feature nas-ops-insight @api-functional
+// @feature nas-ops-insight @api-functional
 //
 // Journey smoke: daily-metrics-collection happy path — persistent gate claims
 // the day, exactly one nas:collect_metrics(days=2) task is submitted, the

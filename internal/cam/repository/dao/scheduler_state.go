@@ -1,4 +1,4 @@
-﻿// Package dao scheduler_state 持久化日闸数据访问。
+// Package dao scheduler_state 持久化日闸数据访问。
 //
 // 文件：internal/cam/repository/dao/scheduler_state.go
 //

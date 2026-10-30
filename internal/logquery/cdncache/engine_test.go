@@ -1,4 +1,4 @@
-﻿package cdncache
+package cdncache
 
 import (
 	"encoding/json"

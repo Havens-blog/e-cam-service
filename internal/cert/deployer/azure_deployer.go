@@ -1,4 +1,4 @@
-﻿// azure_deployer.go Azure CloudDeployer 实现（cert-multicloud-deployers 任务 3）。
+// azure_deployer.go Azure CloudDeployer 实现（cert-multicloud-deployers 任务 3）。
 //
 // 分层定位：将 cloudx Azure 完整证书五方法适配（CertAdapter，REST 单次调用封装）
 // 组装为 deployer 层 CloudDeployer 端口实例，经 5.3 CloudAPIChannel 两段式编排

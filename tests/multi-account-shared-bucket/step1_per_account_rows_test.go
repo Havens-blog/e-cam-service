@@ -1,4 +1,4 @@
-﻿// @feature oss-ops-insight @api-functional
+// @feature oss-ops-insight @api-functional
 //
 // Contract step-1-per-account-rows: 三账号同名 bucket 同日各留一行 — per
 // account isolation under the (account_id, bucket_name, date) unique key,

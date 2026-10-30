@@ -1,4 +1,4 @@
-﻿// Package executor CDN 指标采集执行器域名有界并发 + 攒批批量写用例
+// Package executor CDN 指标采集执行器域名有界并发 + 攒批批量写用例
 //
 // 文件：internal/cam/task/executor/sync_cdn_metrics_concurrent_test.go
 //

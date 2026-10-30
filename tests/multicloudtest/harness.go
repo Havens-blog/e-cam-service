@@ -1,4 +1,4 @@
-﻿// @feature cert-multicloud-deployers @api-functional
+// @feature cert-multicloud-deployers @api-functional
 //
 // Package multicloudtest provides the hermetic API-functional test harness
 // for the cert-multicloud-deployers feature ( journeys under

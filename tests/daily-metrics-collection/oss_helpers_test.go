@@ -1,4 +1,4 @@
-﻿// @feature oss-ops-insight @api-functional
+// @feature oss-ops-insight @api-functional
 //
 // Journey fixtures for the oss-ops-insight daily-metrics-collection contract
 // tests ( co-located with the nas-ops-insight suite of the same journey —

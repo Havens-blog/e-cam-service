@@ -1,4 +1,4 @@
-﻿// @feature oss-ops-insight @api-functional
+// @feature oss-ops-insight @api-functional
 //
 // Journey smoke: the trend-view golden path — collected rows over a multi-day
 // window render as an ascending dual series with latest/average summaries, a

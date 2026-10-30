@@ -1,4 +1,4 @@
-﻿// @feature oss-ops-insight @api-functional
+// @feature oss-ops-insight @api-functional
 //
 // Journey smoke: full golden path in sequence — gate claim → task submit →
 // collect → persist → bucket trend read → Top read. Only happy-path outcomes;

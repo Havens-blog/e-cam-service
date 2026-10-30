@@ -1,4 +1,4 @@
-﻿// @feature disk-ops-insight @api-functional
+// @feature disk-ops-insight @api-functional
 //
 // Journey fixtures for disk-metrics-daily-collection contract tests: a metric
 // -capable test vendor, seeded disk assets, the persistent daily gate disk key

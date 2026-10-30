@@ -1,4 +1,4 @@
-﻿// Package executor 多云 Disk(云硬盘)指标采集任务执行器(异步任务队列)
+// Package executor 多云 Disk(云硬盘)指标采集任务执行器(异步任务队列)
 //
 // 文件：internal/cam/task/executor/sync_disk_metrics.go
 //

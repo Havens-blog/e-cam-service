@@ -1,4 +1,4 @@
-﻿// @feature cert-multicloud-deployers @api-functional
+// @feature cert-multicloud-deployers @api-functional
 //
 // Contract: multicloud-cert-replacement / Step 3 — 上传段——证书上传至各云证书库.
 // Outcomes under test: success, upload-rate-limited-retry, crash-before-bind-recovery.

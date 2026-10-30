@@ -1,4 +1,4 @@
-﻿// @feature cert-cloud-discovery-import @api-functional
+// @feature cert-cloud-discovery-import @api-functional
 //
 // Journey smoke test: no-snapshot-guidance ( full guidance loop
 // NO_SNAPSHOT -> trigger scan -> poll running -> done -> preview -> import ).

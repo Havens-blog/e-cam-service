@@ -1,4 +1,4 @@
-﻿package ioc
+package ioc
 
 import (
 	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"

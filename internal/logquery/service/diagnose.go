@@ -1,4 +1,4 @@
-﻿// WAF 流量诊断编排(proposal:网站被刷检测,任务 2)。
+// WAF 流量诊断编排(proposal:网站被刷检测,任务 2)。
 //
 // 复用联邦聚合通道:当前窗按维度并发聚合(client_ip / user_agent / uri / status /
 // action),前一等长窗口仅 1 帧(client_ip 维度,一次聚合同时产出精确 Total

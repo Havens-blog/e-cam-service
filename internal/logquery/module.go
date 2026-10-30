@@ -1,4 +1,4 @@
-﻿// Package logquery 多云统一日志查询功能域(Phase 1)。
+// Package logquery 多云统一日志查询功能域(Phase 1)。
 //
 // 装配入口(照 internal/cert/module.go 模式):service(联邦编排)+ web(三接口)。
 // 只读域:无 repository(Phase A 不落库,ADR D1);云账号凭证经

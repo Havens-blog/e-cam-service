@@ -1,4 +1,4 @@
-﻿// huawei_deployer.go 华为云 CloudDeployer 实现（cert-multicloud-deployers 任务 1）。
+// huawei_deployer.go 华为云 CloudDeployer 实现（cert-multicloud-deployers 任务 1）。
 //
 // 分层定位：将 cloudx 华为云完整证书五方法适配（CertAdapter，SDK 单次调用
 // 封装）组装为 deployer 层 CloudDeployer 端口实例，经 5.3 CloudAPIChannel
