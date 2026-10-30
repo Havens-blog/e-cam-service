@@ -18,7 +18,7 @@ import (
 )
 
 // 匹配 SetSort(bson.M{ "k": v, "k2": v2 }) 这类**多键**写法（键的引号出现 ≥4 次）。
-var multiKeySortRe = regexp.MustCompile(`SetSort\(bson\.M\{(?:"[^"]+"\s*:\s*[^,]+,){1,}[^}]*\}\)`)
+var multiKeySortRe = regexp.MustCompile(`SetSort\(bson\.M\{(?:"[^"]+"\s*:\s*[^,]+,)+[^}]*\}\)`)
 
 func TestNoMultiKeyBsonMSort(t *testing.T) {
 	root := moduleRoot(t)
@@ -38,7 +38,8 @@ func TestNoMultiKeyBsonMSort(t *testing.T) {
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		raw, readErr := os.ReadFile(path)
+		// 路径来自 filepath.Walk(模块根)，不是外部输入；只为静态检查读源码。
+		raw, readErr := os.ReadFile(path) //nolint:gosec // G304：path 由 Walk 在仓库根下枚举得到，非用户可控输入
 		if readErr != nil {
 			return nil
 		}
