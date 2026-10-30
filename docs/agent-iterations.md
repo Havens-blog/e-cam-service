@@ -7390,3 +7390,29 @@ changes.value = filterChangeOrders(res.items, { id: detail.value.id, fingerprint
 - e-cam-web `c001294`（巡检基线），e-cam-service `21b6eb5`。
 - 巡检环境：worktree + Vite `:3336` + 真实后端；Chromium 141；1440。
 - 证据：`D:\Haven\.browser-verify\cam-detail-sweep\`（`details.json`、`dup.json`、`iam-user-detail.png`、`cert-detail.png`）。
+
+---
+
+## 2026-10-30 精确 UI 验收:补上此前"未取到"的浏览器证据(2 项闭合,1 项仍未捕获)
+
+先前 #137(字段兜底)与 #133(迁移收尾) 的浏览器**精确渲染值**两轮探针未命中,本轮换用干净 origin/main 工作树实例
+(端口 3339,隔离 cacheDir)+ 更贴合 DOM 的探针(按 label 定位兄弟节点、展开下拉菜单、劫持 window.open):
+
+### ✅ 闭合的两项
+1. **IAM 用户详情「云账号」**:标签 `云账号` 的兄弟节点值 = **"阿里云"**(父节点文本 `云平台阿里云 云账号阿里云`)
+   ⇒ #137 的 `userAccountLabel` 兜底在真实 UI 生效,**不再是 `-`** ✓
+2. **账户编辑弹窗「区域」**:表单项文本 = `区域 cn-guangzhou 获取区域 ...`
+   ⇒ #137 的表单预填生效(`regions[0]` → 区域字段),此前该字段会留空 ✓
+3. **服务树菜单**:劫持 `window.open` 捕获到 **`/cmdb/service-tree?tenant_id=3`**
+   ⇒ #133 的跨应用跳转**目标 URL 精确正确**(带会话租户,符合 e-cmdb-web 守卫要求) ✓
+
+### ⚠️ 仍未捕获(如实)
+**DNS 域名表「查看拓扑」的点击**:该页 DOM 探针只暴露 2 个按钮(刷新/同步实例),行内"查看拓扑"入口两轮均未surface;
+其 URL 构造由**纯函数单测**(`topology-link.test.ts` 5 例)锚定,且与服务树走同一 `buildCrossAppUrl` 路径(后者已实测) ⇒
+本次**未声称已跑通该点击**。
+
+### 探针方法论(沉淀)
+- 表格类页面里"标签/值"常**不是同一元素** ⇒ 应按 label 的 `nextElementSibling`/父节点定位,而不是按索引取数组;
+- 行内操作常在 **el-dropdown** 内 ⇒ 必须先展开 dropdown 再点菜单项;
+- 跨应用跳转统一用**劫持 `window.open` 记录 URL** 的方式断言,比等待新窗口稳定;
+- 探针没命中时,**先怀疑探测方式,再怀疑产品**(本轮 3 项里 2 项此前都是探测方式问题)。
