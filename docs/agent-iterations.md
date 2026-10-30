@@ -6029,3 +6029,82 @@ if err := e.accountRepo.UpdateSyncTime(ctx, account.ID, time.Now(), int64(accoun
 
 ### 四、过程纠正(第 N 次"路径/选择器"自省)
 首轮冒烟把 `/cam/cert/ledger`、`/cam/collect` 记为"空白页",实为**我自造的路径**(真实为 `/cam/certs/ledger`、`/cam/finops/collect`),两处均命中 **404 兜底页**(`/:pathMatch(.*)*` ⇒ `views/error/404.vue`,textLen 29)⇒ **404 兜底工作正常**,非缺陷。**冒烟脚本的路径必须取自 routes.ts 而不是凭印象拼**。
+
+---
+
+## cam-ci-repair-20261030（CI 长期红灯的三层根因逐层定位与修复）
+
+**状态**：**已合并**
+- `e-cam-service#141` → merge `2d32010`（`fix(ioc)`: 对齐 e-iam v0.0.27 实际接口名）
+- `e-cam-service#145` → merge `267ca6b`（`chore(go)`: 清除 304 个 .go 的 UTF-8 BOM）
+- 另有本轮前段合并：#111 `f7b5b24`、#132 `20a4463`（详见上一节 `cam-merge-20261030`）
+
+### 背景
+
+`e-cam-service` 的 CI `Test` 任务在 **main 上长期失败**，导致所有 PR 都带着红 CI。本轮按「先查清原因再合并」的要求逐层剥离，发现是**三个独立问题叠在一起**，前一层不修就看不到后一层。
+
+### 第一层：`wire` 生成失败（已修，`#141`）
+
+**现象**（CI 与本地一字不差）：
+```
+##[error]wire: ioc/gin.go:32:97: undefined: syncerpkg.ISyncer
+##[error]wire: ioc/gin.go:32:129: undefined: capability.IPermissionProvider
+##[error]wire: ioc/policy.go:20:33: undefined: syncerpkg.ISyncer
+##[error]wire: ioc/policy.go:27:35: undefined: capability.IPermissionProvider
+wire: generate failed
+```
+
+**根因**：`ioc/` 的 I 前缀接口名来自 commit `ae03d23`（2026-10-09「同步 eiam pkg 接口 I 前缀重命名」），但 `go.mod` 锁的 `e-iam v0.0.27`（`go list -m -versions` 确认已是**最高发布版本**）只导出了**未加前缀**的 `Syncer` / `PermissionProvider`。同一版本里 `IRegistry` / `IRuntimeRegistry` 却有 I 前缀 —— **上游命名混用**，按「全部加 I」对齐必然失败。
+
+**修**：`ioc/gin.go`、`ioc/policy.go` 两处类型名对齐到 v0.0.27 实际导出名（3 行，行为不变）。
+
+**验证**：`go build ./...` = 0；`go vet ./ioc/...` = 0；CI 日志出现 `wire: ... wrote .../wire_gen.go`（此前是 `generate failed`）。
+
+### 第二层：304 个 .go 带 UTF-8 BOM，`go test -cover` 必然失败（已修，`#145`）
+
+**现象**：`` internal/audit/module.go:1:1: invalid BOM in the middle of the file ``（数十个包同样）。
+
+**根因**：这些文件以 `EF BB BF` 开头。`go build` 接受**偏移 0** 的 BOM，但 `go test` 开启覆盖率会**重写源文件**（在文件头插入 `//line` 指令），把 BOM 推到「文件中间」，`go/scanner` 于是报错。**这解释了「本地 build 通过、CI test 全红」的长期错配。**
+
+**本地复现**（关键证据）：
+```
+GOWORK=off go test -coverprofile=... ./internal/audit/
+→ internal\audit\module.go:1:1: invalid BOM in the middle of the file
+```
+
+**修**：删除 304 个文件开头的 3 字节 BOM（纯字节级，无语义变化）。`git diff --stat` = **304 files changed, 304 insertions(+), 304 deletions(-)**，每文件仅首行差异。
+
+**验证**：仓内已无带 BOM 的 .go（扫描 = 0）；`go build ./...` = 0；`go test -coverprofile ./ioc/` = ok（coverage 4.1%）；CI 日志中 `invalid BOM` 归零、`wire wrote × 2`。
+
+### 第三层：此前被掩盖的真实测试失败（未修，需单独一轮）
+
+前两层修好后，CI 终于跑到测试阶段，暴露出**一直存在但从未被执行到**的失败：
+
+```
+change_order_audit_test.go:68: unexpected error: (Unauthorized) Command createIndexes requires authentication
+--- FAIL: TestChangeOrderAuditDAO_AppendAndList
+--- FAIL: TestChangeOrderAuditDAO_DedupKey
+--- FAIL: TestChangeOrderAuditDAO_FieldsComplete
+--- FAIL: TestProperty14_FilterCorrectness
+--- FAIL: TestGetCostSummary_Cache
+--- FAIL: TestInitCertModule_BootSmoke
+--- FAIL: TestUnavailableDispatcher_QueuelessBootDegradation
+```
+
+**初步判断**：`.github/workflows` 的 `mongodb` service 以 `MONGO_INITDB_ROOT_USERNAME/PASSWORD` 启用了鉴权，而 DAO 测试通过 `CERT_TEST_MONGODB_DSN` 连接；若该 job 未注入带凭据的 DSN，就会 `createIndexes requires authentication`。属** CI 配置缺口**，非代码缺陷。
+
+**未做**：未逐个确认这 7 个失败中哪些是 CI 配置导致、哪些是真实用例缺陷；未修。
+
+### 方法教训
+
+1. **「本地绿 / CI 红」要按工具链行为差异去查，而不是先怀疑环境**：BOM 问题只在 `-cover` 下暴露（覆盖率重写源文件），`go build` 永远看不到。查这类问题要**先看 CI 那一步的完整命令**（`go test -race -coverprofile`），再用同一命令本地复现。
+2. **叠在一起的失败要逐层剥离**：wire 失败时根本走不到编译，编译失败时根本走不到测试。**「CI 红了三天」可能后面藏着 2–3 个互不相干的问题**，每修一层都要重新拿日志确认「前进到了哪一步」，而不是看结论是否转绿。
+3. **大范围机械改动的验收要抓「同一性」**：304 文件只删 3 字节，验收靠 `git diff --stat` 的 304/304/304 与逐文件首行 diff 抽查，而不是靠「跑一遍全绿」。
+4. **修复要有「前进证据」而非「成功证据」**：本轮 CI 始终未全绿，但 `wire wrote`、`invalid BOM: 0`、失败项从「编译不过」变成「具体测试名」都是可验证的**前进**。在多层故障里，这比「绿了没有」更能说明修复有效。
+
+### 待办
+
+1. **P1 CI 配置**：确认 `CERT_TEST_MONGODB_DSN` 是否在该 job 注入；补齐带凭据的 DSN 或关闭 Mongo 鉴权（二选一，需团队定）。
+2. **P1 剩余 7 个测试失败**：逐个定性（CI 配置 / 真实缺陷）。
+3. **P2 #132 的上限（1000）是否铺开**到成本/证书/IAM/标签等 25 个文件处。
+4. **P3 统一 BOM 约定**：在 `.gitattributes` 或 pre-commit 里禁止 / 强制 BOM，避免再次堆积 304 个。
