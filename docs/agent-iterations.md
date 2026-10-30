@@ -6142,3 +6142,24 @@ change_order_audit_test.go:68: unexpected error: (Unauthorized) Command createIn
 
 **本轮不改代码的理由**:① CI 剩余失败的处置权在并行会话(其 #147 在飞);② 凭证相关改动涉及生产配置与密钥轮换,
 属**需人工决策/执行的运维动作**,不是我能单方面完成的;③ 我无法触发后端重建,无法做端到端验收。
+
+---
+
+## 2026-10-30 修复:live probe 不再回退读生产配置(e-cam-service#149,CI 客观验证)
+
+### 问题
+`internal/topology/service/live_build_probe_test.go` 的 `loadProbeDSN` 在未设 `NAS_PROBE_MONGODB_DSN` 时
+**回退解析 tracked 的 `config/prod.yaml`** 并连接其中的**生产 Mongo**(`106.52.187.69:27017`)⇒
+① 测试触碰生产数据;② CI 连生产库 30s 超时失败。
+
+### 修复与验证
+只认显式 env,未设则 SKIP(注释写明原因与用法);删除文件回退逻辑与 `strings` 导入。
+- 本地:未设 env ⇒ `SKIP` + 包 `ok`(此前为 30s 超时 FAIL);`gofmt`/`go vet` 通过;
+- **CI 客观验证**(本 PR 的 Test job 日志):`internal/topology/service` 由 **FAIL → `ok 1.084s`**;
+  其余失败包与基线**完全一致**(未增未减)——`audit/repository/dao`、`cert`×4 属**并行会话已标注的 Mongo 鉴权族**;
+  `cam/cost/analysis` 属其 **#147(在飞)** 修复的数据竞争;`shared/middleware`、`tests/*` 待定性。
+
+### 边界(本轮未做)
+`ci.yml` 的 Mongo 鉴权(最小修法:去掉一次性 CI 实例的鉴权 env)与 cost analysis 竞争均属**并行会话在飞范围**,我未介入,
+只消除"测试连生产 + 超时失败"这一独立项。**遗留高优先项**:`scripts/*.go` 与 `config/prod.yaml` 中的**生产凭证明文入库** ⇒
+建议改为 env/Secrets 注入并**轮换**口令(已在 git 历史中)。
