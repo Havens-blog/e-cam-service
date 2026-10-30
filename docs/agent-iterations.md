@@ -5876,3 +5876,71 @@ service 的 `main` **引用了两个兄弟仓的未推送/未打标签变更**,�
    - **①「属性存在」不等于「行为生效」**：`role="status"` 写上去、单测断言通过，但按规范它不会播报 —— 无障碍类改动必须以规范 + 真实 AT 为准，不能以 DOM 断言结案。
    - **②CI 与本地的差异会掩盖真实缺陷**：本地 1234 全绿、CI 报 1 个 uncaught error，真因是**组件卸载后定时器仍在跑**（生产同样有问题）。凡「本地绿 / CI 红」，优先找**未清理的副作用**（定时器、监听、订阅），而不是先怀疑 CI 环境。
    - **③上一轮我用 `getComputedStyle` 论证字形单色是无效证据**，这一轮审查再次指出 —— 颜色可读不等于字形是文本呈现；这类「看起来能证明」的弱证据必须换成截图或规范依据。
+
+---
+
+## cam-merge-20261030（跨日：合并 #111 / #132 + CI Test 长期红灯根因定位）
+
+**状态**：**已合并**
+- `e-cam-service#111` → merge `f7b5b24`（`fix(audit): 变更统计改为部分失败可返回`，+174/-18）
+- `e-cam-service#132` → merge `20a4463`（`fix(cam): 资产/审计列表加单页上限(1000)`，+118/-2）
+- 合并后 `e-cam-service` main = `20a4463`，`e-cam-web` main = `2437d24`，两仓库**开放 PR 归零**。
+
+### 本轮任务
+
+用户指示「代码合并提交」，并选择「两个都合并」，但要求**先查清 #111 的 Test 失败原因**再合。
+
+### 合并前核查（真实状态）
+
+| 项 | 结果 |
+|---|---|
+| `e-cam-web` 开放 PR | 0（本会话此前所有功能/文档 PR 均已合并） |
+| `e-cam-service` 开放 PR | 2：#111（常规代码 PR）、#132（DRAFT，正文写明「待确认后再合并」） |
+| 我的隔离 worktree | e-cam-web60–63 全部 `dirty=0 ahead=0`，无遗留提交 |
+
+### CI Test 长期红灯：根因已定位（与这两个 PR 无关）
+
+**证据链**：
+
+1. `#111` 的 Test 任务日志（job `123405255156`）：
+   ```
+   ##[error]wire: ioc/gin.go:32:97: undefined: syncerpkg.ISyncer
+   ##[error]wire: ioc/gin.go:32:129: undefined: capability.IPermissionProvider
+   ##[error]wire: ioc/policy.go:20:33: undefined: syncerpkg.ISyncer
+   ##[error]wire: ioc/policy.go:27:35: undefined: capability.IPermissionProvider
+   wire: generate failed
+   ```
+2. **main 自身（`e22377a`）的 Test 任务日志（job `123825056364`）报的是完全相同的 4 行**（同文件、同行号）→ 与两个 PR 无关，属既有基线红。
+3. `git log -S 'syncerpkg.ISyncer' -- ioc/gin.go` → 引入于 `ae03d23`（2026-10-09「refactor(ioc): 同步 eiam pkg 接口 I 前缀重命名」）。
+4. `go.mod` 锁 `github.com/Havens-blog/e-iam v0.0.27`，而 `go list -m -versions` 显示 **v0.0.27 已是最高版本**。
+5. 在模块缓存 `F:\go-modcache\github.com\!havens-blog\e-iam@v0.0.27` 中 grep：只有 **未加前缀** 的 `type PermissionProvider interface` 与 `type Syncer interface`，**没有** `IPermissionProvider` / `ISyncer`。
+
+**结论**：`e-cam-service` 的 `ioc/` 提前改成了「e-iam 尚未发布的 I 前缀接口名」，因此 `wire` 代码生成必然失败 → `go build`/`go test` 链路在**所有提交（含 main）**上都是红的。
+
+**修复方向（未执行，需决策）**：
+- (a) 把 `ioc/` 引用回退成未加前缀的 `Syncer` / `PermissionProvider`（放弃 I 前缀重命名）；或
+- (b) 在 `e-iam` 仓库发布包含 I 前缀接口的新版本（≥ v0.0.28）并 bump `go.mod` —— 与 `ae03d23` 的意图一致，属跨仓库动作。
+
+**为什么本轮不动**：这是跨仓库契约问题，改一边会破坏另一边；且 `e-cam-service` 有并行会话在改动。故只记录根因与两个可选修复方向。
+
+### 合并后自检（不依赖 CI）
+
+CI 的 Test 仍会因上述基线问题红，故按包粒度本地验证：
+
+```
+GOWORK=off go build ./internal/cam/web/... ./internal/audit/...   → exit 0
+GOWORK=off go test  ./internal/cam/web/... ./internal/audit/service/... → ok / ok，exit 0
+```
+
+### 两个 PR 的内容与风险
+
+- **#111**：`internal/audit/service/change.go` 变更统计改为「部分来源失败仍返回结果」，附 127 行测试。风险低（只影响统计聚合的失败处理）。
+- **#132**：`MaxPageLimit = 1000` + `clampLimit/normalizeLimit`，覆盖 `internal/cam/web` 17 处 limit 解析点与 `internal/audit/web` 审计日志；附单测覆盖 `0/负数/1/20/200/1000/1001/999999`，并有变异验证（改 100 则 `TestMaxPageLimitCoversFrontendUsage` 失败）。
+  - 对现有客户端**无行为变化**：全仓前端最大只请求 200。
+  - 该 PR 原为草稿，正文请 owner 确认「1000 是否合适」与「是否铺开到其余 25 个文件」；**本轮按用户明确指示合并了已实测最重的部分**，铺开仍未做（`limit/size` 读取点仍分布于 25 个文件）。
+
+### 待 owner 决定
+
+1. `e-iam` 侧：回退 I 前缀引用，还是发布新版本并 bump `go.mod`？（决定 CI Test 能否变绿）
+2. #132 的上限取 **1000** 是否保留？是否铺开到成本/证书/IAM/标签等其余模块？
+3. 上表「合并后自检」只覆盖两个 PR 触及的包，**未跑全仓 `go test ./...`**（会因 `ioc` wire 问题失败）。
