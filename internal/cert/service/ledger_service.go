@@ -52,7 +52,9 @@ type ListCertsQuery struct {
 	Search        string               // 域名/SAN/指纹片段子串
 	// IncludeExpiredNoRefs 查看全部（前端「查看全部」切换）：true=不隐藏。
 	// false（默认）排除「已过期且 referenceStatus=no_refs_scanned」的行；
-	// daysLeft=expired 时后端强制豁免（本字段不改变该筛选语义，恒返回全部过期）。
+	// daysLeft 距到期天数（ceil 口径：不足一天算一天）。与到期分级 ComputeExpiryLevel 一致：
+	// 此前这里用 floor、分级用 ceil，导致同一响应出现「显示 11 天却归入 14 天档」的自相矛盾。
+	// 已过期返回 0 或负值（调用方通常先判 expired）。
 	IncludeExpiredNoRefs bool
 }
 
@@ -326,7 +328,7 @@ func toListItem(c domain.Certificate, refCount int, now time.Time) CertListItem 
 
 // daysLeft 剩余整天数（向下取整；已过期为负值）。
 func daysLeft(notAfter, now time.Time) int {
-	return int(math.Floor(notAfter.Sub(now).Hours() / 24))
+	return int(math.Ceil(notAfter.Sub(now).Hours() / 24))
 }
 
 // nonNilSans SAN 空数组语义（JSON 序列化为 [] 而非 null）。
