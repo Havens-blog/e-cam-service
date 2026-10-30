@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/logquery/export"
@@ -170,27 +171,23 @@ func (h *LogQueryHandler) recordExportTaskAudit(c *gin.Context, req createExport
 func parseClaimCodes(raws ...string) []string {
 	var codes []string
 	for _, raw := range raws {
+		// 必须 TrimSpace：能力码可能来自 header/claims，带首尾空格时
+		// CanExport 的精确匹配（c == "cam:logs:export"）会失败，导致有权限的用户被拒。
+		raw = strings.TrimSpace(raw)
 		if raw == "" {
 			continue
 		}
-		if len(raw) > 0 && raw[0] == '[' {
+		if raw[0] == '[' {
 			var arr []string
 			if err := json.Unmarshal([]byte(raw), &arr); err == nil {
 				codes = append(codes, arr...)
 				continue
 			}
 		}
-		start := 0
-		for i := 0; i < len(raw); i++ {
-			if raw[i] == ',' {
-				if p := raw[start:i]; p != "" {
-					codes = append(codes, p)
-				}
-				start = i + 1
+		for _, part := range strings.Split(raw, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				codes = append(codes, part)
 			}
-		}
-		if p := raw[start:]; p != "" {
-			codes = append(codes, p)
 		}
 	}
 	return codes
