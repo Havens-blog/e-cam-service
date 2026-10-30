@@ -7798,3 +7798,36 @@ CDN 1050KB、镜像 1869KB。根因是后端无聚合参数，需后端接口，
    这两者对运维决策的含义完全相反（一个可以不管，一个必须立刻处理）。
 3. **修一页也要跑通"恢复"路径**：只验证失败态不够，本轮额外验证「点重试 + 接口恢复 → 数据回来」，
    否则可能修出一个点不动的错误页。
+
+---
+
+## 2026-10-31 主干基线体检 + "检查必须在正确修订上跑"的教训
+
+### 一、一次**假警报**(教训:本地工作树可能在别人的分支上)
+我先在**主检出**(`D:\Haven\e-cam-service`,当前在并行会话分支 `fix/cert-scan-status-assertion` @ `c26e766`)跑 `go run ./scripts/depcheck`,
+得到 **3 条**违规(2 条 `shared/paging` + 1 条 `shared/authz`),一度以为我修过的边界问题**又回来了**。
+按修订核对后发现:该工作树的代码**早于**我的 #196 ⇒ 那 2 条 paging 违规是**旧代码**的残留;
+`origin/main` 上 cert 两文件**已无** paging 导入,且 `internal/cert/web/page_limit.go` 存在(我的修复在 main ✓)。
+
+**沉淀**:**本地跑"仓库级检查"(depcheck/lint/全量测试)必须在目标修订上跑** ——
+主检出常被别的会话占用,稳妥做法是 `git worktree add <tmp> --detach origin/main` 后在**分离工作树**里跑;
+只 `git fetch` 更新 `origin/main` 是不够的(工作树不会自动切过去)。
+
+### 二、主干(main `05be589`)基线体检结果
+| 检查 | 结果 |
+|---|---|
+| `go build ./...` | **通过** |
+| `go run ./scripts/depcheck` | **1 条违规**:`internal/cert/web/role_middleware.go imports internal/shared/authz` |
+| 关键包测试 | `internal/cert/web`、`internal/shared/{auth,authz,daocheck,middleware,paging,timex}`、`internal/cam/iam/service` **全 ok** |
+
+**该唯一违规的来源与归属**:由 `ad02c51 refactor(authz): 能力码解析收敛为单一实现 internal/shared/authz`
+(并行会话的能力码收敛 PR)引入 —— **不是我的改动**,我未触碰该文件。
+影响:**depcheck 在每次 PR 上都会跑** ⇒ 主干与所有 PR 的 `Test` job 会因此持续红(除既有失败外新增这一类)。
+**建议(二选一,由该改动方决策)**:
+1. 按 depcheck 提示走"**消费者接口**":cert 侧定义接口、由外部注入实现,不在 cert 内直接 import `internal/shared/**`;
+2. 若确为**有意识的例外**,把该行加入 `scripts/depcheck/baseline.txt`(工具明确支持,需 review)。
+
+### 三、口径沉淀(合并本轮经验)
+1. **按修订跑检查**(见上,今天第二次踩"跑错修订":上次是"部署忘了核对代码是否进工作区");
+2. **先跑仓库自带检查**(`scripts/depcheck`、lint)再提 PR —— 我上一轮的边界违规(#196)正是漏跑它造成的;
+3. **CI 红要区分来源**:抖动(重跑即恢复)/ 我的改动 / **他人在飞改动** —— 三者处置方式不同,报告里必须写清归属。
