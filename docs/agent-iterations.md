@@ -6662,3 +6662,64 @@ internal/cam/task/executor/sync_dns.go: DNSRecord has no field or method Weight
 ### 结论
 DNS 权重在"**可安全验证的范围内已闭环**"(部署/逻辑/读路径/界面一致性四项 ✓);数值样例受**数据与安全边界**
 限制不可得,已在报告中明确标注为**未验证项**,不以"接口 200"冒充通过。
+
+---
+
+## cam-daysleft-wording-20261031（前端：剩余天数徽章文案修正 + 浏览器验收）
+
+**状态**：**已合并**（`e-cam-web#127`，merge `cb31319`）
+**配套后端**：`e-cam-service#160`（`daysLeft` 由 floor 改 ceil，merge `901bfea`）
+
+### 来源与证据
+
+后端 `daysLeft` 改为 **ceil** 口径后（`#160`），「已过期不足 1 天」的证书 `daysLeft = 0`。
+前端 `src/views/cert/ledger/format.ts` 的实现是：
+
+```ts
+if (daysLeft <= 0) return { text: `已过期 ${-daysLeft} 天`, tone: 'error', icon: '✗' }
+```
+
+→ 渲染成「**已过期 0 天**」，语义不通。ceil 使这个分支从此覆盖**「过期 24 小时内」的全部证书**，不再是边缘偶发。
+
+**佐证**：原单测就固定了 `daysLeftBadge(0) → '已过期 0 天'` —— 说明这句文案一直存在，只是以前极少命中，属于「被口径变更放大的老问题」。
+
+### 变更
+
+```ts
+if (daysLeft === 0) return { text: '今日已到期', tone: 'error', icon: '✗' }
+if (daysLeft < 0)  return { text: `已过期 ${-daysLeft} 天`, tone: 'error', icon: '✗' }
+```
+
+影响面（5 处消费方，文案随之一致）：`CertTable`（台账）、`DashboardTable`（到期看板）、`ProbeDetailDrawer`（探针详情）、`ElementCard`（证书详情）、`cert/detail` 页。
+
+### 验收
+
+| 项 | 结果 |
+|---|---|
+| `vitest run` | ✅ **1242 passed**（更新 `daysLeftBadge(0)` 断言为「今日已到期」） |
+| `vue-tsc -b` / `eslint src` / `vite build` | ✅ 均 exit 0 |
+| PR CI（Typecheck & Build / Vitest / ESLint / Gzip Budget） | ✅ 四项全绿 |
+| 浏览器：证书台账页渲染 | ✅ |
+| 浏览器：到期看板页渲染（**真实数据 30 个徽章**，如「已过期 922 天」「已过期 715 天」） | ✅ |
+| 浏览器：无「已过期 0 天」 | ✅ 两页均无 |
+| 浏览器：无裸负数徽章（如「-3 天」） | ✅ 两页均无 |
+| 浏览器：390 视口无横向溢出 | ✅ scrollWidth == innerWidth == 390 |
+
+截图 `D:\Haven\.browser-verify\cam-daysleft-wording\ledger.png`，断言明细 `results.json`。
+
+### 一个被排除的噪声（重要）
+
+验收脚本报过 1 条 `[Promise] Unhandled Promise Rejection {}`。本轮用两种手段复测：
+
+1. `page.addInitScript` + `window.addEventListener('unhandledrejection')`；
+2. `page.exposeFunction` 把事件实时回传 Node（避免导航重置 `window.__x`）。
+
+结果：**在 `/cam/certs` 与 `/cam/certs/dashboard` 单独导航时 0 次**。而验收脚本的第一跳是 `/cam/certs`（未登录）→ 被重定向到 `/console/login` → 登录。故推断该 rejection 来自**登录/SSO 重定向流程**，与证书页及本次改动无关。
+
+**为什么这条值得记**：`src/plugins/error-handler.ts` 的全局 `unhandledrejection` 处理器除了记日志，**还会 `ElMessage.error('操作失败，请重试')`**。也就是说任何未捕获的 rejection 都会给用户弹一条与业务无关的 toast。下一轮应沿「登录重定向」路径把它定位掉。
+
+### 方法教训
+
+1. **口径变更会放大旧文案缺陷**：`已过期 0 天` 不是新写的 bug，但它从「几乎不可能命中」变成「每个刚过期证书都命中」。**改口径时要扫一遍所有消费方的边界文案**。
+2. **「有测试断言」≠「行为正确」**：原测试把 `已过期 0 天` 钉死了，等于把缺陷固化成了契约。测试应表达**期望的用户体验**，而不是照抄实现输出。
+3. **排查一次性噪声要用「实时回传」而不是「页面变量」**：`window.__x` 在导航后会被重置，我第一版就因此得到「0 次」的假结论；改成 `exposeFunction` 实时回传后才确认「证书页确实没有、问题在别处」。
