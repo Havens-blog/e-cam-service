@@ -6723,3 +6723,40 @@ if (daysLeft < 0)  return { text: `已过期 ${-daysLeft} 天`, tone: 'error', i
 1. **口径变更会放大旧文案缺陷**：`已过期 0 天` 不是新写的 bug，但它从「几乎不可能命中」变成「每个刚过期证书都命中」。**改口径时要扫一遍所有消费方的边界文案**。
 2. **「有测试断言」≠「行为正确」**：原测试把 `已过期 0 天` 钉死了，等于把缺陷固化成了契约。测试应表达**期望的用户体验**，而不是照抄实现输出。
 3. **排查一次性噪声要用「实时回传」而不是「页面变量」**：`window.__x` 在导航后会被重置，我第一版就因此得到「0 次」的假结论；改成 `exposeFunction` 实时回传后才确认「证书页确实没有、问题在别处」。
+
+---
+
+## 2026-10-30 故障处置:仪表盘"资产类别统计加载失败" —— DNS 负缓存
+
+### 现象
+仪表盘资源卡片显示 **资产类别统计加载失败**(前端 `StateBlock` 的 error-text),服务日志反复出现:
+```
+WARN modelalias/resolver.go:74 model alias resolver refresh failed
+  {"error": "fetch model aliases: Get \"http://e-cmdb-service:8002/api/v1/cmdb/internal/model-aliases\":
+            dial tcp: lookup e-cmdb-service: no such host"}
+INFO adapter/factory.go:24 CMDB 适配器: 远程模式 {"remote_url": "http://e-cmdb-service:8002"}
+```
+即 **e-cam-service 调不通 e-cmdb-service**(仪表盘的资产类别统计正是经该远程调用取得)。
+
+### 根因:DNS 负缓存(hosts 条目未生效)
+- `C:\Windows\System32\drivers\etc\hosts` **确实有** `127.0.0.1 e-cmdb-service`(第 28 行,内容干净,15:06 写入);
+- 但 `Resolve-DnsName` / `ping` / `.NET GetHostAddresses` **全部报 name does not exist**,而 `127.0.0.1:8002` 直连可达(404/401=服务在跑);
+- 结论:该名字在 **hosts 条目写入之前**已解析失败过,失败结果被 **DNS 客户端负缓存**;条目后来加上也不会立即生效。
+
+### 修复
+`ipconfig /flushdns` ⇒ 立即生效:
+```
+.NET 解析: 127.0.0.1     ping e-cmdb-service [127.0.0.1] ...
+```
+
+### 验证(真实链路,登录后)
+- `GET /api/v1/cam/service-tree/assets/stats?include_children=true` ⇒ **200**,`{"total":22086,"by_asset_type":{"cdn":693,"disk":3427,"ecs":2808,...}}` ✓
+- `/api/v1/cam/dashboard/overview` ⇒ **200**,`{"total":22086,"by_provider":[{"key":"volcano","count":9449},{"key":"aliyun","count":7224},...]}` ✓
+- 仪表盘页面:资源卡片**已显示数据**、**无"加载失败"文案**、控制台错误 **0**、API 4xx/5xx **0** ✓
+- 服务日志:16:05 之后 **不再出现** `no such host`(model-alias 失败仅在成功路径不打印的情况下静默恢复)✓
+
+### 预防
+1. 修改 hosts 后**必须**执行 `ipconfig /flushdns`(或重启 DNS Client 服务),否则此前的 NXDOMAIN 负缓存会持续;
+2. 该 dev 环境依赖 hosts 映射(`127.0.0.1 e-cmdb-service`)——`go.work`/配置里 e-cam-service 以**主机名**访问 e-cmdb-service,
+   名字一旦解析不了,仪表盘统计、model alias 等跨服务功能会成片失败;排查时先 `ping e-cmdb-service` 比看应用日志更快;
+3. 备选:把 `cmdb.remote_url` 直连 `http://127.0.0.1:8002` 可绕开 hosts 依赖(需维护者确认,当前不动该配置)。
