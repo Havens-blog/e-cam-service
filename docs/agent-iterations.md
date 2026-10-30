@@ -6108,3 +6108,37 @@ change_order_audit_test.go:68: unexpected error: (Unauthorized) Command createIn
 2. **P1 剩余 7 个测试失败**：逐个定性（CI 配置 / 真实缺陷）。
 3. **P2 #132 的上限（1000）是否铺开**到成本/证书/IAM/标签等 25 个文件处。
 4. **P3 统一 BOM 约定**：在 `.gitattributes` 或 pre-commit 里禁止 / 强制 BOM，避免再次堆积 304 个。
+
+---
+
+## 2026-10-30 补充:CI 剩余失败的根因 + **生产凭证入库/测试直连生产**风险(不越界并行会话在飞工作)
+
+### 一、CI `Test` 剩余失败根因(与并行会话 #141/#145/#146 的分工)
+并行会话已定位并修复前两层:**#141 wire 接口名不匹配**、**#145 304 个 .go 的 BOM 致 `go test -cover` 失败**;#147(开放中)在修 cost analysis 的数据竞争。我这一轮只做**只读分析**,不与他们竞争同一处改动。
+
+补充分析(第三层):
+- **Mongo 鉴权族**:`ci.yml` 的 `test` job 的 "Run tests" 步骤**没有任何 env**,而 CI 的 mongo 服务**开了鉴权**
+  (`MONGO_INITDB_ROOT_USERNAME/PASSWORD: admin/password`);失败的测试**硬编码 `mongodb://127.0.0.1:27017`(无凭证)**
+  (如 `internal/audit/repository/dao/change_order_audit_test.go:28`、`internal/cert/repository/mongo_test.go:31`、
+  `internal/cert/module_test.go:41`)⇒ 成片报 `(Unauthorized) Command createIndexes requires authentication`。
+  **最小修法**:CI 的 mongo 是**一次性隔离实例**,直接去掉那两个鉴权 env(不必改几十处测试,也避免设 `MONGO_DSN`
+  把大量 `*_live_test.go` 从"跳过"变成"运行却失败")。**归属**:该族已被并行会话在 #146 标注"含 Mongo 鉴权,未修待定性" ⇒ 交由他们统一处置,我不另开 PR。
+
+### 二、**风险(本轮新增,建议尽快处置)**
+**1. 测试直连生产库**:`internal/topology/service/live_build_probe_test.go:71` 在未提供 `NAS_PROBE_MONGODB_DSN` 时
+**回退读取 `config/prod.yaml`**(tracked)并连接其中的**生产 Mongo**(`106.52.187.69:27017`)⇒ 既造成 CI 30s 超时失败,
+又让**测试触碰生产数据**。修法:去掉文件回退,**必须显式提供 env 才运行**(live probe 本就不应默认跑)。
+
+**2. 生产凭证明文入库(高优先)**
+- `scripts/backfill_range_collect.go:59`: `mongodb://ecmdb:123456@106.52.187.69:27017/ecam?authSource=admin`(明文口令)+ `:61` 生产 Redis;
+- `scripts/clear_tasks.go:16`: 同上明文 DSN;
+- 另有多个脚本以 flag 默认值形式硬编码生产主机(`backfill_huawei_unified_bill.go`、`dedup_ecam_instance.go`、
+  `prod_stopped_probe.go`、`rebuild_cost_summary.go`、`rebuild_ecam_instance_indexes.go`);
+- `config/prod.yaml:64` 亦含生产 Mongo DSN(与 `eiam.client_secret`、LDAP 口令同文件)。
+
+**建议**:① 迁移为**环境变量/Secrets 注入**(仓库已有 `config/cert-server.example.yaml` 模板惯例可循);
+② **轮换**已入库的生产 Mongo 口令与相关密钥(它们已存在于 git 历史,改文件不足以消除暴露);
+③ live probe 类测试统一改为"显式 env 才跑"。
+
+**本轮不改代码的理由**:① CI 剩余失败的处置权在并行会话(其 #147 在飞);② 凭证相关改动涉及生产配置与密钥轮换,
+属**需人工决策/执行的运维动作**,不是我能单方面完成的;③ 我无法触发后端重建,无法做端到端验收。
