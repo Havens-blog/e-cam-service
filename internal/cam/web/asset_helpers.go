@@ -24,6 +24,7 @@ func (h *AssetHandler) listAssets(ctx *gin.Context, assetType string) {
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	limit = clampLimit(limit)
 
 	var accountID int64
 	if accountIDStr != "" {

@@ -176,6 +176,7 @@ func (h *Handler) ListAssets(ctx *gin.Context) {
 
 	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	limit = clampLimit(limit)
 
 	filter := camdomain.AssetFilter{
 		Provider:  provider,
