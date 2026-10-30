@@ -6895,3 +6895,69 @@ INFO adapter/factory.go:24 CMDB 适配器: 远程模式 {"remote_url": "http://e
    加 `GoWorkOff = $true`(需确认其他本地联调是否依赖 workspace),或 ③ 换用不受 go.work 影响的构建方式。
    **建议**:在 dev 流程里加一步"**workspace 各仓追平主干**"的检查(或在 `dev.ps1 status` 里显示各 sibling 的
    落后提交数),这类"本地检出落后 ⇒ 编译不过 ⇒ 守护进程静默不重启/崩溃"已在同一天发生**两次**。
+
+---
+
+## cam-iam-audit-operator-20261031（前端：IAM 审计「操作人」不再显示 #0）
+
+**状态**：**已合并**（`e-cam-web#130`，merge `14e1843`）
+
+### 来源与证据（真实环境实测）
+
+本轮对 CAM 23 个页面做了一次巡检（HTTP 状态 / console / 空字段率），在 **IAM 审计** 页发现确定性问题：
+
+1. **页面**：`/cam/iam/audit` 的「操作人」列大量显示 `#0`。
+2. **接口** `GET /api/v1/cam/iam/audit/logs` 原始行：
+   ```json
+   {"id":7039,"operation_type":"log_search","operator_id":"0","operator_name":"",
+    "target_type":"","target_name":"","cloud_platform":"","result":"partial",
+    "user_agent":"Go-http-client/1.1","ctime":1793352280090}
+   ```
+   `operator_id` 是**字符串 `"0"`**、`operator_name` 空；`user_agent` 表明这是**服务间调用**（无真人操作）。
+3. **代码** `src/views/iam/audit/normalize.ts`：
+   ```ts
+   operator: raw.operator || raw.operator_name || (raw.operator_id ? `#${raw.operator_id}` : '-')
+   ```
+   字符串 `"0"` 是真值 → 命中 `#${id}` 分支 → 渲染 `#0`。
+
+**为什么是缺陷**：审计页的核心信息就是「谁做的」。把「无操作人」显示成一个像用户 ID 的 `#0`，会让人误以为存在 id=0 的账号，属误导性展示。
+
+### 修
+
+新增 `hasRealOperatorId()`：`null` / `undefined` / 空白 / `"0"` / `0` 一律视为「无操作人」→ 回落 `-`；
+**真实 id 且无名时仍显示 `#id`**（保留原注释「标明这是标识而非人名」的意图）。
+
+### 验收
+
+| 项 | 结果 |
+|---|---|
+| `vitest run` 全量 | ✅ **1244 passed**（新增 2 例） |
+| 新增用例 | ✅ `"0"` → `-`；`"42"` → `#42` |
+| **变异验证** | ✅ 去掉 `"0"` 判断后，「"0" → -」用例立即失败（1 failed / 18 passed） |
+| `vue-tsc -b` / `eslint src` / `vite build` | ✅ 均 exit 0 |
+| PR CI（Typecheck & Build / Vitest / ESLint / Gzip Budget） | ✅ 四项全绿 |
+| **浏览器实测（20 行真实数据）** | ✅ `#0` 出现 **0 次**；`-` 11 行（服务间调用）、`admin` 9 行；console 错误 **0** |
+
+证据：`D:\Haven\.browser-verify\cam-iam-audit-operator\`（`iam-audit-after.png`、`results.json`）。
+
+### 未改动（等待产品确认）
+
+该页「**目标类型 / 目标对象 / 云平台 / IP 地址**」四列，20 行数据**全部为空**（字段存在、值为空串）。
+这些行都是服务间调用，可能本来就没有这些值。可选：(a) 隐藏四列；(b) 空值统一显示 `-`；(c) 保持现状。
+本轮只修确定的错误展示，没擅自改列结构。
+
+### 巡检中排除的两个假阳性（避免误报）
+
+- **`/cam/dashboard` 正文为空**：`domcontentloaded` + 3.2s 时 `innerText` 长度为 0；改为 `networkidle` + 4s 后正常渲染 2188 字、标题「多云概览」、无 console 错误 → **开发服务器首次编译慢**，不是页面缺陷。
+- **`/cam/assets` 的 4 条 `504 (Outdated Optimize Dep)`**：Vite 依赖预构建产物，仅 dev 环境出现。
+
+### 巡检覆盖与结论（23 页）
+
+`/cam/dashboard`、`/cam/assets`、`/cam/logs`、`/cam/accounts`、`/cam/iam/{users,groups,audit}`、`/cam/audit/{logs,changes}`、`/cam/finops{,/cost,/allocation,/anomaly,/budget}`、`/cam/network/{cdn,eip,dns}`、`/cam/compute/{ecs,disk}`、`/cam/databases/rds`、`/cam/alert/events`、`/cam/tasks`、`/cam/cost`
+→ **无 4xx/5xx、无 console 错误**；空态页（`/cam/alert/events`、`/cam/iam/groups`、`/cam/logs`）均为合法空态。
+
+### 方法教训
+
+1. **巡检要区分「慢」与「坏」**：`/cam/dashboard` 差一点被我报成「整页空白」，换成 `networkidle` + 更长等待后完全正常。**dev 模式首次编译慢不能当缺陷**。
+2. **「字段有值」要看值本身**：`operator_id` 存在（`"0"`），但语义是「没有」。这与上一轮 `creator: ""` 是同一类陷阱的另一面 —— 一个是空串，一个是哨兵值 `"0"`。
+3. **审计类界面的回退值必须语义正确**：`#id` 回退在「有 id 无名」时是对的，但必须先把「哨兵 id」排除掉，否则反而制造了假信息。
