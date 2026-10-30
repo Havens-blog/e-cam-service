@@ -6465,3 +6465,66 @@ step5_verify_reference_list_test.go:78:  expected: 200, actual: 202
 1. **「CI 红了」必须先分成 `[build failed]` / 测试失败 / 基础设施失败**，再谈具体用例；本轮把 43 个失败拆成 40 + 3，才看清「4 行配置解决 93%」。
 2. **归因要用日志上下文而不是用例名猜**：`*Repo*` 看起来都像 Mongo，但仍逐条回溯了上下文，避免把 3 个真缺陷误归为环境问题。
 3. **遇到「测试期望 vs 代码注释」冲突时，先判断是不是口径问题**：本例代码注释写明 floor 是刻意的，测试要求 ceil —— 这属于产品口径，不是"测试写错了"，**擅自改任一侧都会把分歧固化**。
+
+---
+
+## cam-daysleft-202-20261031（两项口径落地：DaysLeft 取整统一 + 触发扫描认 202）
+
+**状态**：**已合并**（`e-cam-service#160`，merge `901bfea`）
+
+### 背景
+
+上一节 `cam-ci-classify-20261031` 把 43 个 CI 失败归因成「40 个 Mongo 连带 + 3 个独立」。3 个独立失败都属口径决策，已向 owner 确认：
+
+| 决策 | 选择 |
+|---|---|
+| `DaysLeft` 显示天数取整 | **ceil**（不足一天算一天），与分级统一 |
+| 触发 rescan 的接口语义 | **保持 202（异步）**，改测试 |
+
+### 变更 1：`daysLeft` 由 floor 改为 ceil
+
+**证据**：`TestDashboard_ItemsFields` 期望 `daysLeft=12`、实得 11；种子 `NotAfter = now + 12*24h`，计算时已过几毫秒。
+
+| 函数 | 原口径 | 用途 |
+|---|---|---|
+| `daysLeft`（ledger_service.go） | `math.Floor`，过期为负 | dashboard / 台账显示 |
+| `daysLeftCeil`（inspection_service.go） | `ceil`，过期返 0 | 到期分级 `Level` |
+
+→ 同一响应出现「**显示 11 天，却按 12 天归入 `le14` 档**」的自相矛盾。
+
+**修**：`daysLeft` 改 `math.Ceil`；`daysLeftCeil` 改为复用 `daysLeft`（只保留「过期归一为 0」），消除重复算术——这正是 `parseClaimCodes` 两份复制实现分叉后出过 403 缺陷的同类隐患。
+
+### 变更 2：两个 e2e 的触发扫描断言 200 → 202
+
+**决定性佐证**：同一端点在同包**另外三处本就断言 202** ——
+`placeholder_fingerprint_backfill_test.go:67`、`step2_confirm_import_test.go:27`、`step3_parse_real_fingerprint_test.go:24`。
+即契约一直是「202 Accepted + 异步执行」，出问题的两处是**陈旧断言**，不是实现错。
+
+**修**：改 `StatusAccepted`，并**新增** `status == "running"` 断言（比原来更严格），随后仍由 `FinishScanDone` 驱动完成后断言落库结果（未削弱任何覆盖）。
+
+### 验收
+
+| 项 | 结果 |
+|---|---|
+| 本地 `go build ./...` | ✅ exit 0 |
+| 本地 `go test ./internal/cert/service/` | ✅ ok |
+| 本地 `go test -run TestDashboard ./internal/cert/web/` | ✅ ok（含原失败用例） |
+| 本地 `go test ./tests/placeholder-fingerprint-backfill/` | ✅ ok（含原失败两例） |
+| **CI 复跑**：3 个目标用例 | ✅ **全部 PASSED** |
+| CI 剩余失败 | 仅 38 处 `Unauthorized`（40 个 Mongo 连带用例） |
+| `-race` | 未执行（本机无 gcc） |
+
+### 仍未解决
+
+Mongo 鉴权（阻塞在 owner）：`.github/workflows/ci.yml` 的 `jobs.test` 加
+```yaml
+    env:
+      CERT_TEST_MONGODB_DSN: mongodb://admin:password@127.0.0.1:27017/?authSource=admin
+```
+落地后 40 个用例应转绿，CI 才有望首次全绿。
+
+### 方法教训
+
+1. **「测试期望 vs 代码注释」冲突多半是口径问题，不要急着判谁错**：本例注释明写 floor 是有意的、测试要求 ceil —— 这是产品口径，owner 一句话就能定。若我按"测试写错了"直接改断言，就会把「显示 11 天却归 14 天档」的矛盾固化下来。
+2. **「陈旧断言」要靠同包内的一致性来证明**：不是我猜 202 更对，而是同包另外三处早就断言 202 —— 这种**内部一致性证据**比任何论证都硬。
+3. **改口径时顺手消除重复实现**：`daysLeft`/`daysLeftCeil` 本是两套算术；统一后既修了 bug，又去掉一处未来会分叉的地方（`parseClaimCodes` 的教训）。
