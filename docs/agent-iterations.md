@@ -5944,3 +5944,28 @@ GOWORK=off go test  ./internal/cam/web/... ./internal/audit/service/... → ok /
 1. `e-iam` 侧：回退 I 前缀引用，还是发布新版本并 bump `go.mod`？（决定 CI Test 能否变绿）
 2. #132 的上限取 **1000** 是否保留？是否铺开到成本/证书/IAM/标签等其余模块？
 3. 上表「合并后自检」只覆盖两个 PR 触及的包，**未跑全仓 `go test ./...`**（会因 `ioc` wire 问题失败）。
+
+---
+
+## 2026-10-30 修复:云账号页火山云显示裸英文(e-cam-web#124)+ .bin 工具链修复 + 资产数口径发现
+
+### 一、环境修复(先做,阻塞所有人)
+主检出 `node_modules/.bin` **为空(0 项)** ⇒ `npx vitest`/`npx vite`/`pnpm dev` 全线不可用(工作树用目录联接共享该 node_modules,一并受影响)。
+处置:在**无并发安装**的前提下执行 `pnpm install --frozen-lockfile --offline`(只写派生目录、不改 lockfile)⇒ `.bin` **0 → 27 项**,`npx vitest` 冒烟通过。未触碰主检出现有 3 个 WIP 文件(并行会话的)。
+
+### 二、缺陷修复(已合并 e-cam-web#124)
+**现象(A 类)**:云账号页把火山云账号渲染成裸英文 —— 片段:"集团-火山云 **volcengine** 活跃";同页腾讯云等为中文名、详情抽屉(走 getProviderLabel)也是中文名 ⇒ 同页不一致。
+**根因**:`views/accounts/utils.ts` 的 `getProviderName` **直接查 `PROVIDER_CONFIGS`**,而账号接口对火山云返回 `provider='volcengine'`(规范键 `volcano`)⇒ 查不到即回退原值。
+**修复**:走 `utils/constants` 展示名单源 `getProviderLabel`(其实现已认 `volcengine`/`bytedance` 别名),空值仍 `-`。
+**验证**:新增 4 例单测(含回归断言);**变异验证**(还原直接查表 → 回归用例失败 `expected 'volcengine' not to be 'volcengine'`);`vue-tsc`/eslint 0;CI 四项全绿;**浏览器 A/B**:未修复(8888) 裸 volcengine 2 次且无中文名 → 已修复(3336) 裸 volcengine **0 次**、出现"火山引擎"。
+**过程纠正(重要)**:我最初把修复做在 `utils/constants` 加别名表 + 包装 `getProviderLabel`,但**变异验证暴露该回归断言本就通过** ⇒ 实测 `@haven/ui` 的 `getProviderLabel` **本已认 volcengine/bytedance**,真正缺陷只在 `accounts/utils.ts` 的直接查表 ⇒ 砍掉冗余改动,收敛为 1 文件最小修复。若不做变异验证,本会带着"冗余但看似合理"的改动合入。
+
+### 三、新发现(待决策,未改):云账号页"资产数"与实时口径严重不符
+| 厂商 | 账号页 `asset_count`(缓存字段) | 实时接口逐类型求和 | 统计 `provider_stats` |
+|---|---|---|---|
+| aliyun | 20581 | **7297** | 7334 |
+| tencent | 4593 | **309** | 341 |
+| aws | 3421 | 2094 | 2313 |
+| huawei | 1779 | 2364 | 2485 |
+| volcengine/volcano | 6639 | (键名 volcano) | 9022 |
+`asset_count` 是账号文档上的**缓存字段**,`provider_stats` 是 DashboardService 对 `ecam_instance` 的**实时聚合**。偏差达 15×(tencent) ⇒ 属**计数口径/刷新机制**问题,需先确认以哪边为准再改(不擅自变更)。
