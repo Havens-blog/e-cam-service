@@ -8055,3 +8055,47 @@ CDN 1050KB、镜像 1869KB。根因是后端无聚合参数，需后端接口，
 逐页迁移是在用线性成本偿还一笔系统性债务。真正该做的是**抽一个 `useListFetch` 组合式函数**
 把「加载/空/失败/重试」统一掉 —— 但这属于架构重构，超出单轮迭代的安全边界，
 已作为建议记录在案，而不是在某一轮里顺手做掉。
+
+---
+
+## 2026-10-31 全量页面 UI 巡检:先排除"停机假象",再得到 1 条真实配置缺口
+
+### 一、巡检方法(路径来自 router,不猜测)
+从 `src/router/routes.ts` 读出 51 条 CAM 路由,取其中 45 条**可直接进入**的页面,在 **origin/main 的分离工作树实例**(端口 3340,
+与主检出的在飞分支隔离)逐页收集:控制台错误 + `/api/**` 的 4xx/5xx + 渲染文本量(判断是否白屏)。45 页中 15 页报警。
+
+### 二、⚠️ 先发现**服务已挂**(重要教训)
+报警里 4 个页面报 **500**:`allocation/tree`、`cost/anomalies`、`tags`(+stats/policies)、`logs/types` —— 但**这些端点我先前直接探活都是 200**。
+不急于报缺陷,先查后端状态:`8001` **未在监听** ✗。`logs/dev/e-cam-service.err.log` 给出死因:
+```
+07:40:05 Running build command!  07:40:09 Error while building:
+  ioc\gin.go:32 undefined: syncerpkg.Syncer / capability.PermissionProvider
+```
+⇒ 与**本会话开头同源**:`go.work` 指向的本地 `eiam` 检出缺这些符号(其分支含大量在飞改动) ⇒ **CompileDaemon 构建失败并杀掉旧进程** ⇒ 8001 停 ⇒
+nginx 上游不可用对前端表现为 **500(空响应体)** ⇒ 那些"500 模块缺陷"**是停机假象**。
+处置:`GOWORK=off` 重建 + 分离进程拉起 ⇒ **8001 恢复**,复验同样的 7 个页面:**apiErr 全部为 0** ✓(证明 4 个 500 均为假象,**未误报**)。
+
+**沉淀**:页面报 4xx/5xx 时,**第一步先确认后端进程是否存活**(端口/err 日志),否则会把停机当成业务缺陷。
+另注:当前机器上有 **5 个 CompileDaemon** 进程(15:13×3、04:45、07:40)⇒ 任何一个不带 `GOWORK=off` 的重建都会**再次杀掉**服务(复发风险)。
+
+### 三、✅ 真实且可复现的一条:仪表盘"资产类别统计"因 **eiam.token_url 未配置**失败
+复验时 `/dashboard` 仍剩 1 条控制台错误:
+```
+获取资产类别统计失败: 统计全局资产失败: 获取服务令牌失败: eiam.token_url 未配置
+```
+证据链:
+- `internal/shared/auth/token_provider.go:110-111`:`tokenURL == ""` ⇒ 直接返回该错误(fail-closed);
+- 使用方:`internal/cam/governance/eiam_client.go`、`internal/cam/servicetree/adapter/remote_cmdb.go`、`internal/shared/modelalias/resolver.go`
+  (后者每 5 分钟一条 WARN,已持续多时);
+- 配置:`config/prod.yaml`、`test.yaml` 的 `eiam.{base_url,token_url,client_id,client_secret,public_key}` **全为空占位**;
+  该文件**被 git 跟踪且无本地改动**(`git status` 干净) ⇒ **不是我的启动方式造成的**,而是**仓库配置本就是占位、需按环境注入**;
+- `dev.ps1` 只为 `opsagent*` 配了 `EnvFile`(F:\OpsAgent\.env),`e-cam-service` **没有 EnvFile**;代码里也**没有** viper `AutomaticEnv/BindEnv`
+  ⇒ `eiam.*` **只能来自配置文件**。
+
+**结论**:这是**部署/环境配置**缺口(与在飞的"config 环境变量注入"工作同类),**不在我可改范围**(config/*.yaml 属他人工作区/未获授权),
+故本轮**只报告不修改**;修复后仪表盘该卡片与 modelalias 刷新即恢复。
+
+### 四、另注(未定性,不下结论)
+`/cert*`、`/models`、`/instances`、`/relations`、`/service-tree` 等页面渲染文本量仅 29(空壳)。
+其中 CMDB 类路径是**已迁出**到 e-cmdb-web 的旧入口,`/cert*` 可能是我从 router 里取到的**非导航路径**(此前我有"发明路径"的前科,
+故**不据此报缺陷**);如需结论应在下一轮按"导航可用性"专项核对(以侧边栏可达路径为准)。
