@@ -153,6 +153,20 @@ func (h *CertHandler) ImportBatch(c *gin.Context) {
 	if operator == "" {
 		operator = "unknown"
 	}
+
+	// 在交给 service 之前先把「VO 所需」的数据快照出来。
+	//
+	// 修复 DATA RACE（go test -race 检出，cert_handler.go ImportBatch 读 files）：
+	// service.ImportBatch 内部以 `go s.runBatch(batchID, files)` 把 files 交给后台
+	// goroutine 异步处理，而本函数随后仍遍历 files 构建响应 VO ——
+	// 后台 goroutine 与请求 goroutine 并发读写同一切片，-race 报
+	// `Read at ... ImportBatch`。
+	// 改为：调用前提取文件名，之后不再访问 files。
+	fileNames := make([]string, len(files))
+	for i, f := range files {
+		fileNames[i] = f.FileName
+	}
+
 	batchID, err := h.svc.ImportBatch(c.Request.Context(), files, operator)
 	if err != nil {
 		WriteError(c, err)
@@ -163,12 +177,12 @@ func (h *CertHandler) ImportBatch(c *gin.Context) {
 	vo := BatchVO{
 		BatchID:  batchID,
 		Status:   string(domain.BatchSessionRunning),
-		Files:    make([]BatchFileVO, 0, len(files)),
-		Progress: BatchProgressVO{Total: len(files)},
+		Files:    make([]BatchFileVO, 0, len(fileNames)),
+		Progress: BatchProgressVO{Total: len(fileNames)},
 	}
-	for _, f := range files {
+	for _, name := range fileNames {
 		vo.Files = append(vo.Files, BatchFileVO{
-			FileName: f.FileName,
+			FileName: name,
 			Result:   string(domain.BatchFilePending),
 		})
 	}
