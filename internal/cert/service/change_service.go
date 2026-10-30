@@ -23,7 +23,7 @@ type ChangeService interface {
 	// pending_confirm 订单（条件写入 activeMutex）+ 变更项并绑定 snapshotId；
 	// 四项前置校验阻断（409）：SCAN_STALE / CHANGE_IN_FLIGHT /
 	// NEW_CERT_FINGERPRINT_ONLY / SAN_INSUFFICIENT。
-	GenerateChangeList(ctx context.Context, oldCertFingerprint, newCertID string) (ChangeList, error)
+	GenerateChangeList(ctx context.Context, creator, oldCertFingerprint, newCertID string) (ChangeList, error)
 	// Transition 状态机迁移入口：先按 domain.Transition 白名单校验，再路由至
 	// 仓储原子原语——
 	//   - 活跃态（pending_confirm/executing/verifying）：TransitionActive，

@@ -180,7 +180,7 @@ func TestGenerateChangeList_HappyPath(t *testing.T) {
 	olderSnap := h.seedDoneSnapshot(t, 30*time.Hour, nil, nil)
 	h.seedRefs(t, olderSnap, cloudRef(changeTestFP, domain.CloudAliyun, domain.ProductCDN, "ak-1", "res-stale", "cloud-cert-stale"))
 
-	list, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+	list, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 	require.NoError(t, err)
 
 	// 订单：pending_confirm + 快照绑定 + 互斥 token
@@ -191,6 +191,8 @@ func TestGenerateChangeList_HappyPath(t *testing.T) {
 	assert.Equal(t, changeTestFP, order.OldCertFingerprint)
 	assert.Equal(t, newCertID, order.NewCertID)
 	assert.Equal(t, changeTestFP, order.ActiveMutex, "预生成订单即持有互斥 token")
+	// 发起人：审计字段，必须落库（此前恒为空，导致列表「发起人」列全为 —）
+	assert.Equal(t, "op", order.Creator, "creator 应记录发起人")
 
 	// 清单载荷：快照绑定 + 新鲜度 + 项数（去重/异指纹后 2 项）
 	assert.Equal(t, order.ID.Hex(), list.OrderID)
@@ -240,7 +242,7 @@ func TestGenerateChangeList_ResourceRefBranches(t *testing.T) {
 		k8sRef(changeTestFP, "c1", "team-a", "ALBConfig", "gw-1", "cert-k8s-a"),
 	)
 
-	list, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+	list, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 	require.NoError(t, err)
 	require.Len(t, list.Items, 2)
 
@@ -291,7 +293,7 @@ func TestGenerateChangeList_BlockScanStale(t *testing.T) {
 		newCertID := h.seedCert(t, newTestFP, []string{"a.example.com"}, domain.HostingStatusComplete)
 		h.seedDoneSnapshot(t, 25*time.Hour, nil, nil) // 默认阈值 24h
 
-		_, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+		_, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 		requireBlockCode(t, err, domain.CodeScanStale)
 		assert.ErrorIs(t, err, domain.ErrScanStale)
 		noActiveOrder(t, h, changeTestFP)
@@ -305,7 +307,7 @@ func TestGenerateChangeList_BlockScanStale(t *testing.T) {
 		_, err := h.snapshots.Create(ctx, &domain.ScanSnapshot{Status: domain.ScanStatusRunning})
 
 		require.NoError(t, err)
-		_, err = h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+		_, err = h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 		requireBlockCode(t, err, domain.CodeScanStale)
 		noActiveOrder(t, h, changeTestFP)
 	})
@@ -321,7 +323,7 @@ func TestGenerateChangeList_BlockScanStale(t *testing.T) {
 		snapID := h.seedDoneSnapshot(t, 30*time.Hour, nil, nil) // 48h 阈值内
 		h.seedRefs(t, snapID, cloudRef(changeTestFP, domain.CloudAliyun, domain.ProductCDN, "ak-1", "res-1", "cc-1"))
 
-		list, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+		list, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 		require.NoError(t, err)
 		assert.Equal(t, 30, list.ScanFreshnessHrs)
 	})
@@ -344,7 +346,7 @@ func TestGenerateChangeList_BlockChangeInFlight(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		_, err = h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+		_, err = h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, domain.ErrChangeInFlight, "CHANGE_IN_FLIGHT（仓储哨兵）")
 	})
@@ -356,7 +358,7 @@ func TestGenerateChangeList_BlockChangeInFlight(t *testing.T) {
 		h.svc = NewChangeService(&failGenOrders{FakeChangeOrderRepo: h.orders, createErr: domain.ErrChangeInFlight},
 			h.items, h.certs, h.alertCfg, h.snapshots, h.refs, nil, nil)
 
-		_, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+		_, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, domain.ErrChangeInFlight)
 	})
@@ -371,7 +373,7 @@ func TestGenerateChangeList_BlockNewCertFingerprintOnly(t *testing.T) {
 	newCertID := h.seedCert(t, newTestFP, []string{"a.example.com"}, domain.HostingStatusFingerprintOnly)
 	h.seedDoneSnapshot(t, 2*time.Hour, nil, nil)
 
-	_, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+	_, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 	requireBlockCode(t, err, domain.CodeNewCertFingerprintOnly)
 	assert.ErrorIs(t, err, domain.ErrNewCertFingerprintOnly)
 	noActiveOrder(t, h, changeTestFP)
@@ -388,7 +390,7 @@ func TestGenerateChangeList_BlockSanInsufficient(t *testing.T) {
 		newCertID := h.seedCert(t, newTestFP, []string{"a.example.com"}, domain.HostingStatusComplete)
 		h.seedDoneSnapshot(t, 2*time.Hour, nil, nil)
 
-		_, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+		_, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 		requireBlockCode(t, err, domain.CodeSanInsufficient)
 		assert.ErrorIs(t, err, domain.ErrSanInsufficient)
 		assert.Contains(t, err.Error(), "b.example.com", "缺失域名入错文案")
@@ -402,7 +404,7 @@ func TestGenerateChangeList_BlockSanInsufficient(t *testing.T) {
 		newCertID := h.seedCert(t, newTestFP, []string{"example.com"}, domain.HostingStatusComplete)
 		h.seedDoneSnapshot(t, 2*time.Hour, nil, nil)
 
-		_, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+		_, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 		assert.NoError(t, err)
 	})
 }
@@ -431,7 +433,7 @@ func TestGenerateChangeList_NonExecutablePartition(t *testing.T) {
 		k8sRef(changeTestFP, "c1", "team-a", "ALBConfig", "gw-2", "cert-k8s-2"),
 	)
 
-	list, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+	list, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 	require.NoError(t, err)
 	require.Len(t, list.Items, 6)
 
@@ -495,7 +497,7 @@ func TestGenerateChangeList_MulticloudExecutable(t *testing.T) {
 		cloudRef(changeTestFP, domain.CloudAzure, domain.ProductALB, "ak-az", "az-alb-1", "cc-az-2"),
 	)
 
-	list, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+	list, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 	require.NoError(t, err)
 	require.Len(t, list.Items, 9)
 
@@ -533,7 +535,7 @@ func TestGenerateChangeList_VolcanoExecutable(t *testing.T) {
 		cloudRef(changeTestFP, discoveryCloudVolcano, domain.ProductNLB, "ak-volcano", "vol-nlb-1/lsn-1", "nlb:cert-nlb-1"),
 	)
 
-	list, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+	list, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 	require.NoError(t, err)
 	require.Len(t, list.Items, 4)
 
@@ -564,7 +566,7 @@ func TestGenerateChangeList_K8sProbeUnavailable(t *testing.T) {
 		h := newGenHarness(t, nil)
 		newCertID, _ := h.seedValid(t, k8sRef(changeTestFP, "c1", "team-a", "ALBConfig", "gw-1", "cert-k8s-1"))
 
-		list, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+		list, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 		require.NoError(t, err)
 		require.Len(t, list.Items, 1)
 		assert.False(t, list.Items[0].AutoChangeable, "未探测不默认放行")
@@ -583,7 +585,7 @@ func TestGenerateChangeList_K8sProbeUnavailable(t *testing.T) {
 			cloudRef(changeTestFP, domain.CloudAliyun, domain.ProductCDN, "ak-1", "res-1", "cc-1"),
 		)
 
-		list, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+		list, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 		require.NoError(t, err, "单点探测失败不阻塞其他目标")
 		byResource := make(map[string]ChangeListItem)
 		for _, li := range list.Items {
@@ -619,7 +621,7 @@ func TestGenerateChangeList_Warnings(t *testing.T) {
 	snapID := h.seedDoneSnapshot(t, 2*time.Hour, meta, partials)
 	h.seedRefs(t, snapID, cloudRef(changeTestFP, domain.CloudAliyun, domain.ProductCDN, "ak-1", "res-1", "cc-1"))
 
-	list, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+	list, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 	require.NoError(t, err)
 
 	assert.Contains(t, list.Warnings[0], "VM Nginx", "覆盖边界声明居首")
@@ -730,7 +732,7 @@ func TestGenerateChangeList_ErrorPropagation(t *testing.T) {
 	t.Run("快照读取失败", func(t *testing.T) {
 		h := newGenHarness(t, &fakeManagementProbe{})
 		newSvc(h, h.orders, h.items, h.certs, &failSnapshots{FakeScanSnapshotRepo: h.snapshots, latestDoneErr: errInjected}, h.refs, h.alertCfg)
-		_, err := h.svc.GenerateChangeList(ctx, changeTestFP, "000000000000000000000000")
+		_, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, "000000000000000000000000")
 		assert.ErrorIs(t, err, errInjected)
 	})
 
@@ -738,7 +740,7 @@ func TestGenerateChangeList_ErrorPropagation(t *testing.T) {
 		h := newGenHarness(t, &fakeManagementProbe{})
 		h.seedDoneSnapshot(t, time.Hour, nil, nil)
 		newSvc(h, h.orders, h.items, h.certs, h.snapshots, h.refs, &failingAlertCfg{FakeAlertConfigRepo: h.alertCfg, getErr: errInjected})
-		_, err := h.svc.GenerateChangeList(ctx, changeTestFP, "000000000000000000000000")
+		_, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, "000000000000000000000000")
 		assert.ErrorIs(t, err, errInjected)
 	})
 
@@ -746,7 +748,7 @@ func TestGenerateChangeList_ErrorPropagation(t *testing.T) {
 		h := newGenHarness(t, &fakeManagementProbe{})
 		h.seedDoneSnapshot(t, time.Hour, nil, nil)
 		newSvc(h, &failGenOrders{FakeChangeOrderRepo: h.orders, mutexErr: errInjected}, h.items, h.certs, h.snapshots, h.refs, h.alertCfg)
-		_, err := h.svc.GenerateChangeList(ctx, changeTestFP, "000000000000000000000000")
+		_, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, "000000000000000000000000")
 		assert.ErrorIs(t, err, errInjected)
 	})
 
@@ -754,7 +756,7 @@ func TestGenerateChangeList_ErrorPropagation(t *testing.T) {
 		h := newGenHarness(t, &fakeManagementProbe{})
 		h.seedDoneSnapshot(t, time.Hour, nil, nil)
 		newSvc(h, h.orders, h.items, &failGenCerts{FakeCertificateRepo: h.certs, getByIDErr: errInjected}, h.snapshots, h.refs, h.alertCfg)
-		_, err := h.svc.GenerateChangeList(ctx, changeTestFP, "000000000000000000000000")
+		_, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, "000000000000000000000000")
 		assert.ErrorIs(t, err, errInjected)
 	})
 
@@ -763,7 +765,7 @@ func TestGenerateChangeList_ErrorPropagation(t *testing.T) {
 		newCertID := h.seedCert(t, newTestFP, nil, domain.HostingStatusComplete)
 		h.seedDoneSnapshot(t, time.Hour, nil, nil)
 		newSvc(h, h.orders, h.items, &failGenCerts{FakeCertificateRepo: h.certs, getByFPErr: errInjected}, h.snapshots, h.refs, h.alertCfg)
-		_, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+		_, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 		assert.ErrorIs(t, err, errInjected)
 	})
 
@@ -771,7 +773,7 @@ func TestGenerateChangeList_ErrorPropagation(t *testing.T) {
 		h := newGenHarness(t, &fakeManagementProbe{})
 		newCertID := h.seedCert(t, newTestFP, []string{"a.example.com"}, domain.HostingStatusComplete)
 		h.seedDoneSnapshot(t, time.Hour, nil, nil)
-		_, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+		_, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 		assert.ErrorIs(t, err, mongo.ErrNoDocuments, "SAN 预检基准（旧证书 SAN）不可缺失")
 	})
 
@@ -781,7 +783,7 @@ func TestGenerateChangeList_ErrorPropagation(t *testing.T) {
 		newCertID := h.seedCert(t, newTestFP, nil, domain.HostingStatusComplete)
 		h.seedDoneSnapshot(t, time.Hour, nil, nil)
 		newSvc(h, h.orders, h.items, h.certs, h.snapshots, &failRefs{FakeCertReferenceRepo: h.refs, listErr: errInjected}, h.alertCfg)
-		_, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+		_, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 		assert.ErrorIs(t, err, errInjected)
 	})
 
@@ -789,7 +791,7 @@ func TestGenerateChangeList_ErrorPropagation(t *testing.T) {
 		h := newGenHarness(t, &fakeManagementProbe{})
 		newCertID, _ := h.seedValid(t)
 		newSvc(h, &failGenOrders{FakeChangeOrderRepo: h.orders, createErr: errInjected}, h.items, h.certs, h.snapshots, h.refs, h.alertCfg)
-		_, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+		_, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 		assert.ErrorIs(t, err, errInjected)
 	})
 
@@ -797,7 +799,7 @@ func TestGenerateChangeList_ErrorPropagation(t *testing.T) {
 		h := newGenHarness(t, &fakeManagementProbe{})
 		newCertID, _ := h.seedValid(t, cloudRef(changeTestFP, domain.CloudAliyun, domain.ProductCDN, "ak-1", "res-1", "cc-1"))
 		newSvc(h, h.orders, &failGenItems{FakeChangeItemRepo: h.items, createErr: errInjected}, h.certs, h.snapshots, h.refs, h.alertCfg)
-		_, err := h.svc.GenerateChangeList(ctx, changeTestFP, newCertID)
+		_, err := h.svc.GenerateChangeList(ctx, "op", changeTestFP, newCertID)
 		assert.ErrorIs(t, err, errInjected)
 	})
 }
@@ -813,7 +815,7 @@ func TestBuildChangeItems_ManagedListenerExcluded(t *testing.T) {
 	crdItem := k8sRef(changeTestFP, "cluster-a", "kube-system", "AlbConfig", "alb-conf-main", "cert-20275346-cn-hangzhou")
 
 	newCertID, _ := h.seedValid(t, managedRef, normalRef, crdItem)
-	list, err := h.svc.GenerateChangeList(context.Background(), changeTestFP, newCertID)
+	list, err := h.svc.GenerateChangeList(context.Background(), "op", changeTestFP, newCertID)
 	require.NoError(t, err)
 
 	byTarget := map[string]domain.ChangeAction{}
@@ -853,7 +855,7 @@ func TestBuildChangeItems_K8sCloudCertMissing(t *testing.T) {
 	crdItem := k8sRef(changeTestFP, "cluster-a", "kube-system", "AlbConfig", "alb-conf-main", "cert-20275346-cn-hangzhou")
 	newCertID, _ := h.seedValid(t, crdItem)
 
-	list, err := h.svc.GenerateChangeList(context.Background(), changeTestFP, newCertID)
+	list, err := h.svc.GenerateChangeList(context.Background(), "op", changeTestFP, newCertID)
 	require.NoError(t, err)
 	require.Len(t, list.Items, 1)
 
@@ -876,7 +878,7 @@ func TestBuildChangeItems_K8sCloudCertPresent(t *testing.T) {
 	crdItem := k8sRef(changeTestFP, "cluster-a", "kube-system", "AlbConfig", "alb-conf-main", "cert-20275346-cn-hangzhou")
 	newCertID, _ := h.seedValid(t, crdItem)
 
-	list, err := h.svc.GenerateChangeList(context.Background(), changeTestFP, newCertID)
+	list, err := h.svc.GenerateChangeList(context.Background(), "op", changeTestFP, newCertID)
 	require.NoError(t, err)
 	require.Len(t, list.Items, 1)
 	assert.True(t, list.Items[0].AutoChangeable, "有 active 映射 → patch_crd 可变更")
@@ -890,7 +892,7 @@ func TestBuildChangeItems_K8sCloudCertViaCloudItem(t *testing.T) {
 	crdItem := k8sRef(changeTestFP, "cluster-a", "kube-system", "AlbConfig", "alb-conf-main", "cert-20275346-cn-hangzhou")
 	newCertID, _ := h.seedValid(t, cdnRef, crdItem)
 
-	list, err := h.svc.GenerateChangeList(context.Background(), changeTestFP, newCertID)
+	list, err := h.svc.GenerateChangeList(context.Background(), "op", changeTestFP, newCertID)
 	require.NoError(t, err)
 	require.Len(t, list.Items, 2)
 

@@ -114,7 +114,7 @@ const (
 // 不可执行项分区（Hard Rule：不静默放行）：K8s 管理权受限/托管资源项
 // AutoChangeable=false + Reason，持久化即标 skipped（不计入执行成功率分母，
 // 5.7 仅执行 pending 项）；盲区声明（覆盖边界/通道失败盲区/分母不可用）写入 Warnings。
-func (s *changeService) GenerateChangeList(ctx context.Context, oldCertFingerprint, newCertID string) (ChangeList, error) {
+func (s *changeService) GenerateChangeList(ctx context.Context, creator, oldCertFingerprint, newCertID string) (ChangeList, error) {
 	// ---- 前置校验 1：扫描新鲜度（含"无成功快照"阻断） ----
 	snap, err := s.snapshots.LatestDone(ctx)
 	if err != nil {
@@ -182,6 +182,8 @@ func (s *changeService) GenerateChangeList(ctx context.Context, oldCertFingerpri
 
 	// ---- 预生成订单落库（pending_confirm；条件写入 activeMutex，索引层兜底互斥） ----
 	order := &domain.ChangeOrder{
+		// 发起人：审计字段。此前未写入，导致变更列表「发起人」列恒为空
+		Creator:            creator,
 		OldCertFingerprint: oldCertFingerprint,
 		NewCertID:          newCertID,
 		Status:             domain.ChangeStatusPendingConfirm,

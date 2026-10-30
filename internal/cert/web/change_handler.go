@@ -387,7 +387,11 @@ func (h *ChangeHandler) GenerateList(c *gin.Context) {
 			"oldFingerprint and newCertId are required")
 		return
 	}
-	list, err := h.changes.GenerateChangeList(c.Request.Context(), req.OldFingerprint, req.NewCertID)
+	creator := operator(c)
+	if creator == "" {
+		creator = "unknown"
+	}
+	list, err := h.changes.GenerateChangeList(c.Request.Context(), creator, req.OldFingerprint, req.NewCertID)
 	if err != nil {
 		WriteError(c, err)
 		return
