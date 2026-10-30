@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"sync/atomic"
 	"context"
 	"sync"
 	"testing"
@@ -153,12 +154,13 @@ func TestGetCostSummary_LastMonthZero(t *testing.T) {
 }
 
 func TestGetCostSummary_Cache(t *testing.T) {
-	callCount := 0
+	// GetCostSummary 并发扇出 SumAmount，普通 int 自增会被 -race 捕获
+	var callCount atomic.Int64
 	now := time.Now()
 	currentMonthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
 	dao := &mockBillDAO{
 		sumAmountFn: func(_ context.Context, f repository.UnifiedBillFilter) (float64, error) {
-			callCount++
+			callCount.Add(1)
 			// GetCostSummary issues SumAmount via concurrent goroutines; route
 			// by StartDate so the current-month query is deterministic.
 			if f.StartDate == currentMonthStart {
@@ -179,7 +181,7 @@ func TestGetCostSummary_Cache(t *testing.T) {
 	s2, err := svc.GetCostSummary(ctx, filter)
 	require.NoError(t, err)
 	assert.Equal(t, 100.0, s2.CurrentMonthAmount)
-	assert.Equal(t, 3, callCount)
+	assert.Equal(t, int64(3), callCount.Load())
 }
 
 func TestGetCostTrend_Daily(t *testing.T) {
