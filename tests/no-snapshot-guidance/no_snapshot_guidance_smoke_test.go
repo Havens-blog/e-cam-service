@@ -48,7 +48,10 @@ func TestNoSnapshotGuidance_Smoke(t *testing.T) {
 		{Cloud: domain.CloudAliyun, AccountKey: "acct-a", CloudCertID: "cert-A", Fingerprint: b.Fingerprint, ResourceID: "res-1"},
 	})
 	triggered := h.Post(scanRoute(cert.ID.Hex()), nil)
-	require.Equal(t, http.StatusOK, triggered.StatusCode, triggered.Body)
+	// 触发扫描为异步接口：running 快照已建、后台 goroutine 收敛，
+	// handler（ReferenceHandler.TriggerScan）对 running 状态返回 202 Accepted，
+	// 仅非 running 才返回 200。此前断言为 200，与实现不符。
+	require.Equal(t, http.StatusAccepted, triggered.StatusCode, triggered.Body)
 	tData := triggered.DataMap(t)
 	snapshotID, _ := tData["snapshotId"].(string)
 	require.NotEmpty(t, snapshotID)

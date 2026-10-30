@@ -54,7 +54,9 @@ func TestStep2_TriggerScan_Success(t *testing.T) {
 
 	resp := h.Post(scanRoute(certID), nil)
 	resp.RequireJSON(t)
-	require.Equal(t, http.StatusOK, resp.StatusCode, resp.Body)
+	// 异步触发：handler 对 running 状态返回 202 Accepted（见 reference_handler.go
+	// ReferenceHandler.TriggerScan），仅非 running 才返回 200。
+	require.Equal(t, http.StatusAccepted, resp.StatusCode, resp.Body)
 	assert.True(t, resp.Env.Success)
 	data := resp.DataMap(t)
 	snapshotID, _ := data["snapshotId"].(string)
