@@ -6295,3 +6295,27 @@ internal/shared/middleware/audit_test.go:38 (写)  vs :94 / :162 (读)
 1. **读方漏锁是最常见的竞态形态**：`Create` 有 `mu.Lock()` 会误导人以为已修好；`-race` 的「Write at … / Read at …」必须**两行都看**，只修写方等于没修。
 2. **既有访问器优先复用**：`cert/service` 里已有 `all()`，直接用比新增 `Mutex` 更好 —— diff 更小（+4/−4）、语义更清楚。
 3. **API 推文件必须规范化行尾**（承上一轮教训）：本次推送前统一 `.replace(/\r\n/g,'\n')`，PR 的 per-file diff 稳定在 `+4/-4`、`+17/-5`，没有再现整文件重写。
+
+---
+
+## 2026-10-30 修复:移除脚本内置生产凭据(e-cam-service#156)+ 观察到 main 存在多包构建失败
+
+### 一、已修:脚本内置生产凭据(安全卫生)
+两个运维脚本把**生产连接串与口令明文**写在源码里:
+- `scripts/backfill_range_collect.go`:Mongo DSN 含 `ecmdb:123456@106.52.187.69`,Redis 地址与口令(`1234567890`)明文;
+- `scripts/clear_tasks.go`:Mongo DSN 含同一明文口令。
+改动:连接信息改从环境变量读取(`ECAM_MONGODB_DSN` 必填 / `ECAM_MONGODB_NAME` 默认 ecam /
+`ECAM_REDIS_ADDR` 必填 / `ECAM_REDIS_PASSWORD` 可空),缺失即 `log.Fatal`。
+验证:`gofmt -l` 干净;`go build ./scripts/` 通过;**CI 中 `scripts` 包编译通过(无失败)**;
+两文件内已无 `123456`/`106.52.187.69`/`password=`。
+**仍需你执行**:轮换这些已进入 git 历史的口令与密钥;另 6 个脚本仍在 flag 默认值里带生产**主机**(无凭据);
+`config/prod.yaml` 仍含生产 DSN 与 `eiam.client_secret`、LDAP 口令 ⇒ 建议改 env/Secrets 注入。
+
+### 二、观察(未介入):main 当前存在多包**构建失败**
+本轮 PR 的 CI `Test` 日志显示(与我的 `scripts` 改动无关,我只动 scripts):
+`FAIL github.com/Havens-blog/e-cam-service [build failed]`、`cmd [build failed]`、`cmd/endpoint`、
+`cmd/probe-applog`、`cmd/start`、`internal/logquery [build failed]`、`internal/logquery/export`、
+`internal/logquery/web`、`ioc [build failed]`;另有既有测试失败族(`audit/repository/dao`、`cert`×4、
+`shared/middleware`、`tests/*`)。
+判断:该批构建失败**不是**本轮 `scripts` 改动引入(scripts 包在 CI 中正常编译),疑似并行会话在飞的 CI 修复
+与主干近期合并叠加所致 ⇒ **留给他们处置,我不介入**;若下一轮仍在,建议优先恢复主干可构建性。
