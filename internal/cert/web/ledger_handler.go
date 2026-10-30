@@ -9,7 +9,6 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
 	"github.com/gin-gonic/gin"
 )
 
@@ -142,7 +141,7 @@ type deleteBlockedMeta struct {
 func (h *LedgerHandler) ListCerts(c *gin.Context) {
 	page, _ := strconv.Atoi(c.Query("page"))
 	pageSize, _ := strconv.Atoi(c.Query("pageSize"))
-	pageSize = paging.Clamp(pageSize)
+	pageSize = clampPageSize(pageSize)
 
 	status := domain.HostingStatus(strings.TrimSpace(c.Query("hostingStatus")))
 	if status != "" && status != domain.HostingStatusComplete && status != domain.HostingStatusFingerprintOnly {
