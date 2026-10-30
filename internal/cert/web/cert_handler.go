@@ -125,7 +125,9 @@ func (h *CertHandler) ImportBatch(c *gin.Context) {
 	// 改为「先各读一次 -> 之后只读缓存」，消除重复打开同一 FileHeader。
 	certPEMByHeader := make(map[*multipart.FileHeader][]byte, len(certHeaders))
 	for _, ch := range certHeaders {
-		data, err := readFileHeader(c, ch)
+		var data []byte
+		// 复用外层 err（govet shadow 检查：避免在循环内用 := 遮蔽第 99 行的 err）
+		data, err = readFileHeader(c, ch)
 		if err != nil {
 			return
 		}
@@ -133,7 +135,8 @@ func (h *CertHandler) ImportBatch(c *gin.Context) {
 	}
 	keyPEMByHeader := make(map[*multipart.FileHeader][]byte, len(keyByBase))
 	for _, kh := range keyByBase {
-		data, err := readFileHeader(c, kh)
+		var data []byte
+		data, err = readFileHeader(c, kh)
 		if err != nil {
 			return
 		}
