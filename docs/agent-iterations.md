@@ -7681,3 +7681,31 @@ IAM 权限模板页完全不可用(与此前冒烟中该页文本量异常偏小
 2. **代码注释里的「实测 N 页」会过期**：本次注释写 4 页、实际 8 页。凡是「全量扫描/全量计数」的实现，
    注释里的数字都应视为**当时的快照**，复查时要重新量。
 3. 本轮的 dev server 三次退出导致脚本两次未落盘 —— **长脚本要在循环内增量写盘**，否则一次中断前功尽弃。
+
+---
+
+## 2026-10-31 CI 抖动观察 + 自建守卫 lint 修复在途(#191)
+
+### 一、service CI 的一类**基础设施抖动**(非代码问题)
+#191 的 `Test` job 在 **`go mod download` 阶段**退出:
+```
+go: github.com/tencentcloud/tencentcloud-sdk-go/...@v1.3.40: read "https://proxy.golang.org/...": ...
+##[error]Process completed with exit code 1.
+```
+⇒ **job 在跑测试/lint 之前就失败**,我的 lint 修复因此**未被评估**。处置:**重跑失败 job**(`rerun-failed-jobs`,已触发)。
+
+**口径沉淀**:service 的 `Test` job 存在两类失败,必须区分对待:
+- **基础设施类**(依赖拉取失败/超时):重跑即可,不要据此判断代码问题;
+- **真实失败类**(测试/编译/lint):需逐条核对是否与本次改动相关。
+⇒ 判断"我的改动是否引入失败"时,必须先确认 job **是否真的跑到了那一步**(本次就没跑到)。
+
+### 二、自建守卫的 lint 修复(#191,待 CI)
+#188 新增的 `internal/shared/daocheck/dao_sort_test.go` 在 CI lint 报两处(`gosec G304`、`gocritic regexpSimplify`),
+已按提示修正(正则 `{1,}`→`+`;`os.ReadFile` 加 `//nolint:gosec` 并写明理由:路径来自 `filepath.Walk` 枚举,非用户输入)。
+本地 `golangci-lint` **无法运行**(其二进制用 Go 1.24 构建 < 目标 1.25.5,`can't load config`)⇒ lint 结论**只能以 CI 为准**。
+**教训**:新增"扫描源码型"测试会引入 lint 面风险(读文件/正则/路径),提交前应尽量过 CI 同款 lint。
+
+### 三、本轮其它
+- 已完成的**全量接口探活 106/106 200**(见上一条记录)仍是本轮最强面状证据;
+- 尝试把探活扩到**非 CAM** 面向前端接口(eiam/logquery 等)时,因前端这些调用形态不统一(`eiamAxios.get` / `${BASE}` / 裸 `/api/...`)
+  且 PowerShell 正则转义困难而中止 ⇒ 这些服务**不属我的两个仓库**(仅可探不可改),价值有限,不再深入。
