@@ -6591,3 +6591,44 @@ CI 其余：`[build failed]` 0 个、`DATA RACE` 0 处、`Unauthorized` 仍 38�
 1. **修好一处 bug 不等于修好根因**：`#155` 修的是「logquery 那份漏 trim」，但**副本还在**就会复发。判断标准应是「同一逻辑是否只剩一份」，而不是「当前用例是否变绿」。
 2. **重构类 PR 的验收要给出"语义是超集/等价"的论证**，而不是只贴"测试通过"：本例逐条说明 cert/web 的 `containsCode` 本已 trim，故等价；logquery 侧与已修版本一致。
 3. **删测试时必须说明"已并入且更全"**：本例 4 例 → 9 例 + 1 条定向回归，覆盖不减反增。
+
+---
+
+## 2026-10-30 故障处置:e-cam-service(8001) 起不来 —— 根因与修复
+
+### 现象
+`dev.ps1 status` 报 `PARTIAL/DOWN e-cam-service 8001 [DOWN]`;8001 无监听。
+`logs/dev/e-cam-service.err.log`:`Running build command!` → `Error while building:`。
+
+### 根因(编译失败 ⇒ CompileDaemon 无法重启服务)
+```
+internal/cam/dns/service.go: undefined: types.DNSWeightWritable
+internal/cam/dns/service.go: unknown field Weight in CreateDNSRecordRequest / UpdateDNSRecordRequest
+internal/cam/task/executor/sync_dns.go: DNSRecord has no field or method Weight
+```
+即**构建时解析到的 e-cloudx-sdk 不含 DNS 权重能力**。原因:`D:\Haven\go.work` 以 workspace 方式 `use ./e-cloudx-sdk`,
+而该**本地检出**停在 `fix/logquery-k8s-resource-cluster` 的旧提交 `a67248c`,**落后 `origin/main` 3 个提交**
+(含 `1d635bc` = DNS 权重提交;该分支此前已被 main 合并过 `d3a74c5`,属正常"追平主干")。`go.mod` 要的是 `v0.2.0`
+(模块缓存里的 v0.2.0 **含** Weight),但 workspace 优先用本地目录 ⇒ 以旧代码编译 ⇒ 失败。
+
+### 修复
+`git -C D:\Haven\e-cloudx-sdk merge --ff-only origin/main`(**纯快进** → `d156f82`)⇒ 本地 SDK 具备
+`Weight`/`DNSWeightWritable` ⇒ `go build .` 成功(431MB) ⇒ CompileDaemon 编译通过并拉起服务。
+**未触碰**并行会话在该仓库的未提交改动(`logquery/aliyun/mapper.go`、`mapper_test.go`):FF 前后 **MD5 一致** ✓,
+且 FF 涉及 5 个文件均不含其 WIP ✓。
+
+### 二次问题与处置(如实记录)
+① 第一次重启后服务 panic:`failed to ping mongodb server: server selection timeout, {Addr: 106.52.187.69:27017}`
+——**瞬时不可达**(随后 `Test-NetConnection` 显示可达),**重试即成功,无需改配置**;
+② **我清理自己的后台轮询作业时误杀了 CompileDaemon 的父进程树**,导致服务被二次停掉(我的失误)。改为
+**脱离式启动**(`Start-Process powershell -File dev.ps1 start e-cam-service`,不属我的会话/job 子进程树)后稳定。
+**教训**:托管服务的守护进程由启动命令的子进程树持有,**不要 kill 启动它的作业**。
+
+### 恢复验证(真实链路,登录后浏览器实测)
+端口:`8001 ✓ / 8002 ✓ / 9000 ✓ / 5173 ✓ / 8888 ✓`。
+`/cam/dashboard` 20 行;`/cam/assets` 20 行 + **共 760 条**;`/cam/compute/ecs` 20 行 + **共 2808 条**;**全程 0 个 API 5xx** ✓。
+
+### 预防建议
+`go.work` 把 SDK 绑定本地检出,一旦本地检出落后/分叉,服务会**编译不过且守护进程静默不重启**(旧进程继续跑,
+直到旧进程退出才暴露)。建议:① 每次 SDK 侧合并后执行 `git -C ../e-cloudx-sdk pull --ff-only`;
+② 或对 e-cam-service 采用 `GOWORK=off` + 模块版本(需确认其它本地联调是否依赖 workspace)。
