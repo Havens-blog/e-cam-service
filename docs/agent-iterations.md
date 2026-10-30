@@ -7416,3 +7416,56 @@ changes.value = filterChangeOrders(res.items, { id: detail.value.id, fingerprint
 - 行内操作常在 **el-dropdown** 内 ⇒ 必须先展开 dropdown 再点菜单项;
 - 跨应用跳转统一用**劫持 `window.open` 记录 URL** 的方式断言,比等待新窗口稳定;
 - 探针没命中时,**先怀疑探测方式,再怀疑产品**(本轮 3 项里 2 项此前都是探测方式问题)。
+
+---
+
+## cam-filters-placeholder-20261031（前端：台账筛选下拉不再显示「请选择」）
+
+**状态**：**已合并**（`e-cam-web#139`，merge `6386e1d`）
+
+### 来源与证据（真实浏览器实测 + 我自己的操作失败）
+
+上一轮做只读巡检时，我尝试在证书台账点「剩余天数 → ≤7 天」，结果 `剩余天数 select found = 0` —— **按文本定位不到**。本轮据此深挖：
+
+| 观测 | 修复前 | 修复后 |
+|---|---|---|
+| 两个筛选控件文本 | `["请选择","请选择"]` | `["托管状态：全部","剩余天数：全部"]` |
+| 按文本定位「剩余天数」下拉 | ❌ `count = 0` | ✅ 找到 1 个 |
+| 选中「≤7 天」 | 无法操作 | ✅ 筛出 1 条（剩余 3 天） |
+| console 错误 | — | ✅ 0 |
+
+**这不是纯文案问题**：三个下拉长得一模一样，维度信息只藏在展开后的选项文案里，用户根本不知道该点哪个 —— 筛选功能事实上不可用。
+
+### 根因
+
+`src/views/cert/ledger/components/CertTable.vue`：`hostingFilter` / `daysFilter` 初始值为 `''`；
+选项里虽有 `value=""` 的「托管状态：全部」「剩余天数：全部」，但控件未选择时展示的是默认占位「请选择」。
+
+### 修（2 行）
+
+给两个 `el-select` 加显式 `placeholder`：「托管状态：全部」/「剩余天数：全部」。
+不改筛选逻辑、不改取值、不动后端契约。
+
+### 验收
+
+| 项 | 结果 |
+|---|---|
+| `vitest run src/views/cert` | ✅ **414 passed** |
+| `vue-tsc -b` / `eslint src/views/cert` | ✅ 均 exit 0 |
+| PR CI（Typecheck & Build / Vitest / ESLint / Gzip Budget） | ✅ 四项全绿 |
+| 浏览器实测 | ✅ 控件自解释；可按文本定位；「≤7 天」正确筛出 1 条；console 0 错误 |
+
+证据：`D:\Haven\.browser-verify\cam-tier-check\{after.json,ledger-after.png}`。
+
+### 未验证 / 边界
+
+- **a11y 待查**：源码两个 select 都有 `aria-label`，但 DOM 探测 `.toolbar-select` 上 `aria-label` 为 `null`
+  （可能被 el-select 转发到内部 input，也可能丢失）。本轮**未确认**，未改；建议用 `page.accessibility.snapshot()` 核实。
+- 390 视口未复测（仅新增占位文案）。
+- 未验证「托管状态」下拉选中后的筛选结果（本轮聚焦可量化的剩余天数）。
+
+### 方法教训
+
+**「我操作不下去」本身就是缺陷证据。** 上一轮我把「找不到下拉」当成自己的脚本问题（`select found = 0`），
+只记录为「未完成校验」；本轮反过来想：**如果连自动化都定位不到，真实用户凭什么知道该点哪个？**
+一次操作失败，可能是证据而不是噪音。
