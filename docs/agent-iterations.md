@@ -9432,3 +9432,26 @@ GET /api/v1/cam/provision-tasks/999999  → HTTP 200 + 错误码(同型)
 
 - 「监控异常」「异常」两张卡仍硬编码 0（沿用 disk/RDS/Redis 取舍，口径待产品确认）。
 - 390 视口未复测。
+
+---
+
+## 2026-10-31 审计再扩展:leaks 覆盖**只读 POST 查询**(e-cam-web#177)
+
+**动机**:此前 --only=leaks 只探 GET 派生端点,而前端有多处**只读 POST 查询**(logs/search、aggregate、diagnose、
+cache-analyze 等)—— 它们同样不该把存储痕迹或"200+错误码"回给调用方,却完全没被检查。
+
+**做法(保守)**:
+- POST 的 body 无法从 url 推断,且 body 不合契约只会拿到 400(检查等于空转)⇒ **不自动派生**,改为
+  `POST_QUERY_CASES` **显式列出**,每项标注前端出处与必填字段;
+- 收录原则:**只收只读语义**(search/aggregate/diagnose/analyze),**任何写操作一律不收**,不确定就不收;
+- 首例 `POST /api/v1/cam/logs/search`(body 取自 types/logs.ts LogSearchRequest 的必填三字段);
+- 抽出 `judgeResponse(status,text)` 供 GET 与只读 POST **共用判据**(① 存储痕迹 ② 200+错误码),避免逻辑漂移。
+
+**验证**:node --check / eslint 通过;--only=leaks 输出
+`[POST] 日志检索 logs/search(waf,1h) [200] ✓ 200 且响应体干净`,**0 告警、「全部通过」、exit 0**;
+**全量审计(7 项)「全部通过」、exit 0**(未引入回归);CI 四项全绿。
+
+### 口径沉淀
+**"不自动派生"有时比"自动派生"更负责**:对**有副作用风险**的端点(POST/PUT/DELETE),
+自动扫描的收益小于误触风险;此时应转为**显式清单 + 记录出处与契约**,宁可少覆盖也不要误写数据。
+(本轮 GET 派生 44 个端点全部保留自动派生,仅 POST 采用显式清单 —— 两类端点用不同的覆盖策略。)
