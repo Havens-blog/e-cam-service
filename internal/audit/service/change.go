@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
@@ -18,11 +21,40 @@ var defaultIgnoreFields = map[string]bool{
 	"utime":       true,
 }
 
+// changeCountCacheTTL total 缓存有效期。
+//
+// 背景（实测 2026-10-31）：ecam_change_history 有 5,399,871 条记录，
+// tenant 3 占 100%，`CountDocuments({tenant_id:3})` 实测 **4.9 秒**。
+// 而审计页每次翻页都调一次 ListByAssetID（内部 Count），
+// 实测每页均需 2.5 秒，翻页体验极差；GetSummary 又额外算一次 total，页面首屏更慢。
+//
+// 变更记录是历史数据，总量变化缓慢，TTL 内复用 total 完全可接受。
+const changeCountCacheTTL = 60 * time.Second
+
+// changeSummaryBudget 变更统计接口的总时限。
+//
+// 实测单项聚合需 90 秒以上（见 GetSummary 注释），4 项串行远超 HTTP 超时。
+// 限时后退化为「部分统计」：已算出的项正常返回，超时项跳过。
+// 取值 5s：既能让页面快速出首屏，又给单次 Count（4.9s 且带缓存）留出余量。
+const changeSummaryBudget = 5 * time.Second
+
+// changeCountCacheItem total 缓存项。
+type changeCountCacheItem struct {
+	total    int64
+	expireAt time.Time
+}
+
 // ChangeTracker 资产变更追踪器
 type ChangeTracker struct {
 	dao          dao.ChangeRecordDAO
 	logger       *elog.Component
 	ignoreFields map[string]bool
+
+	// countCache 缓存 Count 结果，避免 540 万行全表 count 在每次翻页/首屏重复执行。
+	// key 由 filter 的关键维度拼成（tenant + asset + field + 时间区间），
+	// 保证不同筛选条件互不污染。
+	countMu    sync.Mutex
+	countCache map[string]changeCountCacheItem
 }
 
 // NewChangeTracker 创建变更追踪器
@@ -31,7 +63,57 @@ func NewChangeTracker(dao dao.ChangeRecordDAO, logger *elog.Component) *ChangeTr
 		dao:          dao,
 		logger:       logger,
 		ignoreFields: defaultIgnoreFields,
+		countCache:   make(map[string]changeCountCacheItem),
 	}
+}
+
+// cachedCount 带缓存的 Count。
+//
+// 540 万行全表 count 实测 4.9 秒；审计页翻页时每页都会触发一次，
+// 是「每页 2.5 秒」的根因。此处在 TTL 内复用上一次结果。
+//
+// 注意：缓存的是「同一筛选条件」下的总数。审计数据为历史记录，
+// 新增是追加式的，60 秒延迟对分页器展示无实质影响；
+// 若需立即反映，可在 TTL 过期后自然刷新。
+func (t *ChangeTracker) cachedCount(ctx context.Context, filter domain.ChangeFilter) (int64, error) {
+	key := countCacheKey(filter)
+
+	t.countMu.Lock()
+	if item, ok := t.countCache[key]; ok && time.Now().Before(item.expireAt) {
+		t.countMu.Unlock()
+		return item.total, nil
+	}
+	t.countMu.Unlock()
+
+	// 缓存未命中：执行真实 count（可能耗时数秒），不持锁，避免阻塞其他请求
+	total, err := t.dao.Count(ctx, filter)
+	if err != nil {
+		return 0, err
+	}
+
+	t.countMu.Lock()
+	t.countCache[key] = changeCountCacheItem{total: total, expireAt: time.Now().Add(changeCountCacheTTL)}
+	t.countMu.Unlock()
+	return total, nil
+}
+
+// countCacheKey 由筛选条件的关键维度拼出缓存键。
+func countCacheKey(f domain.ChangeFilter) string {
+	var b strings.Builder
+	b.WriteString(strconv.FormatInt(f.TenantID, 10))
+	b.WriteByte('|')
+	b.WriteString(f.AssetID)
+	b.WriteByte('|')
+	b.WriteString(f.FieldName)
+	b.WriteByte('|')
+	if f.StartTime != nil {
+		b.WriteString(strconv.FormatInt(*f.StartTime, 10))
+	}
+	b.WriteByte('|')
+	if f.EndTime != nil {
+		b.WriteString(strconv.FormatInt(*f.EndTime, 10))
+	}
+	return b.String()
 }
 
 // TrackChanges 对比新旧实例属性，记录变更
@@ -137,7 +219,7 @@ func (t *ChangeTracker) ListByAssetID(ctx context.Context, filter domain.ChangeF
 	if err != nil {
 		return nil, 0, fmt.Errorf("查询变更历史失败: %w", err)
 	}
-	total, err := t.dao.Count(ctx, filter)
+	total, err := t.cachedCount(ctx, filter)
 	if err != nil {
 		return nil, 0, fmt.Errorf("统计变更历史失败: %w", err)
 	}
@@ -158,37 +240,68 @@ func (t *ChangeTracker) GetSummary(ctx context.Context, filter domain.ChangeFilt
 		succeeded int
 	)
 
-	if total, err := t.dao.Count(ctx, filter); err != nil {
-		failed++
-		t.logger.Warn("统计变更总数失败，已跳过", elog.FieldErr(err))
-	} else {
+	// 统计项串行执行 + 总时限，超时即返回已算出的部分。
+	//
+	// 【实测根因】（2026-10-31，ecam_change_history 5,399,871 条）
+	//   单次 group by model_uid  → 1 分 38 秒
+	//   单次 group by field_name → 超过 200 秒仍未返回
+	//   单次 CountDocuments      → 4.9 秒
+	// 因此：
+	//   - 原实现串行 4 项 → 接口实测 20 秒以上不返回，线上 300s 后 504
+	//   - **不能并行**：4 个重聚合会争抢 Mongo 连接池，
+	//     实测出现 `total connections: 0` 与 `timed out while checking out a connection`，
+	//     反而会拖垮其它请求（这是本轮试过并回退的方案）。
+	//
+	// 采用策略：总时限内能算多少算多少，超时项跳过并告警，
+	// 让接口在可接受时间内返回部分统计，而不是挂死。
+	// 真正的性能修复需要为 (tenant_id, model_uid/field_name/provider)
+	// 建覆盖索引，属生产库结构变更，需批准后执行。
+	deadline := time.Now().Add(changeSummaryBudget)
+	budgetCtx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+
+	step := func(name string, fn func(context.Context) error) {
+		if budgetCtx.Err() != nil {
+			failed++
+			t.logger.Warn("变更统计超出总时限，已跳过", elog.String("item", name))
+			return
+		}
+		if err := fn(budgetCtx); err != nil {
+			failed++
+			t.logger.Warn("变更统计项失败，已跳过", elog.String("item", name), elog.FieldErr(err))
+			return
+		}
 		succeeded++
-		summary.Total = total
 	}
 
-	if byResource, err := t.dao.CountByModelUID(ctx, filter); err != nil {
-		failed++
-		t.logger.Warn("按资源类型统计失败，已跳过", elog.FieldErr(err))
-	} else {
-		succeeded++
-		summary.ByResourceType = byResource
-	}
-
-	if byField, err := t.dao.CountByField(ctx, filter); err != nil {
-		failed++
-		t.logger.Warn("按字段统计失败，已跳过", elog.FieldErr(err))
-	} else {
-		succeeded++
-		summary.ByField = byField
-	}
-
-	if byProvider, err := t.dao.CountByProvider(ctx, filter); err != nil {
-		failed++
-		t.logger.Warn("按云厂商统计失败，已跳过", elog.FieldErr(err))
-	} else {
-		succeeded++
-		summary.ByProvider = byProvider
-	}
+	step("total", func(c context.Context) error {
+		v, err := t.cachedCount(c, filter)
+		if err == nil {
+			summary.Total = v
+		}
+		return err
+	})
+	step("by_resource_type", func(c context.Context) error {
+		v, err := t.dao.CountByModelUID(c, filter)
+		if err == nil {
+			summary.ByResourceType = v
+		}
+		return err
+	})
+	step("by_field", func(c context.Context) error {
+		v, err := t.dao.CountByField(c, filter)
+		if err == nil {
+			summary.ByField = v
+		}
+		return err
+	})
+	step("by_provider", func(c context.Context) error {
+		v, err := t.dao.CountByProvider(c, filter)
+		if err == nil {
+			summary.ByProvider = v
+		}
+		return err
+	})
 
 	if succeeded == 0 {
 		return nil, fmt.Errorf("变更统计全部失败（%d 项）", failed)
