@@ -8935,3 +8935,35 @@ GET /api/v1/cam/iam/permissions/groups/999999 → 500 {"code":500,"msg":"获取�
 **改一处"明显不对"的代码前，先读它周围的注释。**
 如果没有读那 3 行注释，我会把一个**有记录的刻意决定**当成疏漏改掉；
 这类"热心修复"制造的问题，比不修更难排查 —— 因为它看起来更像一次改进。
+
+---
+
+## 2026-10-31 新方法:API **泄露面扫描**(59 端点的只读探测)——首例修复(#234)
+
+### 一、方法(可复用)
+1. 从前端 api 层抽取**含路径参数**的端点(`url: ${API_SERVICE.CAM}/...${...}`),把参数替换为 `999999`;
+2. 过滤掉写操作路径(delete/retry/sync/confirm/execute/rollback/apply/bind/batch),**只发 GET**;
+3. 对每个响应体扫描**存储/实现痕迹**:`mongo` / `sql` / `redis` / `panic` / `goroutine` / `.go:NN` / `dial tcp` / `no such host` / `duplicate key` / `BSON` / `collection` / `ErrNoDocuments` 等。
+
+### 二、首次扫描结果(59 端点)
+| 结果 | 数量 | 说明 |
+|---|---|---|
+| 404(正确语义) | **50** | 说明"状态码语义"在多数模块已经正确 |
+| 200 | 6 | 参数化端点本就存在数据(如 `/permissions/users/130` 同型路径) |
+| **500 + 泄露** | **3** | `/alert/channels/{id}`、`/alert/rules/{id}`、`/budget/{id}/progress`(msg 含 `mongo: no documents in result`) |
+
+⇒ **"泄露"是比"状态码"更锋利的一把刀**:50 个端点状态码没问题,但仍有 3 个把存储实现细节直接回给了调用方。
+
+### 三、首例修复(#234,budget)
+- 服务层:`mongo.ErrNoDocuments` → **模块内错误码** `ErrBudgetNotFound(404041)`(与 `cam/template` 本地码先例一致);
+- 处理器:对 `ErrBudgetNotFound` 回 **404 + 领域错误**,不再 `SystemError + err.Error()`;
+- 新增 2 条单测:**不存在→领域错误且文案不含 mongo** / 其他错误仍原样包装;
+- 线上:`/budget/999999/progress` **500+"mongo:..."→ 404+404041**;`/budget/1/progress`(真实数据)**200 无回归**。
+
+### 四、待办(下一轮)
+- `/alert/channels/{id}`、`/alert/rules/{id}` 两处同型泄露(需先定位 alert 的 GetByID 与 handler 分支);
+- 扫描可扩展:非 CAM 前缀端点、POST 只读类查询(如 logs/search)、以及把该扫描固化成一个可重复脚本。
+
+### 五、沉淀
+**安全/质量检查要"看响应体",不能只看状态码**;本次若只统计 4xx/5xx,会认为"50 个 404 + 3 个 500",
+而真正值得修的是那 3 个**内容泄露**(其中 2 个与状态码问题重叠、1 个是纯泄露)。
