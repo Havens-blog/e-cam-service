@@ -9515,3 +9515,24 @@ cache-analyze 等)—— 它们同样不该把存储痕迹或"200+错误码"回�
 **修正了测量方法之后，必须回头重跑用它得出的旧结论，否则修正只对新数据有效。**
 上一轮我"改正了判定窗口"，但如果只是从这一轮起用新标准，那此前打勾的页面就永远带着旧标准的疑点。
 本轮补上了这一步，而且立刻抓到一个漏网页面。
+
+---
+
+## 2026-11-01 审计覆盖再扩:只读 POST 用例补齐 aggregate/diagnose(e-cam-web#178)
+
+**做法延续**:上一轮为"有副作用风险的 POST"确立**显式清单**策略;本轮把日志模块另外两个高频只读查询纳入:
+- `POST /logs/aggregate` body `{log_type:'waf',start_time,end_time}`(出处 LogAggregateRequest;dimension/metric 可选);
+- `POST /logs/diagnose`  body `{log_type:'waf',start_time,end_time}`(出处 LogDiagnoseRequest;契约**仅 waf**,SLB/CDN 明确报错 ⇒ 固定 waf)。
+
+**验证**:node --check / eslint 通过;`--only=leaks` 三个只读 POST 全部 `[200] ✓ 200 且响应体干净`,
+**0 告警、「全部通过」、exit 0**;**全量审计(7 项)「全部通过」、exit 0**(无回归);CI 四项全绿。
+
+**覆盖现状(leaks 检查)**:
+- GET 派生详情端点 **44 个**(自动派生,含 CAM 前缀与 `const BASE` 两种写法);
+- 只读 POST **3 个**(显式清单:search / aggregate / diagnose,每项标注前端出处与必填字段)。
+
+### 口径沉淀
+**"自动派生 + 显式清单"是审计工具的合理混合形态**:
+- **自动派生**适合**无副作用**的端点(GET)⇒ 覆盖广、零维护;
+- **显式清单**适合**有副作用风险**的端点(POST)⇒ 宁可少覆盖,也要逐项核对契约与语义。
+两者并用,才能既"不漏模块"又"不误触数据"。
