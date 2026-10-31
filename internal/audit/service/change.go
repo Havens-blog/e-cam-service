@@ -247,7 +247,7 @@ func (t *ChangeTracker) ListByAssetID(ctx context.Context, filter domain.ChangeF
 		// closed: EOF"）。而 asset_id 有索引（asset_id_1_ctime_-1），同条件仅 2.9 秒。
 		//
 		// 原实现把 count 失败当成整个请求失败，导致「按字段名筛选」完全不可用
-		//（列表数据其实已取到，却被一并丢弃）。
+		// （列表数据其实已取到，却被一并丢弃）。
 		// 现在：列表照常返回，total=-1 表示「未知」，由前端决定如何展示。
 		t.logger.Warn("统计变更总数失败，列表照常返回（total=-1）",
 			elog.String("asset_id", filter.AssetID),
