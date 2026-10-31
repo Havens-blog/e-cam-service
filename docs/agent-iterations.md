@@ -8300,3 +8300,40 @@ Error while building: ioc\gin.go undefined: syncerpkg.Syncer / capability.Permis
 
 - 390 视口未复测。
 - 三页统计卡在失败时仍显示 0（遗留展示问题）。
+
+---
+
+## 2026-10-31 交付:策略模板列表页(e-cam-web#157)+ 查清"修复被回退"的真相(二进制来源)
+
+### 一、交付:占位页 → 真实列表(只读切片)
+菜单「策略模板管理」指向的页面**一直是占位符**(`<p>…开发中</p>`),而两侧其实都已就绪:
+- 规格:后端仓 `.kiro/specs/multi-cloud-iam/{API_REFERENCE.md,design.md}`;
+- 后端:`GET /api/v1/cam/iam/templates`(category/is_built_in/keyword/page/size,默认 size=20);
+- 前端:`src/api/iam.ts` 的 `listTemplatesApi` 与完整类型、路由 `/iam/templates{/:id}` 都在。
+⇒ 属"**已确认需求未落地**",本轮按**只读切片**补齐:列表(名称/分类/云平台/策略数/类型/更新时间/查看详情)
++ 筛选(关键字、分类走数据字典 `template_category`、类型)+ 加载/**空态(两种文案)**/**失败+重试**/分页;
+纯逻辑抽 `list-params.ts` + 9 例单测;明确**非目标**:新建/编辑/删除/从组创建/应用(业务规则待确认)。
+
+**验收(A 类)**:vitest 9/9、vue-tsc 0、eslint 0、**CI 四项全绿**;
+浏览器实测请求序列 `?page=1&size=20` → `&is_built_in=true` → `&keyword=只读&is_built_in=true`,
+空态文案随筛选切换,**控制台 0 错误**,占位文案消失。
+
+### 二、关键发现:**我修好的接口 500 又回来了** —— 根因是"二进制来源"
+验收复跑时 `/api/v1/cam/iam/templates` 再次返回:
+```
+{"code":500,"msg":"获取模板列表失败: multi-key map passed in for ordered parameter sort"}
+```
+即 **#188 的修复被回退**。排查结论:
+- 主检出 `D:\Haven\e-cam-service` 当前停在**并行会话的落后分支**(不含 #188);
+- 机器上 CompileDaemon 已达 **7 个**;其中某次**构建成功**后重启了服务 ⇒ 二进制变成**从落后分支工作树**编译的产物 ⇒ 我的修复随之消失。
+⇒ **"服务在跑"不等于"在跑主干代码"**。处置:用 `git worktree add --detach origin/main` + `GOWORK=off go build` 产出二进制再启动 ⇒ 接口恢复 200 ✓。
+
+**沉淀(今天第三次同类教训的升级版)**:
+1. "部署/生效"必须核对**代码来源**(分支/提交),不能只看"进程起来了""构建成功了";
+2. 主检出常停在他人分支 ⇒ 凡"要生效"的构建都应从 **`origin/main` 的分离工作树**产出;
+3. 这也解释了为什么"修好的问题会自己回来"——不是别人回退,而是**构建来源漂移**。
+
+### 三、仍未根治(需授权)
+`dev.ps1` 中 `e-cam-service` 既无 `EnvFile` 也无 `GoWorkOff` ⇒ ①`eiam.token_url` 等配置只能来自配置文件(仓库内是空占位)⇒ 仪表盘"资产类别统计"持续失败;
+②CompileDaemon 用 go.work 构建(受在飞 eiam 检出影响)⇒ 构建失败会杀服务、构建成功则可能用**落后分支**覆盖主干修复。
+建议:`dev.ps1` 给该服务加 `GoWorkOff = $true`(一行),并把 dev 启停改为**显式指定构建修订**。
