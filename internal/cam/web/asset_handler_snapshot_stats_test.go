@@ -18,7 +18,7 @@ type fakeInstanceSvc struct {
 	service.InstanceService
 	calls []domain.InstanceFilter
 	// total 由测试按 filter 决定，模拟真实计数
-	totalFor func(domain.InstanceFilter) int64
+	totalFor func(*domain.InstanceFilter) int64
 }
 
 func (f *fakeInstanceSvc) List(_ context.Context, filter domain.InstanceFilter) ([]domain.Instance, int64, error) {
@@ -26,7 +26,7 @@ func (f *fakeInstanceSvc) List(_ context.Context, filter domain.InstanceFilter) 
 	if f.totalFor == nil {
 		return nil, 0, nil
 	}
-	return nil, f.totalFor(filter), nil
+	return nil, f.totalFor(&filter), nil
 }
 
 // TestGetSnapshotStats_口径与真实数据一致 校验统计口径：
@@ -51,7 +51,7 @@ func TestGetSnapshotStats_CountsMatchRealDistribution(t *testing.T) {
 	}
 
 	svc := &fakeInstanceSvc{}
-	svc.totalFor = func(f domain.InstanceFilter) int64 {
+	svc.totalFor = func(f *domain.InstanceFilter) int64 {
 		if len(f.Attributes) == 0 {
 			return 7208 // 全量
 		}
@@ -71,7 +71,7 @@ func TestGetSnapshotStats_CountsMatchRealDistribution(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/assets/snapshot/stats", nil)
+	req := httptest.NewRequest(http.MethodGet, "/assets/snapshot/stats", http.NoBody)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -104,7 +104,7 @@ func TestGetSnapshotStats_RequiresTenant(t *testing.T) {
 	r.GET("/assets/snapshot/stats", h.GetSnapshotStats)
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/assets/snapshot/stats", nil))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/assets/snapshot/stats", http.NoBody))
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
