@@ -8670,3 +8670,29 @@ type:    user 2752 / auto 2714 / timer 1686  （另有 copied 48 / imported 8，
 2. **一个修复可能同时是全局修复**：为让自己的 PR 变绿而去修 depcheck，
    实际解除了所有人的 Test 阻塞 —— 这类"顺手"的公共收益值得优先做。
 
+
+---
+
+## 2026-10-31 IAM 权限组错误状态码语义(#225):包级缺陷第 4 个模块,并首次引入 409
+
+实测:`/iam/groups/999999` → **500**(code 404011)、`/iam/groups/abc` → 400 但 body code 500(**同型**)。
+修复:`statusForIamError` 增 `PermissionGroupNotFound`→404,并**新增业务冲突映射**
+`PermissionGroupAlreadyExist`/`PermissionGroupHasUsers` → **409**(仅 HTTP 语义,响应体不变);
+`group_handler.go` 8 处 500 + 9 处 400 统一;单测补 4 条。
+
+**关键易错点(已在本轮验证)**:IAM 权限组必须用 `errs.PermissionGroupNotFound`(404011);
+`errs.GroupNotFound`(404008)语义是"**字段组**" —— 用错会得到"同为 404 但错误码指向别的语义"的隐性错误。
+
+**验证**:构建通过;包内 ok;**StatusForIamError 13/13 子用例 PASS**;
+线上:`/groups/999999`→**404+404011**、`/groups/abc`→**400+400**、列表→200;前三个模块回归全部保持
+(`/users/999999`→404、`/users/130`→200、`/sync/tasks/1`→404、`/templates/1`→404)。
+**未实测**:409 两条路径需写操作触发(创建同名组/删除仍有成员的组,属未确认业务动作)⇒ **仅单测覆盖**。
+
+**包级缺陷进度**:
+| 模块 | 状态 |
+|---|---|
+| template / sync / user / **group** | ✅ 已修(#214 / #217 / #221 / #225) |
+| permission(4+3) / audit(3+3) | ⏳ 待办 |
+
+**方法效率观察**:第 2~4 个模块的修复成本已降到"**探一次 404 + 改一个 switch + 批量替换 + 单测补例**",
+每轮可稳定交付并留下线上证据;这类"包级复制"缺陷适合按模块逐轮清零。
