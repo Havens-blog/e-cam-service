@@ -3,10 +3,11 @@ package web
 import (
 	"strconv"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/gin-gonic/gin"
 )
 
 // ==================== ECS 云虚拟机 ====================
