@@ -14,13 +14,21 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/alert/service"
 	costdomain "github.com/Havens-blog/e-cam-service/internal/cam/cost/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/gotomicro/ego/core/elog"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 const (
 	// alertTypeBudgetThreshold 预算阈值告警类型
 	alertTypeBudgetThreshold = "budget_threshold"
 )
+
+// ErrBudgetNotFound 预算不存在（模块内错误码，与 internal/cam/template 的本地码做法一致）。
+//
+// 为什么不用共享 errs 里的码：errs 中并没有 budget 语义的码，而错误码是**对外契约**，
+// 不宜借用其它模块的码（如 ResourceNotFound）造成排障误导；故按仓内既有先例在模块内定义。
+var ErrBudgetNotFound = errs.ErrorCode{Code: 404041, Msg: "budget not found"}
 
 // BudgetProgress 预算消耗进度
 type BudgetProgress struct {
@@ -119,6 +127,12 @@ func (s *BudgetService) DeleteBudget(ctx context.Context, id int64) error {
 func (s *BudgetService) GetBudgetProgress(ctx context.Context, budgetID int64) (*BudgetProgress, error) {
 	budget, err := s.budgetDAO.GetByID(ctx, budgetID)
 	if err != nil {
+		// 目标不存在是**业务语义**（API 应回 404），同时避免把 mongo 原始错误
+		// （"mongo: no documents in result"）当作文案泄露给调用方 ——
+		// 实测 GET /api/v1/cam/budget/{id}/progress 此前返回 500 + 原文。
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrBudgetNotFound
+		}
 		return nil, fmt.Errorf("get budget: %w", err)
 	}
 

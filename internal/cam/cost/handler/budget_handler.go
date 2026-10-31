@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -115,6 +116,11 @@ func (h *BudgetHandler) GetBudgetProgress(ctx *gin.Context) {
 
 	progress, err := h.budgetSvc.GetBudgetProgress(ctx.Request.Context(), id)
 	if err != nil {
+		// 预算不存在：按语义回 404 + 领域错误码（此前是 500，且把 mongo 原文当文案泄露）
+		if errors.Is(err, budget.ErrBudgetNotFound) {
+			ctx.JSON(http.StatusNotFound, web.ErrorResult(budget.ErrBudgetNotFound))
+			return
+		}
 		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
 		return
 	}
