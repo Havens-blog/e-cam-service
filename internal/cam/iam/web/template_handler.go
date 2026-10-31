@@ -1,11 +1,13 @@
 package web
 
 import (
+	"net/http"
 	"strconv"
 
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/service"
-	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -36,7 +38,7 @@ func (h *TemplateHandler) CreateTemplate(c *gin.Context) {
 
 	var req CreateTemplateVO
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
@@ -51,7 +53,7 @@ func (h *TemplateHandler) CreateTemplate(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("创建策略模板失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -72,14 +74,14 @@ func (h *TemplateHandler) GetTemplate(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	template, err := h.templateService.GetTemplate(c.Request.Context(), id)
 	if err != nil {
 		h.logger.Error("获取策略模板失败", elog.Int64("tenant_id", tenantID), elog.Int64("template_id", id), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -103,7 +105,7 @@ func (h *TemplateHandler) ListTemplates(c *gin.Context) {
 
 	var req ListTemplatesVO
 	if err := c.ShouldBindQuery(&req); err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
@@ -127,7 +129,7 @@ func (h *TemplateHandler) ListTemplates(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("查询策略模板列表失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -150,13 +152,13 @@ func (h *TemplateHandler) UpdateTemplate(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	var req UpdateTemplateVO
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
@@ -169,7 +171,7 @@ func (h *TemplateHandler) UpdateTemplate(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("更新策略模板失败", elog.Int64("tenant_id", tenantID), elog.Int64("template_id", id), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -190,14 +192,14 @@ func (h *TemplateHandler) DeleteTemplate(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	err = h.templateService.DeleteTemplate(c.Request.Context(), id)
 	if err != nil {
 		h.logger.Error("删除策略模板失败", elog.Int64("tenant_id", tenantID), elog.Int64("template_id", id), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -218,14 +220,14 @@ func (h *TemplateHandler) CreateFromGroup(c *gin.Context) {
 
 	var req CreateFromGroupVO
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	template, err := h.templateService.CreateFromGroup(c.Request.Context(), req.GroupID, req.Name, req.Description)
 	if err != nil {
 		h.logger.Error("从用户组创建模板失败", elog.Int64("tenant_id", tenantID), elog.Int64("group_id", req.GroupID), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
