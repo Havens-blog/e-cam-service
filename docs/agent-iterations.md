@@ -8246,3 +8246,57 @@ Error while building: ioc\gin.go undefined: syncerpkg.Syncer / capability.Permis
 
 - 390 视口未复测。
 - 其余 3 页（cdn/image/eip）仍用内联实现，未迁移。
+
+---
+
+## cam-migrate-rest-20261031（重构：CDN/镜像/EIP 三页错误态改用 useListError）
+
+**状态**：**已合并**（`e-cam-web#156`，merge `2319e44`）
+
+### 变更（3 文件 +70/−64，纯重构）
+
+`#152` 抽出 `useListError`（DNS 试点）、`#154` 迁移快照页；本轮把**剩余三页**（CDN、镜像、EIP）也切过去 ——
+「失败 → 持久错误态 + 重试」的实现从 **5 份内联副本收敛为 1 份共享逻辑**。
+
+每页三处：
+1. `import { handleApiError, type ErrorInfo }` → `import { useListError }`
+2. `const errorInfo = ref<ErrorInfo | null>(null)` → `const { errorInfo, run } = useListError()`
+3. `fetchData` 改为 `run(() => listXxxApi(...), '获取X列表失败')`；失败分支显式清空列表与分页（`res === undefined`）
+
+### 验收（逐页注入 500 + 恢复）
+
+| 页面 | 失败态 | 点重试恢复 |
+|---|---|---|
+| CDN | 无「暂无数据」；「获取CDN列表失败 错误代码: 500」+ 重试 | ✅ 20 行 / 共 **963** |
+| 镜像 | 无「暂无数据」；「获取镜像列表失败 错误代码: 500」+ 重试 | ✅ 20 行 / 共 **1389** |
+| EIP | 无「暂无数据」；「获取EIP列表失败 错误代码: 500」+ 重试 | ✅ 20 行 / 共 **365** |
+
+| 项 | 结果 |
+|---|---|
+| `vitest run` 全量 | ✅ **1275 passed（99 文件）** |
+| `vue-tsc -b` / `eslint src` / `vite build` | ✅ 均 exit 0 |
+| PR CI（含 Gzip Budget） | ✅ 四项全绿 |
+
+### 过程记录：类型检查第二次拦住批量改动
+
+批量脚本首次执行后 `vue-tsc` 报 **TS1128**：我按 `'  }'` 判定函数结尾，误把 `finally` 的闭合当成函数结尾，
+每个文件多留一个 `}`。修正后一次通过。
+
+这已是同类改动中**第二次**由 tsc 在提交前抓住结构错误（上一次是 catch 未改写导致 `TS6133`）。
+
+### 本轮另有一次「主动放弃」（如实记录）
+
+原计划做的是**后端 `/assets/snapshot/stats` 聚合接口**，用于消除快照页 6.9MB/7.1s 的全量拉取。
+调研后确认可行（`attributes.snapshot_type` 可直接过滤，`Limit:1` 计数即可），但卡在**「正常」这一项的口径**：
+
+前端 `isSnapshotSuccess` 用 `status` **包含** accomplished/normal/available/completed 之一（大小写不敏感），
+而后端 `Attributes` 过滤是**精确等值**。要做等值计数，就得枚举状态并求和 —— 但我无法确认后端状态值的完整集合，
+一旦漏掉某个别名，统计卡数字就会**变小且看似合理**（比报错更危险）。
+
+按「涉及口径未确认 → 标记等待确认」的规则，**本轮没做**，改为完成这项零风险的重构。
+缺口已记录为后续项：**先确认快照状态值的实际分布**（可直接查库统计 distinct status），再定聚合口径。
+
+### 未验证
+
+- 390 视口未复测。
+- 三页统计卡在失败时仍显示 0（遗留展示问题）。
