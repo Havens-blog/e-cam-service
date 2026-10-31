@@ -2,6 +2,7 @@
 package web
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/Havens-blog/e-cam-service/internal/alert/domain"
@@ -140,6 +141,11 @@ func (h *AlertHandler) GetRule(c *gin.Context) {
 
 	rule, err := h.alertService.GetRule(c.Request.Context(), id)
 	if err != nil {
+		// 规则不存在：404 + 领域错误码（此前是 500 + mongo 原始错误）
+		if errors.Is(err, service.ErrAlertRuleNotFound) {
+			c.JSON(404, gin.H{"code": service.ErrAlertRuleNotFound.Code, "msg": service.ErrAlertRuleNotFound.Msg})
+			return
+		}
 		c.JSON(500, gin.H{"code": 500, "msg": err.Error()})
 		return
 	}
@@ -363,6 +369,11 @@ func (h *AlertHandler) GetChannel(c *gin.Context) {
 
 	ch, err := h.alertService.GetChannel(c.Request.Context(), id)
 	if err != nil {
+		// 渠道不存在：404 + 领域错误码（此前是 500 + mongo 原始错误）
+		if errors.Is(err, service.ErrAlertChannelNotFound) {
+			c.JSON(404, gin.H{"code": service.ErrAlertChannelNotFound.Code, "msg": service.ErrAlertChannelNotFound.Msg})
+			return
+		}
 		c.JSON(500, gin.H{"code": 500, "msg": err.Error()})
 		return
 	}
