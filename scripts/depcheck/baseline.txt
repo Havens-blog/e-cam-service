@@ -3,11 +3,4 @@
 # Only shrink this file. Fix a violation, delete its line; never add without review.
 # Regenerate (adds nothing new on a clean tree): go run ./scripts/depcheck -update
 
-cam/init.go|cmdb/repository
-cam/init.go|cmdb/repository/dao
-cam/servicetree/adapter/factory.go|cmdb/repository
-cam/servicetree/adapter/local_cmdb.go|cmdb/repository
-cam/servicetree/adapter/local_cmdb.go|cmdb/repository/dao
-cam/servicetree/wire.go|cmdb/repository
-cam/servicetree/wire_gen.go|cmdb/repository
 cam/wire.go|alert/repository/dao
