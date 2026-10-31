@@ -9755,3 +9755,77 @@ cache-analyze 等)—— 它们同样不该把存储痕迹或"200+错误码"回�
 
 本轮我把断点从 560 挪到 768 —— 那是症状解，被 769/900 立刻打回；
 转向 `flex-wrap` 才是病因解。**能自我打回的验证，比修完之后看起来没问题更值钱。**
+
+---
+
+## cam-auth-verify-20261101（未登录/回跳验收：一条真实结论 + 一个被自己证伪的假阳性）
+
+**状态**：本轮无代码改动（**验证类**），仅追加记录。
+
+### 一、未登录直接访问受保护页面（4 个路由）— 通过
+
+| 路由 | 结果 |
+|---|---|
+| `/cam/compute/ecs` | → `/console/login?redirect=...%2Fcam%2Fcompute%2Fecs` ✅ |
+| `/cam/finops/cost` | → `/console/login?redirect=...` ✅ |
+| `/cam/iam/audit` | → `/console/login?redirect=...` ✅ |
+| `/cam/dashboard` | → `/console/login?redirect=...` ✅ |
+
+四个路由都正确跳转登录页、携带回跳参数、无白屏、无报错页。
+
+### 二、登录后回跳 — 同源正常，跨端口异常（后者是我的环境造成的）
+
+第一次测试（我的隔离验证服务 `:3337`）：
+
+```
+1) /cam/iam/audit
+2) /cam/iam/audit
+3) /console/login?redirect=http%3A%2F%2Flocalhost%3A3337%2Fcam%2Fiam%2Faudit
+...
+6) /console/tenant-select
+7) /console/workbench        ← 回跳到 workbench，没回到 /cam/iam/audit
+```
+
+我据此判为缺陷。**但这是错的。**
+
+排查发现 `haven-console/src/views/login/Login.vue` 的 `sanitizeRedirect`：
+
+```ts
+url = new URL(raw, window.location.origin);
+if (url.origin !== window.location.origin) return null;   // 非同源 → 丢弃
+```
+
+我的验证服务在 **:3337**，而登录页在 **:8888** —— 两者**不同源**，`redirect` 被判定为潜在开放重定向而丢弃，
+于是回落到默认目标 `/workbench`。
+
+改用 **同源（:8888，与生产一致）** 复测：
+
+```
+1) /cam/iam/audit
+...
+6) /cam/iam/audit            ← 正确回到原地址
+7) /cam/iam/audit
+8) /cam/iam/audit
+落地: /cam/iam/audit（含表格）
+→ 回跳成功
+```
+
+**结论：登录回跳在生产同源部署下正常；`:3337` 下的失败是我的验证环境差异（端口不同源）造成的假阳性。**
+
+### 三、这条教训比修 bug 更重要
+
+我的隔离验证 worktree 跑在 **:3337**，而 console 登录页在 **:8888**。
+**任何跨应用流程（登录回跳、SSO、跨应用跳转）在这个端口上都会因"不同源"而表现异常。**
+
+以后：
+- 涉及**跨应用**的验收（登录、回跳、单点登录），必须用 **:8888 同源**环境；
+- 只在 :3337 上验证单应用内的页面行为；
+- 看到"跨应用跳转失败"时，**先确认端口是否同源**，再判断是不是产品缺陷。
+
+这是本会话第三次同类失误：前两次是**观测窗口（4s vs 9s）**与**测量对象（document 溢出 vs 元素可见像素、navbar 可滚动性）**，
+这次是**环境同源性**。三者共同点：**我先拿到了一个"看起来是缺陷"的现象，就去下结论，而没有先问"这个现象是不是我的观测方式造成的"。**
+
+### 未验证
+
+- 无权限（403）路径未构造（需要非管理员账号，本轮无可用账号）。
+- 390 视口下的登录页未复测。
