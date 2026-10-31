@@ -31,6 +31,17 @@ var defaultIgnoreFields = map[string]bool{
 // 变更记录是历史数据，总量变化缓慢，TTL 内复用 total 完全可接受。
 const changeCountCacheTTL = 60 * time.Second
 
+// changeCountBudget 单次 Count 的时限。
+//
+// 实测（2026-10-31，ecam_change_history 5,399,871 条）：
+//   - 无筛选 / asset_id 筛选（有索引）：2.9~4.9 秒
+//   - field_name 筛选（无索引，全表扫）：>30 秒后 Mongo 主动断开连接
+//
+// 取 8 秒：覆盖有索引的正常情况并留余量，同时避免无索引查询把请求拖到
+// Mongo 自己超时断连（那样会抛出 EOF 这类不可控错误）。
+// 超时后由 ListByAssetID 走「列表照常返回、total=-1」的降级。
+const changeCountBudget = 8 * time.Second
+
 // changeSummaryBudget 变更统计接口的总时限。
 //
 // 实测单项聚合需 90 秒以上（见 GetSummary 注释），4 项串行远超 HTTP 超时。
@@ -85,8 +96,15 @@ func (t *ChangeTracker) cachedCount(ctx context.Context, filter *domain.ChangeFi
 	}
 	t.countMu.Unlock()
 
-	// 缓存未命中：执行真实 count（可能耗时数秒），不持锁，避免阻塞其他请求
-	total, err := t.dao.Count(ctx, *filter)
+	// 缓存未命中：执行真实 count（可能耗时数秒乃至数十秒），不持锁，避免阻塞其他请求。
+	//
+	// 加独立时限：按 field_name 筛选时该字段无索引，CountDocuments 在 540 万行上
+	// 实测 >30 秒后被 Mongo 断开（接口 500）。限时后调用方能拿到明确的超时错误，
+	// 从而走「列表照常返回、total 未知」的降级路径，而不是干等 Mongo 自己断连。
+	countCtx, cancel := context.WithTimeout(ctx, changeCountBudget)
+	defer cancel()
+
+	total, err := t.dao.Count(countCtx, *filter)
 	if err != nil {
 		return 0, err
 	}
@@ -221,7 +239,21 @@ func (t *ChangeTracker) ListByAssetID(ctx context.Context, filter domain.ChangeF
 	}
 	total, err := t.cachedCount(ctx, &filter)
 	if err != nil {
-		return nil, 0, fmt.Errorf("统计变更历史失败: %w", err)
+		// count 失败不应让整个列表请求失败。
+		//
+		// 【实测根因】ecam_change_history 5,399,871 条。按 field_name 筛选时
+		// 该字段无索引，CountDocuments 需全表扫描：实测 >30 秒后 Mongo 断开连接，
+		// 接口返回 500（"统计变更历史失败: connection(...) socket was unexpectedly
+		// closed: EOF"）。而 asset_id 有索引（asset_id_1_ctime_-1），同条件仅 2.9 秒。
+		//
+		// 原实现把 count 失败当成整个请求失败，导致「按字段名筛选」完全不可用
+		//（列表数据其实已取到，却被一并丢弃）。
+		// 现在：列表照常返回，total=-1 表示「未知」，由前端决定如何展示。
+		t.logger.Warn("统计变更总数失败，列表照常返回（total=-1）",
+			elog.String("asset_id", filter.AssetID),
+			elog.String("field_name", filter.FieldName),
+			elog.FieldErr(err))
+		return records, -1, nil
 	}
 	return records, total, nil
 }
