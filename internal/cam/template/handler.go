@@ -64,7 +64,7 @@ func (h *TemplateHandler) CreateTemplate(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	var req CreateTemplateReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 	tmpl, err := h.svc.CreateTemplate(ctx.Request.Context(), tenantID, req)
@@ -79,7 +79,7 @@ func (h *TemplateHandler) GetTemplate(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
 		return
 	}
 	tmpl, err := h.svc.GetTemplate(ctx.Request.Context(), tenantID, id)
@@ -116,12 +116,12 @@ func (h *TemplateHandler) UpdateTemplate(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
 		return
 	}
 	var req UpdateTemplateReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 	if err := h.svc.UpdateTemplate(ctx.Request.Context(), tenantID, id, req); err != nil {
@@ -135,7 +135,7 @@ func (h *TemplateHandler) DeleteTemplate(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
 		return
 	}
 	if err := h.svc.DeleteTemplate(ctx.Request.Context(), tenantID, id); err != nil {
@@ -151,12 +151,12 @@ func (h *TemplateHandler) ProvisionFromTemplate(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
 		return
 	}
 	var req ProvisionReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 	taskID, err := h.svc.ProvisionFromTemplate(ctx.Request.Context(), tenantID, middleware.GetUsername(ctx), id, req)
@@ -171,7 +171,7 @@ func (h *TemplateHandler) DirectProvision(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	var req DirectProvisionReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 	taskID, err := h.svc.DirectProvision(ctx.Request.Context(), tenantID, middleware.GetUsername(ctx), req)
@@ -226,36 +226,36 @@ func (h *TemplateHandler) GetProvisionTask(ctx *gin.Context) {
 func (h *TemplateHandler) ListRegions(ctx *gin.Context) {
 	accountIDStr := ctx.Query("cloud_account_id")
 	if accountIDStr == "" {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "cloud_account_id is required"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "cloud_account_id is required"))
 		return
 	}
 	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid cloud_account_id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid cloud_account_id"))
 		return
 	}
 
 	account, err := h.accountProvider.GetByID(ctx.Request.Context(), accountID)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.AccountNotFound, "cloud account not found"))
+		ctx.JSON(http.StatusNotFound, web.ErrorResultWithMsg(errs.AccountNotFound, "cloud account not found"))
 		return
 	}
 
 	adapter, err := h.adapterFactory.GetAdapter(account)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(ErrCloudAPIError, "failed to create adapter"))
+		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, "failed to create adapter"))
 		return
 	}
 
 	ecsAdapter := adapter.ECS()
 	if ecsAdapter == nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(ErrCloudAPIError, "ECS adapter not available"))
+		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, "ECS adapter not available"))
 		return
 	}
 
 	regions, err := ecsAdapter.GetRegions(ctx.Request.Context())
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
+		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(regions))
@@ -268,12 +268,12 @@ func (h *TemplateHandler) ListInstanceTypes(ctx *gin.Context) {
 	}
 	region := ctx.Query("region")
 	if region == "" {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "region is required"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "region is required"))
 		return
 	}
 	result, err := rq.ListAvailableInstanceTypes(ctx.Request.Context(), region)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
+		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -286,12 +286,12 @@ func (h *TemplateHandler) ListImages(ctx *gin.Context) {
 	}
 	region := ctx.Query("region")
 	if region == "" {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "region is required"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "region is required"))
 		return
 	}
 	result, err := rq.ListAvailableImages(ctx.Request.Context(), region)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
+		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -304,12 +304,12 @@ func (h *TemplateHandler) ListVPCs(ctx *gin.Context) {
 	}
 	region := ctx.Query("region")
 	if region == "" {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "region is required"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "region is required"))
 		return
 	}
 	result, err := rq.ListVPCs(ctx.Request.Context(), region)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
+		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -323,12 +323,12 @@ func (h *TemplateHandler) ListSubnets(ctx *gin.Context) {
 	region := ctx.Query("region")
 	vpcID := ctx.Query("vpc_id")
 	if region == "" || vpcID == "" {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "region and vpc_id are required"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "region and vpc_id are required"))
 		return
 	}
 	result, err := rq.ListSubnets(ctx.Request.Context(), region, vpcID)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
+		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -342,12 +342,12 @@ func (h *TemplateHandler) ListSecurityGroups(ctx *gin.Context) {
 	region := ctx.Query("region")
 	vpcID := ctx.Query("vpc_id")
 	if region == "" || vpcID == "" {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "region and vpc_id are required"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "region and vpc_id are required"))
 		return
 	}
 	result, err := rq.ListSecurityGroups(ctx.Request.Context(), region, vpcID)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
+		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -359,24 +359,24 @@ func (h *TemplateHandler) ListSecurityGroups(ctx *gin.Context) {
 func (h *TemplateHandler) getResourceQueryAdapter(ctx *gin.Context) (cloudx.ResourceQueryAdapter, error) {
 	accountIDStr := ctx.Query("cloud_account_id")
 	if accountIDStr == "" {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "cloud_account_id is required"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "cloud_account_id is required"))
 		return nil, errors.New("cloud_account_id is required")
 	}
 	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid cloud_account_id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid cloud_account_id"))
 		return nil, err
 	}
 
 	account, err := h.accountProvider.GetByID(ctx.Request.Context(), accountID)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.AccountNotFound, "cloud account not found"))
+		ctx.JSON(http.StatusNotFound, web.ErrorResultWithMsg(errs.AccountNotFound, "cloud account not found"))
 		return nil, err
 	}
 
 	adapter, err := h.adapterFactory.GetAdapter(account)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(ErrCloudAPIError, "failed to create adapter"))
+		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, "failed to create adapter"))
 		return nil, err
 	}
 
@@ -392,8 +392,33 @@ func (h *TemplateHandler) getResourceQueryAdapter(ctx *gin.Context) (cloudx.Reso
 func (h *TemplateHandler) handleError(ctx *gin.Context, err error) {
 	var ec errs.ErrorCode
 	if errors.As(err, &ec) {
-		ctx.JSON(http.StatusOK, web.ErrorResult(ec))
+		ctx.JSON(httpStatusForCode(ec.Code), web.ErrorResult(ec))
 		return
 	}
-	ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+	// 非领域错误：不外泄 err.Error()（可能含存储/实现细节，如 "mongo: no documents in result"）；
+	// 细节应由服务层日志承载，对外只给稳定的系统错误文案。
+	ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
+}
+
+// httpStatusForCode 把**业务错误码段位**映射为 HTTP 状态码。
+//
+// 背景（实测 2026-10-31）：本处理器此前把**所有**错误响应都写成 `ctx.JSON(http.StatusOK, ...)`，于是
+//
+//	GET /api/v1/cam/templates/999999       → HTTP 200 {"code":404030,"msg":"vm template not found"}
+//	GET /api/v1/cam/templates/abc          → HTTP 200 {"code":400,"msg":"invalid id"}
+//	GET /api/v1/cam/provision-tasks/999999 → HTTP 200 {"code":404031,…}
+//
+// 只按 HTTP 判成功的客户端会把"不存在/参数错"当成成功 —— 与 #214/#217/#221/#225/#231/#238 的
+// "该 4xx 却回 5xx" 恰成**相反**的错误形态。
+//
+// 段位约定（见 internal/cam/errs 与各模块本地码）：404xxx = 目标不存在；4xx（如 ParamsError=400）= 参数错误。
+func httpStatusForCode(code int) int {
+	switch {
+	case code >= 404000 && code < 405000:
+		return http.StatusNotFound
+	case code >= 400 && code < 500:
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
 }
