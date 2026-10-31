@@ -8201,3 +8201,48 @@ Error while building: ioc\gin.go undefined: syncerpkg.Syncer / capability.Permis
 ### 三、顺手核对:我的 #133 修复完好
 主检出显示 `/service-tree*` 旧路径,一度疑似被回退;**按 `origin/main` 核对后确认**菜单已是 `/cmdb/service-tree*`(我的 #133 在主干),
 主检出的旧值只是**它所在分支落后** ⇒ 又一次"先核对修订,再下结论"(与上周 depcheck 假警报同源)。
+
+---
+
+## cam-snapshot-uselistfetch-20261031（重构：快照页错误态改用 useListError）
+
+**状态**：**已合并**（`e-cam-web#154`，merge `7577e34`）
+
+### 变更（1 文件 +13/−11，纯重构，行为不变）
+
+`#152` 抽出 `useListError` 后只在 DNS 页试点；本轮把 `#144` 手工实现的快照页也切过去，
+验证该封装能适配第二个页面（inline `ref` + 手动 set/clear → `run()`）。
+
+失败时仍显式清空列表与分页（`res === undefined` 分支）——「失败 ≠ 空数据」这层语义保持可见。
+
+### 验收
+
+| 项 | 结果 |
+|---|---|
+| `vitest run` 全量 | ✅ **1275 passed（99 文件）** |
+| `vue-tsc -b` / `eslint src` / `vite build` | ✅ 均 exit 0 |
+| PR CI（含 Gzip Budget） | ✅ 四项全绿 |
+| 浏览器：失败态（注入 500） | ✅ 无「暂无数据」；显示「获取快照列表失败 错误代码: 500」+ 重试；分页隐藏 |
+| 浏览器：点重试恢复 | ✅ **20 行 / 共 7208 条** |
+
+证据：`D:\Haven\.browser-verify\cam-snapshot-composable\{snapshot-migrated.png,snapshot-recovered.png,verify.json}`。
+
+### 关键插曲：本地后端整体宕机，差点被我误判为代码回归
+
+第一次「点重试恢复」验证**失败**（仍报错、0 行）。排查顺序：
+
+1. 怀疑改造破坏了重试 → 在页面里直接 `fetch('/api/v1/cam/assets/snapshot')`，仍 500；
+2. 把注入的路由 `unroute` 掉再测 → **仍然 500**；
+3. 抓响应体：`502 Bad Gateway`（nginx），且 `/assets/ecs` 同样 502
+   → **本地后端 `:8001` 整体宕机**，与本次改动无关。
+
+重启本地后端（`dev.ps1 start e-cam-service`）后复测：20 行 / 7208 条，通过。
+
+**教训**：注入式验证必须保留一个「去掉注入后能否成功」的对照点。
+如果只测「注入 500 → 页面报错」，我永远不会发现后端已经挂了 ——
+**失败态验证通过，不代表环境是健康的**。
+
+### 未验证
+
+- 390 视口未复测。
+- 其余 3 页（cdn/image/eip）仍用内联实现，未迁移。
