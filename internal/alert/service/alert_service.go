@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,7 +11,20 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/alert/channel"
 	"github.com/Havens-blog/e-cam-service/internal/alert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/alert/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/gotomicro/ego/core/elog"
+	"go.mongodb.org/mongo-driver/mongo"
+)
+
+// 告警模块的**本地**错误码（与 internal/cam/template、internal/cam/cost/budget 的本地码做法一致）。
+//
+// 为什么需要：GetRule/GetChannel 之前是 DAO 的**纯透传**，目标不存在时把
+// "mongo: no documents in result" 原样冒到 API —— 实测
+// GET /api/v1/cam/alert/rules/999999 与 /alert/channels/999999 返回 500 + 该原文：
+// 既是语义错误（应 404），也泄露了存储实现细节。
+var (
+	ErrAlertRuleNotFound    = errs.ErrorCode{Code: 404042, Msg: "alert rule not found"}
+	ErrAlertChannelNotFound = errs.ErrorCode{Code: 404043, Msg: "alert channel not found"}
 )
 
 // AlertService 告警服务
@@ -42,7 +56,15 @@ func (s *AlertService) UpdateRule(ctx context.Context, rule domain.AlertRule) er
 }
 
 func (s *AlertService) GetRule(ctx context.Context, id int64) (domain.AlertRule, error) {
-	return s.dao.GetRuleByID(ctx, id)
+	rule, err := s.dao.GetRuleByID(ctx, id)
+	if err != nil {
+		// 不存在 → 领域错误（API 回 404），且不外泄 mongo 原始错误
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return domain.AlertRule{}, ErrAlertRuleNotFound
+		}
+		return domain.AlertRule{}, err
+	}
+	return rule, nil
 }
 
 func (s *AlertService) ListRules(ctx context.Context, filter domain.AlertRuleFilter) ([]domain.AlertRule, int64, error) {
@@ -287,7 +309,15 @@ func (s *AlertService) UpdateChannel(ctx context.Context, ch domain.Notification
 }
 
 func (s *AlertService) GetChannel(ctx context.Context, id int64) (domain.NotificationChannel, error) {
-	return s.dao.GetChannelByID(ctx, id)
+	ch, err := s.dao.GetChannelByID(ctx, id)
+	if err != nil {
+		// 同 GetRule：不存在 → 领域错误（404），不外泄存储细节
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return domain.NotificationChannel{}, ErrAlertChannelNotFound
+		}
+		return domain.NotificationChannel{}, err
+	}
+	return ch, nil
 }
 
 func (s *AlertService) ListChannels(ctx context.Context, filter domain.ChannelFilter) ([]domain.NotificationChannel, int64, error) {
