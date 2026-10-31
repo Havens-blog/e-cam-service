@@ -3,10 +3,10 @@ package web
 import (
 	"strings"
 
-	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/Havens-blog/e-cam-service/internal/shared/authz"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
+
+	"github.com/Havens-blog/e-cam-service/internal/cert/service"
 )
 
 // ---------------------------------------------------------------------
@@ -99,10 +99,11 @@ func isValidRole(r Role) bool {
 	return false
 }
 
-// parseClaimCodes 委托 internal/shared/authz.ParseClaimCodes（单一实现）。
-// 历史上这里与 logquery/web 各有一份副本，且已分叉出「未 trim 导致 403」的缺陷。
+// parseClaimCodes 使用 cert 域内的 ParseClaimCodes（见 claimcodes.go）。
+// 不再 import internal/shared/authz：internal/cert 是 extraction-ready 域，
+// depcheck R4 要求它不得依赖 internal/shared，否则无法整体剥离。
 func parseClaimCodes(raws ...string) []string {
-	return authz.ParseClaimCodes(raws...)
+	return ParseClaimCodes(raws...)
 }
 
 // containsCode 能力码命中判定。
