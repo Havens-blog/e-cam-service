@@ -21,17 +21,37 @@ import (
 // rdsMetricDAOMock 指标 DAO mock(分别记录首写批与覆盖批,校验日期分流)
 type rdsMetricDAOMock struct {
 	dao.RDSMetricDAO
+	// mu 保护下列字段：go test -race 检出 DATA RACE —— collectAccount 会并发调用
+	// BulkInsertIfAbsent/BulkUpsertMetrics（sync_rds_metrics.go 内 goroutine），
+	// 多个 goroutine 并发写同一组 slice。测试 fake 必须自身并发安全。
+	mu                sync.Mutex
 	insertsIfAbsent   []types.RDSMetric
 	upserts           []types.RDSMetric
 	insertIfAbsentErr error
 	bulkUpsertErr     error
 }
 
+// allIfAbsent 返回首写批的快照（加锁读，供断言使用）
+func (m *rdsMetricDAOMock) allIfAbsent() []types.RDSMetric {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]types.RDSMetric(nil), m.insertsIfAbsent...)
+}
+
+// allUpserts 返回覆盖批的快照（加锁读，供断言使用）
+func (m *rdsMetricDAOMock) allUpserts() []types.RDSMetric {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]types.RDSMetric(nil), m.upserts...)
+}
+
 func (m *rdsMetricDAOMock) BulkInsertIfAbsent(_ context.Context, metrics []types.RDSMetric) error {
 	if m.insertIfAbsentErr != nil {
 		return m.insertIfAbsentErr
 	}
+	m.mu.Lock()
 	m.insertsIfAbsent = append(m.insertsIfAbsent, metrics...)
+	m.mu.Unlock()
 	return nil
 }
 
@@ -39,7 +59,9 @@ func (m *rdsMetricDAOMock) BulkUpsertMetrics(_ context.Context, metrics []types.
 	if m.bulkUpsertErr != nil {
 		return m.bulkUpsertErr
 	}
+	m.mu.Lock()
 	m.upserts = append(m.upserts, metrics...)
+	m.mu.Unlock()
 	return nil
 }
 
@@ -278,7 +300,7 @@ func TestSyncRDSMetrics_NoAccounts(t *testing.T) {
 	if err := e.Execute(context.Background(), task); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if len(daoMock.insertsIfAbsent)+len(daoMock.upserts) != 0 {
+	if len(daoMock.allIfAbsent())+len(daoMock.allUpserts()) != 0 {
 		t.Fatal("无账号不得产生写入")
 	}
 }
@@ -301,11 +323,11 @@ func TestSyncRDSMetrics_ActiveAccountFiltering(t *testing.T) {
 	}
 	// 仅账号 1 被采集:rm-a 今日/昨日 2 行 + rm-zero-today 今日行 = 3 行
 	// (mock querier 按实例过滤:账号 1 只有 rm-a 实例 → 2 行)
-	written := len(daoMock.insertsIfAbsent) + len(daoMock.upserts)
+	written := len(daoMock.allIfAbsent()) + len(daoMock.allUpserts())
 	if written != 2 {
 		t.Fatalf("written = %d, want 2 (无 RDS 实例账号不得产生写入)", written)
 	}
-	for _, m := range daoMock.insertsIfAbsent {
+	for _, m := range daoMock.allIfAbsent() {
 		if m.AccountID != 1 {
 			t.Fatalf("无 RDS 实例的账号 2 被采集: %+v", m)
 		}
@@ -336,10 +358,10 @@ func TestSyncRDSMetrics_FirstWriteVsYesterdayOverwrite(t *testing.T) {
 	yesterday := time.Now().In(nasMetricsCSTZone).AddDate(0, 0, -1).Format("2006-01-02")
 
 	// 今日行(rm-a + rm-zero-today)全部走首写生效批
-	if len(daoMock.insertsIfAbsent) != 2 {
-		t.Fatalf("insert-if-absent rows = %d, want 2: %+v", len(daoMock.insertsIfAbsent), daoMock.insertsIfAbsent)
+	if len(daoMock.allIfAbsent()) != 2 {
+		t.Fatalf("insert-if-absent rows = %d, want 2: %+v", len(daoMock.allIfAbsent()), daoMock.allIfAbsent())
 	}
-	for _, m := range daoMock.insertsIfAbsent {
+	for _, m := range daoMock.allIfAbsent() {
 		if m.Date != today {
 			t.Fatalf("今日行未走首写生效: date=%s (want %s)", m.Date, today)
 		}
@@ -351,10 +373,10 @@ func TestSyncRDSMetrics_FirstWriteVsYesterdayOverwrite(t *testing.T) {
 		}
 	}
 	// 昨日行(rm-a)全部走覆盖 upsert 批
-	if len(daoMock.upserts) != 1 {
-		t.Fatalf("upsert rows = %d, want 1: %+v", len(daoMock.upserts), daoMock.upserts)
+	if len(daoMock.allUpserts()) != 1 {
+		t.Fatalf("upsert rows = %d, want 1: %+v", len(daoMock.allUpserts()), daoMock.allUpserts())
 	}
-	for _, m := range daoMock.upserts {
+	for _, m := range daoMock.allUpserts() {
 		if m.Date != yesterday {
 			t.Fatalf("昨日行未走覆盖更新: date=%s (want %s)", m.Date, yesterday)
 		}
@@ -416,13 +438,13 @@ func TestSyncRDSMetrics_ZeroRowVisible(t *testing.T) {
 	}
 	// days=1 区间只有今日:mock querier 返回 rm-zero-today 的全 0 行,
 	// 不得被 CDN 式「全零跳过」过滤掉
-	if len(daoMock.insertsIfAbsent) != 1 {
-		t.Fatalf("insert-if-absent rows = %d, want 1: %+v", len(daoMock.insertsIfAbsent), daoMock.insertsIfAbsent)
+	if len(daoMock.allIfAbsent()) != 1 {
+		t.Fatalf("insert-if-absent rows = %d, want 1: %+v", len(daoMock.allIfAbsent()), daoMock.allIfAbsent())
 	}
-	if len(daoMock.upserts) != 0 {
-		t.Fatalf("upsert rows = %d, want 0 (days=1 区间无昨日行)", len(daoMock.upserts))
+	if len(daoMock.allUpserts()) != 0 {
+		t.Fatalf("upsert rows = %d, want 0 (days=1 区间无昨日行)", len(daoMock.allUpserts()))
 	}
-	row := daoMock.insertsIfAbsent[0]
+	row := daoMock.allIfAbsent()[0]
 	if row.RdsID != "rm-zero-today" || row.CPUPercent != 0 || row.MemoryPercent != 0 || row.DiskPercent != 0 || row.Connections != 0 {
 		t.Fatalf("全 0 异常行被过滤/篡改: %+v", row)
 	}
@@ -447,7 +469,7 @@ func TestSyncRDSMetrics_FailureCounting(t *testing.T) {
 	if err := e.Execute(context.Background(), task); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if len(daoMock.insertsIfAbsent)+len(daoMock.upserts) != 0 {
+	if len(daoMock.allIfAbsent())+len(daoMock.allUpserts()) != 0 {
 		t.Fatal("查询失败不得产生写入")
 	}
 	failures, _ := task.Result["failures"].([]nasProviderFailure)
@@ -478,7 +500,7 @@ func TestSyncRDSMetrics_EmptyResultNotFailure(t *testing.T) {
 	if err := e.Execute(context.Background(), task); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if len(daoMock.insertsIfAbsent)+len(daoMock.upserts) != 0 {
+	if len(daoMock.allIfAbsent())+len(daoMock.allUpserts()) != 0 {
 		t.Fatal("空结果不得产生写入")
 	}
 	failures, _ := task.Result["failures"].([]nasProviderFailure)
@@ -499,7 +521,7 @@ func TestSyncRDSMetrics_SkipsProviderWithoutMetricSupport(t *testing.T) {
 	if err := e.Execute(context.Background(), task); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if len(daoMock.insertsIfAbsent)+len(daoMock.upserts) != 0 {
+	if len(daoMock.allIfAbsent())+len(daoMock.allUpserts()) != 0 {
 		t.Fatal("无指标支持厂商不得产生写入")
 	}
 	skipped, _ := task.Result["no_metric_support"].([]string)
@@ -524,7 +546,7 @@ func TestSyncRDSMetrics_RDSAdapterUnavailable(t *testing.T) {
 	if err := e.Execute(context.Background(), task); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if len(daoMock.insertsIfAbsent)+len(daoMock.upserts) != 0 {
+	if len(daoMock.allIfAbsent())+len(daoMock.allUpserts()) != 0 {
 		t.Fatal("适配器不可用不得产生写入")
 	}
 	failures, _ := task.Result["failures"].([]nasProviderFailure)
@@ -548,7 +570,7 @@ func TestSyncRDSMetrics_MultiRegionInstances(t *testing.T) {
 	if err := e.Execute(context.Background(), task); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	written := len(daoMock.insertsIfAbsent) + len(daoMock.upserts)
+	written := len(daoMock.allIfAbsent()) + len(daoMock.allUpserts())
 	if written != 1 {
 		t.Fatalf("written = %d, want 1 (days=1 只有 rm-a 今日行)", written)
 	}
