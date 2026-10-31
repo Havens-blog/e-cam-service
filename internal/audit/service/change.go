@@ -75,7 +75,7 @@ func NewChangeTracker(dao dao.ChangeRecordDAO, logger *elog.Component) *ChangeTr
 // 注意：缓存的是「同一筛选条件」下的总数。审计数据为历史记录，
 // 新增是追加式的，60 秒延迟对分页器展示无实质影响；
 // 若需立即反映，可在 TTL 过期后自然刷新。
-func (t *ChangeTracker) cachedCount(ctx context.Context, filter domain.ChangeFilter) (int64, error) {
+func (t *ChangeTracker) cachedCount(ctx context.Context, filter *domain.ChangeFilter) (int64, error) {
 	key := countCacheKey(filter)
 
 	t.countMu.Lock()
@@ -86,7 +86,7 @@ func (t *ChangeTracker) cachedCount(ctx context.Context, filter domain.ChangeFil
 	t.countMu.Unlock()
 
 	// 缓存未命中：执行真实 count（可能耗时数秒），不持锁，避免阻塞其他请求
-	total, err := t.dao.Count(ctx, filter)
+	total, err := t.dao.Count(ctx, *filter)
 	if err != nil {
 		return 0, err
 	}
@@ -98,7 +98,7 @@ func (t *ChangeTracker) cachedCount(ctx context.Context, filter domain.ChangeFil
 }
 
 // countCacheKey 由筛选条件的关键维度拼出缓存键。
-func countCacheKey(f domain.ChangeFilter) string {
+func countCacheKey(f *domain.ChangeFilter) string {
 	var b strings.Builder
 	b.WriteString(strconv.FormatInt(f.TenantID, 10))
 	b.WriteByte('|')
@@ -219,7 +219,7 @@ func (t *ChangeTracker) ListByAssetID(ctx context.Context, filter domain.ChangeF
 	if err != nil {
 		return nil, 0, fmt.Errorf("查询变更历史失败: %w", err)
 	}
-	total, err := t.cachedCount(ctx, filter)
+	total, err := t.cachedCount(ctx, &filter)
 	if err != nil {
 		return nil, 0, fmt.Errorf("统计变更历史失败: %w", err)
 	}
@@ -275,7 +275,7 @@ func (t *ChangeTracker) GetSummary(ctx context.Context, filter domain.ChangeFilt
 	}
 
 	step("total", func(c context.Context) error {
-		v, err := t.cachedCount(c, filter)
+		v, err := t.cachedCount(c, &filter)
 		if err == nil {
 			summary.Total = v
 		}
