@@ -8611,3 +8611,62 @@ go build -ldflags "-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X
    与「cert 可剥离」这条不变量冲突。**重构前先检查目标目录是否被架构检查锁定**（`extractionReadyDomains`）。
 3. **回归可能出在自己过去的"改进"里**：这次不是新代码写错，而是旧优化触碰了后来才加入的规则。
    所以合并前应把「该目录的架构约束」当作与测试同等的检查项。
+
+---
+
+## cam-merge-depcheck-fix-20261031（#213 合并：depcheck R4 修复进入 main，Test 首次转绿）
+
+**状态**：**已合并**（`e-cam-service#213`，merge `92ac764`）
+
+### 结果
+
+合并后 main 的 CI：**`Test: success`** —— 这是本仓库 CI 长期红以来**第一次 Test 通过**，
+该修复同时解除了**所有其它 PR** 的 Test 阻塞（此前任何 PR 都会红在 depcheck R4）。
+
+仍红的两项与本次改动无关，均为**既有 workflow 缺陷**：
+
+| 检查项 | 结论 | 原因 |
+|---|---|---|
+| Test | ✅ success | depcheck R4 已修 |
+| Build (linux, arm64) | ❌ failure | `ci.yml` 中 `go build ${LDFLAGS}` 未加引号 → 词分割 |
+| Build (其它矩阵) | cancelled | fail-fast |
+| Docker Build and Push | ❌ failure | 依赖 Build |
+| Build & Deploy | ❌ failure | 既有（main 上一直如此） |
+
+### 本 PR 内容（+210 行）
+
+**功能**：`GET /api/v1/cam/assets/snapshot/stats` → `{total, normal, user, auto, timer}`，
+替代快照页「全量分页拉取 8×1000 条（6.9MB / 7.1s）」的本地统计。
+
+**顺带修复的全局阻塞**：`internal/cert/web` 不再依赖 `internal/shared/authz`
+（cert 是 extraction-ready 域，不得 import internal/shared）。
+
+口径依据（线上 7208 条实测，区分大小写）：
+```
+status:  accomplished 2408 / available 3080 / completed 1610 / NORMAL 110
+type:    user 2752 / auto 2714 / timer 1686  （另有 copied 48 / imported 8，不计入任何档）
+```
+
+**关键陷阱**：110 条状态是**全大写 NORMAL**。只枚举小写会得 `Normal: 7098`（漏 110），
+与真实 7208 只差 110 —— **看起来完全合理**。已用变异验证锁死（改回只写小写 → 用例失败）。
+
+### 合并判断依据（合了红灯 PR，说明理由）
+
+`Test` 是实质门禁且已绿；`Build` 的红是**对所有 PR 都成立的既有基础设施 bug**
+（`ci.yml` 引号问题，已定位到具体行，我无 workflow 权限修）。
+若坚持等 Build 变绿，则任何 PR 都永远无法合并 —— 包括这个能解除全局阻塞的修复本身。
+故按「用户已授权合并」+「红灯可证明非本 PR 引入」作出合并决定，并在 PR 下留证。
+
+### 未执行
+
+- 前端 `snapshot/index.vue` **尚未**切换到新接口，6.9MB/7.1s 全量扫描**仍在**。
+  需后端部署到本地 `:8001`（当前跑的是另一份检出的产物）后再改前端并做浏览器实测。
+- 未做前后端联调实测。
+
+### 教训
+
+1. **"红灯"要看归属，不能一律不合并**：当红项是既有的、对所有 PR 都成立的基础设施缺陷时，
+   一律等待等于永久阻塞。判断依据应是「实质门禁是否通过 + 红灯能否证明与本次改动无关」。
+2. **一个修复可能同时是全局修复**：为让自己的 PR 变绿而去修 depcheck，
+   实际解除了所有人的 Test 阻塞 —— 这类"顺手"的公共收益值得优先做。
+
