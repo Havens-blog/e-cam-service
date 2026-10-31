@@ -8523,3 +8523,91 @@ goimports -local <本项目> -l 我的三个文件 → 无输出（干净）
 | audit | 3 | 3 | ⏳ 待办 |
 
 **易错点留档**:`errs.GroupNotFound`(404008)语义是"**字段组**"不属于 IAM 权限组;IAM 权限组必须用 `errs.PermissionGroupNotFound`(404011)。
+
+---
+
+## cam-depcheck-r4-fix-20261031（修 depcheck R4 全局阻塞；Test 转绿，牵出 workflow 既定 bug）
+
+**状态**：本轮为「推进自己 PR #213」的 CI 修复、**未新开功能**（节流规则：`#213` 待审、`reviews: 0`）。
+
+### 一、修掉了 main 上对所有 PR 的全局阻塞（depcheck R4）
+
+`Test` job 的失败项最终定位到：
+
+```
+[R4] internal/cert/web/role_middleware.go imports internal/shared/authz
+internal/cert is extraction-ready (zero cross-domain outbound); it must not import internal/shared
+```
+
+**这是我早前 PR 引入的架构回归**：当时把 `ParseClaimCodes` 收敛到 `internal/shared/authz`
+以便 cert 与 logquery 共用（消除重复实现与「未 trim 导致 403」的分叉），
+但 `internal/cert` 是 depcheck 锁定的 **extraction-ready 域**，不允许依赖 `internal/shared`。
+depcheck 后来加入并收紧，于是这条回归才被抓住 —— 且它存在于 **main**，使所有 PR 的 CI 都是红的。
+
+**修法**：在 cert 域内自持该纯函数（`internal/cert/web/claimcodes.go`），
+`role_middleware.go` 改用域内实现并移除 `internal/shared` 导入。
+`internal/shared/authz` 继续服务 logquery 等其它域，两处注释互相指认，避免后来者再合并回去。
+
+**未采用 baseline 放行**：`scripts/depcheck/baseline.txt` 文件头明确
+「Only shrink this file. Fix a violation, delete its line; never add without review」。
+
+**取舍**：~20 行纯函数出现两份（cert 域内 + shared）。这是保住提取边界的最小代价，
+已在两处代码注释写明原因。
+
+验证：`go run ./scripts/depcheck` → **OK**；`go build ./...`、`go vet ./internal/cert/...`、
+`go test ./internal/cert/web/ ./internal/logquery/web/` 全部通过。
+→ **CI `Test: success`**（本 PR 第 6 轮修复达成目标）
+
+### 二、Test 转绿后，暴露下一层「此前被掩盖」的既有 bug
+
+`Build (linux, arm64)` 失败（其余矩阵被 fail-fast 取消）：
+
+```
+malformed import path "-X": leading dash
+package e-cam-service-linux-arm64 is not in std
+```
+
+根因在 `.github/workflows/ci.yml`：
+
+```bash
+LDFLAGS="-ldflags -X main.Version=${VERSION} -X main.BuildTime=... -X main.CommitHash=..."
+go build ${LDFLAGS} -o ${OUTPUT_NAME} .     # 未加引号 → 词分割
+```
+
+`-ldflags` 只吃掉紧邻的 `-X`，其余 `main.Version=...` 被当作包路径。
+
+**正确写法**：
+
+```bash
+go build -ldflags "-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.CommitHash=${COMMIT_HASH}" -o ${OUTPUT_NAME} .
+```
+
+**这是既有 bug**：此前 main 的 `Test` 从未通过，`Build` 根本没机会运行，因此一直被掩盖 ——
+是「修好上一层」才让它现形。我**无权修**（token 缺 `workflow` scope，写 `.github/workflows/*` 返回 404）。
+
+### 三、#213 的完整 CI 修复链（6 轮）
+
+| 轮次 | 失败项 | 归属 | 处置 |
+|---|---|---|---|
+| 1 | gocritic `httpNoBody`/`hugeParam`、gofmt | 我的 | 已修 |
+| 2 | **DATA RACE** in `rdsMetricDAOMock` | 我的（`-race` 才暴露） | 已修（加锁 + 快照访问器） |
+| 3 | `mnd` 400/200、gofmt | 我的 | 已修（nolint + 说明） |
+| 4 | goimports（`local-prefixes` 三段分组） | 我的 | 已修 |
+| 5 | `iam/web` 两处 lint | 他人（已合入 main） | 合并 main 后自动消失 |
+| 6 | **depcheck R4** | **我的历史回归** | **已修** |
+| — | `Build` workflow 引号 bug | 既有（非本次引入） | 无权限，待你应用 |
+
+### 四、未执行 / 未验证
+
+- 前端 `snapshot/index.vue` 未切换到 `/assets/snapshot/stats`，**6.9MB/7.1s 全量扫描尚未消除**。
+- 未做前后端联调与浏览器实测（需后端部署 + workflow 修复）。
+- 未跑 `-race`（本地无 gcc/cgo，属结构性盲区）。
+
+### 五、方法教训
+
+1. **「修好一层才看到下一层」是常态**：main 的 CI 长期红在 Test，导致 Build 的引号 bug 从未暴露。
+   排查 CI 要预期**分层**，不能把「当前失败项」当成全部问题。
+2. **架构不变量会迟到，但不会缺席**：我当初为了消除重复而把解析器收敛到 `shared`，
+   与「cert 可剥离」这条不变量冲突。**重构前先检查目标目录是否被架构检查锁定**（`extractionReadyDomains`）。
+3. **回归可能出在自己过去的"改进"里**：这次不是新代码写错，而是旧优化触碰了后来才加入的规则。
+   所以合并前应把「该目录的架构约束」当作与测试同等的检查项。
