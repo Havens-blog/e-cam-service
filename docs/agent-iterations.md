@@ -8835,3 +8835,36 @@ baseline.txt 头部也写明 **"Only shrink this file"** ⇒ 删除是工具预�
 
 **同一缺陷第二次出现时才值得抽公共实现。** 上一轮只改一页（避免过早抽象），本轮出现第三个实例、抽象的成本收益才成立。
 第一轮就抽的话只有一个调用点，无法验证抽象是否合适 —— 而本轮抽出来之后，`useStatText` 的接口形状是被两个真实调用点反向确认的。
+
+---
+
+## 2026-10-31 权限查询:状态码 + **存储错误泄露**双修(#231):包级缺陷第 5 个模块
+
+**实测(修复前)**:
+```
+GET /api/v1/cam/iam/permissions/users/999999  → 500 {"code":500,"msg":"获取用户失败: mongo: no documents in result"}
+GET /api/v1/cam/iam/permissions/groups/999999 → 500 {"code":500,"msg":"获取用户组失败: mongo: no documents in result"}
+```
+⇒ 与前四个模块"状态码语义"同型,**但多了一层严重问题**:服务层把**原始 mongo 错误**直接回给调用方
+(既非业务语义,也**外泄了内部存储实现**)——即"500 一律兜底"**掩盖了"未做领域错误归一"这一根因**。
+
+**修复**:
+1. `service/permission.go` 三处查询:遇 `mongo.ErrNoDocuments` → `errs.UserNotFound`(404010) / `errs.PermissionGroupNotFound`(404011)
+   (与 `template.go`/`user.go`/`group.go` 已有写法一致);**未改动**"用户所属组里某组取不到 → Warn+跳过"的设计;
+2. `web/permission_handler.go`:4 处 500 → `statusForIamError`;1 处非法 id → `ErrorWithCode(ParamsError)`;
+   2 处带自定义文案的参数校验 → 新增的 `ErrorWithMsg(ParamsError, "<原文案>")`;
+3. `web/result.go`:新增 `ErrorWithMsg`(镜像既有 `SuccessWithMsg`)。
+
+**线上实测**:
+| 端点 | 前 | 后 |
+|---|---|---|
+| users/999999 | 500 + mongo 原文 | **404+404010** |
+| groups/999999 | 500 + mongo 原文 | **404+404011** |
+| users/abc | 400/body500 | **400+400** |
+| policies(缺参) | 400/body500 | **400+400**,保留 `cloud_account_id is required` |
+| users/130、effective | 200 | **200(无回归)** |
+
+**沉淀(重要)**:"一律 500"往往是**表象**,真正的缺陷可能藏在服务层(未归一领域错误 / 外泄存储细节)。
+排查顺序应为:**先看响应体**(msg 是否出现 `mongo:`、`sql:`、堆栈等存储/实现痕迹)⇒ 再定状态码;仅改状态码会**掩盖**泄露问题。
+
+**包级进度**:template/sync/user/group/permission ✅(#214/#217/#221/#225/#231);仅剩 **audit(3+3)**。
