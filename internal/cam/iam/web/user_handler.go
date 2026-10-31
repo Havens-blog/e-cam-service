@@ -1,11 +1,13 @@
 package web
 
 import (
+	"net/http"
 	"strconv"
 
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/service"
-	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -33,7 +35,7 @@ func NewUserHandler(userService service.CloudUserService, logger *elog.Component
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	var req CreateUserVO
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
@@ -52,7 +54,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("创建用户失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -73,14 +75,14 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	user, err := h.userService.GetUser(c.Request.Context(), id)
 	if err != nil {
 		h.logger.Error("获取用户失败", elog.Int64("tenant_id", tenantID), elog.Int64("user_id", id), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -104,7 +106,7 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 
 	var req ListUsersVO
 	if err := c.ShouldBindQuery(&req); err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
@@ -130,7 +132,7 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("查询用户列表失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -153,13 +155,13 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	var req UpdateUserVO
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
@@ -172,7 +174,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("更新用户失败", elog.Int64("tenant_id", tenantID), elog.Int64("user_id", id), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -193,14 +195,14 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	err = h.userService.DeleteUser(c.Request.Context(), id)
 	if err != nil {
 		h.logger.Error("删除用户失败", elog.Int64("tenant_id", tenantID), elog.Int64("user_id", id), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -222,7 +224,7 @@ func (h *UserHandler) SyncUsers(c *gin.Context) {
 	cloudAccountIDStr := c.Query("cloud_account_id")
 	cloudAccountID, err := strconv.ParseInt(cloudAccountIDStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
@@ -230,7 +232,7 @@ func (h *UserHandler) SyncUsers(c *gin.Context) {
 	task, err := h.userService.SyncUsersAsync(c.Request.Context(), cloudAccountID)
 	if err != nil {
 		h.logger.Error("创建同步任务失败", elog.Int64("tenant_id", tenantID), elog.Int64("cloud_account_id", cloudAccountID), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -251,14 +253,14 @@ func (h *UserHandler) AssignPermissionGroups(c *gin.Context) {
 
 	var req AssignUserGroupsVO
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	err := h.userService.AssignPermissionGroups(c.Request.Context(), req.UserIDs, req.GroupIDs)
 	if err != nil {
 		h.logger.Error("批量分配用户组失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 

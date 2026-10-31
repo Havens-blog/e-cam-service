@@ -21,6 +21,8 @@ func TestStatusForIamError(t *testing.T) {
 		{"**回归** 同步任务不存在 → 404（此前实测 500 + code 404012）", errs.SyncTaskNotFound, http.StatusNotFound},
 		{"被 %w 包装的同步任务不存在 → 仍 404", fmt.Errorf("获取同步任务失败: %w", errs.SyncTaskNotFound), http.StatusNotFound},
 		{"被 %w 包装的模板不存在 → 仍 404", fmt.Errorf("获取模板失败: %w", errs.TemplateNotFound), http.StatusNotFound},
+		{"**回归** IAM 用户不存在 → 404（此前实测 500 + code 404010）", errs.UserNotFound, http.StatusNotFound},
+		{"被 %w 包装的用户不存在 → 仍 404", fmt.Errorf("获取用户失败: %w", errs.UserNotFound), http.StatusNotFound},
 		{"参数错误 → 400", errs.ParamsError, http.StatusBadRequest},
 		{"被 %w 包装的参数错误 → 仍 400", fmt.Errorf("创建模板失败: %w", errs.ParamsError), http.StatusBadRequest},
 		{"其他错误 → 500", fmt.Errorf("连接 mongo 失败"), http.StatusInternalServerError},
