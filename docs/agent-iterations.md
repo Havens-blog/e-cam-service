@@ -8337,3 +8337,33 @@ Error while building: ioc\gin.go undefined: syncerpkg.Syncer / capability.Permis
 `dev.ps1` 中 `e-cam-service` 既无 `EnvFile` 也无 `GoWorkOff` ⇒ ①`eiam.token_url` 等配置只能来自配置文件(仓库内是空占位)⇒ 仪表盘"资产类别统计"持续失败;
 ②CompileDaemon 用 go.work 构建(受在飞 eiam 检出影响)⇒ 构建失败会杀服务、构建成功则可能用**落后分支**覆盖主干修复。
 建议:`dev.ps1` 给该服务加 `GoWorkOff = $true`(一行),并把 dev 启停改为**显式指定构建修订**。
+
+---
+
+## 2026-10-31 交付:策略模板"错误状态码语义"修正(#214)+ "占位页/未落地需求"这条线的固化
+
+### 一、缺陷与修复
+实测(真实服务):
+```
+GET /api/v1/cam/iam/templates/1   → HTTP 500 {"code":404013,"msg":"policy template not found"}
+GET /api/v1/cam/iam/templates/abc → HTTP 400 {"code":500,"msg":"strconv.ParseInt: …"}
+```
+根因:`internal/cam/iam/web/template_handler.go` 六个错误分支**一律** `c.JSON(500, Error(err))`,
+而服务层对"不存在"返回 `errs.TemplateNotFound`(404013) ⇒ 前端无法区分"不存在"与"后端故障";
+非法 id 分支还自相矛盾(HTTP 400 / body code 500)。
+
+修复:
+- 新增 `statusForTemplateError(err)`:TemplateNotFound→**404**、ParamsError→**400**、其余→500(用 `errors.Is`,兼容 `%w` 包装);
+- 六处 500 分支改用它;非法 id 的七处 400 分支统一为 `ErrorWithCode(errs.ParamsError)`(状态与 body code 一致)。
+**验证**:包内测试全 ok + 新增 5 条子用例;**线上实测** `/1`→404、`/999999`→404、`/abc`→400(code 400)、列表→200(无回归)。
+
+### 二、本轮方法论:把"占位页/未落地需求"作为**首选选题线**(已连续两轮命中)
+做法:①找"代码里声明未实现"的地方(`开发中`/`占位`/近 0 字节视图文件)→ ②确认**规格是否已存在**
+(`.kiro/specs/**`)与**后端是否已就绪** → ③只交付**一个可独立验收的切片**,并在 PR 写明**非目标**。
+本轮据此拿到两条:模板列表页(上轮交付)+ 模板详情/错误语义(本轮)。
+
+**同时沉淀两条与本轮强相关的口径**:
+1. **"服务在跑" ≠ "在跑主干代码"**:主检出常停在他人分支,CompileDaemon 用工作树重建 ⇒ 二进制可能来自落后分支
+   (本轮又验证一次:模板接口 500 复活)。凡"要生效"的构建,应从 **`origin/main` 的分离工作树**产出并核对提交;
+2. **状态码也是契约**:同一类"不存在",返回 500 还是 404 决定前端能否给出可操作的提示 —— 这类缺陷**接口探活(只看 200/非 200)发现不了**,
+   必须按**语义**核对(本轮用"请求一个必然不存在的 id"就暴露了)。
