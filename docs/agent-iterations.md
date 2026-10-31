@@ -8425,3 +8425,77 @@ GET /api/v1/cam/iam/sync/tasks/abc → HTTP 400 {"code":500,"msg":"strconv.Parse
 ### 三、口径补充
 **同一类语义缺陷会成"包级复制"**:上一轮修完模板后,本轮只需**再探一个同族接口**就立刻命中同型问题
 (方法:对每个详情类接口请求一个**必然不存在的 id**) ⇒ 后续每次接触新模块,先做这一步"404 语义抽查"。
+
+---
+
+## cam-snapshot-stats-ci-20261031（只读核查轮：CI 全局阻塞定位 + PR 自身 lint 清零）
+
+**状态**：**本轮无新功能开发**（节流规则：功能 PR `#213` 待审且无审核意见）。产出为 PR 修复 + 只读结论。
+
+### 一、按节流规则的选择
+
+`#213`（快照统计聚合接口）处于 open、`reviews: 0`、仅有我自己一条说明评论
+→ 触发「等待审核且无新审核意见 → 本轮不开发新需求，只做只读健康核查」。
+但该 PR 的 CI 阻塞属于**推进自己 PR** 的范围，因此本轮做的是「修 CI + 定位阻塞」。
+
+### 二、PR `#213` 的 CI 修复历程（5 轮）
+
+| 轮次 | 失败项 | 归属 | 处置 |
+|---|---|---|---|
+| 1 | gocritic `httpNoBody`/`hugeParam`、gofmt | 我的 | 已修 |
+| 2 | **DATA RACE** in `rdsMetricDAOMock` | 我的 PR 触发（`-race` 才暴露） | 已修 |
+| 3 | `mnd` 400/200、gofmt | 我的 | 已修（nolint + 说明） |
+| 4 | goimports（`local-prefixes` 三段分组） | 我的 | 已修 |
+| 5 | `iam/web/template_handler.go` goimports + `template_error_status.go` ST1000 | **他人（已合入 main）** | 未处理 |
+
+### 三、两个有价值的发现
+
+#### 1. 「本地通过、CI 失败」的真因是 `-race`
+
+第 2 轮失败的是 `TestSyncRDSMetrics_FirstWriteVsYesterdayOverwrite`，本地 `go test` 通过。
+真相：`collectAccount` 按账号并发调用 `BulkInsertIfAbsent`/`BulkUpsertMetrics`，
+而 `rdsMetricDAOMock` 的 slice 无锁 → race detector 判失败。
+
+本地**跑不了 `-race`**（无 gcc/cgo），所以这条只能靠 CI 暴露。
+处置：给 mock 加 `mu` + `allIfAbsent()/allUpserts()` 加锁快照访问器（与同文件
+`metricCapableRDS` 既有做法一致）。**同形状且仍无锁的还有 `sync_nas_metrics_test.go`、
+`sync_oss_metrics_test.go` —— 列为后续候选。**
+
+#### 2. main 的 CI 对所有 PR 都是红的（全局阻塞）
+
+最终 CI 只剩两条，且都不在本 PR 范围：
+
+```
+internal/cam/iam/web/template_handler.go:7:1      File is not properly formatted (goimports)
+internal/cam/iam/web/template_error_status.go:1:1 ST1000: at least one file in a package should have a package comment
+```
+
+这两处存在于 **main 已合入的代码**里 → **当前任何 PR 都无法让 CI 转绿**。
+修复都很 trivial（`goimports -local ... -w` / 补包注释），但**我未代改**，
+避免与并行改动该目录的会话冲突，已在 PR 下留言指明归属与修法。
+
+### 四、验证（本地）
+
+```
+go build ./internal/cam/web/     ✅ exit 0
+go vet ./internal/cam/web/       ✅ exit 0
+go test -p 1 ./internal/cam/web/ ✅ ok（含新增 2 例）
+goimports -local <本项目> -l 我的三个文件 → 无输出（干净）
+变异验证（状态别名改回只写小写）→ Normal 7098 ≠ 7208，用例失败 ✔ 守护有效
+```
+
+### 五、未执行 / 未验证
+
+- **前端未切换**到 `/assets/snapshot/stats`：6.9MB/7.1s 的全量扫描**尚未消除**。
+- 未做前后端联调与浏览器实测（需后端部署到环境）。
+- 未修 `sync_nas_metrics_test.go` / `sync_oss_metrics_test.go` 的同类无锁 mock。
+- 未代改 `iam/web` 的两条 lint。
+
+### 六、方法教训
+
+1. **「本地过、CI 挂」优先怀疑执行参数差异**，而非代码逻辑：本例是 `-race`。
+   本环境无 gcc 跑不了 `-race`，就该**把「-race 才暴露的并发缺陷」列为本地不可见的盲区**，而不是反复本地复跑。
+2. **修 CI 要分清"我的红"与"别人的红"**：前 4 轮都是我的，第 5 轮不是。
+   把归属写清楚（PR 留言 + 记录）比"顺手把别人文件也改了"更安全 —— 后者可能与并行会话冲突。
+3. **lint 报错位置不等于根因**：goimports 报在第 7 行，真因是 `.golangci.yml` 的
+   `local-prefixes` 要求三段分组。**先读配置，再改代码。**
