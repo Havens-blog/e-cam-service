@@ -384,8 +384,22 @@ func TestIsInCurrentMonth(t *testing.T) {
 	now := time.Now()
 	assert.True(t, isInCurrentMonth(now))
 	assert.True(t, isInCurrentMonth(time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)))
-	assert.False(t, isInCurrentMonth(now.AddDate(0, -1, 0)))
-	assert.False(t, isInCurrentMonth(now.AddDate(-1, 0, 0)))
+
+	// 注意：不能用 now.AddDate(0, -1, 0) 取「上个月」。
+	//
+	// Go 的 AddDate 在月末会按「日序号相加」再归一化：
+	//   2026-10-31 减 1 个月 → 2026-09-31（不存在）→ 归一化为 2026-10-01
+	// 结果仍落在**当月**，导致断言偶然失败。
+	// 该缺陷只在每月 29/30/31 日触发，实测 2026-10-31 的 CI 因此变红。
+	//
+	// 正确写法：本月 1 日减 1 天 = 上个月的最后一天（月份必然不同）。
+	firstOfThisMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	lastDayPrevMonth := firstOfThisMonth.AddDate(0, 0, -1)
+	assert.False(t, isInCurrentMonth(lastDayPrevMonth), "上个月最后一天不应算作当月: %v", lastDayPrevMonth)
+
+	// 跨年场景同样用「1 月 1 日减 1 天」避免溢出。
+	firstOfYear := time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
+	assert.False(t, isInCurrentMonth(firstOfYear.AddDate(0, 0, -1)))
 }
 
 func TestDeleteBudget(t *testing.T) {
