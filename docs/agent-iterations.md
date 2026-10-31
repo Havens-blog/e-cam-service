@@ -8499,3 +8499,27 @@ goimports -local <本项目> -l 我的三个文件 → 无输出（干净）
    把归属写清楚（PR 留言 + 记录）比"顺手把别人文件也改了"更安全 —— 后者可能与并行会话冲突。
 3. **lint 报错位置不等于根因**：goimports 报在第 7 行，真因是 `.golangci.yml` 的
    `local-prefixes` 要求三段分组。**先读配置，再改代码。**
+
+---
+
+## 2026-10-31 IAM 用户错误状态码语义(#221):包级缺陷推进到第 3 个模块
+
+**缺陷(实测)**:`/iam/users/999999` → **500**(code 404010)、`/iam/users/abc` → 400 但 body code 500;
+与策略模板(#214)、同步任务(#217)**完全同型**。
+**修复**:`statusForIamError` 增 `UserNotFound`→404;`user_handler.go` 7 处 500 + 8 处 400 分支统一;
+单测补 `UserNotFound`(含 `%w`)。
+**验证**:构建通过;包内测试 **ok**、`StatusForIamError` **8/8 子用例 PASS**;
+线上实测 `/users/999999`→**404+404010**、`/users/abc`→**400+code 400**、**`/users/130`(真实存在)→200(无回归)**、列表→200;
+`/sync/tasks/1`、`/templates/1`→404(前两轮保持);`/groups/999999` 仍 500(**未动**,下一轮)。
+
+**进度台账(iam/web 包级同型缺陷)**:
+| 模块 | 500 分支 | 400/body500 | 状态 |
+|---|---|---|---|
+| template | 6 | 7 | ✅ 已修(#214) |
+| sync | 4 | 4 | ✅ 已修(#217) |
+| user | 7 | 8 | ✅ 已修(#221) |
+| group | 8 | 9 | ⏳ 下一轮(注意用 `PermissionGroupNotFound` 404011,**不是** `GroupNotFound` 404008=字段组) |
+| permission | 4 | 3 | ⏳ 待办 |
+| audit | 3 | 3 | ⏳ 待办 |
+
+**易错点留档**:`errs.GroupNotFound`(404008)语义是"**字段组**"不属于 IAM 权限组;IAM 权限组必须用 `errs.PermissionGroupNotFound`(404011)。
