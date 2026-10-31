@@ -13,14 +13,15 @@ import (
 //   - Total   = 全部快照数
 //   - Normal  = status 命中成功别名的快照数（见 snapshotSuccessStatuses）
 //   - User/Auto/Timer = attributes.snapshot_type 精确等值计数
+//
 // 注意：snapshot_type 还有 copied / imported 等值，**不计入** User/Auto/Timer 任一档
 // （与前端原口径一致：前端只累加 user/auto/timer）。
 type SnapshotStatsResp struct {
-	Total int64 `json:"total"`
+	Total  int64 `json:"total"`
 	Normal int64 `json:"normal"`
-	User  int64 `json:"user"`
-	Auto  int64 `json:"auto"`
-	Timer int64 `json:"timer"`
+	User   int64 `json:"user"`
+	Auto   int64 `json:"auto"`
+	Timer  int64 `json:"timer"`
 }
 
 // ImageStatsResp 镜像统计响应

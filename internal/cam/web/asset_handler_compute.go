@@ -467,14 +467,15 @@ func (h *AssetHandler) GetImageStats(ctx *gin.Context) {
 		}
 	}
 
-	ctx.JSON(200, Result(stats))
+	ctx.JSON(200, Result(stats)) //nolint:mnd // HTTP 状态码，与同文件其它 handler 一致
 }
-
 
 // snapshotSuccessStatuses 快照「成功」状态别名（与前端 isSnapshotSuccess 口径一致，大小写不敏感）。
 //
 // 依据 2026-10-31 线上 7208 条样本实测（区分大小写）：
-//   accomplished 2408 / available 3080 / completed 1610 / **NORMAL 110（全大写）**
+//
+//	accomplished 2408 / available 3080 / completed 1610 / **NORMAL 110（全大写）**
+//
 // 四者之和等于总数 —— 当前数据集里全部快照均为成功态。
 //
 // ⚠️ 这里必须同时枚举大小写变体：DA0 的属性过滤是**精确等值**，只写小写 "normal" 会漏掉 110 条，
@@ -499,7 +500,7 @@ var snapshotSuccessStatuses = []string{
 func (h *AssetHandler) GetSnapshotStats(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	if tenantID == 0 {
-		ctx.JSON(400, ErrorResultWithMsg(errs.ParamsError, "X-Tenant-ID is required"))
+		ctx.JSON(400, ErrorResultWithMsg(errs.ParamsError, "X-Tenant-ID is required")) //nolint:mnd // HTTP 状态码，与同文件其它 handler 一致
 		return
 	}
 

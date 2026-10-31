@@ -21,6 +21,7 @@ type fakeInstanceSvc struct {
 	totalFor func(*domain.InstanceFilter) int64
 }
 
+//nolint:gocritic // hugeParam: 必须与 service.InstanceService.List 的签名一致（值传递）
 func (f *fakeInstanceSvc) List(_ context.Context, filter domain.InstanceFilter) ([]domain.Instance, int64, error) {
 	f.calls = append(f.calls, filter)
 	if f.totalFor == nil {
