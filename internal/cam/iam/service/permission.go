@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	iamrepo "github.com/Havens-blog/e-cam-service/internal/cam/iam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
-	"github.com/Havens-blog/e-cloudx-sdk/iam"
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/iam"
 	"github.com/gotomicro/ego/core/elog"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // PermissionService 权限服务接口
@@ -28,42 +30,42 @@ type PermissionService interface {
 
 // UserPermissions 用户权限信息
 type UserPermissions struct {
-	UserID       int64                      `json:"user_id"`
-	Username     string                     `json:"username"`
-	DisplayName  string                     `json:"display_name"`
-	Provider     domain.CloudProvider       `json:"provider"`
+	UserID         int64                     `json:"user_id"`
+	Username       string                    `json:"username"`
+	DisplayName    string                    `json:"display_name"`
+	Provider       domain.CloudProvider      `json:"provider"`
 	DirectPolicies []domain.PermissionPolicy `json:"direct_policies"` // 直接分配的权限
-	UserGroups   []UserGroupInfo            `json:"user_groups"`     // 所属用户组
+	UserGroups     []UserGroupInfo           `json:"user_groups"`     // 所属用户组
 }
 
 // GroupPermissions 用户组权限信息
 type GroupPermissions struct {
-	GroupID     int64                      `json:"group_id"`
-	GroupName   string                     `json:"group_name"`
-	DisplayName string                     `json:"display_name"`
-	Provider    domain.CloudProvider       `json:"provider"`
-	Policies    []domain.PermissionPolicy  `json:"policies"`
-	MemberCount int                        `json:"member_count"`
+	GroupID     int64                     `json:"group_id"`
+	GroupName   string                    `json:"group_name"`
+	DisplayName string                    `json:"display_name"`
+	Provider    domain.CloudProvider      `json:"provider"`
+	Policies    []domain.PermissionPolicy `json:"policies"`
+	MemberCount int                       `json:"member_count"`
 }
 
 // EffectivePermissions 用户有效权限（合并后）
 type EffectivePermissions struct {
-	UserID          int64                      `json:"user_id"`
-	Username        string                     `json:"username"`
-	DisplayName     string                     `json:"display_name"`
-	Provider        domain.CloudProvider       `json:"provider"`
-	AllPolicies     []domain.PermissionPolicy  `json:"all_policies"`      // 所有权限（去重）
-	DirectPolicies  []domain.PermissionPolicy  `json:"direct_policies"`   // 直接权限
+	UserID            int64                     `json:"user_id"`
+	Username          string                    `json:"username"`
+	DisplayName       string                    `json:"display_name"`
+	Provider          domain.CloudProvider      `json:"provider"`
+	AllPolicies       []domain.PermissionPolicy `json:"all_policies"`       // 所有权限（去重）
+	DirectPolicies    []domain.PermissionPolicy `json:"direct_policies"`    // 直接权限
 	InheritedPolicies []domain.PermissionPolicy `json:"inherited_policies"` // 继承的权限
-	UserGroups      []UserGroupInfo            `json:"user_groups"`       // 所属用户组
+	UserGroups        []UserGroupInfo           `json:"user_groups"`        // 所属用户组
 }
 
 // UserGroupInfo 用户组信息
 type UserGroupInfo struct {
-	GroupID     int64                      `json:"group_id"`
-	GroupName   string                     `json:"group_name"`
-	DisplayName string                     `json:"display_name"`
-	Policies    []domain.PermissionPolicy  `json:"policies"`
+	GroupID     int64                     `json:"group_id"`
+	GroupName   string                    `json:"group_name"`
+	DisplayName string                    `json:"display_name"`
+	Policies    []domain.PermissionPolicy `json:"policies"`
 }
 
 type permissionService struct {
@@ -98,6 +100,11 @@ func (s *permissionService) GetUserPermissions(ctx context.Context, userID int64
 	// 获取用户信息
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
+		// 目标不存在是**业务语义**（应由 API 回 404），不是服务故障（500）；
+		// 同时避免把 mongo 原始错误（"mongo: no documents in result"）泄露给调用方。
+		if err == mongo.ErrNoDocuments {
+			return nil, errs.UserNotFound
+		}
 		s.logger.Error("获取用户失败", elog.FieldErr(err))
 		return nil, fmt.Errorf("获取用户失败: %w", err)
 	}
@@ -140,6 +147,10 @@ func (s *permissionService) GetUserGroupPermissions(ctx context.Context, groupID
 	// 获取用户组信息
 	group, err := s.groupRepo.GetByID(ctx, groupID)
 	if err != nil {
+		// 同 GetUserPermissions：不存在 → 领域错误（API 回 404），不外泄存储细节
+		if err == mongo.ErrNoDocuments {
+			return nil, errs.PermissionGroupNotFound
+		}
 		s.logger.Error("获取用户组失败", elog.FieldErr(err))
 		return nil, fmt.Errorf("获取用户组失败: %w", err)
 	}
@@ -163,6 +174,10 @@ func (s *permissionService) GetUserEffectivePermissions(ctx context.Context, use
 	// 获取用户信息
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
+		// 同上：不存在 → UserNotFound（404），不外泄 mongo 原始错误
+		if err == mongo.ErrNoDocuments {
+			return nil, errs.UserNotFound
+		}
 		s.logger.Error("获取用户失败", elog.FieldErr(err))
 		return nil, fmt.Errorf("获取用户失败: %w", err)
 	}

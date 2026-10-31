@@ -61,6 +61,18 @@ func ErrorWithCode(errCode errs.ErrorCode) *Result {
 	}
 }
 
+// ErrorWithMsg 错误响应（指定错误码 + 覆盖文案）。
+//
+// 用途：参数校验这类场景既需要**正确的业务错误码**（如 errs.ParamsError.Code=400，
+// 使 HTTP 状态与响应体 code 一致），又要给调用方**具体到字段**的提示
+// （如 "cloud_account_id is required"）。镜像上面的 SuccessWithMsg。
+func ErrorWithMsg(errCode errs.ErrorCode, msg string) *Result {
+	return &Result{
+		Code: errCode.Code,
+		Msg:  msg,
+	}
+}
+
 // PageSuccess 分页成功响应
 func PageSuccess(data interface{}, total, page, size int64) *PageResult {
 	return &PageResult{
