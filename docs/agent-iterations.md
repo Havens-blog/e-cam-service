@@ -9118,3 +9118,32 @@ summaryFailed.value = true     // ← 错位进了 try
 **教训：脚本化插入多行时，要么倒序插入（从后往前，行号不失效），要么每插入一次就重算行号。**
 这次恰好因为"置 false 与置 true 挨在一起"看起来荒谬，才在人工复核中一眼看到 ——
 如果两行隔得远，我大概率会漏掉，然后得到一个"正常态也显示 —"或"失败态不生效"的版本。
+
+---
+
+## 2026-10-31 把"泄露面扫描"**固化进审计脚本**(e-cam-web#170)+ 新判据又抓到 2 处契约错位
+
+### 一、交付:审计脚本新增 `--only=leaks`
+- **端点不硬编码**:从 `src/api/*.ts` 派生(只取 url 含 `${...}` 路径参数、且**调用方法为 GET**的条目;参数→999999;
+  排除 delete/retry/sync/confirm/execute/rollback/apply/bind/batch/create/update/submit/toggle 字样)⇒ 实测派生 **41 个**候选;
+- **判据 1(泄露)**:响应体命中 `mongo:`/`BSON`/`collection`/`sql`/`redis`/`panic`/`goroutine`/`.go:NN`/`dial tcp`/`no such host`/
+  `connection refused`/`context canceled`/`duplicate key`/`ErrNoDocuments` ⇒ 失败;
+- **判据 2(契约错位,本轮新增)**:HTTP **200 但响应体 code 非 0/200** ⇒ 失败;
+- **证据安全**:只打印命中的**痕迹名**与状态码,**不回显响应体原文**;README 增补用法与判据表。
+
+### 二、验证
+- `node --check` 与 `npx eslint scripts/audit/cam-api-audit.mjs` 均通过;CI 四项全绿(Gzip/Vitest/Typecheck&Build/ESLint);
+- **全量审计(7 项)**:仅新判据报 2 项,**其余 6 项全部通过** ⇒ 未引入回归;**泄露类命中 0** ⇒ 印证 #234/#238 修复稳定。
+
+### 三、新判据立刻抓到 2 处真实契约错位(下一轮修)
+```
+GET /api/v1/cam/templates/999999        → HTTP 200 {"code":404030,"msg":"vm template not found","data":null}
+GET /api/v1/cam/provision-tasks/999999  → HTTP 200 + 错误码(同型)
+```
+即**状态码与业务码相反错位**:只按 HTTP 判成功的客户端会把"不存在"当成成功。
+(注意与 #214/#217/#221/#225/#231/#238 的形态**相反**:那些是"该 4xx 却回 5xx",这些是"该 4xx 却回 200"。)
+
+### 四、沉淀
+1. **审计工具应当"越用越准"**:本轮新增判据 2 直接复用了判断"状态码与业务码是否一致"的经验,一次运行就抓到 2 处;
+2. **错误形态成对出现**:"5xx 掩盖语义"与"200 冒充成功"是同一契约问题的两面 ⇒ 检查要**双向**核对(状态码 ↔ 业务码);
+3. **扫描脚本要能自维护**:端点从 api 源码派生,新增接口自动纳入,避免清单腐化。
