@@ -1,9 +1,10 @@
 package web
 
 import (
-	"fmt"
+	"net/http"
 	"strconv"
 
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/service"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
@@ -32,14 +33,14 @@ func (h *PermissionHandler) GetUserPermissions(c *gin.Context) {
 	userIDStr := c.Param("user_id")
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	permissions, err := h.permissionService.GetUserPermissions(c.Request.Context(), userID)
 	if err != nil {
 		h.logger.Error("获取用户权限失败", elog.Int64("user_id", userID), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -57,14 +58,14 @@ func (h *PermissionHandler) GetUserGroupPermissions(c *gin.Context) {
 	groupIDStr := c.Param("group_id")
 	groupID, err := strconv.ParseInt(groupIDStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	permissions, err := h.permissionService.GetUserGroupPermissions(c.Request.Context(), groupID)
 	if err != nil {
 		h.logger.Error("获取用户组权限失败", elog.Int64("group_id", groupID), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -82,14 +83,14 @@ func (h *PermissionHandler) GetUserEffectivePermissions(c *gin.Context) {
 	userIDStr := c.Param("user_id")
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	permissions, err := h.permissionService.GetUserEffectivePermissions(c.Request.Context(), userID)
 	if err != nil {
 		h.logger.Error("获取用户有效权限失败", elog.Int64("user_id", userID), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -106,13 +107,14 @@ func (h *PermissionHandler) GetUserEffectivePermissions(c *gin.Context) {
 func (h *PermissionHandler) ListPoliciesByProvider(c *gin.Context) {
 	cloudAccountIDStr := c.Query("cloud_account_id")
 	if cloudAccountIDStr == "" {
-		c.JSON(400, Error(fmt.Errorf("cloud_account_id is required")))
+		// 参数错误：HTTP 400 与响应体 code 都用 400 语义，同时保留具体到字段的提示
+		c.JSON(http.StatusBadRequest, ErrorWithMsg(errs.ParamsError, "cloud_account_id is required"))
 		return
 	}
 
 	cloudAccountID, err := strconv.ParseInt(cloudAccountIDStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(fmt.Errorf("invalid cloud_account_id")))
+		c.JSON(http.StatusBadRequest, ErrorWithMsg(errs.ParamsError, "invalid cloud_account_id"))
 		return
 	}
 
@@ -121,7 +123,7 @@ func (h *PermissionHandler) ListPoliciesByProvider(c *gin.Context) {
 		h.logger.Error("查询云平台权限策略失败",
 			elog.Int64("cloud_account_id", cloudAccountID),
 			elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
