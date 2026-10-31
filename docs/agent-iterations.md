@@ -8170,3 +8170,34 @@ if (res === undefined) { list.value = []; total.value = 0; return }
 
 - 390 视口未复测。
 - 未验证「连续两次失败 + 一次成功」在真实页面上的表现（单测已覆盖序列语义）。
+
+---
+
+## 2026-10-31 侧边栏导航可用性专项:39/39 全部可用;同时**同日第三次**同源停机(已恢复)
+
+### 一、导航可用性(关闭上一轮"未定性"项)
+**口径**:路径取自 **`origin/main` 的 `src/layouts/menu-config.ts`**(用户真实可达的侧边栏,而非 router 全量),排除 `/cmdb/*` 跨应用项,
+在 **origin/main 分离工作树实例**(3341)逐条访问,收集 API 4xx/5xx、控制台错误、渲染特征(空态/表格/行数)。
+
+结果:**39 条导航路径全部可用** ✓
+- **0 条 API 错误**;
+- 唯一控制台错误是仪表盘那条**已知配置缺口**(`eiam.token_url`);
+- "文本量偏低"的 11 页经内容特征复核,均为**规范空态或数据页**(如 `/finops/allocation` 表格 6 行、`/finops/anomaly` 表格+空态、`/iam/groups`/`/network/ddos` 空态、`/finops/cost` 卡片 14 项)
+  ⇒ **不是白屏、不是缺陷**。
+
+**方法论修正**:"文本量阈值"只能做**粗筛**,判定必须看**内容特征**(空态/表格/错误文案) —— 本轮若只看文本量会误报 11 页。
+
+### 二、同日**第三次**同源停机(已恢复,复发风险仍在)
+`8001` 再次未监听,`err` 日志仍是:
+```
+Error while building: ioc\gin.go undefined: syncerpkg.Syncer / capability.PermissionProvider
+```
+⇒ `go.work` 指向的本地 `eiam` 检出缺符号 ⇒ **CompileDaemon 构建失败并杀掉旧进程**。
+处置:`GOWORK=off` 重建 + 分离进程拉起 ⇒ 8001 恢复(+5s)。**当前机器上 CompileDaemon 已达 6 个**,复发概率随之上升。
+
+**根治建议(需授权,`D:\Haven` 非 git 仓库,我无法提 PR)**:`dev.ps1` 第 27 行 `e-cam-service` 服务定义加 `GoWorkOff = $true`
+(即与 `opsagent` 同款:构建时 `GOWORK=off`,不再依赖在飞的 `eiam` 本地检出)。这是一行本地环境改动,是否执行请指示。
+
+### 三、顺手核对:我的 #133 修复完好
+主检出显示 `/service-tree*` 旧路径,一度疑似被回退;**按 `origin/main` 核对后确认**菜单已是 `/cmdb/service-tree*`(我的 #133 在主干),
+主检出的旧值只是**它所在分支落后** ⇒ 又一次"先核对修订,再下结论"(与上周 depcheck 假警报同源)。
