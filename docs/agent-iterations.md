@@ -8756,3 +8756,28 @@ type:    user 2752 / auto 2714 / timer 1686  （另有 copied 48 / imported 8，
    但此前没有人把它当缺陷报过 —— 因为**两边都"看起来正常"**。判定标准应是「同屏数据是否自洽」。
 2. **放弃一个更大的改动，需要一个明确的阻断理由**：本轮不是"时间不够"，而是**环境无法验证**
    （开发检出分叉且不得动）。把阻断条件写成"前置条件"（开发环境同步），比写"下次再做"有用得多。
+
+---
+
+## 2026-10-31 收紧 depcheck:删除 7 条僵尸豁免(#228)
+
+**触发**:`go run ./scripts/depcheck` 自身报告
+`7 baseline line(s) no longer needed — delete to tighten` 并逐条列出(cam/init.go、cam/servicetree/{adapter/factory.go,adapter/local_cmdb.go×2,wire.go,wire_gen.go} × cmdb/repository{/dao});
+baseline.txt 头部也写明 **"Only shrink this file"** ⇒ 删除是工具预期的收紧动作。
+
+**改动**:仅删这 7 行,保留头部与仍生效的 1 行(`cam/wire.go|alert/repository/dao`)。
+
+**验证(前后对比)**:
+| | 删减前 | 删减后 |
+|---|---|---|
+| depcheck 输出 | **10 行**(OK + "7 lines no longer needed" + 7 条 + 尾部说明) | **1 行**:`OK (1 known boundary exceptions tolerated)` |
+| 提示 | 有"no longer needed" | **消失** |
+| 其余 | `go build ./...` 通过;IAM web / daocheck 测试 ok;diff 纯删减(7 deletions) | 同 |
+
+**价值**:这些路径若将来**重新**出现跨域 import,守卫会**立即判红**;此前会被这 7 条静默容忍。
+
+**未做(如实)**:未做"故意制造违规以验证守卫仍拦截"的变异测试 —— 本改动只删数据行、未触及判定逻辑;
+如需可在后续轮次做一次守卫自检(临时工作树引入一条跨域 import → 确认判红 → 还原)。
+
+**沉淀**:**静态守卫自身也会"腐化"** —— 例外清单随代码演进会留下不再需要的行,
+工具既然能报告"冗余豁免",就应定期回收(本轮即一次);以后凡跑 depcheck 出现该提示,直接按提示收紧即可。
