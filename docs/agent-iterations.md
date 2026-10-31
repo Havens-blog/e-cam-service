@@ -8393,3 +8393,35 @@ GET /api/v1/cam/iam/templates/abc → HTTP 400 {"code":500,"msg":"strconv.ParseI
 1. `src/views/iam/sync/detail.vue`(0.3KB 占位)**同步任务详情**;
 2. `src/views/resource/tag/components/TagRulePanel.vue`(**0KB 空文件**)—— 先确认是否被引用;
 3. 各资源列表页工具栏的"功能开发中"按钮(数十处,需按页面确认是否属未确认需求)。
+
+---
+
+## 2026-10-31 同步任务错误状态码语义修正(#217):确认"一律 500"是**包级同型缺陷**
+
+### 一、缺陷与修复
+实测:
+```
+GET /api/v1/cam/iam/sync/tasks/1   → HTTP 500 {"code":404012,"msg":"sync task not found"}
+GET /api/v1/cam/iam/sync/tasks/abc → HTTP 400 {"code":500,"msg":"strconv.ParseInt: …"}
+```
+与上一轮策略模板**完全同型**。修复:把 `statusForTemplateError` 通用化为 **`statusForIamError`**
+(`TemplateNotFound`/`SyncTaskNotFound`→404、`ParamsError`→400、其余→500),应用于 template(6 处)与 sync(4 处)的 500 分支;
+两文件的非法 id 分支(11 处)统一为 `ErrorWithCode(errs.ParamsError)`。
+**线上实测**:`/sync/tasks/1`·`/999999` → **404+404012**;`/abc` → **400+code 400**;列表 → 200;
+`/templates/1` → 404(保持)、`/templates` → 200(无回归);包内测试 PASS;depcheck 仍只剩**非我引入**的 authz 那条。
+
+### 二、扫描结论:这是**包级同型缺陷**(本轮只修 1/5,如实留档)
+`internal/cam/iam/web/` 内同型写法统计:
+| 文件 | `c.JSON(500, Error(err))` | `c.JSON(400, Error(err))` |
+|---|---|---|
+| audit_handler.go | 3 | 3 |
+| group_handler.go | 8 | 9 |
+| permission_handler.go | 4 | 3 |
+| **sync_handler.go** | **4(本轮已修)** | **4(本轮已修)** |
+| user_handler.go | 7 | 8 |
+⇒ 仍有 **26 处"一律 500" + 27 处"400 但 body code=500"**。修复方式与本次完全一致(只需补该模块的 NotFound 符号),
+但为遵守"**一轮一个可独立审核的切片**",本轮未一并改动,留作后续按模块推进。
+
+### 三、口径补充
+**同一类语义缺陷会成"包级复制"**:上一轮修完模板后,本轮只需**再探一个同族接口**就立刻命中同型问题
+(方法:对每个详情类接口请求一个**必然不存在的 id**) ⇒ 后续每次接触新模块,先做这一步"404 语义抽查"。
