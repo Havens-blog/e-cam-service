@@ -2,11 +2,13 @@ package web
 
 import (
 	"fmt"
+	"net/http"
 	"strconv"
 
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/service"
-	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -37,7 +39,7 @@ func (h *UserGroupHandler) CreateGroup(c *gin.Context) {
 
 	var req CreateUserGroupVO
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
@@ -51,7 +53,7 @@ func (h *UserGroupHandler) CreateGroup(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("创建用户组失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -72,14 +74,14 @@ func (h *UserGroupHandler) GetGroup(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	group, err := h.groupService.GetGroup(c.Request.Context(), id)
 	if err != nil {
 		h.logger.Error("获取用户组失败", elog.Int64("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -101,7 +103,7 @@ func (h *UserGroupHandler) ListGroups(c *gin.Context) {
 
 	var req ListUserGroupsVO
 	if err := c.ShouldBindQuery(&req); err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
@@ -123,7 +125,7 @@ func (h *UserGroupHandler) ListGroups(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("查询用户组列表失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -146,13 +148,13 @@ func (h *UserGroupHandler) UpdateGroup(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	var req UpdateUserGroupVO
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
@@ -164,7 +166,7 @@ func (h *UserGroupHandler) UpdateGroup(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("更新用户组失败", elog.Int64("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -185,14 +187,14 @@ func (h *UserGroupHandler) DeleteGroup(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	err = h.groupService.DeleteGroup(c.Request.Context(), id)
 	if err != nil {
 		h.logger.Error("删除用户组失败", elog.Int64("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -215,20 +217,20 @@ func (h *UserGroupHandler) UpdatePolicies(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	var req UpdatePoliciesVO
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	err = h.groupService.UpdatePolicies(c.Request.Context(), id, req.Policies)
 	if err != nil {
 		h.logger.Error("更新权限策略失败", elog.Int64("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -249,14 +251,14 @@ func (h *UserGroupHandler) GetGroupMembers(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	members, err := h.groupService.GetGroupMembers(c.Request.Context(), id)
 	if err != nil {
 		h.logger.Error("获取用户组成员失败", elog.Int64("tenant_id", tenantID), elog.Int64("group_id", id), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -311,7 +313,7 @@ func (h *UserGroupHandler) SyncGroups(c *gin.Context) {
 			elog.Int64("tenant_id", tenantID),
 			elog.Int64("cloud_account_id", cloudAccountID),
 			elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
