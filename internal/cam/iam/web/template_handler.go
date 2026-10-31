@@ -53,7 +53,7 @@ func (h *TemplateHandler) CreateTemplate(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("创建策略模板失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
-		c.JSON(statusForTemplateError(err), Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -81,7 +81,7 @@ func (h *TemplateHandler) GetTemplate(c *gin.Context) {
 	template, err := h.templateService.GetTemplate(c.Request.Context(), id)
 	if err != nil {
 		h.logger.Error("获取策略模板失败", elog.Int64("tenant_id", tenantID), elog.Int64("template_id", id), elog.FieldErr(err))
-		c.JSON(statusForTemplateError(err), Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -129,7 +129,7 @@ func (h *TemplateHandler) ListTemplates(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("查询策略模板列表失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
-		c.JSON(statusForTemplateError(err), Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -171,7 +171,7 @@ func (h *TemplateHandler) UpdateTemplate(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("更新策略模板失败", elog.Int64("tenant_id", tenantID), elog.Int64("template_id", id), elog.FieldErr(err))
-		c.JSON(statusForTemplateError(err), Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -199,7 +199,7 @@ func (h *TemplateHandler) DeleteTemplate(c *gin.Context) {
 	err = h.templateService.DeleteTemplate(c.Request.Context(), id)
 	if err != nil {
 		h.logger.Error("删除策略模板失败", elog.Int64("tenant_id", tenantID), elog.Int64("template_id", id), elog.FieldErr(err))
-		c.JSON(statusForTemplateError(err), Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -227,7 +227,7 @@ func (h *TemplateHandler) CreateFromGroup(c *gin.Context) {
 	template, err := h.templateService.CreateFromGroup(c.Request.Context(), req.GroupID, req.Name, req.Description)
 	if err != nil {
 		h.logger.Error("从用户组创建模板失败", elog.Int64("tenant_id", tenantID), elog.Int64("group_id", req.GroupID), elog.FieldErr(err))
-		c.JSON(statusForTemplateError(err), Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 

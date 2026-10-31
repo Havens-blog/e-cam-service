@@ -1,8 +1,10 @@
 package web
 
 import (
+	"net/http"
 	"strconv"
 
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/iam/service"
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gin-gonic/gin"
@@ -32,7 +34,7 @@ func NewSyncHandler(syncService service.SyncService, logger *elog.Component) *Sy
 func (h *SyncHandler) CreateSyncTask(c *gin.Context) {
 	var req CreateSyncTaskVO
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
@@ -46,7 +48,7 @@ func (h *SyncHandler) CreateSyncTask(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("创建同步任务失败", elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -64,14 +66,14 @@ func (h *SyncHandler) GetSyncTaskStatus(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	task, err := h.syncService.GetSyncTaskStatus(c.Request.Context(), id)
 	if err != nil {
 		h.logger.Error("获取同步任务状态失败", elog.Int64("task_id", id), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -93,7 +95,7 @@ func (h *SyncHandler) GetSyncTaskStatus(c *gin.Context) {
 func (h *SyncHandler) ListSyncTasks(c *gin.Context) {
 	var req ListSyncTasksVO
 	if err := c.ShouldBindQuery(&req); err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
@@ -117,7 +119,7 @@ func (h *SyncHandler) ListSyncTasks(c *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("查询同步任务列表失败", elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
@@ -135,14 +137,14 @@ func (h *SyncHandler) RetrySyncTask(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(400, Error(err))
+		c.JSON(http.StatusBadRequest, ErrorWithCode(errs.ParamsError))
 		return
 	}
 
 	err = h.syncService.RetrySyncTask(c.Request.Context(), id)
 	if err != nil {
 		h.logger.Error("重试同步任务失败", elog.Int64("task_id", id), elog.FieldErr(err))
-		c.JSON(500, Error(err))
+		c.JSON(statusForIamError(err), Error(err))
 		return
 	}
 
