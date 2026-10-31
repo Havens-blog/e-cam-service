@@ -470,6 +470,80 @@ func (h *AssetHandler) GetImageStats(ctx *gin.Context) {
 	ctx.JSON(200, Result(stats))
 }
 
+
+// snapshotSuccessStatuses 快照「成功」状态别名（与前端 isSnapshotSuccess 口径一致，大小写不敏感）。
+//
+// 依据 2026-10-31 线上 7208 条样本实测（区分大小写）：
+//   accomplished 2408 / available 3080 / completed 1610 / **NORMAL 110（全大写）**
+// 四者之和等于总数 —— 当前数据集里全部快照均为成功态。
+//
+// ⚠️ 这里必须同时枚举大小写变体：DA0 的属性过滤是**精确等值**，只写小写 "normal" 会漏掉 110 条，
+// 得出 7098 这种「看起来合理但偏小」的数字（比报错更难发现）。
+var snapshotSuccessStatuses = []string{
+	"accomplished", "available", "completed",
+	"normal", "NORMAL", "Normal",
+}
+
+// GetSnapshotStats 获取快照统计（服务端聚合）
+// @Summary 获取快照统计
+// @Description 服务端按维度计数，替代前端全量分页拉取后本地统计（7MB/7s → 单次聚合）
+// @Tags 资产管理-快照
+// @Accept json
+// @Produce json
+// @Param X-Tenant-ID header string true "租户ID"
+// @Param account_id query int false "云账号ID"
+// @Param provider query string false "云厂商"
+// @Success 200 {object} SnapshotStatsResp "成功"
+// @Failure 400 {object} ErrorResponse "租户ID不能为空"
+// @Router /cam/assets/snapshot/stats [get]
+func (h *AssetHandler) GetSnapshotStats(ctx *gin.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	if tenantID == 0 {
+		ctx.JSON(400, ErrorResultWithMsg(errs.ParamsError, "X-Tenant-ID is required"))
+		return
+	}
+
+	provider := ctx.Query("provider")
+	accountIDStr := ctx.Query("account_id")
+	var accountID int64
+	if accountIDStr != "" {
+		accountID, _ = strconv.ParseInt(accountIDStr, 10, 64)
+	}
+
+	// countBy 用 Limit:1 + total 做计数（与 GetImageStats 同一手法），避免拉取明细
+	countBy := func(attributes map[string]interface{}) int64 {
+		filter := domain.InstanceFilter{
+			ModelUID:   "snapshot",
+			TenantID:   tenantID,
+			AccountID:  accountID,
+			Provider:   provider,
+			Attributes: attributes,
+			Limit:      1,
+		}
+		_, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
+		if err != nil {
+			return 0
+		}
+		return total
+	}
+
+	stats := SnapshotStatsResp{Total: countBy(nil)}
+
+	// 成功态：按别名逐个精确计数后求和（与前端「status 包含别名」在已知枚举下等价）
+	var normal int64
+	for _, s := range snapshotSuccessStatuses {
+		normal += countBy(map[string]interface{}{"status": s})
+	}
+	stats.Normal = normal
+
+	// 创建方式：snapshot_type 精确等值（copied/imported 不计入任何档，与前端一致）
+	stats.User = countBy(map[string]interface{}{"snapshot_type": "user"})
+	stats.Auto = countBy(map[string]interface{}{"snapshot_type": "auto"})
+	stats.Timer = countBy(map[string]interface{}{"snapshot_type": "timer"})
+
+	ctx.JSON(200, Result(stats))
+}
+
 // ==================== 安全组 SecurityGroup ====================
 
 // ListSecurityGroup 获取安全组列表

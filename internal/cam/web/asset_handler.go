@@ -117,6 +117,7 @@ func (h *AssetHandler) registerAssetRoutes(assetsGroup *gin.RouterGroup) {
 
 	// 快照
 	assetsGroup.GET("/snapshot", h.ListSnapshot)
+	assetsGroup.GET("/snapshot/stats", h.GetSnapshotStats)
 	assetsGroup.GET("/snapshot/:asset_id", h.GetSnapshot)
 
 	// 安全组
