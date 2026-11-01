@@ -11053,3 +11053,31 @@ AWS 的 94 条 EIP 全部为 0，高度符合"未映射 → 零值"。
 **修 16 次说明它不是运气问题，而是诱因问题。**
 守卫不是为了抓写错的人，而是让"失败时显示什么"在写代码时就必须被想到。
 另外这次差点被自己的**假注入**骗过 —— 自检也是要自检的。
+
+---
+
+## 2026-11-01 逐模块扫"200 冒充成功"**收官**:dictionary 38 处(#290)—— 该线归零
+
+### 本轮修复(dictionary 38 处)
+- 9 处领域码分支 → `web.HTTPStatusForCode(X.Code)`;
+- 12 处服务错误 → 统一 `handleError`(段位映射 + 不外泄原文 + 500;细节写 `elog.DefaultLogger`);
+- 17 处参数错误 → 400;
+- **共享映射补 409 段**(`409xxx ⇒ 409 Conflict`):此前 409xxx 落到 default 变 **500**(字典 409020/409021
+  "已存在"语义)⇒ 已在 cam/web 状态用例补 3 条 409 用例。
+
+### 该线**归零**(正确修订上复扫)
+template / dns / tag / dictionary 的 `ctx.JSON(http.StatusOK, web.ErrorResult...)` **真实代码 0 处**
+(仅剩 2 处以**注释**形式引用该模式——即我的说明注释)。
+
+### 本轮的两条 CI 教训(都在"预检"这一层)
+1. **我第二次忘记先建 PR** ⇒ 该仓 CI 只在 PR 上跑,导致空等 ~9 分钟;⇒ 记入流程:**推送后立刻建 PR 再等 CI**;
+2. **"预防性 nolint"会翻车**:本轮给 dictionary stub 的 `CreateTypeReq` 预加了 `//nolint:gocritic`,
+   但该形参**并未触发** hugeParam ⇒ **nolintlint 报"directive is unused"** ⇒ 又一轮 CI。
+   ⇒ 修正口径:**nolint 只在 CI 明确报出该 lint 后添加**;不要"按经验预防"(tag 那轮的 stub 确实触发了,
+   是因为其结构体超过阈值——同一写法在不同结构体上结论不同,无法凭经验预判)。
+
+### 验证
+`go test ./internal/cam/dictionary/ ./internal/cam/web/` 均 ok;构建/vet/行长合规;
+**线上前后对照**:`POST /dict/types` 非法JSON 与 `DELETE /dict/types/abc` 由 **HTTP 200 → 400**;
+只读的 `GET /dict/data/<不存在code>` 前后均 200 + `data:[]`(该接口语义是"无数据"而非 not-found,无错误路径)。
+CI `Test` 最终 **success**。
