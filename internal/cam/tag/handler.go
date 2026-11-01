@@ -7,13 +7,14 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
-	"github.com/gin-gonic/gin"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // TagHandler 标签管理 HTTP 处理器
@@ -116,7 +117,7 @@ func (h *TagHandler) ListTags(ctx *gin.Context) {
 
 	items, total, err := h.svc.ListTags(ctx.Request.Context(), tenantID, filter)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{
@@ -131,7 +132,7 @@ func (h *TagHandler) GetTagStats(ctx *gin.Context) {
 
 	stats, err := h.svc.GetTagStats(ctx.Request.Context(), tenantID)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	h.upsertTagSnapshotAndTrend(ctx.Request.Context(), tenantID, stats)
@@ -144,7 +145,7 @@ func (h *TagHandler) ListTagResources(ctx *gin.Context) {
 
 	key := ctx.Query("key")
 	if key == "" {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "key is required"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "key is required"))
 		return
 	}
 
@@ -164,10 +165,10 @@ func (h *TagHandler) ListTagResources(ctx *gin.Context) {
 	items, total, err := h.svc.ListTagResources(ctx.Request.Context(), tenantID, filter)
 	if err != nil {
 		if errors.Is(err, ErrTagKeyEmpty) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(ErrTagKeyEmpty))
+			ctx.JSON(web.HTTPStatusForCode(ErrTagKeyEmpty.Code), web.ErrorResult(ErrTagKeyEmpty))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{
@@ -184,30 +185,30 @@ func (h *TagHandler) BindResource(ctx *gin.Context) {
 
 	var req BindTagsReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 
 	if len(req.Resources) == 0 {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "resources list cannot be empty"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "resources list cannot be empty"))
 		return
 	}
 	if len(req.Tags) == 0 {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "tags cannot be empty"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "tags cannot be empty"))
 		return
 	}
 
 	result, err := h.svc.BindTags(ctx.Request.Context(), tenantID, req)
 	if err != nil {
 		if errors.Is(err, ErrTagKeyEmpty) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(ErrTagKeyEmpty))
+			ctx.JSON(web.HTTPStatusForCode(ErrTagKeyEmpty.Code), web.ErrorResult(ErrTagKeyEmpty))
 			return
 		}
 		if errors.Is(err, ErrTagValueEmpty) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(ErrTagValueEmpty))
+			ctx.JSON(web.HTTPStatusForCode(ErrTagValueEmpty.Code), web.ErrorResult(ErrTagValueEmpty))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -219,26 +220,26 @@ func (h *TagHandler) UnbindResource(ctx *gin.Context) {
 
 	var req UnbindTagsReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 
 	if len(req.Resources) == 0 {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "resources list cannot be empty"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "resources list cannot be empty"))
 		return
 	}
 	if len(req.TagKeys) == 0 {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "tag_keys cannot be empty"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "tag_keys cannot be empty"))
 		return
 	}
 
 	result, err := h.svc.UnbindTags(ctx.Request.Context(), tenantID, req)
 	if err != nil {
 		if errors.Is(err, ErrTagKeyEmpty) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(ErrTagKeyEmpty))
+			ctx.JSON(web.HTTPStatusForCode(ErrTagKeyEmpty.Code), web.ErrorResult(ErrTagKeyEmpty))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -252,21 +253,21 @@ func (h *TagHandler) CreatePolicy(ctx *gin.Context) {
 
 	var req CreatePolicyReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 
 	policy, err := h.svc.CreatePolicy(ctx.Request.Context(), tenantID, req)
 	if err != nil {
 		if errors.Is(err, ErrPolicyNameEmpty) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(ErrPolicyNameEmpty))
+			ctx.JSON(web.HTTPStatusForCode(ErrPolicyNameEmpty.Code), web.ErrorResult(ErrPolicyNameEmpty))
 			return
 		}
 		if errors.Is(err, ErrPolicyKeysEmpty) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(ErrPolicyKeysEmpty))
+			ctx.JSON(web.HTTPStatusForCode(ErrPolicyKeysEmpty.Code), web.ErrorResult(ErrPolicyKeysEmpty))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(policy))
@@ -287,7 +288,7 @@ func (h *TagHandler) ListPolicies(ctx *gin.Context) {
 
 	items, total, err := h.svc.ListPolicies(ctx.Request.Context(), tenantID, filter)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{
@@ -302,22 +303,22 @@ func (h *TagHandler) UpdatePolicy(ctx *gin.Context) {
 
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
 		return
 	}
 
 	var req UpdatePolicyReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 
 	if err := h.svc.UpdatePolicy(ctx.Request.Context(), tenantID, id, req); err != nil {
 		if errors.Is(err, ErrPolicyNotFound) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(ErrPolicyNotFound))
+			ctx.JSON(web.HTTPStatusForCode(ErrPolicyNotFound.Code), web.ErrorResult(ErrPolicyNotFound))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(nil))
@@ -329,16 +330,16 @@ func (h *TagHandler) DeletePolicy(ctx *gin.Context) {
 
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
 		return
 	}
 
 	if err := h.svc.DeletePolicy(ctx.Request.Context(), tenantID, id); err != nil {
 		if errors.Is(err, ErrPolicyNotFound) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(ErrPolicyNotFound))
+			ctx.JSON(web.HTTPStatusForCode(ErrPolicyNotFound.Code), web.ErrorResult(ErrPolicyNotFound))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(nil))
@@ -350,12 +351,12 @@ func (h *TagHandler) CheckCompliance(ctx *gin.Context) {
 
 	policyIDStr := ctx.Query("policy_id")
 	if policyIDStr == "" {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "policy_id is required"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "policy_id is required"))
 		return
 	}
 	policyID, err := strconv.ParseInt(policyIDStr, 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid policy_id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid policy_id"))
 		return
 	}
 
@@ -374,10 +375,10 @@ func (h *TagHandler) CheckCompliance(ctx *gin.Context) {
 	results, total, err := h.svc.CheckCompliance(ctx.Request.Context(), tenantID, filter)
 	if err != nil {
 		if errors.Is(err, ErrPolicyNotFound) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(ErrPolicyNotFound))
+			ctx.JSON(web.HTTPStatusForCode(ErrPolicyNotFound.Code), web.ErrorResult(ErrPolicyNotFound))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 
@@ -395,16 +396,16 @@ func (h *TagHandler) CreateRule(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	var req CreateRuleReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 	rule, err := h.svc.CreateRule(ctx.Request.Context(), tenantID, req)
 	if err != nil {
 		if errors.Is(err, ErrRuleNameEmpty) || errors.Is(err, ErrRuleNoCondition) || errors.Is(err, ErrRuleNoTags) {
-			ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, err.Error()))
+			ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, err.Error()))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(rule))
@@ -418,7 +419,7 @@ func (h *TagHandler) ListRules(ctx *gin.Context) {
 	limit = paging.ClampInt64(limit)
 	items, total, err := h.svc.ListRules(ctx.Request.Context(), tenantID, RuleFilter{Offset: offset, Limit: limit})
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{"items": items, "total": total}))
@@ -429,20 +430,20 @@ func (h *TagHandler) UpdateRule(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
 		return
 	}
 	var req UpdateRuleReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 	if err := h.svc.UpdateRule(ctx.Request.Context(), tenantID, id, req); err != nil {
 		if errors.Is(err, ErrRuleNotFound) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(ErrRuleNotFound))
+			ctx.JSON(web.HTTPStatusForCode(ErrRuleNotFound.Code), web.ErrorResult(ErrRuleNotFound))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(nil))
@@ -453,15 +454,15 @@ func (h *TagHandler) DeleteRule(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
 		return
 	}
 	if err := h.svc.DeleteRule(ctx.Request.Context(), tenantID, id); err != nil {
 		if errors.Is(err, ErrRuleNotFound) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(ErrRuleNotFound))
+			ctx.JSON(web.HTTPStatusForCode(ErrRuleNotFound.Code), web.ErrorResult(ErrRuleNotFound))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(nil))
@@ -474,12 +475,12 @@ func (h *TagHandler) PreviewRules(ctx *gin.Context) {
 		RuleIDs []int64 `json:"rule_ids"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 	results, err := h.svc.PreviewRules(ctx.Request.Context(), tenantID, body.RuleIDs)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{"items": results}))
@@ -492,13 +493,31 @@ func (h *TagHandler) ExecuteRules(ctx *gin.Context) {
 		RuleIDs []int64 `json:"rule_ids"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 	results, err := h.svc.ExecuteRules(ctx.Request.Context(), tenantID, body.RuleIDs)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{"items": results}))
+}
+
+// handleError 统一错误处理：按**领域错误码段位**映射 HTTP 状态码；非领域错误**不外泄 err.Error()**
+// （原文可能含存储/实现细节），对外只给稳定的系统错误文案，并把细节写入日志。
+//
+// 修复背景（2026-11-01，与 template #243 / dns #284 同一类）：本处理器此前把 47 处错误响应
+// 全部写成 `ctx.JSON(http.StatusOK, web.ErrorResult*(...))` ⇒ 参数错误/不存在都成了"HTTP 200 成功"。
+func (h *TagHandler) handleError(ctx *gin.Context, err error) {
+	var ec errs.ErrorCode
+	if errors.As(err, &ec) {
+		if web.HTTPStatusForCode(ec.Code) == http.StatusInternalServerError {
+			h.logger.Error("标签服务错误", elog.FieldErr(err))
+		}
+		ctx.JSON(web.HTTPStatusForCode(ec.Code), web.ErrorResult(ec))
+		return
+	}
+	h.logger.Error("标签服务未知错误", elog.FieldErr(err))
+	ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 }
