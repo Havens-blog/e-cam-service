@@ -10458,3 +10458,27 @@ OSS 用的是 `classCounts`（标准/低频/归档/冷归档存储分布），�
 
 - 仅测带搜索框的 8 个页面；320 等更窄视口未测。
 - `.main-content` 水平 padding 现为全宽度 24px，上下仍在窄屏收紧。
+
+---
+
+## 2026-11-01 预算「周期」端到端打通(#273)+ **CI 归因方法**再验证
+
+### 缺陷(潜在,已如实标注影响面)
+前端预算表单有「周期」选择,域模型/库表/列表都有 period,但后端**两层**丢弃用户选择:
+1. `cost/handler` 的 Create/UpdateBudgetReq **没有 period 字段**(请求带了也收不到);
+2. `cost/budget.service.CreateBudget` 里 `budget.Period = "monthly"` 是**无条件覆盖**
+   —— 这一点是**我用 stub DAO 的单测当场抓出来的**(传 "quarter" 进去,落库前已变 "monthly")。
+**影响定性**:前端「周期」下拉只提供「月度」一项 ⇒ **今天无用户可见影响**;属"日后放开季度/年度就会被静默改写"的隐患。
+修复:请求结构补 Period 并透传 + service 改"有值即尊重、空值兜底 monthly";新增 2 条 handler 级单测。
+
+### 本轮的 CI 归因(值得记入方法)
+首次 CI `Test` 失败 ⇒ 拉全量日志核对:**lint 报错 4 条全指向本 PR 新加文件、他人 0 条** ⇒ 判定"**是我的**"并逐条修复
+(goimports 的 local-prefixes、gocritic hugeParam、httpNoBody —— 两条仓内已有先例可循)。
+修复后 `Test` **success**;而 `Build (darwin,amd64)` 失败经核对是 **tar 解包 Go module 缓存报 `File exists`**(无关第三方模块),
+且 **main 自身近期两次运行同样 failure** ⇒ 判定"**非我引入的既有基础设施问题**"。
+
+### 口径沉淀(第七条:CI 红的归因顺序)
+1. **先看是不是我的**:拉该作业**全量日志**,按"报错文件路径"归因(lint 会直接给文件名;构建失败要点到具体包);
+2. **再看是不是既有**:对比 **main 最近几次同类作业的结论**(本例 main 也是 failure ⇒ 既有);
+3. **基础设施类**要认出特征:`tar: Cannot open: File exists`、镜像/缓存/代理超时等 ⇒ 不是代码问题;
+4. **结论必须落到报告里**(谁的问题、依据是什么),不能只写"CI 红"。
