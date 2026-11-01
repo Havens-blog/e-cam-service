@@ -26,6 +26,9 @@ func TestHTTPStatusForCode(t *testing.T) {
 		{"云 API 错误(500030) → 500", 500030, http.StatusInternalServerError},
 		{"DNS 云 API 失败(500050) → 500", 500050, http.StatusInternalServerError},
 		{"系统错误(500) → 500", 500, http.StatusInternalServerError},
+		{"字典类型码已存在(409020) → 409", 409020, http.StatusConflict},
+		{"字典项值已存在(409021) → 409", 409021, http.StatusConflict},
+		{"权限组已存在(409001) → 409", 409001, http.StatusConflict},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

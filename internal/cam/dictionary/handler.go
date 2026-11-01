@@ -7,11 +7,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
-	"github.com/gin-gonic/gin"
 )
 
 var codeRegexp = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
@@ -59,33 +61,33 @@ func (h *DictHandler) CreateType(ctx *gin.Context) {
 
 	var req CreateTypeReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 
 	// 校验 code
 	if req.Code == "" {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "code is required"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "code is required"))
 		return
 	}
 	if !codeRegexp.MatchString(req.Code) {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "code must be alphanumeric and underscore"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "code must be alphanumeric and underscore"))
 		return
 	}
 
 	// 校验 name
 	if req.Name == "" {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "name is required"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "name is required"))
 		return
 	}
 
 	dt, err := h.svc.CreateType(ctx.Request.Context(), tenantID, req)
 	if err != nil {
 		if errors.Is(err, ErrDictTypeCodeExists) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(errs.DictTypeCodeExists))
+			ctx.JSON(web.HTTPStatusForCode(errs.DictTypeCodeExists.Code), web.ErrorResult(errs.DictTypeCodeExists))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(dt))
@@ -97,22 +99,22 @@ func (h *DictHandler) UpdateType(ctx *gin.Context) {
 
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
 		return
 	}
 
 	var req UpdateTypeReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 
 	if err := h.svc.UpdateType(ctx.Request.Context(), tenantID, id, req); err != nil {
 		if errors.Is(err, ErrDictTypeNotFound) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(errs.DictTypeNotFound))
+			ctx.JSON(web.HTTPStatusForCode(errs.DictTypeNotFound.Code), web.ErrorResult(errs.DictTypeNotFound))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(nil))
@@ -124,20 +126,20 @@ func (h *DictHandler) DeleteType(ctx *gin.Context) {
 
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
 		return
 	}
 
 	if err := h.svc.DeleteType(ctx.Request.Context(), tenantID, id); err != nil {
 		if errors.Is(err, ErrDictTypeHasItems) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(errs.DictTypeHasItems))
+			ctx.JSON(web.HTTPStatusForCode(errs.DictTypeHasItems.Code), web.ErrorResult(errs.DictTypeHasItems))
 			return
 		}
 		if errors.Is(err, ErrDictTypeNotFound) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(errs.DictTypeNotFound))
+			ctx.JSON(web.HTTPStatusForCode(errs.DictTypeNotFound.Code), web.ErrorResult(errs.DictTypeNotFound))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(nil))
@@ -162,7 +164,7 @@ func (h *DictHandler) ListTypes(ctx *gin.Context) {
 
 	types, total, err := h.svc.ListTypes(ctx.Request.Context(), tenantID, filter)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{
@@ -177,22 +179,22 @@ func (h *DictHandler) UpdateTypeStatus(ctx *gin.Context) {
 
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
 		return
 	}
 
 	var req UpdateStatusReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 
 	if err := h.svc.UpdateTypeStatus(ctx.Request.Context(), tenantID, id, req.Status); err != nil {
 		if errors.Is(err, ErrDictTypeNotFound) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(errs.DictTypeNotFound))
+			ctx.JSON(web.HTTPStatusForCode(errs.DictTypeNotFound.Code), web.ErrorResult(errs.DictTypeNotFound))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(nil))
@@ -206,23 +208,23 @@ func (h *DictHandler) CreateItem(ctx *gin.Context) {
 
 	typeID, err := strconv.ParseInt(ctx.Param("type_id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid type_id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid type_id"))
 		return
 	}
 
 	var req CreateItemReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 
 	item, err := h.svc.CreateItem(ctx.Request.Context(), tenantID, typeID, req)
 	if err != nil {
 		if errors.Is(err, ErrDictItemValueExists) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(errs.DictItemValueExists))
+			ctx.JSON(web.HTTPStatusForCode(errs.DictItemValueExists.Code), web.ErrorResult(errs.DictItemValueExists))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(item))
@@ -234,13 +236,13 @@ func (h *DictHandler) ListItems(ctx *gin.Context) {
 
 	typeID, err := strconv.ParseInt(ctx.Param("type_id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid type_id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid type_id"))
 		return
 	}
 
 	items, err := h.svc.ListItems(ctx.Request.Context(), tenantID, typeID)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(items))
@@ -252,22 +254,22 @@ func (h *DictHandler) UpdateItem(ctx *gin.Context) {
 
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
 		return
 	}
 
 	var req UpdateItemReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 
 	if err := h.svc.UpdateItem(ctx.Request.Context(), tenantID, id, req); err != nil {
 		if errors.Is(err, ErrDictItemNotFound) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(errs.DictItemNotFound))
+			ctx.JSON(web.HTTPStatusForCode(errs.DictItemNotFound.Code), web.ErrorResult(errs.DictItemNotFound))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(nil))
@@ -279,16 +281,16 @@ func (h *DictHandler) DeleteItem(ctx *gin.Context) {
 
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
 		return
 	}
 
 	if err := h.svc.DeleteItem(ctx.Request.Context(), tenantID, id); err != nil {
 		if errors.Is(err, ErrDictItemNotFound) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(errs.DictItemNotFound))
+			ctx.JSON(web.HTTPStatusForCode(errs.DictItemNotFound.Code), web.ErrorResult(errs.DictItemNotFound))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(nil))
@@ -300,22 +302,22 @@ func (h *DictHandler) UpdateItemStatus(ctx *gin.Context) {
 
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid id"))
 		return
 	}
 
 	var req UpdateStatusReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 
 	if err := h.svc.UpdateItemStatus(ctx.Request.Context(), tenantID, id, req.Status); err != nil {
 		if errors.Is(err, ErrDictItemNotFound) {
-			ctx.JSON(http.StatusOK, web.ErrorResult(errs.DictItemNotFound))
+			ctx.JSON(web.HTTPStatusForCode(errs.DictItemNotFound.Code), web.ErrorResult(errs.DictItemNotFound))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(nil))
@@ -330,7 +332,7 @@ func (h *DictHandler) GetByCode(ctx *gin.Context) {
 
 	items, err := h.svc.GetByCode(ctx.Request.Context(), tenantID, code)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(items))
@@ -349,8 +351,24 @@ func (h *DictHandler) BatchGetByCodes(ctx *gin.Context) {
 	codes := strings.Split(codesStr, ",")
 	result, err := h.svc.BatchGetByCodes(ctx.Request.Context(), tenantID, codes)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
+}
+
+// handleError (added 2026-11-01): the dictionary handler previously returned HTTP 200 for every error
+// (parameter errors and "not found"/"conflict" alike). Domain codes are mapped by band via the shared
+// web.HTTPStatusForCode; non-domain errors are reported as a stable system error (no raw err.Error() leak).
+func (h *DictHandler) handleError(ctx *gin.Context, err error) {
+	var ec errs.ErrorCode
+	if errors.As(err, &ec) {
+		if web.HTTPStatusForCode(ec.Code) == http.StatusInternalServerError {
+			elog.DefaultLogger.Error("dictionary service error", elog.FieldErr(err))
+		}
+		ctx.JSON(web.HTTPStatusForCode(ec.Code), web.ErrorResult(ec))
+		return
+	}
+	elog.DefaultLogger.Error("dictionary service unknown error", elog.FieldErr(err))
+	ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 }
