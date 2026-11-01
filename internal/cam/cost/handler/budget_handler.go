@@ -5,6 +5,10 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Havens-blog/e-common-go/ginx"
+	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/budget"
 	costdomain "github.com/Havens-blog/e-cam-service/internal/cam/cost/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
@@ -12,24 +16,26 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
-	"github.com/Havens-blog/e-common-go/ginx"
-	"github.com/gin-gonic/gin"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // CreateBudgetReq 创建预算请求
+//
+// 【修复 2026-11-01】补 `Period`：前端表单有「周期」选择、域模型 BudgetRule 与库里都有 `period`、
+// 列表也展示它，但此处的请求结构**没有该字段** ⇒ 用户选的周期被静默丢弃（始终落默认周期）。
 type CreateBudgetReq struct {
 	Name        string    `json:"name"`
 	AmountLimit float64   `json:"amount_limit"`
+	Period      string    `json:"period"`
 	ScopeType   string    `json:"scope_type"`
 	ScopeValue  string    `json:"scope_value"`
 	Thresholds  []float64 `json:"thresholds"`
 }
 
-// UpdateBudgetReq 更新预算请求
+// UpdateBudgetReq 更新预算请求（同样需要 `Period`，理由见 CreateBudgetReq）
 type UpdateBudgetReq struct {
 	Name        string    `json:"name"`
 	AmountLimit float64   `json:"amount_limit"`
+	Period      string    `json:"period"`
 	ScopeType   string    `json:"scope_type"`
 	ScopeValue  string    `json:"scope_value"`
 	Thresholds  []float64 `json:"thresholds"`
@@ -66,6 +72,7 @@ func (h *BudgetHandler) CreateBudget(ctx *gin.Context, req CreateBudgetReq) (gin
 	rule := costdomain.BudgetRule{
 		Name:        req.Name,
 		AmountLimit: req.AmountLimit,
+		Period:      req.Period,
 		ScopeType:   req.ScopeType,
 		ScopeValue:  req.ScopeValue,
 		Thresholds:  req.Thresholds,
@@ -140,6 +147,7 @@ func (h *BudgetHandler) UpdateBudget(ctx *gin.Context, req UpdateBudgetReq) (gin
 		ID:          id,
 		Name:        req.Name,
 		AmountLimit: req.AmountLimit,
+		Period:      req.Period,
 		ScopeType:   req.ScopeType,
 		ScopeValue:  req.ScopeValue,
 		Thresholds:  req.Thresholds,
