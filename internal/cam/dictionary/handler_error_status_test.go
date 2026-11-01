@@ -21,7 +21,6 @@ type stubDictService struct {
 	deleteTypeErr error
 }
 
-//nolint:gocritic // hugeParam: 必须与 DictService.CreateType 的签名一致（值传递）
 func (s *stubDictService) CreateType(_ context.Context, _ int64, _ CreateTypeReq) (DictType, error) {
 	return DictType{}, s.createTypeErr
 }
