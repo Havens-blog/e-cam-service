@@ -2,15 +2,17 @@ package handler
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/budget"
 	costdomain "github.com/Havens-blog/e-cam-service/internal/cam/cost/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/gin-gonic/gin"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // stubBudgetDAO 只实现本用例需要的方法；其余方法由内嵌接口占位（被调用即 panic，能暴露误用）。
@@ -20,11 +22,13 @@ type stubBudgetDAO struct {
 	updated costdomain.BudgetRule
 }
 
+//nolint:gocritic // hugeParam: 必须与 repository.BudgetDAO.Create 的签名一致（值传递）
 func (s *stubBudgetDAO) Create(_ context.Context, b costdomain.BudgetRule) (int64, error) {
 	s.created = b
 	return 7, nil
 }
 
+//nolint:gocritic // hugeParam: 必须与 repository.BudgetDAO.Update 的签名一致（值传递）
 func (s *stubBudgetDAO) Update(_ context.Context, b costdomain.BudgetRule) error {
 	s.updated = b
 	return nil
@@ -39,7 +43,7 @@ func newBudgetTestHandler() (*BudgetHandler, *stubBudgetDAO) {
 
 func budgetTestCtx(id string) *gin.Context {
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx.Request = httptest.NewRequest("POST", "/api/v1/cam/budget", nil)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/cam/budget", http.NoBody)
 	ctx.Set(middleware.TenantIDKey, int64(3))
 	if id != "" {
 		ctx.Params = gin.Params{{Key: "id", Value: id}}
