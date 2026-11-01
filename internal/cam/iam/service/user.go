@@ -677,7 +677,7 @@ func mergeGroupIDs(existing, given []int64) []int64 {
 //
 // mode == "append"：与用户**已有**权限组合并（前端"追加模式"的语义，亦是前端默认值）；
 // 其它值（含空）：按给定集合覆盖（历史行为，保证老调用方不受影响）。
-func (s *cloudUserService) AssignPermissionGroups(ctx context.Context, userIDs []int64, groupIDs []int64, mode string) error {
+func (s *cloudUserService) AssignPermissionGroups(ctx context.Context, userIDs, groupIDs []int64, mode string) error {
 	s.logger.Info("批量分配权限组",
 		elog.Int("user_count", len(userIDs)),
 		elog.Int("group_count", len(groupIDs)),
