@@ -25,7 +25,7 @@ func NewChangeHandler(tracker *service.ChangeTracker, logger *elog.Component) *C
 // @Tags 审计变更
 // @Produce json
 // @Param X-Tenant-ID header string true "租户ID"
-// @Param asset_id query string true "资产ID"
+// @Param asset_id query string false "资产ID（可选；缺省时按租户统计全部资产变更）"
 // @Param field_name query string false "变更字段名"
 // @Param start_time query int false "开始时间(Unix毫秒)"
 // @Param end_time query int false "结束时间(Unix毫秒)"
@@ -33,6 +33,9 @@ func NewChangeHandler(tracker *service.ChangeTracker, logger *elog.Component) *C
 // @Param limit query int false "限制数量"
 // @Success 200 {object} gin.H
 // @Router /api/v1/cam/audit/changes [get]
+// asset_id 为可选：缺省时 DAO 的 buildQuery 只按 tenant_id 过滤，返回该租户全部资产的变更，
+// 前端「变更历史」页就是依赖这一行为做全局列表（曾经注解写的是 required，与实现不一致）。
+// 若将来要强制必填，需同时改造前端页面，否则该页会直接 400。
 func (h *ChangeHandler) ListAssetChanges(c *gin.Context) {
 	tenantID := middleware.GetTenantID(c)
 	assetID := c.Query("asset_id")
