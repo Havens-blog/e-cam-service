@@ -22,6 +22,7 @@ type stubTagService struct {
 	deletePolicyErr error
 }
 
+//nolint:gocritic // hugeParam: 必须与 TagService.ListTags 的签名一致（值传递）
 func (s *stubTagService) ListTags(_ context.Context, _ int64, _ TagFilter) ([]TagSummary, int64, error) {
 	if s.listTagsErr != nil {
 		return nil, 0, s.listTagsErr
@@ -29,11 +30,12 @@ func (s *stubTagService) ListTags(_ context.Context, _ int64, _ TagFilter) ([]Ta
 	return nil, 0, nil
 }
 
+//nolint:gocritic // hugeParam: 必须与 TagService.CreatePolicy 的签名一致（值传递）
 func (s *stubTagService) CreatePolicy(_ context.Context, _ int64, _ CreatePolicyReq) (TagPolicy, error) {
 	return TagPolicy{}, s.createPolicyErr
 }
 
-func (s *stubTagService) DeletePolicy(_ context.Context, _ int64, _ int64) error {
+func (s *stubTagService) DeletePolicy(_ context.Context, _, _ int64) error {
 	return s.deletePolicyErr
 }
 
