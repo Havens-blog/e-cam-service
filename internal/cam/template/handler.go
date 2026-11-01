@@ -5,12 +5,13 @@ import (
 	"net/http"
 	"strconv"
 
+	cloudx "github.com/Havens-blog/e-cloudx-sdk"
+	"github.com/gin-gonic/gin"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
-	cloudx "github.com/Havens-blog/e-cloudx-sdk"
-	"github.com/gin-gonic/gin"
 )
 
 // TemplateHandler 主机模板 HTTP 处理器
@@ -243,19 +244,19 @@ func (h *TemplateHandler) ListRegions(ctx *gin.Context) {
 
 	adapter, err := h.adapterFactory.GetAdapter(account)
 	if err != nil {
-		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, "failed to create adapter"))
+		ctx.JSON(web.HTTPStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, "failed to create adapter"))
 		return
 	}
 
 	ecsAdapter := adapter.ECS()
 	if ecsAdapter == nil {
-		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, "ECS adapter not available"))
+		ctx.JSON(web.HTTPStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, "ECS adapter not available"))
 		return
 	}
 
 	regions, err := ecsAdapter.GetRegions(ctx.Request.Context())
 	if err != nil {
-		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
+		ctx.JSON(web.HTTPStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(regions))
@@ -273,7 +274,7 @@ func (h *TemplateHandler) ListInstanceTypes(ctx *gin.Context) {
 	}
 	result, err := rq.ListAvailableInstanceTypes(ctx.Request.Context(), region)
 	if err != nil {
-		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
+		ctx.JSON(web.HTTPStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -291,7 +292,7 @@ func (h *TemplateHandler) ListImages(ctx *gin.Context) {
 	}
 	result, err := rq.ListAvailableImages(ctx.Request.Context(), region)
 	if err != nil {
-		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
+		ctx.JSON(web.HTTPStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -309,7 +310,7 @@ func (h *TemplateHandler) ListVPCs(ctx *gin.Context) {
 	}
 	result, err := rq.ListVPCs(ctx.Request.Context(), region)
 	if err != nil {
-		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
+		ctx.JSON(web.HTTPStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -328,7 +329,7 @@ func (h *TemplateHandler) ListSubnets(ctx *gin.Context) {
 	}
 	result, err := rq.ListSubnets(ctx.Request.Context(), region, vpcID)
 	if err != nil {
-		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
+		ctx.JSON(web.HTTPStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -347,7 +348,7 @@ func (h *TemplateHandler) ListSecurityGroups(ctx *gin.Context) {
 	}
 	result, err := rq.ListSecurityGroups(ctx.Request.Context(), region, vpcID)
 	if err != nil {
-		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
+		ctx.JSON(web.HTTPStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, err.Error()))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -376,7 +377,7 @@ func (h *TemplateHandler) getResourceQueryAdapter(ctx *gin.Context) (cloudx.Reso
 
 	adapter, err := h.adapterFactory.GetAdapter(account)
 	if err != nil {
-		ctx.JSON(httpStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, "failed to create adapter"))
+		ctx.JSON(web.HTTPStatusForCode(ErrCloudAPIError.Code), web.ErrorResultWithMsg(ErrCloudAPIError, "failed to create adapter"))
 		return nil, err
 	}
 
@@ -392,33 +393,10 @@ func (h *TemplateHandler) getResourceQueryAdapter(ctx *gin.Context) (cloudx.Reso
 func (h *TemplateHandler) handleError(ctx *gin.Context, err error) {
 	var ec errs.ErrorCode
 	if errors.As(err, &ec) {
-		ctx.JSON(httpStatusForCode(ec.Code), web.ErrorResult(ec))
+		ctx.JSON(web.HTTPStatusForCode(ec.Code), web.ErrorResult(ec))
 		return
 	}
 	// 非领域错误：不外泄 err.Error()（可能含存储/实现细节，如 "mongo: no documents in result"）；
 	// 细节应由服务层日志承载，对外只给稳定的系统错误文案。
 	ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
-}
-
-// httpStatusForCode 把**业务错误码段位**映射为 HTTP 状态码。
-//
-// 背景（实测 2026-10-31）：本处理器此前把**所有**错误响应都写成 `ctx.JSON(http.StatusOK, ...)`，于是
-//
-//	GET /api/v1/cam/templates/999999       → HTTP 200 {"code":404030,"msg":"vm template not found"}
-//	GET /api/v1/cam/templates/abc          → HTTP 200 {"code":400,"msg":"invalid id"}
-//	GET /api/v1/cam/provision-tasks/999999 → HTTP 200 {"code":404031,…}
-//
-// 只按 HTTP 判成功的客户端会把"不存在/参数错"当成成功 —— 与 #214/#217/#221/#225/#231/#238 的
-// "该 4xx 却回 5xx" 恰成**相反**的错误形态。
-//
-// 段位约定（见 internal/cam/errs 与各模块本地码）：404xxx = 目标不存在；4xx（如 ParamsError=400）= 参数错误。
-func httpStatusForCode(code int) int {
-	switch {
-	case code >= 404000 && code < 405000:
-		return http.StatusNotFound
-	case code >= 400 && code < 500:
-		return http.StatusBadRequest
-	default:
-		return http.StatusInternalServerError
-	}
 }

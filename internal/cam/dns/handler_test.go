@@ -9,11 +9,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 )
 
 // mockDNSService 模拟 DNSService
@@ -150,7 +151,8 @@ func TestHandler_ListDomains_Error(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	// 修复后：错误响应不再回 HTTP 200（此前测试把 200+错误码 当成契约，锁住了缺陷）
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	var resp map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
@@ -209,7 +211,8 @@ func TestHandler_CreateRecord_InvalidBody(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	// 修复后：错误响应不再回 HTTP 200（此前测试把 200+错误码 当成契约，锁住了缺陷）
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 	var resp map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
@@ -230,7 +233,8 @@ func TestHandler_CreateRecord_ValidationError(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	// 修复后：错误响应不再回 HTTP 200（此前测试把 200+错误码 当成契约，锁住了缺陷）
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 	var resp map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
@@ -285,7 +289,8 @@ func TestHandler_DeleteRecord_Error(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	// 修复后：错误响应不再回 HTTP 200（此前测试把 200+错误码 当成契约，锁住了缺陷）
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	var resp map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
@@ -327,7 +332,8 @@ func TestHandler_BatchDeleteRecords_EmptyIDs(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	// 修复后：错误响应不再回 HTTP 200（此前测试把 200+错误码 当成契约，锁住了缺陷）
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 	var resp map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
