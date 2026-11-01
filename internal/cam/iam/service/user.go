@@ -25,7 +25,7 @@ type CloudUserService interface {
 	SyncUsers(ctx context.Context, cloudAccountID int64) (*UserSyncResult, error)
 	SyncUsersAsync(ctx context.Context, cloudAccountID int64) (*domain.SyncTask, error)
 	ExecuteBatchUserSync(ctx context.Context, taskID int64) error
-	AssignPermissionGroups(ctx context.Context, userIDs []int64, groupIDs []int64, mode string) error
+	AssignPermissionGroups(ctx context.Context, userIDs, groupIDs []int64, mode string) error
 }
 
 type cloudUserService struct {
