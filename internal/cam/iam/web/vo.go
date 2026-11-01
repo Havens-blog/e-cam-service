@@ -34,9 +34,17 @@ type ListUsersVO struct {
 }
 
 // AssignUserGroupsVO 批量分配用户组请求VO
+//
+// 【修复 2026-11-01】补 `mode`：前端批量分配弹窗明确提供「追加模式 / 替换模式」
+// （默认 **append**，文案："在用户现有权限组基础上添加新的权限组"），且请求里**一直在发 `mode`**，
+// 但此前 VO/handler/service 都没有该参数 ⇒ 无论选哪种模式，落库都是 `$set` 覆盖（**替换**）
+// ⇒ 选"追加"会**静默删掉用户原有其它权限组**（意外权限回收）。
+// 兼容性：`mode` 为空时保持历史上游行为（**替换**），只有显式 `append` 才做合并。
 type AssignUserGroupsVO struct {
 	UserIDs  []int64 `json:"user_ids" binding:"required,min=1"`
 	GroupIDs []int64 `json:"group_ids" binding:"required,min=1"`
+	// Mode: append=与已有权限组合并；replace/空=按给定集合覆盖（历史行为）
+	Mode string `json:"mode"`
 }
 
 // CreateUserGroupVO 创建用户组请求VO

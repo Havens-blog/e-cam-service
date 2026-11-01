@@ -4,12 +4,13 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
-	"github.com/Havens-blog/e-cam-service/internal/cam/iam/service"
-	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
+
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/Havens-blog/e-cam-service/internal/cam/iam/service"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 )
 
 type UserHandler struct {
@@ -257,7 +258,7 @@ func (h *UserHandler) AssignPermissionGroups(c *gin.Context) {
 		return
 	}
 
-	err := h.userService.AssignPermissionGroups(c.Request.Context(), req.UserIDs, req.GroupIDs)
+	err := h.userService.AssignPermissionGroups(c.Request.Context(), req.UserIDs, req.GroupIDs, req.Mode)
 	if err != nil {
 		h.logger.Error("批量分配用户组失败", elog.Int64("tenant_id", tenantID), elog.FieldErr(err))
 		c.JSON(statusForIamError(err), Error(err))

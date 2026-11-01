@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-cloudx-sdk/iam"
+	"github.com/gotomicro/ego/core/elog"
+	"go.mongodb.org/mongo-driver/mongo"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	iamrepo "github.com/Havens-blog/e-cam-service/internal/cam/iam/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
-	"github.com/Havens-blog/e-cloudx-sdk/iam"
-	"github.com/Havens-blog/e-cloudx-sdk/domain"
-	"github.com/gotomicro/ego/core/elog"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // CloudUserService 云用户服务接口
@@ -24,7 +25,7 @@ type CloudUserService interface {
 	SyncUsers(ctx context.Context, cloudAccountID int64) (*UserSyncResult, error)
 	SyncUsersAsync(ctx context.Context, cloudAccountID int64) (*domain.SyncTask, error)
 	ExecuteBatchUserSync(ctx context.Context, taskID int64) error
-	AssignPermissionGroups(ctx context.Context, userIDs []int64, groupIDs []int64) error
+	AssignPermissionGroups(ctx context.Context, userIDs []int64, groupIDs []int64, mode string) error
 }
 
 type cloudUserService struct {
@@ -632,10 +633,34 @@ func (s *cloudUserService) isUserChanged(old, new *domain.CloudUser) bool {
 	return false
 }
 
-func (s *cloudUserService) AssignPermissionGroups(ctx context.Context, userIDs []int64, groupIDs []int64) error {
+// mergeGroupIDs 合并两组权限组 ID：保留 existing 顺序，再追加 given 中未出现的，去重且不改动入参切片。
+func mergeGroupIDs(existing, given []int64) []int64 {
+	merged := make([]int64, 0, len(existing)+len(given))
+	seen := make(map[int64]bool, len(existing)+len(given))
+	for _, id := range existing {
+		if !seen[id] {
+			seen[id] = true
+			merged = append(merged, id)
+		}
+	}
+	for _, id := range given {
+		if !seen[id] {
+			seen[id] = true
+			merged = append(merged, id)
+		}
+	}
+	return merged
+}
+
+// AssignPermissionGroups 批量分配用户组。
+//
+// mode == "append"：与用户**已有**权限组合并（前端"追加模式"的语义，亦是前端默认值）；
+// 其它值（含空）：按给定集合覆盖（历史行为，保证老调用方不受影响）。
+func (s *cloudUserService) AssignPermissionGroups(ctx context.Context, userIDs []int64, groupIDs []int64, mode string) error {
 	s.logger.Info("批量分配权限组",
 		elog.Int("user_count", len(userIDs)),
-		elog.Int("group_count", len(groupIDs)))
+		elog.Int("group_count", len(groupIDs)),
+		elog.String("mode", mode))
 
 	if len(userIDs) == 0 {
 		return fmt.Errorf("用户ID列表不能为空")
@@ -666,12 +691,26 @@ func (s *cloudUserService) AssignPermissionGroups(ctx context.Context, userIDs [
 		return err
 	}
 
-	if err := s.userRepo.BatchUpdatePermissionGroups(ctx, userIDs, groupIDs); err != nil {
-		s.logger.Error("批量更新用户权限组失败", elog.FieldErr(err))
-		return fmt.Errorf("批量更新用户权限组失败: %w", err)
-	}
+	if mode == "append" {
+		// 追加：逐个用户与其**已有**权限组合并后再写。
+		// 说明：批量 DAO 是 `$set`（整体覆盖），无法表达"每人不同的结果集"，故此处逐用户更新；
+		// 用户组用户数按**单人 delta** 维护（updateGroupUserCounts），避免把旧组误减。
+		for _, userID := range userIDs {
+			merged := mergeGroupIDs(userGroupMap[userID], groupIDs)
+			if err := s.userRepo.UpdatePermissionGroups(ctx, userID, merged); err != nil {
+				s.logger.Error("追加用户权限组失败", elog.Int64("user_id", userID), elog.FieldErr(err))
+				return fmt.Errorf("追加用户权限组失败: %w", err)
+			}
+			s.updateGroupUserCounts(ctx, userGroupMap[userID], merged)
+		}
+	} else {
+		if err := s.userRepo.BatchUpdatePermissionGroups(ctx, userIDs, groupIDs); err != nil {
+			s.logger.Error("批量更新用户权限组失败", elog.FieldErr(err))
+			return fmt.Errorf("批量更新用户权限组失败: %w", err)
+		}
 
-	s.updateBatchGroupUserCounts(ctx, userGroupMap, groupIDs)
+		s.updateBatchGroupUserCounts(ctx, userGroupMap, groupIDs)
+	}
 
 	for _, userID := range userIDs {
 		user, err := s.userRepo.GetByID(ctx, userID)
