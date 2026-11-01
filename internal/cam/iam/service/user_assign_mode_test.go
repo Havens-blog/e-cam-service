@@ -32,7 +32,7 @@ func (s *stubAssignUserRepo) UpdatePermissionGroups(_ context.Context, id int64,
 	return nil
 }
 
-func (s *stubAssignUserRepo) BatchUpdatePermissionGroups(_ context.Context, _ []int64, groupIDs []int64) error {
+func (s *stubAssignUserRepo) BatchUpdatePermissionGroups(_ context.Context, userIDs, groupIDs []int64) error {
 	s.batched = append(s.batched, append([]int64(nil), groupIDs...))
 	return nil
 }
@@ -61,10 +61,17 @@ func (s *stubAssignTaskRepo) Create(_ context.Context, _ domain.SyncTask) (int64
 	return 1, nil
 }
 
-func newAssignTestService(users map[int64]domain.CloudUser) (*cloudUserService, *stubAssignUserRepo, *stubAssignGroupRepo) {
+func newAssignTestService(
+	users map[int64]domain.CloudUser,
+) (*cloudUserService, *stubAssignUserRepo, *stubAssignGroupRepo) {
 	userRepo := &stubAssignUserRepo{users: users}
 	groupRepo := &stubAssignGroupRepo{}
-	return &cloudUserService{userRepo: userRepo, groupRepo: groupRepo, syncTaskRepo: &stubAssignTaskRepo{}, logger: elog.DefaultLogger}, userRepo, groupRepo
+	return &cloudUserService{
+		userRepo:     userRepo,
+		groupRepo:    groupRepo,
+		syncTaskRepo: &stubAssignTaskRepo{},
+		logger:       elog.DefaultLogger,
+	}, userRepo, groupRepo
 }
 
 // 回归（2026-11-01）：前端批量分配默认 **追加模式**（文案："在用户现有权限组基础上添加新的权限组"），

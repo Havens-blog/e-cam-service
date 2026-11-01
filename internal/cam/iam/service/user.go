@@ -633,6 +633,27 @@ func (s *cloudUserService) isUserChanged(old, new *domain.CloudUser) bool {
 	return false
 }
 
+// appendPermissionGroups 追加模式：逐个用户与其**已有**权限组合并后再写。
+//
+// 说明：批量 DAO 是 `$set`（整体覆盖），无法表达"每人不同的结果集"，故此处逐用户更新；
+// 用户组用户数按**单人 delta** 维护（updateGroupUserCounts），避免把旧组误减。
+func (s *cloudUserService) appendPermissionGroups(
+	ctx context.Context,
+	userIDs []int64,
+	groupIDs []int64,
+	userGroupMap map[int64][]int64,
+) error {
+	for _, userID := range userIDs {
+		merged := mergeGroupIDs(userGroupMap[userID], groupIDs)
+		if err := s.userRepo.UpdatePermissionGroups(ctx, userID, merged); err != nil {
+			s.logger.Error("追加用户权限组失败", elog.Int64("user_id", userID), elog.FieldErr(err))
+			return fmt.Errorf("追加用户权限组失败: %w", err)
+		}
+		s.updateGroupUserCounts(ctx, userGroupMap[userID], merged)
+	}
+	return nil
+}
+
 // mergeGroupIDs 合并两组权限组 ID：保留 existing 顺序，再追加 given 中未出现的，去重且不改动入参切片。
 func mergeGroupIDs(existing, given []int64) []int64 {
 	merged := make([]int64, 0, len(existing)+len(given))
@@ -692,16 +713,8 @@ func (s *cloudUserService) AssignPermissionGroups(ctx context.Context, userIDs [
 	}
 
 	if mode == "append" {
-		// 追加：逐个用户与其**已有**权限组合并后再写。
-		// 说明：批量 DAO 是 `$set`（整体覆盖），无法表达"每人不同的结果集"，故此处逐用户更新；
-		// 用户组用户数按**单人 delta** 维护（updateGroupUserCounts），避免把旧组误减。
-		for _, userID := range userIDs {
-			merged := mergeGroupIDs(userGroupMap[userID], groupIDs)
-			if err := s.userRepo.UpdatePermissionGroups(ctx, userID, merged); err != nil {
-				s.logger.Error("追加用户权限组失败", elog.Int64("user_id", userID), elog.FieldErr(err))
-				return fmt.Errorf("追加用户权限组失败: %w", err)
-			}
-			s.updateGroupUserCounts(ctx, userGroupMap[userID], merged)
+		if err := s.appendPermissionGroups(ctx, userIDs, groupIDs, userGroupMap); err != nil {
+			return err
 		}
 	} else {
 		if err := s.userRepo.BatchUpdatePermissionGroups(ctx, userIDs, groupIDs); err != nil {
