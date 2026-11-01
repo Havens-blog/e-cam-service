@@ -19,16 +19,21 @@ import (
 //
 // 段位约定（见 internal/cam/errs 与各模块本地码）：
 //   - 404xxx = 目标不存在 ⇒ 404（如模板 404030、云账号 404002、DNS 云账号 404050）
-//   - 400xxx = 参数/校验错误 ⇒ 400（如 DNS 记录非法 400050、域名非法 400057）
+//   - 409xxx = 冲突（已存在 / 仍有子项）⇒ 409（如字典 409020/409021）
+//   - 400xxx = 参数/校验错误 ⇒ 400（如 DNS 记录非法 400050、域名非法 400057、字典 400020）
 //   - 4xx     = 参数错误 ⇒ 400（如 ParamsError=400）
 //   - 其余    = 服务端/上游错误 ⇒ 500（如 SystemError=500、模板云 API 500030、DNS 云 API 500050）
 //
-// 【教训 2026-11-01】最初只写了 `case code >= 400 && code < 500`，**漏掉了 400xxx 段**
-// （400050 既不 < 500 也不落 404xxx ⇒ 落到 default 变成 500）——该缺口由本包的用例当场发现。
+// 【教训 2026-11-01】本函数修过两次缺口，均由用例发现：
+//
+//	① 最初只写 `case 400 <= code < 500`，**漏掉 400xxx 段**（DNS 400050 落到 default 变 500）；
+//	② 之后处理字典时又发现 **409xxx 段未映射**（409020 冲突会变成 500）⇒ 补 409。
 func HTTPStatusForCode(code int) int {
 	switch {
 	case code >= 404000 && code < 405000:
 		return http.StatusNotFound
+	case code >= 409000 && code < 410000:
+		return http.StatusConflict
 	case code >= 400000 && code < 401000:
 		return http.StatusBadRequest
 	case code >= 400 && code < 500:
