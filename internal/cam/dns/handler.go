@@ -1,15 +1,17 @@
 package dns
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
-	"github.com/gin-gonic/gin"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // DNSHandler DNS 管理 HTTP 处理器
@@ -60,7 +62,7 @@ func (h *DNSHandler) ListDomains(ctx *gin.Context) {
 	items, total, err := h.svc.ListDomains(ctx.Request.Context(), tenantID, filter)
 	if err != nil {
 		logger.Error("DNS ListDomains 查询失败", elog.FieldErr(err))
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	logger.Info("DNS ListDomains 查询结果",
@@ -90,7 +92,7 @@ func (h *DNSHandler) ListRecords(ctx *gin.Context) {
 
 	items, total, err := h.svc.ListRecords(ctx.Request.Context(), tenantID, domainName, filter)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{
@@ -106,17 +108,17 @@ func (h *DNSHandler) CreateRecord(ctx *gin.Context) {
 
 	var req CreateRecordReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 
 	record, err := h.svc.CreateRecord(ctx.Request.Context(), tenantID, domainName, req)
 	if err != nil {
 		if isValidationError(err) {
-			ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, err.Error()))
+			ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, err.Error()))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(record))
@@ -130,17 +132,17 @@ func (h *DNSHandler) UpdateRecord(ctx *gin.Context) {
 
 	var req UpdateRecordReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 
 	record, err := h.svc.UpdateRecord(ctx.Request.Context(), tenantID, domainName, recordID, req)
 	if err != nil {
 		if isValidationError(err) {
-			ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, err.Error()))
+			ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, err.Error()))
 			return
 		}
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(record))
@@ -153,7 +155,7 @@ func (h *DNSHandler) DeleteRecord(ctx *gin.Context) {
 	recordID := ctx.Param("record_id")
 
 	if err := h.svc.DeleteRecord(ctx.Request.Context(), tenantID, domainName, recordID); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(nil))
@@ -168,17 +170,17 @@ func (h *DNSHandler) BatchDeleteRecords(ctx *gin.Context) {
 		RecordIDs []string `json:"record_ids"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "invalid request body"))
 		return
 	}
 	if len(body.RecordIDs) == 0 {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.ParamsError, "record_ids cannot be empty"))
+		ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, "record_ids cannot be empty"))
 		return
 	}
 
 	result, err := h.svc.BatchDeleteRecords(ctx.Request.Context(), tenantID, domainName, body.RecordIDs)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -198,7 +200,7 @@ func (h *DNSHandler) SearchRecords(ctx *gin.Context) {
 
 	items, total, err := h.svc.SearchRecords(ctx.Request.Context(), tenantID, keyword, limit)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{
@@ -213,7 +215,7 @@ func (h *DNSHandler) GetStats(ctx *gin.Context) {
 
 	stats, err := h.svc.GetStats(ctx.Request.Context(), tenantID)
 	if err != nil {
-		ctx.JSON(http.StatusOK, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		h.handleError(ctx, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(stats))
@@ -232,4 +234,19 @@ func isValidationError(err error) bool {
 		}
 	}
 	return false
+}
+
+// handleError 统一错误处理：按**领域错误码段位**映射 HTTP 状态码；非领域错误不外泄 err.Error()
+// （原文可能含存储/实现细节，如 "mongo: no documents in result"），对外只给稳定的系统错误文案。
+//
+// 修复背景（2026-11-01）：本处理器此前把**所有**错误响应都写成 `ctx.JSON(http.StatusOK, ...)`，
+// 包括参数错误（"invalid request body"/"record_ids cannot be empty"）⇒ 只按 HTTP 判成功的客户端会把
+// "参数错"当成成功（与 #214/#217/#221/#225/#231/#238/#243 属同一类"状态码与业务码错位"）。
+func (h *DNSHandler) handleError(ctx *gin.Context, err error) {
+	var ec errs.ErrorCode
+	if errors.As(err, &ec) {
+		ctx.JSON(web.HTTPStatusForCode(ec.Code), web.ErrorResult(ec))
+		return
+	}
+	ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 }
