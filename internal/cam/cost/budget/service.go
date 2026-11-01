@@ -87,7 +87,12 @@ func (s *BudgetService) CreateBudget(ctx context.Context, budget costdomain.Budg
 
 	now := time.Now().Unix()
 	budget.Status = "active"
-	budget.Period = "monthly"
+	// 仅在调用方未指定周期时兜底；**不再无条件覆盖**（此前 `budget.Period = "monthly"` 会把
+	// 用户选择的周期静默改写为月度。当前前端只提供"月度"一种选项，故今天无可见影响，
+	// 但属于"日后一旦放开季度/年度就会被静默改写"的隐患，故按"有值即尊重、空值兜底"修正。）
+	if budget.Period == "" {
+		budget.Period = "monthly"
+	}
 	budget.NotifiedAt = make(map[string]time.Time)
 	budget.CreateTime = now
 	budget.UpdateTime = now
