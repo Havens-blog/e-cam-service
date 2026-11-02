@@ -1,13 +1,17 @@
 package web
 
 import (
+	"net/http"
 	"strconv"
+
+	"github.com/gotomicro/ego/core/elog"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/gin-gonic/gin"
 )
 
 // DatabaseHandler 数据库资源HTTP处理器
@@ -209,7 +213,8 @@ func (h *DatabaseHandler) listDatabaseInstances(ctx *gin.Context, dbType string)
 
 	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -253,7 +258,8 @@ func (h *DatabaseHandler) getDatabaseInstance(ctx *gin.Context, dbType string) {
 	if provider != "" && tenantID != 0 {
 		instance, err := h.instanceSvc.GetByAssetID(ctx.Request.Context(), tenantID, modelUID, assetID)
 		if err != nil {
-			ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+			elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+			ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 			return
 		}
 		if instance.ID == 0 {
@@ -277,7 +283,8 @@ func (h *DatabaseHandler) getDatabaseInstance(ctx *gin.Context, dbType string) {
 
 	instances, _, err := h.instanceSvc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
