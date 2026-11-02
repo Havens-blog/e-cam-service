@@ -11795,3 +11795,33 @@ for (let page = 1; page <= 20; page++) {
 
 这也是本会话第二次"改完发现更差、主动回退"（上次是变更历史的全局列表）。
 **回退是结论的一部分，不是失败。**
+
+---
+
+## 2026-11-02 泄露线按模块推进:task 5 处(#306)+ 三条**流程**教训
+
+### 一、修复
+`internal/cam/task/web/handler.go` **5 处** `err.Error()` 直写响应体:
+- 2 处 `return ErrorResultWithMsg(errs.SystemError, err.Error()), nil`(提交同步/发现资产任务)
+  ⇒ 既泄露、又因 nil error 被 ginx 判为"无错误" ⇒ **HTTP 200 + 错误码**;
+- 3 处 `ctx.JSON(500, …)`(列表/取消/删除)⇒ 状态对但泄露。
+修复:新增 `logTaskError`(elog 记细节)+ 对外稳定文案;2 处改为 `return ErrorResult(errs.SystemError), err`。
+新增 `handler_leak_test.go`:直接写响应路径断言 **500 且无原文**;包装器返回形态断言**非 nil error**。
+
+### 二、本轮顺带发现(不属本 PR,仅记录)
+`ginx.WrapBody` 在**绑定失败**时只 slog 后 return、**不写任何响应** ⇒ 实测**空 body + HTTP 200**。
+属共享模块 `e-common-go` 的问题,建议单独立项(任何绑定失败的接口都会如此)。
+
+### 三、三条**流程**教训(本轮踩全了)
+1. **detached HEAD 陷阱**:早前一条 `git switch -c <branch>` 被 PowerShell 解析错误吞掉,后续提交全落在
+   detached HEAD 上,直到 PR 创建报 "Validation Failed" 才发现 ⇒ 已用 `git push origin HEAD:refs/heads/<b>`
+   补推并核对远端分支。**口径:创建分支后必须 `git status -sb` 确认首行不是 `HEAD (no branch)`**。
+2. **nolint 要"只给 CI 点名的那一行加"**:CI 报 `ListTasks` 的 hugeParam,我顺手把 `SubmitSyncAssetsTask`
+   也加了 ⇒ 下一轮 CI 反报"directive is unused"。**口径:按 CI 逐行加,不批量预防**。
+3. **新写的字面量会触发 mnd**:把 `ctx.JSON(500, …)`(原式在长表达式里未报)改写后,3 处 **Magic number 500**
+   被 mnd 点名 ⇒ 统一改 `http.StatusInternalServerError`。**口径:handler 里的状态码一律用 http 常量**。
+
+### 四、本轮最终状态
+- code PR #306 已合并(Test 最终 success);**线上验证未执行**(泄露路径需"服务端 500",无法安全触发)⇒ 单测+代码证据;
+- 遗留:同线全仓 ~51 处(下一站 `internal/topology/web` 8 处,含 400/404 带原文);
+  `task` 的 `GetTask` 把任何错误都当 404 且带 SystemError 码,而 task 域无 not-found 码 ⇒ 不擅自造码。
