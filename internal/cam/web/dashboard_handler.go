@@ -1,13 +1,16 @@
 package web
 
 import (
+	"net/http"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/gin-gonic/gin"
 )
 
 // DashboardHandler 仪表盘HTTP处理器
@@ -97,7 +100,8 @@ func (h *DashboardHandler) Overview(ctx *gin.Context) {
 
 	overview, err := h.dashboardSvc.GetOverview(ctx.Request.Context(), tenantID)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("dashboard service error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -124,7 +128,8 @@ func (h *DashboardHandler) ByProvider(ctx *gin.Context) {
 
 	counts, err := h.dashboardSvc.CountByProvider(ctx.Request.Context(), tenantID)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("dashboard service error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -146,7 +151,8 @@ func (h *DashboardHandler) ByRegion(ctx *gin.Context) {
 
 	counts, err := h.dashboardSvc.CountByRegion(ctx.Request.Context(), tenantID)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("dashboard service error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -168,7 +174,8 @@ func (h *DashboardHandler) ByAssetType(ctx *gin.Context) {
 
 	counts, err := h.dashboardSvc.CountByAssetType(ctx.Request.Context(), tenantID)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("dashboard service error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -190,7 +197,8 @@ func (h *DashboardHandler) ByAccount(ctx *gin.Context) {
 
 	counts, err := h.dashboardSvc.CountByAccount(ctx.Request.Context(), tenantID)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("dashboard service error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -226,7 +234,8 @@ func (h *DashboardHandler) Expiring(ctx *gin.Context) {
 		ctx.Request.Context(), tenantID, days, int64(offset), int64(limit),
 	)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("dashboard service error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
