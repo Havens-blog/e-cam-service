@@ -11361,3 +11361,36 @@ if (res === undefined) return          // ← 插在参数列表里
 **② 排除了一个不存在的风险也是产出。**
 翻页竞态我原以为会有"数据与页码不符"，实测加了 2.5s 延迟仍正确 ——
 把这层写进记录，下次就不必再怀疑它。
+
+---
+
+## 2026-11-02 镜像新线:扫"把实现细节回给调用方" —— **cost 模块 29 处**(#296)
+
+### 一、这条线怎么来的
+上一条线(4 个模块的"200 冒充成功")收尾后,换成**镜像问题**去扫:
+`ctx.JSON(5xx, ...err.Error()...)` —— 即"状态对(500)但**把存储/实现细节回给调用方**"。
+正确修订上全仓 **56 处 / ~20 文件**;本轮取 **cost 模块**(29 处/4 文件,内聚)。
+
+### 二、两类问题(本轮一并修)
+1. **22 处** `ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))` ⇒ 泄露 `mongo:`/`no documents` 之类;
+2. **7 处** `return web.ErrorResultWithMsg(errs.SystemError, err.Error()), nil` ⇒ 除泄露外,
+   **返回 nil error** 使 `ginx` 包装器给出 **HTTP 200 + 错误码**(依据 `e-common-go/ginx/wrap.go`:仅 `err != nil` 才 500)
+   ⇒ 与 #243/#284/#287/#290 是**同一类**。
+修复:前者改为"`elog` 记细节 + 只回稳定文案";后者改为 **`return web.ErrorResult(errs.SystemError), err`**。
+
+### 三、过程中的两次自我约束(值得记)
+1. **无用改动要还原**:我第一次批量对 `internal/cam/cost/handler` 整个目录跑了 `goimports -local`,
+   顺带把 `cost_handler_cdn.go` / `cost_handler_test.go` 的 **import 分组**重排了(纯格式、与修复无关)
+   ⇒ 用**新提交还原**(不改写历史),保持 PR 只动 **5 个文件**。
+   ⇒ 口径:**批量格式化时要把目标限定在"本次真正修改的文件"上**;
+2. **nolint 由 CI 触发再补**:新 stub 的 `Create(..., costdomain.BudgetRule)` 触发 `hugeParam`(152 字节),
+   CI 报出后我才加 `//nolint:gocritic // hugeParam: 必须与 … 签名一致` —— 正好验证上一轮修正的口径
+   (上一轮我给另一个 stub **预防性**加 nolint 反而触发 nolintlint)。
+   ⇒ 口径:**nolint 等 CI 报出再加**,不要凭经验预判。
+
+### 四、验证与**阻塞**(如实)
+- go test ./internal/cam/cost/...(全 ok,含新增 `budget_leak_test.go`);构建/vet/goimports 全绿;CI `Test` **success**;
+- **线上验证未执行**:共享检出本地 `main` 与主干**分叉**(领先 3/落后 317),其构建的 8001 不含任何已合并的主干修复,
+  而那 3 个提交是并行会话的在途工作 ⇒ 我不改动,线上回归留待阻塞解除(见 #294)。
+- 范围:全仓同类仍有 ~56 处/~20 文件(cam/web 资产与 dashboard、task、topology、model、database、instance 等);
+- 议题:`ginx` 只支持 200/500 ⇒ 经包装器的处理器**无法**给出 404,需先改共享模块 `e-common-go`。
