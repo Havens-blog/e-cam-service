@@ -1,13 +1,17 @@
 package web
 
 import (
+	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
-	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/gotomicro/ego/core/elog"
+
 	"github.com/Havens-blog/e-common-go/ginx"
 	"github.com/gin-gonic/gin"
+
+	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 )
 
 // ==================== 模型管理处理器 ====================
@@ -41,7 +45,8 @@ func (h *Handler) CreateModel(ctx *gin.Context, req CreateModelReq) (ginx.Result
 
 	createdModel, err := h.modelSvc.CreateModel(ctx.Request.Context(), model)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(h.toModelVO(createdModel)), nil
@@ -63,7 +68,8 @@ func (h *Handler) GetModel(ctx *gin.Context) {
 
 	modelDetail, err := h.modelSvc.GetModel(ctx.Request.Context(), uid)
 	if err != nil {
-		ctx.JSON(404, ErrorResultWithMsg(errs.ModelNotFound, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusNotFound, ErrorResult(errs.ModelNotFound))
 		return
 	}
 
@@ -116,7 +122,8 @@ func (h *Handler) ListModels(ctx *gin.Context) {
 
 	models, total, err := h.modelSvc.ListModels(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -173,7 +180,8 @@ func (h *Handler) UpdateModel(ctx *gin.Context, req UpdateModelReq) (ginx.Result
 
 	err = h.modelSvc.UpdateModel(ctx.Request.Context(), uid, existingModel)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(nil), nil
@@ -195,7 +203,8 @@ func (h *Handler) DeleteModel(ctx *gin.Context) {
 
 	err := h.modelSvc.DeleteModel(ctx.Request.Context(), uid)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -237,7 +246,8 @@ func (h *Handler) AddField(ctx *gin.Context, req CreateFieldReq) (ginx.Result, e
 
 	createdField, err := h.modelSvc.AddField(ctx.Request.Context(), field)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(h.toFieldVO(createdField)), nil
@@ -258,7 +268,8 @@ func (h *Handler) GetModelFields(ctx *gin.Context) {
 
 	fields, err := h.modelSvc.GetModelFields(ctx.Request.Context(), uid)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -310,7 +321,8 @@ func (h *Handler) UpdateField(ctx *gin.Context, req UpdateFieldReq) (ginx.Result
 
 	err := h.modelSvc.UpdateField(ctx.Request.Context(), fieldUID, field)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(nil), nil
@@ -332,7 +344,8 @@ func (h *Handler) DeleteField(ctx *gin.Context) {
 
 	err := h.modelSvc.DeleteField(ctx.Request.Context(), fieldUID)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -364,7 +377,8 @@ func (h *Handler) AddFieldGroup(ctx *gin.Context, req CreateFieldGroupReq) (ginx
 
 	createdGroup, err := h.modelSvc.AddFieldGroup(ctx.Request.Context(), group)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(h.toFieldGroupVO(createdGroup)), nil
@@ -385,7 +399,8 @@ func (h *Handler) GetModelFieldGroups(ctx *gin.Context) {
 
 	groups, err := h.modelSvc.GetModelFieldGroups(ctx.Request.Context(), uid)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -431,7 +446,8 @@ func (h *Handler) UpdateFieldGroup(ctx *gin.Context, req UpdateFieldGroupReq) (g
 
 	err = h.modelSvc.UpdateFieldGroup(ctx.Request.Context(), id, group)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(nil), nil
@@ -458,7 +474,8 @@ func (h *Handler) DeleteFieldGroup(ctx *gin.Context) {
 
 	err = h.modelSvc.DeleteFieldGroup(ctx.Request.Context(), id)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
