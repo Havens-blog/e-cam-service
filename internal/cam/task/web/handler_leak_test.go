@@ -72,7 +72,6 @@ type submitStubTaskService struct {
 	err error
 }
 
-//nolint:gocritic // hugeParam: 必须与 TaskService.SubmitSyncAssetsTask 的签名一致（值传递）
 func (s *submitStubTaskService) SubmitSyncAssetsTask(_ context.Context, _ task.SyncAssetsParams, _ string) (string, error) {
 	return "", s.err
 }
