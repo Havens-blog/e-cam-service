@@ -3,12 +3,16 @@ package web
 import (
 	"strconv"
 
+	"github.com/Havens-blog/e-common-go/ginx"
+	"github.com/gin-gonic/gin"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/Havens-blog/e-common-go/ginx"
-	"github.com/gin-gonic/gin"
 )
+
+// 业务码常量（mnd 对赋值位置同样生效，统一走常量）。
+const codeServerError = 500
 
 // Handler 服务树 HTTP 处理器
 type Handler struct {
@@ -108,7 +112,7 @@ func (h *Handler) CreateNode(c *gin.Context, req CreateNodeReq) (ginx.Result, er
 
 	id, err := h.treeSvc.CreateNode(c.Request.Context(), node)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Data: id}, nil
 }
@@ -127,7 +131,7 @@ func (h *Handler) GetNode(c *gin.Context) (ginx.Result, error) {
 
 	node, err := h.treeSvc.GetNode(c.Request.Context(), id)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Data: h.toNodeVO(node)}, nil
 }
@@ -158,7 +162,7 @@ func (h *Handler) UpdateNode(c *gin.Context, req UpdateNodeReq) (ginx.Result, er
 	}
 
 	if err := h.treeSvc.UpdateNode(c.Request.Context(), node); err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Msg: "更新成功"}, nil
 }
@@ -176,7 +180,7 @@ func (h *Handler) DeleteNode(c *gin.Context) (ginx.Result, error) {
 	}
 
 	if err := h.treeSvc.DeleteNode(c.Request.Context(), id); err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Msg: "删除成功"}, nil
 }
@@ -195,7 +199,7 @@ func (h *Handler) MoveNode(c *gin.Context, req MoveNodeReq) (ginx.Result, error)
 	}
 
 	if err := h.treeSvc.MoveNode(c.Request.Context(), id, req.NewParentID); err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Msg: "移动成功"}, nil
 }
@@ -229,7 +233,7 @@ func (h *Handler) ListNodes(c *gin.Context, req ListNodeReq) (ginx.Result, error
 
 	nodes, total, err := h.treeSvc.ListNodes(c.Request.Context(), filter)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 
 	vos := make([]NodeVO, len(nodes))
@@ -253,7 +257,7 @@ func (h *Handler) GetTree(c *gin.Context) (ginx.Result, error) {
 
 	tree, err := h.treeSvc.GetTree(c.Request.Context(), tenantID, rootID)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 
 	return ginx.Result{Data: h.toTreeNodeVO(tree)}, nil
@@ -276,7 +280,7 @@ func (h *Handler) BindResource(c *gin.Context, req BindResourceReq) (ginx.Result
 
 	id, err := h.bindingSvc.BindResource(c.Request.Context(), nodeID, req.EnvID, req.ResourceType, req.ResourceID, tenantID)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Data: id}, nil
 }
@@ -304,7 +308,7 @@ func (h *Handler) BatchBindResource(c *gin.Context, req BatchBindReq) (ginx.Resu
 		TenantID:     tenantID,
 	})
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Data: count, Msg: "绑定成功"}, nil
 }
@@ -340,7 +344,7 @@ func (h *Handler) ListNodeBindings(c *gin.Context, req ListBindingReq) (ginx.Res
 
 	bindings, total, err := h.bindingSvc.ListBindings(c.Request.Context(), filter)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 
 	vos := make([]BindingVO, len(bindings))
@@ -364,7 +368,7 @@ func (h *Handler) UnbindResource(c *gin.Context) (ginx.Result, error) {
 	}
 
 	if err := h.bindingSvc.UnbindByID(c.Request.Context(), id); err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Msg: "解绑成功"}, nil
 }
@@ -392,7 +396,7 @@ func (h *Handler) GetResourceNode(c *gin.Context) (ginx.Result, error) {
 
 	node, err := h.treeSvc.GetNode(c.Request.Context(), binding.NodeID)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 
 	return ginx.Result{Data: h.toNodeVO(node)}, nil
@@ -437,7 +441,7 @@ func (h *Handler) ListNodeAssets(c *gin.Context, req ListNodeAssetsReq) (ginx.Re
 
 	assets, total, err := h.nodeAssetSvc.ListNodeAssets(c.Request.Context(), filter)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 
 	return ginx.Result{Data: map[string]any{"items": assets, "total": total}}, nil
@@ -466,7 +470,7 @@ func (h *Handler) GetNodeAssetStats(c *gin.Context) (ginx.Result, error) {
 
 	stats, err := h.nodeAssetSvc.GetNodeAssetStats(c.Request.Context(), tenantID, nodeID, includeChildren)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 
 	return ginx.Result{Data: AssetStatsVO{
@@ -485,7 +489,7 @@ func (h *Handler) GetGlobalAssetStats(c *gin.Context) (ginx.Result, error) {
 
 	stats, err := h.nodeAssetSvc.GetGlobalAssetStats(c.Request.Context(), tenantID)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 
 	return ginx.Result{Data: AssetStatsVO{
@@ -515,7 +519,7 @@ func (h *Handler) GetNodeAssetSummary(c *gin.Context) (ginx.Result, error) {
 
 	summary, err := h.nodeAssetSvc.GetNodeAssetSummary(c.Request.Context(), tenantID, nodeID)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 
 	return ginx.Result{Data: summary}, nil
@@ -576,7 +580,7 @@ func (h *Handler) CreateRule(c *gin.Context, req CreateRuleReq) (ginx.Result, er
 
 	id, err := h.ruleSvc.CreateRule(c.Request.Context(), rule)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Data: id}, nil
 }
@@ -595,7 +599,7 @@ func (h *Handler) GetRule(c *gin.Context) (ginx.Result, error) {
 
 	rule, err := h.ruleSvc.GetRule(c.Request.Context(), id)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Data: h.toRuleVO(rule)}, nil
 }
@@ -627,7 +631,7 @@ func (h *Handler) UpdateRule(c *gin.Context, req UpdateRuleReq) (ginx.Result, er
 	}
 
 	if err := h.ruleSvc.UpdateRule(c.Request.Context(), rule); err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Msg: "更新成功"}, nil
 }
@@ -645,7 +649,7 @@ func (h *Handler) DeleteRule(c *gin.Context) (ginx.Result, error) {
 	}
 
 	if err := h.ruleSvc.DeleteRule(c.Request.Context(), id); err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Msg: "删除成功"}, nil
 }
@@ -664,7 +668,7 @@ func (h *Handler) UnbindRule(c *gin.Context) (ginx.Result, error) {
 
 	count, err := h.ruleSvc.UnbindRuleResources(c.Request.Context(), id)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Data: count, Msg: "解绑完成"}, nil
 }
@@ -690,7 +694,7 @@ func (h *Handler) ListRuleFieldValues(c *gin.Context) (ginx.Result, error) {
 
 	values, err := h.ruleSvc.ListFieldValues(c.Request.Context(), tenantID, field)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Data: values}, nil
 }
@@ -720,7 +724,7 @@ func (h *Handler) ListRules(c *gin.Context, req ListRuleReq) (ginx.Result, error
 
 	rules, total, err := h.ruleSvc.ListRules(c.Request.Context(), filter)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 
 	vos := make([]RuleVO, len(rules))
@@ -746,7 +750,7 @@ func (h *Handler) ExecuteRules(c *gin.Context) (ginx.Result, error) {
 
 	count, err := h.ruleSvc.ExecuteRules(c.Request.Context(), tenantID)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Data: count, Msg: "规则执行完成"}, nil
 }
@@ -774,7 +778,7 @@ func (h *Handler) DryRunRules(c *gin.Context, req DryRunRuleReq) (ginx.Result, e
 		Conditions: req.Conditions,
 	})
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Data: result}, nil
 }
@@ -794,7 +798,7 @@ func (h *Handler) PreviewRebind(c *gin.Context) (ginx.Result, error) {
 
 	plan, err := h.ruleSvc.PreviewRebind(c.Request.Context(), tenantID)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Data: plan}, nil
 }
@@ -818,7 +822,7 @@ func (h *Handler) ApplyRebind(c *gin.Context, req RebindApplyReq) (ginx.Result, 
 
 	applied, err := h.ruleSvc.ApplyRebind(c.Request.Context(), tenantID, req.ResourceIDs)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Data: applied, Msg: "改绑完成"}, nil
 }
@@ -838,7 +842,7 @@ func (h *Handler) RebuildPaths(c *gin.Context) (ginx.Result, error) {
 
 	fixed, err := h.treeSvc.RebuildPaths(c.Request.Context(), tenantID)
 	if err != nil {
-		return ginx.Result{Code: 500, Msg: err.Error()}, nil
+		return ginx.Result{Code: codeServerError, Msg: "internal error"}, err
 	}
 	return ginx.Result{Data: fixed, Msg: "路径重建完成"}, nil
 }
