@@ -1,12 +1,5 @@
 package web
 
-// 业务码常量：避免在响应结构体里散落魔法数字（mnd 对"赋值"位置同样生效）。
-const (
-	codeInvalidRequest = 400
-	codeNotFound       = 404
-	codeServerError    = 500
-)
-
 import (
 	"net/http"
 	"strconv"
@@ -17,6 +10,13 @@ import (
 
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/topology/service"
+)
+
+// 业务码常量：避免在响应结构体里散落魔法数字（mnd 对"赋值"位置同样生效）。
+const (
+	codeInvalidRequest = 400
+	codeNotFound       = 404
+	codeServerError    = 500
 )
 
 // TopologyHandler 拓扑 HTTP 处理器
