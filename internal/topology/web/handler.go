@@ -1,5 +1,12 @@
 package web
 
+// 业务码常量：避免在响应结构体里散落魔法数字（mnd 对"赋值"位置同样生效）。
+const (
+	codeInvalidRequest = 400
+	codeNotFound       = 404
+	codeServerError    = 500
+)
+
 import (
 	"net/http"
 	"strconv"
@@ -112,7 +119,7 @@ func machineTenantIDFromHeader(ctx *gin.Context) int64 {
 func (h *TopologyHandler) GetTopology(ctx *gin.Context) {
 	var query TopologyQueryVO
 	if err := ctx.ShouldBindQuery(&query); err != nil {
-		ctx.JSON(http.StatusBadRequest, ginx.Result{Code: 400, Msg: "invalid request"})
+		ctx.JSON(http.StatusBadRequest, ginx.Result{Code: codeInvalidRequest, Msg: "invalid request"})
 		return
 	}
 
@@ -132,7 +139,7 @@ func (h *TopologyHandler) GetTopology(ctx *gin.Context) {
 
 	if err != nil {
 		elog.DefaultLogger.Error("topology service error", elog.FieldErr(err))
-		ctx.JSON(http.StatusInternalServerError, ginx.Result{Code: 500, Msg: "internal error"})
+		ctx.JSON(http.StatusInternalServerError, ginx.Result{Code: codeServerError, Msg: "internal error"})
 		return
 	}
 
@@ -151,7 +158,7 @@ func (h *TopologyHandler) GetDomains(ctx *gin.Context) {
 	domains, err := h.topoSvc.GetDomains(ctx.Request.Context(), tenantID)
 	if err != nil {
 		elog.DefaultLogger.Error("topology service error", elog.FieldErr(err))
-		ctx.JSON(http.StatusInternalServerError, ginx.Result{Code: 500, Msg: "internal error"})
+		ctx.JSON(http.StatusInternalServerError, ginx.Result{Code: codeServerError, Msg: "internal error"})
 		return
 	}
 	ctx.JSON(http.StatusOK, ginx.Result{Code: 0, Msg: "success", Data: DomainListResponseVO{Domains: domains}})
@@ -172,7 +179,7 @@ func (h *TopologyHandler) GetNodeDetail(ctx *gin.Context) {
 
 	detail, err := h.topoSvc.GetNodeDetail(ctx.Request.Context(), tenantID, nodeID)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, ginx.Result{Code: 404, Msg: "topology node not found"})
+		ctx.JSON(http.StatusNotFound, ginx.Result{Code: codeNotFound, Msg: "topology node not found"})
 		return
 	}
 	ctx.JSON(http.StatusOK, ginx.Result{Code: 0, Msg: "success", Data: NodeDetailResponseVO{NodeDetail: *detail}})
@@ -190,7 +197,7 @@ func (h *TopologyHandler) GetStats(ctx *gin.Context) {
 	stats, err := h.topoSvc.GetStats(ctx.Request.Context(), tenantID)
 	if err != nil {
 		elog.DefaultLogger.Error("topology service error", elog.FieldErr(err))
-		ctx.JSON(http.StatusInternalServerError, ginx.Result{Code: 500, Msg: "internal error"})
+		ctx.JSON(http.StatusInternalServerError, ginx.Result{Code: codeServerError, Msg: "internal error"})
 		return
 	}
 	ctx.JSON(http.StatusOK, ginx.Result{Code: 0, Msg: "success", Data: StatsResponseVO{TopoStats: *stats}})
@@ -240,7 +247,7 @@ func (h *TopologyHandler) ListDeclarations(ctx *gin.Context) {
 	decls, err := h.declSvc.List(ctx.Request.Context(), tenantID)
 	if err != nil {
 		elog.DefaultLogger.Error("topology service error", elog.FieldErr(err))
-		ctx.JSON(http.StatusInternalServerError, ginx.Result{Code: 500, Msg: "internal error"})
+		ctx.JSON(http.StatusInternalServerError, ginx.Result{Code: codeServerError, Msg: "internal error"})
 		return
 	}
 	ctx.JSON(http.StatusOK, ginx.Result{Code: 0, Msg: "success", Data: decls})
@@ -267,7 +274,7 @@ func (h *TopologyHandler) DeleteDeclaration(ctx *gin.Context) {
 	count, err := h.declSvc.DeleteBySource(ctx.Request.Context(), tenantID, source)
 	if err != nil {
 		elog.DefaultLogger.Error("topology service error", elog.FieldErr(err))
-		ctx.JSON(http.StatusInternalServerError, ginx.Result{Code: 500, Msg: "internal error"})
+		ctx.JSON(http.StatusInternalServerError, ginx.Result{Code: codeServerError, Msg: "internal error"})
 		return
 	}
 	ctx.JSON(http.StatusOK, ginx.Result{Code: 0, Msg: "success", Data: map[string]int64{"deleted": count}})
