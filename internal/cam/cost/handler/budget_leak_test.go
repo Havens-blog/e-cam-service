@@ -19,6 +19,7 @@ type errBudgetDAO struct {
 	err error
 }
 
+//nolint:gocritic // hugeParam: 必须与 repository.BudgetDAO.Create 的签名一致（值传递）
 func (d *errBudgetDAO) Create(_ context.Context, _ costdomain.BudgetRule) (int64, error) {
 	return 0, d.err
 }
