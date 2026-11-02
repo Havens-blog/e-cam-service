@@ -12005,3 +12005,24 @@ eiam:
 
 判断依据应该是：**看它的兄弟接口**。同一框架下另外 4 个接口都是 `200 + code 200`，
 只有这一个是 `200 + code 500`，说明**信封一致、是这一个的业务失败了**，而不是信封错了。
+
+---
+
+## 2026-11-02 泄露线:仪表盘 6 处(#313)—— **CI 首次一次通过**
+
+### 修复
+`internal/cam/web/dashboard_handler.go` 6 个统计端点(概览/按厂商/按区域/按类型/按账号/即将到期)
+均 `ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))` ⇒ 改:
+`elog.DefaultLogger.Error("dashboard service error", elog.FieldErr(err))` + `ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))`;
+状态码改 http 常量、补 net/http 与 elog 导入;新增 `dashboard_handler_leak_test.go`(500 + 不含 mongo/no documents + 保留业务码 500)。
+**选型细节**:该 stub 只实现"仅收 int64 参数"的方法 ⇒ **不触发 gocritic hugeParam ⇒ 无需 nolint**(按上轮口径:不预防性加 nolint)。
+仪表盘是**首屏**,其统计报错文案对用户直接可见,故这一站价值高于纯内部端点。
+
+### 前置自查(把前几轮踩过的坑一次过)
+提交前逐项自查并给出计数:**无 `ctx.JSON(500, …)`、无 `Code: 数字` 字面量、无 `nil` request body、无大结构体形参**
+⇒ **CI `Test` 首次一次通过**(前几轮同类 PR 平均要 2-3 轮)。
+⇒ 口径沉淀(**第十六条**):把 lint 坑做成"提交前 checklist 并打印计数",比事后逐轮修便宜得多。
+
+### 状态
+- PR #313 已合并;**线上验证未执行**(需服务端 500,无法安全触发)⇒ 单测+代码证据;
+- 同线全仓仍余 ~38 处(asset_handler_*、handler_accounts/handler_assets/instance/database 等)。
