@@ -11895,3 +11895,30 @@ for (let page = 1; page <= 20; page++) {
 **「接口在主分支上有」和「接口在我能测的环境里有」是两件事。**
 这次差一点就去写"前端改用 stats"，写完才会发现本地根本测不出效果 ——
 **先探针确认接口可用，再动代码**，比"写完再想办法验证"省一整轮。
+
+---
+
+## 2026-11-02 泄露线继续:topology 7 处(#310)+ **两条新口径**
+
+### 一、修复
+`internal/topology/web/handler.go` 8 处 `ginx.Result{... Msg: err.Error()}`:
+- 1 处 400(查询绑定失败)、1 处 404(节点详情)、5 处 500 ⇒ 全部改**稳定文案**
+  (400 "invalid request"、404 "topology node not found"、500 "internal error"),
+  500 分支先 `elog.DefaultLogger.Error("topology service error", elog.FieldErr(err))` 记细节;
+- **有意未改 1 处**:`CreateDeclaration` 是 **ginx 包装器**形态,其 `return ginx.Result{Code: 400, Msg: err.Error()}, nil`
+  同时有"泄露 + 因 nil 而回 200"两个问题;但 `DeclarationService.Register` 的错误**兼有校验(400)与服务端(500)**,
+  而 ginx 包装器只能 200/500 ⇒ 无法在不改共享模块下正确表达 400 ⇒ **不动**,列为议题(需 ginx 支持结果状态,
+  或把该路由改为非包装处理器)。
+- 新增 `handler_leak_test.go`:GetNodeDetail 出错 ⇒ 断言 404 + 不含 mongo/no documents + 含稳定文案。
+
+### 二、**两条新口径**
+1. **`mnd` 对"赋值"位置同样生效**,且 **`--new-from-rev` 只查改动行** ⇒ 一旦我改到某行,该行**历史上就有的**
+   `ginx.Result{Code: 500, ...}` 魔法数字会被**翻出来**判红(本地看不到、CI 才报)。
+   ⇒ 处理:**把业务码提成文件内常量**(`codeInvalidRequest/codeNotFound/codeServerError`),既消红又减少重复;
+2. **Go 语法**:`import` 必须**紧跟 package** ⇒ 我最初把常量块插在 import 之前 ⇒ 直接编译失败
+   (本地 `go build` 立刻暴露,已修正)。⇒ 口径:**新增包级声明一律放在 import 块之后**。
+
+### 三、状态
+- PR #310 已合并(经 3 轮:泄露修复 → mnd 常量 → 常量块位置;每轮均**按文件归因**);
+- 同线全仓仍余 ~44 处(下一站 `internal/cam/web` 资产/dashboard 类,量大且多为列表/统计端点,价值更高);
+- 线上验证未执行(需服务端 4xx/5xx,无法安全触发)⇒ 单测+代码证据。
