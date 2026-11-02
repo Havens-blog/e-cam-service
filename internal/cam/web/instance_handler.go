@@ -1,14 +1,18 @@
 package web
 
 import (
+	"net/http"
 	"strconv"
+
+	"github.com/gotomicro/ego/core/elog"
+
+	"github.com/Havens-blog/e-common-go/ginx"
+	"github.com/gin-gonic/gin"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/Havens-blog/e-common-go/ginx"
-	"github.com/gin-gonic/gin"
 )
 
 // InstanceHandler 资产实例HTTP处理器
@@ -117,7 +121,8 @@ func (h *InstanceHandler) Create(ctx *gin.Context, req CreateInstanceReq) (ginx.
 		if err == errs.ErrInstanceExists {
 			return ErrorResultWithMsg(errs.ParamsError, "instance already exists"), nil
 		}
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(map[string]interface{}{"id": id}), nil
@@ -148,7 +153,8 @@ func (h *InstanceHandler) CreateBatch(ctx *gin.Context, req CreateBatchInstanceR
 
 	count, err := h.svc.CreateBatch(ctx.Request.Context(), instances)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(map[string]interface{}{"count": count}), nil
@@ -175,7 +181,8 @@ func (h *InstanceHandler) Upsert(ctx *gin.Context, req UpsertInstanceReq) (ginx.
 
 	err := h.svc.Upsert(ctx.Request.Context(), instance)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(nil), nil
@@ -206,7 +213,8 @@ func (h *InstanceHandler) UpsertBatch(ctx *gin.Context, req UpsertBatchInstanceR
 
 	err := h.svc.UpsertBatch(ctx.Request.Context(), instances)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(nil), nil
@@ -235,7 +243,8 @@ func (h *InstanceHandler) GetByID(ctx *gin.Context) {
 			ctx.JSON(404, ErrorResult(errs.InstanceNotFound))
 			return
 		}
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -349,7 +358,8 @@ func (h *InstanceHandler) List(ctx *gin.Context) {
 
 	instances, total, err := h.svc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -389,7 +399,8 @@ func (h *InstanceHandler) Update(ctx *gin.Context, req UpdateInstanceReq) (ginx.
 		if err == errs.ErrInstanceNotFound {
 			return ErrorResult(errs.InstanceNotFound), nil
 		}
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	// 更新字段
@@ -408,7 +419,8 @@ func (h *InstanceHandler) Update(ctx *gin.Context, req UpdateInstanceReq) (ginx.
 
 	err = h.svc.Update(ctx.Request.Context(), existing)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(nil), nil
@@ -437,7 +449,8 @@ func (h *InstanceHandler) Delete(ctx *gin.Context) {
 			ctx.JSON(404, ErrorResult(errs.InstanceNotFound))
 			return
 		}
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 

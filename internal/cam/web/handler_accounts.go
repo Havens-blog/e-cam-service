@@ -1,13 +1,17 @@
 package web
 
 import (
+	"net/http"
 	"strconv"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
-	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/gotomicro/ego/core/elog"
+
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
 	"github.com/Havens-blog/e-common-go/ginx"
 	"github.com/gin-gonic/gin"
+
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 )
 
 // ==================== 云账号处理器 ====================
@@ -46,7 +50,8 @@ func (h *Handler) CreateCloudAccount(ctx *gin.Context, req CreateCloudAccountReq
 
 	account, err := h.accountSvc.CreateAccount(ctx.Request.Context(), domainReq)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(h.toCloudAccountVO(*account)), nil
@@ -118,7 +123,8 @@ func (h *Handler) ListCloudAccounts(ctx *gin.Context) {
 
 	accounts, total, err := h.accountSvc.ListAccounts(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -187,7 +193,8 @@ func (h *Handler) UpdateCloudAccount(ctx *gin.Context, req UpdateCloudAccountReq
 
 	err = h.accountSvc.UpdateAccount(ctx.Request.Context(), id, domainReq)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(nil), nil
@@ -215,7 +222,8 @@ func (h *Handler) DeleteCloudAccount(ctx *gin.Context) {
 
 	err = h.accountSvc.DeleteAccount(ctx.Request.Context(), id)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -244,7 +252,8 @@ func (h *Handler) TestCloudAccountConnection(ctx *gin.Context) {
 
 	result, err := h.accountSvc.TestConnection(ctx.Request.Context(), id)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -280,7 +289,8 @@ func (h *Handler) EnableCloudAccount(ctx *gin.Context) {
 
 	err = h.accountSvc.EnableAccount(ctx.Request.Context(), id)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -309,7 +319,8 @@ func (h *Handler) DisableCloudAccount(ctx *gin.Context) {
 
 	err = h.accountSvc.DisableAccount(ctx.Request.Context(), id)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -346,7 +357,8 @@ func (h *Handler) SyncCloudAccount(ctx *gin.Context, req SyncAccountReq) (ginx.R
 
 	result, err := h.accountSvc.SyncAccount(ctx.Request.Context(), id, domainReq)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	resp := SyncResult{
