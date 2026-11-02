@@ -11504,3 +11504,74 @@ if (res === undefined) return          // ← 插在参数列表里
 
 **同一个缺陷在不同页面上的代价不同，先找代价最大的那个。**
 若只按"页面数"推进，25 个页面看起来等价；实际云盘一个顶 20 个。
+
+---
+
+## cam-dev-env-trap-20261102（`dev.ps1` 前台托管：job 一结束，服务就一起死）
+
+**状态**：本轮**仅记录 + 恢复环境**，无代码改动。
+
+### 现象（本会话第 3 次）
+
+后台 job 跑 `powershell -NoProfile -File .\dev.ps1 start e-cam-service`，
+job 一旦结束（**哪怕是正常 exit 0**），后端 8001 立刻 DOWN：
+
+| 时间 | job 结局 | 后果 |
+|---|---|---|
+| 第 1 次 | 我 `job_kill` 了它（以为"服务是独立进程"） | 8001 挂 |
+| 第 2 次 | 我用 `\| Select-Object -Last 3` 收窄输出 | 管道关闭 → job 结束 → 8001 挂 |
+| 第 3 次（本轮） | job 自行 exit 0 | 8001 与 9000 同时挂，8888/3337 也掉 |
+
+每次都要花几分钟排查"是不是代码回归"，实际是**环境被自己弄挂了**。
+
+### 根因
+
+`dev.ps1` 里带 `Daemon = $true` 的服务走 CompileDaemon **前台托管**：
+
+```
+[启动] e-cam-service  CompileDaemon (go build -> ...\e-cam-service.exe start)
+```
+
+CompileDaemon 是该 PowerShell 进程的前台子进程，Go 服务又是 CompileDaemon 的子进程。
+所以 job 结束 → PowerShell 进程树被回收 → **CompileDaemon 与 Go 服务一起退出**。
+
+这解释了为什么"看起来是后台 job，服务却跟着死"：**它不是后台服务，是前台守护进程**。
+
+### 正确做法
+
+用 `Start-Process` 起**分离进程**，不挂在 job 上：
+
+```powershell
+Start-Process -FilePath "powershell" `
+  -ArgumentList "-NoProfile","-File","D:\Haven\dev.ps1","start","e-cam-service" `
+  -WindowStyle Hidden `
+  -RedirectStandardOutput "D:\Haven\logs\dev\ecam-start.out.log" `
+  -RedirectStandardError  "D:\Haven\logs\dev\ecam-start.err.log"
+```
+
+vite 同理（用 `node` + `-WorkingDirectory` + 重定向日志），
+这样它的生命周期与任何 job 无关。
+
+### 本轮恢复结果
+
+| 端口 | 服务 | 状态 |
+|---|---|---|
+| 8001 | e-cam-service | ✅ UP（分离进程） |
+| 9000 | eiam | ✅ UP（分离进程） |
+| 8888 | nginx | ✅ UP |
+| 3337 | vite（worktree） | ✅ UP（分离进程） |
+
+API 探针 `GET :8888/api/v1/cam/assets/ecs?limit=1` → **401**（鉴权生效，说明后端存活）。
+
+### 顺手记下的两个连带教训
+
+1. **`| Select-Object -First N` / `-Last N` 会提前关闭管道**，导致被管道包裹的长驻进程被杀。
+   vite 那次就是这样"启动成功后立刻 exit 1"。要么重定向到文件，要么用 Start-Process。
+2. **看到 502/连接失败时，先验证环境，再怀疑代码。**
+   本会话多次把"后端没起来"误判成"我的改动引入回归"。
+   最快的判别法：`Invoke-WebRequest` 打一个已知接口，401/200 说明服务活着，502 说明反代后面没人。
+
+### 未验证
+
+- 未验证 `Start-Process` 起的 CompileDaemon 在**源码变更**时是否仍能热重编译
+  （dev.ps1 的设计是"编译成功才重启，失败不断服"）。本轮没改后端代码，故未触发。
