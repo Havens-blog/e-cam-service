@@ -1,16 +1,19 @@
 package web
 
 import (
+	"net/http"
 	"strconv"
+
+	"github.com/Havens-blog/e-common-go/ginx"
+	"github.com/Havens-blog/e-common-go/taskx"
+	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/task"
 	taskservice "github.com/Havens-blog/e-cam-service/internal/cam/task/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
-	"github.com/Havens-blog/e-common-go/ginx"
-	"github.com/Havens-blog/e-common-go/taskx"
-	"github.com/gin-gonic/gin"
 )
 
 // TaskHandler 任务处理器
@@ -75,7 +78,8 @@ func (h *TaskHandler) SubmitSyncAssetsTask(ctx *gin.Context, req SubmitSyncAsset
 
 	taskID, err := h.taskSvc.SubmitSyncAssetsTask(ctx.Request.Context(), params, createdBy)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		logTaskError(err)
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(SubmitTaskResp{
@@ -107,7 +111,8 @@ func (h *TaskHandler) SubmitDiscoverAssetsTask(ctx *gin.Context, req SubmitDisco
 
 	taskID, err := h.taskSvc.SubmitDiscoverAssetsTask(ctx.Request.Context(), params, createdBy)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		logTaskError(err)
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(SubmitTaskResp{
@@ -174,7 +179,8 @@ func (h *TaskHandler) ListTasks(ctx *gin.Context) {
 
 	tasks, total, err := h.taskSvc.ListTasks(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		logTaskError(err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -208,7 +214,8 @@ func (h *TaskHandler) CancelTask(ctx *gin.Context) {
 
 	err := h.taskSvc.CancelTask(ctx.Request.Context(), taskID)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		logTaskError(err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -232,7 +239,8 @@ func (h *TaskHandler) DeleteTask(ctx *gin.Context) {
 
 	err := h.taskSvc.DeleteTask(ctx.Request.Context(), taskID)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		logTaskError(err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -281,4 +289,9 @@ func ErrorResultWithMsg(code errs.ErrorCode, msg string) ginx.Result {
 		Code: code.Code,
 		Msg:  msg,
 	}
+}
+
+// logTaskError 统一记录任务模块的服务端错误细节（对外只回稳定文案，避免把 mongo:/no documents 等实现细节回给调用方）。
+func logTaskError(err error) {
+	elog.DefaultLogger.Error("task service error", elog.FieldErr(err))
 }
