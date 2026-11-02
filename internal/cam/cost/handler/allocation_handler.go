@@ -5,6 +5,10 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Havens-blog/e-common-go/ginx"
+	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/allocation"
 	costdomain "github.com/Havens-blog/e-cam-service/internal/cam/cost/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
@@ -12,9 +16,6 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
-	"github.com/Havens-blog/e-common-go/ginx"
-	"github.com/gin-gonic/gin"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // CreateAllocationRuleReq 创建分摊规则请求
@@ -94,7 +95,8 @@ func (h *AllocationHandler) CreateAllocationRule(ctx *gin.Context, req CreateAll
 
 	id, err := h.allocationSvc.CreateAllocationRule(ctx.Request.Context(), rule)
 	if err != nil {
-		return web.ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		return web.ErrorResult(errs.SystemError), err
 	}
 	return web.Result(gin.H{"id": id}), nil
 }
@@ -121,7 +123,8 @@ func (h *AllocationHandler) UpdateAllocationRule(ctx *gin.Context, req UpdateAll
 	}
 
 	if err := h.allocationSvc.UpdateAllocationRule(ctx.Request.Context(), rule); err != nil {
-		return web.ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		return web.ErrorResult(errs.SystemError), err
 	}
 	return web.Result(nil), nil
 }
@@ -143,7 +146,8 @@ func (h *AllocationHandler) ListAllocationRules(ctx *gin.Context) {
 
 	rules, err := h.allocationSvc.ListRules(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{
@@ -161,7 +165,8 @@ func (h *AllocationHandler) SetDefaultPolicy(ctx *gin.Context, req SetDefaultPol
 	}
 
 	if err := h.allocationSvc.SetDefaultAllocationPolicy(ctx.Request.Context(), policy); err != nil {
-		return web.ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		return web.ErrorResult(errs.SystemError), err
 	}
 	return web.Result(nil), nil
 }
@@ -180,7 +185,8 @@ func (h *AllocationHandler) GetAllocationByDimension(ctx *gin.Context) {
 
 	result, err := h.allocationSvc.GetAllocationByDimension(ctx.Request.Context(), tenantID, dimType, dimValue, period)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -203,7 +209,8 @@ func (h *AllocationHandler) GetAllocationByNode(ctx *gin.Context) {
 
 	result, err := h.allocationSvc.GetAllocationByNode(ctx.Request.Context(), tenantID, nodeID, period)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -223,7 +230,8 @@ func (h *AllocationHandler) GetAllocationTree(ctx *gin.Context) {
 
 	tree, err := h.allocationSvc.GetAllocationTree(ctx.Request.Context(), tenantID, dimType, rootID, period)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(tree))

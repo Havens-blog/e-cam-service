@@ -5,6 +5,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Havens-blog/e-common-go/ginx"
+	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/collector"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
@@ -13,9 +17,6 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
-	"github.com/Havens-blog/e-common-go/ginx"
-	"github.com/gin-gonic/gin"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // ManualCollectReq 手动触发采集请求
@@ -69,7 +70,8 @@ func (h *CollectorHandler) TriggerManualCollection(ctx *gin.Context, req ManualC
 
 	taskID, err := h.taskSvc.SubmitBillingCollectTask(ctx.Request.Context(), params, "user")
 	if err != nil {
-		return web.ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		return web.ErrorResult(errs.SystemError), err
 	}
 
 	return web.Result(gin.H{
@@ -100,7 +102,8 @@ func (h *CollectorHandler) ListCollectLogs(ctx *gin.Context) {
 
 	logs, total, err := h.collectorSvc.ListCollectLogs(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{

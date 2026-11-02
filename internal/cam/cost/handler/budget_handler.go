@@ -81,7 +81,8 @@ func (h *BudgetHandler) CreateBudget(ctx *gin.Context, req CreateBudgetReq) (gin
 
 	id, err := h.budgetSvc.CreateBudget(ctx.Request.Context(), rule)
 	if err != nil {
-		return web.ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		return web.ErrorResult(errs.SystemError), err
 	}
 	return web.Result(gin.H{"id": id}), nil
 }
@@ -103,7 +104,8 @@ func (h *BudgetHandler) ListBudgets(ctx *gin.Context) {
 
 	budgets, total, err := h.budgetSvc.ListBudgets(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{
@@ -128,7 +130,8 @@ func (h *BudgetHandler) GetBudgetProgress(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, web.ErrorResult(budget.ErrBudgetNotFound))
 			return
 		}
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(progress))
@@ -155,7 +158,8 @@ func (h *BudgetHandler) UpdateBudget(ctx *gin.Context, req UpdateBudgetReq) (gin
 	}
 
 	if err := h.budgetSvc.UpdateBudget(ctx.Request.Context(), rule); err != nil {
-		return web.ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		return web.ErrorResult(errs.SystemError), err
 	}
 	return web.Result(nil), nil
 }
@@ -170,7 +174,8 @@ func (h *BudgetHandler) DeleteBudget(ctx *gin.Context) {
 	}
 
 	if err := h.budgetSvc.DeleteBudget(ctx.Request.Context(), id); err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(nil))

@@ -7,6 +7,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Havens-blog/e-common-go/ginx"
+	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/analysis"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/anomaly"
 	"github.com/Havens-blog/e-cam-service/internal/cam/cost/optimizer"
@@ -16,9 +20,6 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-cam-service/internal/shared/paging"
-	"github.com/Havens-blog/e-common-go/ginx"
-	"github.com/gin-gonic/gin"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // CostHandler 成本分析 API 处理器
@@ -85,7 +86,8 @@ func (h *CostHandler) GetCostSummary(ctx *gin.Context) {
 
 	summary, err := h.costSvc.GetCostSummary(reqCtx, filter)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(summary))
@@ -114,7 +116,8 @@ func (h *CostHandler) GetCostTrend(ctx *gin.Context) {
 
 	points, err := h.costSvc.GetCostTrend(reqCtx, filter)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(points))
@@ -141,7 +144,8 @@ func (h *CostHandler) GetCostDistribution(ctx *gin.Context) {
 
 	items, err := h.costSvc.GetCostDistribution(reqCtx, filter, dimension)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(items))
@@ -167,7 +171,8 @@ func (h *CostHandler) GetYoYComparison(ctx *gin.Context) {
 
 	result, err := h.costSvc.GetYoYComparison(reqCtx, filter)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(result))
@@ -207,7 +212,8 @@ func (h *CostHandler) GetAnomalyEvents(ctx *gin.Context) {
 
 	anomalies, total, err := h.anomalySvc.GetAnomalyEvents(ctx.Request.Context(), tenantID, filter)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{
@@ -233,7 +239,8 @@ func (h *CostHandler) ListRecommendations(ctx *gin.Context) {
 
 	recs, total, err := h.optimizerSvc.ListRecommendations(ctx.Request.Context(), tenantID, filter)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{
@@ -251,7 +258,8 @@ func (h *CostHandler) DismissRecommendation(ctx *gin.Context) (ginx.Result, erro
 	}
 
 	if err := h.optimizerSvc.DismissRecommendation(ctx.Request.Context(), id); err != nil {
-		return web.ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		return web.ErrorResult(errs.SystemError), err
 	}
 	return web.Result(nil), nil
 }
@@ -279,7 +287,8 @@ func (h *CostHandler) RefreshCostSummary(ctx *gin.Context) {
 
 	rebuilt, err := h.costSvc.ReconcileSummary(reqCtx, tenantID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, web.ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cost handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, web.ErrorResult(errs.SystemError))
 		return
 	}
 	ctx.JSON(http.StatusOK, web.Result(gin.H{
