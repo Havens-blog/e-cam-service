@@ -12213,3 +12213,28 @@ git rev-list --count HEAD..origin/main  →  350
 **③ 版本差是最贵的噪声。**
 它把"已修复的问题"伪装成"现存缺陷"，让每一轮排查都可能白做。
 这一条已连续多轮出现（207 → 350），应当作为常驻前提而不是偶发异常。
+
+---
+
+## 2026-11-02 泄露线:servicetree 34 处(#318)—— **此前所有失败分支都回 HTTP 200**
+
+### 一、缺陷(比"泄露"更重)
+`internal/cam/servicetree/web`(handler.go 28 + env_handler.go 6)全部写作
+`return ginx.Result{Code: 500, Msg: err.Error()}, nil`:
+1. 泄露实现细节;**2. 返回 nil error ⇒ ginx 包装器判为"无错误" ⇒ HTTP 200 + code 500**
+   ⇒ **服务树接口此前的所有失败分支,对调用方都表现为"成功"**(HTTP 层)。这是本会话继
+   template/dns/tag/dictionary/cost/task/topology 之后**同一类问题的最大一处**。
+修复:`return ginx.Result{Code: codeServerError, Msg: "internal error"}, err` + 文件内常量;框架 slog 已记细节。
+新增 env_handler_leak_test.go:断言①**返回非 nil error** ②无原文 ③业务码 500。
+
+### 二、本轮的两个"小事"(都值得记)
+1. **同包重复声明**:`handler.go` 与 `env_handler.go` 同属 `package web`,我先在两处各加了一份
+   `const codeServerError`,**编译期立刻报 redeclared** ⇒ 改成单份(handler.go 定义、同包共用)。
+   ⇒ 口径:**同包多文件时,常量/辅助函数只定义一次**;
+2. **此前对剩余量的低估**:我一直用"`ctx.JSON(5xx, …)` + `ErrorResult*`"两条正则统计,漏掉了
+   **`ginx.Result{Code: N, Msg: err.Error()}`** 这一形态 ⇒ 剩量从"~18"修正为 **81**(现余 ~47)。
+   ⇒ 口径(**第十八条**):**统计口径本身要被验证** —— 换一种写法就漏,等于没统计;发现漏统计后立刻重扫。
+
+### 三、状态
+PR #318 已合并(CI **连续第三轮一次通过**);线上验证未执行(需服务端 500,无法安全触发);
+同线全仓仍余 ~47 处(cam/web 的 model_handler 12、handler_assets 8、asset_handler_edge 7、compute 5、network 4 等)。
