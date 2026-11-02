@@ -12091,3 +12091,28 @@ Tests  1 failed | 1316 passed
 
 **当测试和我的改动冲突时，先假设测试是对的** —— 这次冲突不是测试过时，
 而是它正确地指出我把两种语义不同的触发混在了一条路径上。
+
+---
+
+## 2026-11-02 泄露线:账号-资源核心三文件 20 处(#315)—— checklist 连续两轮一次过
+
+### 修复(internal/cam/web 三文件,共 20 处)
+- handler_accounts.go 8 处(5 直写 + 3 包装器返回形态);
+- instance_handler.go 9 处(3 直写 + 6 包装器返回形态);
+- database_handler.go 3 处(直写)。
+11 处直写 ⇒ `elog.DefaultLogger.Error("cam web handler error", …)` + `ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))`;
+9 处包装器返回形态 ⇒ `return ErrorResult(errs.SystemError), err`(非 nil ⇒ 框架给 500)。
+新增 instance_handler_leak_test.go:桩只实现 `GetByID(ctx, int64)`(参数全小 ⇒ 无需 nolint),断言 500 + 无原文 + 保留业务码 500。
+
+### 过程小事(值得记)
+写测试时我把 `GetByID` 的服务调用**认错**为 `GetByAssetID`(因为 grep 命中了两处相近命名),导致前两版用例断言 400 ≠ 500;
+**靠"读函数头 8 行"而不是继续猜**才定位到真正的实现(`ctx.Param("id")` + `svc.GetByID`),修正后一次通过。
+⇒ 口径(**第十七条**):**桩/用例对不上时,先读被测函数的真实实现,不要再改断言去凑**。
+
+### checklist 效果
+本轮提交前逐项打印:ctx.JSON(500,...)=0、`Code: 数字`=0、nil body=0、无大结构体形参、行长<=140、goimports 合规
+⇒ **CI 又一次一次通过**(连续两轮)。相比前几轮平均 2-3 轮,省下约 15-20 分钟/轮。
+
+### 状态
+PR #315 已合并;同线全仓仍余 ~18 处(asset_handler_* 共 23 处中的多数、handler_assets 4、asset_helpers 2、asset_search 1);
+线上验证未执行(需服务端 500,无法安全触发)。
