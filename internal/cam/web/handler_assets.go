@@ -1,14 +1,18 @@
 package web
 
 import (
+	"net/http"
 	"strconv"
+
+	"github.com/gotomicro/ego/core/elog"
+
+	"github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/ginx"
+	"github.com/gin-gonic/gin"
 
 	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/Havens-blog/e-cloudx-sdk/domain"
-	"github.com/Havens-blog/e-common-go/ginx"
-	"github.com/gin-gonic/gin"
 )
 
 // CreateAsset 创建资产
@@ -27,7 +31,8 @@ func (h *Handler) CreateAsset(ctx *gin.Context, req CreateAssetReq) (ginx.Result
 
 	id, err := h.svc.CreateAsset(ctx.Request.Context(), asset)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(map[string]interface{}{
@@ -58,7 +63,8 @@ func (h *Handler) CreateMultiAssets(ctx *gin.Context, req CreateMultiAssetsReq) 
 
 	count, err := h.svc.CreateMultiAssets(ctx.Request.Context(), assets)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(map[string]interface{}{
@@ -115,7 +121,8 @@ func (h *Handler) UpdateAsset(ctx *gin.Context, req UpdateAssetReq) (ginx.Result
 
 	err = h.svc.UpdateAsset(ctx.Request.Context(), existingAsset)
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(nil), nil
@@ -190,7 +197,8 @@ func (h *Handler) ListAssets(ctx *gin.Context) {
 
 	assets, total, err := h.svc.ListAssets(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -229,7 +237,8 @@ func (h *Handler) DeleteAsset(ctx *gin.Context) {
 
 	err = h.svc.DeleteAsset(ctx.Request.Context(), id)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -250,7 +259,8 @@ func (h *Handler) DeleteAsset(ctx *gin.Context) {
 func (h *Handler) DiscoverAssets(ctx *gin.Context, req DiscoverAssetsReq) (ginx.Result, error) {
 	assets, err := h.svc.DiscoverAssets(ctx.Request.Context(), req.Provider, req.Region, req.AssetTypes)
 	if err != nil {
-		return ErrorResultWithMsg(errs.DiscoveryFailed, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.DiscoveryFailed), err
 	}
 
 	assetVOs := make([]CloudAsset, len(assets))
@@ -285,7 +295,8 @@ func (h *Handler) SyncAssets(ctx *gin.Context, req SyncAssetsReq) (ginx.Result, 
 		AssetTypes: req.AssetTypes,
 	})
 	if err != nil {
-		return ErrorResultWithMsg(errs.SystemError, err.Error()), nil
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		return ErrorResult(errs.SystemError), err
 	}
 
 	return Result(map[string]any{
@@ -310,7 +321,8 @@ func (h *Handler) GetAssetStatistics(ctx *gin.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	stats, err := h.svc.GetAssetStatistics(ctx.Request.Context(), tenantID)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -345,7 +357,8 @@ func (h *Handler) GetCostAnalysis(ctx *gin.Context) {
 
 	analysis, err := h.svc.GetCostAnalysis(ctx.Request.Context(), tenantID, provider, days)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 

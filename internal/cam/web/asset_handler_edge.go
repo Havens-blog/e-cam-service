@@ -2,15 +2,19 @@ package web
 
 import (
 	"context"
+	"net/http"
 	"strconv"
 
-	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
-	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
-	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"github.com/gotomicro/ego/core/elog"
+
 	cloudx "github.com/Havens-blog/e-cloudx-sdk"
 	"github.com/Havens-blog/e-cloudx-sdk/types"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
+
+	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 )
 
 // CDNCacheConfigService CDN 查询类接口(web 层只依赖此接口):
@@ -82,7 +86,8 @@ func (h *AssetHandler) ListCDN(ctx *gin.Context) {
 
 	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -117,7 +122,8 @@ func (h *AssetHandler) GetCDNCacheConfig(ctx *gin.Context) {
 
 	rules, err := h.cdnQuery.GetCacheConfig(ctx.Request.Context(), tenantID, accountID, domainName, domainID)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -142,7 +148,8 @@ func (h *AssetHandler) GetCDNDomainSettings(ctx *gin.Context) {
 
 	settings, err := h.cdnQuery.GetDomainSettings(ctx.Request.Context(), tenantID, accountID, domainName, domainID)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -191,7 +198,8 @@ func (h *AssetHandler) GetCDNDomainMetrics(ctx *gin.Context) {
 
 	metrics, err := h.cdnQuery.GetDomainMetrics(ctx.Request.Context(), tenantID, domainName, days)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -230,7 +238,8 @@ func (h *AssetHandler) GetCDNTopDomains(ctx *gin.Context) {
 
 	rows, err := h.cdnQuery.GetTopDomains(ctx.Request.Context(), tenantID, days, limit)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -287,7 +296,8 @@ func (h *AssetHandler) ListWAF(ctx *gin.Context) {
 
 	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -348,7 +358,8 @@ func (h *AssetHandler) ListDDOS(ctx *gin.Context) {
 
 	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
