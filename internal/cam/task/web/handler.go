@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"strconv"
 
 	"github.com/Havens-blog/e-common-go/ginx"
@@ -179,7 +180,7 @@ func (h *TaskHandler) ListTasks(ctx *gin.Context) {
 	tasks, total, err := h.taskSvc.ListTasks(ctx.Request.Context(), filter)
 	if err != nil {
 		logTaskError(err)
-		ctx.JSON(500, ErrorResult(errs.SystemError))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -214,7 +215,7 @@ func (h *TaskHandler) CancelTask(ctx *gin.Context) {
 	err := h.taskSvc.CancelTask(ctx.Request.Context(), taskID)
 	if err != nil {
 		logTaskError(err)
-		ctx.JSON(500, ErrorResult(errs.SystemError))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -239,7 +240,7 @@ func (h *TaskHandler) DeleteTask(ctx *gin.Context) {
 	err := h.taskSvc.DeleteTask(ctx.Request.Context(), taskID)
 	if err != nil {
 		logTaskError(err)
-		ctx.JSON(500, ErrorResult(errs.SystemError))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 

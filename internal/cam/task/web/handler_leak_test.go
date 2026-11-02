@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -21,6 +22,7 @@ type leakStubTaskService struct {
 	err error
 }
 
+//nolint:gocritic // hugeParam: 必须与 TaskService.ListTasks 的签名一致（值传递）
 func (s *leakStubTaskService) ListTasks(_ context.Context, _ taskx.TaskFilter) ([]taskx.Task, int64, error) {
 	return nil, 0, s.err
 }
@@ -37,7 +39,7 @@ func TestTaskHandlerDoesNotLeakRawError(t *testing.T) {
 	h := NewTaskHandler(&leakStubTaskService{err: errors.New(leakRawErr)})
 	w := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(w)
-	ctx.Request = httptest.NewRequest("GET", "/api/v1/cam/tasks?offset=0&limit=5", nil)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/cam/tasks?offset=0&limit=5", http.NoBody)
 	h.ListTasks(ctx)
 
 	if w.Code != 500 {
@@ -54,7 +56,7 @@ func TestTaskHandlerDoesNotLeakRawError(t *testing.T) {
 	h2 := NewTaskHandler(&submitStubTaskService{err: errors.New(leakRawErr)})
 	w2 := httptest.NewRecorder()
 	ctx2, _ := gin.CreateTestContext(w2)
-	ctx2.Request = httptest.NewRequest("POST", "/api/v1/cam/tasks/sync-assets", strings.NewReader("{}"))
+	ctx2.Request = httptest.NewRequest(http.MethodPost, "/api/v1/cam/tasks/sync-assets", strings.NewReader("{}"))
 	res, err := h2.SubmitSyncAssetsTask(ctx2, SubmitSyncAssetsTaskReq{})
 	if err == nil {
 		t.Fatal("提交失败时必须返回非 nil error（否则 ginx 包装器会回 HTTP 200 + 错误码）")
@@ -70,6 +72,7 @@ type submitStubTaskService struct {
 	err error
 }
 
+//nolint:gocritic // hugeParam: 必须与 TaskService.SubmitSyncAssetsTask 的签名一致（值传递）
 func (s *submitStubTaskService) SubmitSyncAssetsTask(_ context.Context, _ task.SyncAssetsParams, _ string) (string, error) {
 	return "", s.err
 }
