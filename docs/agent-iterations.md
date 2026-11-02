@@ -11212,3 +11212,89 @@ origin/main HEAD: b4826bc  (docs(iter): dictionary 38 处… #291)
 之前我只在"自己的分支 vs origin/main"层面强调按修订验证;本轮发现**共享检出的分支本身可能落后/分叉**
 ⇒ 每次做本地验证前,应加一步 **`git rev-list --count HEAD..origin/main`** 与 `--ff-only` 可行性检查,
 把"服务跑的到底是哪份代码"写成**可核对的证据**(本例即 5 个探针的 HTTP 码)。
+
+---
+
+## cam-tag-error-20261102（先纠正上一轮的审计错误，再修唯一能验的那个页面）
+
+**状态**：**已合并**（`e-cam-web#206`，merge `43cc175`）
+
+### 一、上一轮「17 个页面待修」大部分是假的
+
+上一轮判据：`grep useListError | errorInfo | ErrorDisplay`。
+
+漏掉了 `src/components/DataTable/index.vue` —— 它**自带完整错误态**：
+
+```ts
+errorText: '加载失败',   // 可配置失败文案
+(e: 'retry'): void      // 失败后渲染错误块 + 重试按钮
+```
+
+实测 `/cam/assets` 失败时渲染 `state-block__state--error` + 「服务器内部错误」+ 重试 —— **早就达标**。
+
+修正判据后：
+
+| 口径 | 数量 |
+|---|---|
+| 上一轮结论 | 17 |
+| 页面级 + 有列表请求 + 真正缺 | **7** |
+
+### 二、7 个中本环境可验证的只有 2 个
+
+| 页面 | 数据 | 失败态实测 | 处置 |
+|---|---|---|---|
+| `/cam/resource/tags` | 20 行 | 「暂无数据」，无错误无重试 | **本轮修复** |
+| `/cam/finops/collect` | 34 行 | 仍有 14 行 + 错误 + 重试 | 已达标，未改 |
+| IAM templates/sync/compare | 0 行 | 失败与空态不可区分 | 无法验证 |
+| DDoS | 0 行 | 同上 | 无法验证 |
+
+### 三、本轮修复：标签管理页
+
+| 状态 | 行数 | 「暂无数据」 | 错误区 |
+|---|---|---|---|
+| 正常态 | 20 | 否 | 0 |
+| 修复前（失败） | 0 | **是** | 0 |
+| 修复后（失败） | 0 | **否** | **1**「获取标签列表失败 错误代码: 500 重试」 |
+| 点重试 | **20** | 否 | 0 |
+
+变更：1 文件 +10/−3（`useListError` + `<ErrorDisplay>` + `.table-wrap` 改 `v-else`）。
+
+### 四、验收
+
+| 项 | 结果 |
+|---|---|
+| `vitest run` 全量 | ✅ 1317 passed |
+| `vue-tsc -b` / `eslint src` / `vite build` | ✅ 均 exit 0 |
+| PR CI（含 Gzip Budget） | ✅ 四项全绿 |
+
+### 五、被 build 抓住的一个机械错误
+
+脚本包 `run()` 时把守卫插进了**多行调用的中间**：
+
+```ts
+const res = await run(() => listTagsApi({
+if (res === undefined) return          // ← 插在参数列表里
+  key: filters.keyword || undefined,
+```
+
+`vite build`：`Unexpected token, expected "," (84:12)`。把守卫移到调用结束行之后即修复。
+
+> 包多行调用时插入点必须是**右括号所在行之后**，不能用 `callIdx + 1`。
+
+### 六、环境说明
+
+本轮开始时开发环境全部停止（8001/8888/9000/3337 均 DOWN，间隔约 15.5 小时）。
+已用 `dev.ps1` 恢复 e-cam-service / nginx / eiam，并另起 worktree 的 vite(:3337) 完成验收。
+（vite 后台进程在本轮末尾自行退出，下轮验收前需重启。）
+
+### 未验证 / 边界
+
+- IAM 三页与 DDoS 需有数据环境才能验失败态。
+- 上一轮「17 页」清单作废；真实待办 7 页（含 4 页不可验证）。
+- 相关页面 catch 里的 `ElMessage.error` 已成不达死代码，未清理。
+
+### 教训
+
+**审计脚本的判据比审计结果更重要。**
+一个 grep 漏掉 `DataTable`，就让「17 个页面待修」显得非常可信 —— **数字越具体，越容易被当真**。
+**待修清单本身也需要被验证**，否则它会驱动一批本不该做的改动。
