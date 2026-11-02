@@ -8,11 +8,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	camservice "github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/gin-gonic/gin"
 )
 
 // GetCDNCost 多云 CDN 经营成本（月度 / 账号 / 域名分摊一期为空）。
