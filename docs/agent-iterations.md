@@ -12333,3 +12333,24 @@ BOM：true（Excel 打开中文不乱码）
 **「验证通过」也是产出，不必每轮都改代码。**
 前几轮我一直在找可修的东西；这一轮把时间花在证明"导出是对的"，
 得到的是**下一次不必再怀疑它**的确定性 —— 这比一个为了凑数的小改动更有价值。
+
+---
+
+## 2026-11-02 泄露线:模型/资产/边缘三文件 29 处(#322)—— 连续第四轮 CI 一次过
+
+### 修复
+- model_handler.go 12 处 + 1 处 404 域码分支(ModelNotFound);
+- handler_assets.go 8 处 + 1 处域码分支(DiscoveryFailed);
+- asset_handler_edge.go 7 处。
+其中包装器返回 nil 的 10 处同时修"HTTP 200 冒充成功"。
+404 域码分支的处理**与前几轮不同**:状态码保留 404、文案改用 `ErrorResult(errs.ModelNotFound)`(**领域码自带文案**),
+不再回原文;域码+nil 的分支改为 `return ErrorResult(errs.DiscoveryFailed), err`。
+新增 model_handler_leak_test.go(桩只实现 `GetModel(ctx, uid string)`,仅字符串 ⇒ 无需 nolint)。
+
+### checklist 已成为稳定流程
+连续第四轮 CI **一次通过**。提交前逐项打印:ctx.JSON(500,...)=0、`Code: 数字`=0、nil body=0、
+无大结构体形参、行长<=140、goimports 合规。**"先把 lint 坑变成可打印的计数"已被证明是最高性价比的一步。**
+
+### 状态
+PR #322 已合并;线上验证未执行(需服务端 4xx/5xx,无法安全触发)⇒ 单测+代码证据;
+同线全仓仍余 ~20 处(asset_handler_compute 5、network 4、storage/database/helpers 各 2、search/rds/nas/ecs_relations 各 1)+topology 1 处包装器站点。
