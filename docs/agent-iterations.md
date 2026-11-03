@@ -12730,3 +12730,33 @@ opts := options.Find().SetSort(bson.D{{Key: "ctime", Value: -1}})  // 硬编码�
 前有"失败渲染成暂无数据"（界面显示空，实际是查询失败），
 今有"排序只排一页"（界面显示有序，实际是全量无序）。
 两者都是**界面在说谎**，而只有对照网络/数据才能识破。
+
+---
+
+## 2026-11-03 **更正**:`eiam.token_url` 并非配置缺口 —— "资产类别统计失败"的根因是 8002 掉线
+
+### 一、我此前说错了什么
+多轮报告中,我把"仪表盘·资产类别统计失败"列为待确认项之一,措辞是
+"`eiam.token_url` 配置缺口归属"。本轮做只读诊断,结果**相反**:
+
+| 检查 | 结果 |
+|---|---|
+| 代码读取点 | `internal/cam/wire.go:122`、`internal/cam/servicetree/adapter/factory.go:27` 读 `viper.GetString("eiam.token_url")`;`internal/shared/auth/token_provider.go:110` 在为空时返回明确错误 |
+| `config/prod.yaml` | **含 `eiam:` 段,且含 `token_url`** ✓ |
+| `config/test.yaml` | **含 `eiam:` 段,且含 `token_url`** ✓ |
+⇒ **token_url 并没有缺**,该待确认项应当**撤销**。
+
+### 二、真正的根因(与既有文档一致)
+`D:\Haven\dev.ps1` 的 e-cmdb-service 注册注释原本就写着:
+"不在 dev 启动 → 仪表盘报 **统计全局资产失败: connection refused**"。
+而我在 10-31/11-01 观察到的"资产类别统计失败",恰好与 **8002(e-cmdb-service)掉线** 同期;
+11-02 恢复 8002 后,`GET /api/v1/cam/assets/statistics` 实测 **200 + 真实数据**(2348 等),
+`GET /api/v1/cam/assets/ecs?offset=0&limit=2` 同样 200 —— 前后对照成立。
+
+### 三、口径(第二十条:**"配置缺口"这类判断,先去配置里看一眼**)
+- 我在报告里沿用了一个**未经复核**的印象(把"某统计失败"归因到 token_url),这是**猜测**;
+  真正的证据链应当第一步就 `grep` 配置与读取点 —— 本轮做了,**推翻了自己的说法**。
+- ⇒ **把已知待确认项当作"待验证的假设"而不是"事实"**;能只读验证的,当轮就验证并更正。
+
+### 四、状态
+本轮**无代码改动**;待人工确认项由 6 项减为 **5 项**(撤销 token_url 一项);其余结论不变。
