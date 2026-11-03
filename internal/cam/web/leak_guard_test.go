@@ -50,6 +50,7 @@ func TestNoRawErrorInHTTPResponses(t *testing.T) {
 		if _, ok := knownExceptions[rel]; ok {
 			return nil
 		}
+		//nolint:gosec // G304: 测试内遍历仓库源码，路径来自 WalkDir 且限定在 internal/ 下
 		data, readErr := os.ReadFile(path)
 		if readErr != nil {
 			return readErr
