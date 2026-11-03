@@ -64,7 +64,7 @@ func (d *auditLogDAO) Create(ctx context.Context, log domain.AuditLog) (int64, e
 // List 查询审计日志列表
 func (d *auditLogDAO) List(ctx context.Context, filter domain.AuditLogFilter) ([]domain.AuditLog, error) {
 	query := d.buildQuery(filter)
-	opts := options.Find().SetSort(bson.D{{Key: "ctime", Value: -1}})
+	opts := options.Find().SetSort(buildAuditLogSort(filter))
 	if filter.Limit > 0 {
 		opts.SetLimit(filter.Limit)
 		opts.SetSkip(filter.Offset)
@@ -240,4 +240,26 @@ func (d *auditLogDAO) buildQuery(filter domain.AuditLogFilter) bson.M {
 		query["ctime"] = timeQuery
 	}
 	return query
+}
+
+// buildAuditLogSort 按白名单构造排序：
+//   sort_by 仅允许 ctime / duration_ms（其余一律回退 ctime），
+//   order 仅允许 asc（其余回退 desc）。
+// 白名单而非直接拼接字段名 —— 避免任意字段名进入 Mongo 排序。
+// 多键排序一律用有序 bson.D（驱动对多键 bson.M 会报
+// "multi-key map passed in for ordered parameter sort"）。
+func buildAuditLogSort(filter domain.AuditLogFilter) bson.D {
+	key := "ctime"
+	if filter.SortBy == "duration_ms" {
+		key = "duration_ms"
+	}
+	dir := -1
+	if filter.Order == "asc" {
+		dir = 1
+	}
+	// 次级键固定 ctime 倒序，保证同一耗时下顺序稳定、翻页不抖动
+	if key == "ctime" {
+		return bson.D{{Key: "ctime", Value: dir}}
+	}
+	return bson.D{{Key: "duration_ms", Value: dir}, {Key: "ctime", Value: -1}}
 }

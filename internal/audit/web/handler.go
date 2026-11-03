@@ -45,6 +45,8 @@ func (h *AuditHandler) RegisterRoutes(r *gin.RouterGroup) {
 // @Param end_time query int false "结束时间(Unix毫秒)"
 // @Param offset query int false "偏移量"
 // @Param limit query int false "限制数量"
+// @Param sort_by query string false "排序字段(ctime|duration_ms，默认 ctime)" Enums(ctime, duration_ms)
+// @Param order query string false "排序方向(asc|desc，默认 desc)" Enums(asc, desc)
 // @Success 200 {object} gin.H
 // @Router /api/v1/cam/audit/logs [get]
 func (h *AuditHandler) ListAuditLogs(c *gin.Context) {
@@ -61,6 +63,8 @@ func (h *AuditHandler) ListAuditLogs(c *gin.Context) {
 		// 单页上限：实测 limit=999999 会返回 7360 条 / 4.5MB（绕过翻页、放大内存与带宽）。
 		// 前端最大只请求 200，故 1000 的硬上限对现有客户端零影响。
 		Limit: min(parseIntDefault(c.Query("limit"), 20), int64(maxPageLimit)),
+		SortBy: c.Query("sort_by"),
+		Order:  c.Query("order"),
 	}
 	if st := c.Query("start_time"); st != "" {
 		v := parseIntDefault(st, 0)

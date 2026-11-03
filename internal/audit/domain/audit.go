@@ -67,6 +67,10 @@ type AuditLogFilter struct {
 	EndTime       *int64             `json:"end_time"`
 	Offset        int64              `json:"offset"`
 	Limit         int64              `json:"limit"`
+	// SortBy 排序字段（白名单：ctime / duration_ms；空值等价 ctime）
+	SortBy string `json:"sort_by"`
+	// Order 排序方向（asc / desc；空值等价 desc）
+	Order string `json:"order"`
 }
 
 // AuditReport 审计报告
