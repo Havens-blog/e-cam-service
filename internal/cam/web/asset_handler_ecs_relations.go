@@ -1,12 +1,15 @@
 package web
 
 import (
-	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
-	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
-	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+
+	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 )
 
 // GetECSRelations 获取ECS实例关联资源
@@ -48,7 +51,8 @@ func (h *AssetHandler) GetECSRelations(ctx *gin.Context) {
 	ecsInstances, _, err := h.instanceSvc.List(ctx.Request.Context(), ecsFilter)
 	if err != nil {
 		h.logger.Error("查询ECS实例失败", elog.FieldErr(err))
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 

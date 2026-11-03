@@ -10,11 +10,15 @@ package web
 import (
 	"context"
 	"errors"
+	"net/http"
+
+	"github.com/gotomicro/ego/core/elog"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/gin-gonic/gin"
 )
 
 // RDSQueryService RDS 指标读取服务接口(web 层只依赖此接口):
@@ -65,5 +69,6 @@ func respondRDSError(ctx *gin.Context, err error) {
 		ctx.JSON(404, ErrorResultWithMsg(errs.AccountNotFound, errs.AccountNotFound.Msg))
 		return
 	}
-	ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+	elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+	ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 }

@@ -1,12 +1,16 @@
 package web
 
 import (
+	"net/http"
 	"strconv"
+
+	"github.com/gotomicro/ego/core/elog"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/gin-gonic/gin"
 )
 
 // ==================== NAS 文件存储 ====================
@@ -81,7 +85,8 @@ func (h *AssetHandler) ListNAS(ctx *gin.Context) {
 
 	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -175,7 +180,8 @@ func (h *AssetHandler) ListOSS(ctx *gin.Context) {
 
 	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
