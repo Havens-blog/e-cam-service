@@ -13363,3 +13363,69 @@ web 仓最新 run:**41630056443**(`afc61aa`,11:45:15Z)。
 
 这也解释了这个会话里为什么反复出现"验证过的部分是对的，没验证的部分有问题" ——
 **我验证的往往正是我刚写的那条路径**，而不是与之相邻的路径。
+
+---
+
+## cam-urlfilters-20261104（"项目里已有这个能力"≠"这个页面用了它"）
+
+**状态**：**已合并**（`e-cam-web#236`，merge `a32023f`）
+
+### 一、缺陷：审计日志筛选刷新就丢，而隔壁页早就有这个能力
+
+| 页面 | 操作 | 结果 |
+|---|---|---|
+| `audit/logs` | 设筛选 `api_path=/api/v1/cam/logs`（6920 条）| **URL 为空** |
+| `audit/logs` | 刷新 | **筛选丢失**，回到 7585 条 |
+| `audit/changes` | 访问 `?assetId=abc123` | 输入框**正确回填** ✅ |
+
+`useUrlFilters` 早已存在并被 **7 个页面**采用 —— 这一页是**漏接**。
+
+> 我此前把"筛选刷新后丢失"记成一条长期观察项。其实只要查一下这个 composable 的使用者名单，就能发现它不是"项目缺能力"，而是"这页没用"。
+
+### 二、修法：沿用既有 composable，不新造机制
+
+`urlState` 覆盖 `api_path / http_method / operation_type / result / start / end / sort_by / order / page`；
+挂载时回填到各 ref，`watch` 再写回（空值置 `undefined`，composable 自动删 key）。
+
+### 三、过程中被抓到的"半成品"
+
+第一版：**数据确实按 URL 排序了，但表头没有排序箭头。**
+
+> el-table 的箭头由组件内部状态驱动，只设 `sortBy/sortOrder` 不够，还要 `:default-sort`。
+
+类型上还返工两次：Element Plus 的 `Sort` 要求 `prop`/`order` 都非空 —— 无排序必须返回 **`undefined`**，
+不能用 `{}`（prop/order 缺失）也不能用 `order: null`。
+
+**数据对、界面不对** —— 这正是我差点收工的地方。
+
+### 四、验收
+
+| 操作 | URL |
+|---|---|
+| 设筛选 | `?api_path=/api/v1/cam/logs`（6920 条）|
+| 排序 | `…&sort_by=duration_ms&order=desc` |
+| 翻页 | `…&page=2` |
+| **刷新** | 输入框回填 / 表头 `descending` / 页码 2 / 共 **6920** 条 ✅ |
+
+| 门禁 | 结果 |
+|---|---|
+| `vitest run` | ✅ 1327 passed / 109 files |
+| `vue-tsc` / `eslint` / `vite build` | ✅ 均 0 |
+| PR CI | ✅ 四项全绿 |
+
+### 五、刻意没改的语义
+
+「重置」后 `api_path` 从 URL 移除，但 `sort_by/order` 保留 —— 这是页面原有行为
+（`handleReset` 只清筛选与页码，从不改排序）。**「重置是否该清排序」属产品口径，不擅自决定。**
+
+### 未验证 / 边界
+
+- 只接了 `audit/logs`；其他未接入的列表页未逐一核查。
+- 浏览器前进/后退未验（用 `router.replace`，不产生历史记录，有意为之）。
+- 日期范围（`start`/`end`）已接入但**未单独实测**（本轮用 api_path 验证）。
+
+### 教训
+
+**"项目里已有这个能力"不等于"这个页面用了它"。**
+另一条：**数据层正确、表现层缺失**是最容易被"自测通过"放过的形态 ——
+URL 里有 `sort_by` 我就想收工了，是浏览器截图里的空箭头把我拦住的。
