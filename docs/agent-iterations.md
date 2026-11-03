@@ -13550,3 +13550,64 @@ ReferenceError: Cannot access 'searchConditions' before initialization   （10 �
 1. **复盘只有变成模板里的固定位置，才算真正被吸收。** 上一轮的 TDZ 我写了一大段，
    但如果这轮靠记忆去做，仍可能重新踩；把它变成"`onMounted` 内调用 + 原因注释"才可靠。
 2. **数量型欠账要如实说数量。** "URL 状态已接入"这句话如果不说"3/29"，就等于在骗人。
+
+---
+
+## cam-url-batch2-20261104（模板见效，但别按"和上一页一样"改）
+
+**状态**：**已合并**（`e-cam-web#241`，merge `c949a8c`）
+
+### 一、第三轮模板推进：ENI + LB
+
+| 页面 | 同步字段 |
+|---|---|
+| ENI | `keyword / provider / status / type / vpc_id / instance_id` + `page` |
+| LB | `keyword / provider / region / status / lb_type / address_type / vpc_id` + `page` |
+
+29 页欠账：**3 → 5**。
+
+### 二、TDZ 已固化为模板固定动作
+
+```ts
+onMounted(() => {
+  // 恢复筛选标签（该函数引用 searchConditions，须在其声明之后调用）
+  rebuildConditionsFromFilters()
+  ...
+})
+```
+
+三节前踩过的坑（`Cannot access 'searchConditions' before initialization`，**只在 URL 带参数时触发**），
+本轮两页**一次没再踩** —— 因为它在模板里，不靠记性。
+
+### 三、三态验收
+
+| 页面 | 无参基线 | 带参 `?keyword=zzz-notexist` | 刷新后 |
+|---|---|---|---|
+| ENI | 共 **5814** 条、错误 0 | 标签、共 0、「没有匹配的数据」、**错误 0** | 标签保留 ✅ |
+| LB | 共 **786** 条、错误 0 | 同上 | 标签保留 ✅ |
+
+| 门禁 | 结果 |
+|---|---|
+| `vitest run` | ✅ 1333 passed |
+| `vue-tsc` / `eslint` / `vite build` | ✅ 均 0 |
+| PR CI | ✅ 四项全绿 |
+
+### 四、欠账（照实记）
+
+**29 页已完成 5 页（eip / vpc / vswitch / eni / lb），其余 24 页未接入。**
+
+剩余：`compute/*`（disk/image/snapshot/security-group/provision）、`databases/*`（rds/redis/mongodb）、
+`middleware/*`（es/kafka）、`storage/*`（oss/nas）、`network/*`（cdn/waf/ddos）、
+`accounts`、`assets`、`iam/users`、`iam/groups`、`tasks`、`cam/budget`。
+
+### 五、教训（两面）
+
+1. **模板化的收益开始显现。** 前两轮每页都要重新想"块放哪、TDZ 怎么躲、标签怎么还原"；
+   这轮两页几乎机械套用，改动 104 行、一次通过。
+
+2. **但机械套用有另一面：会让人不再逐页思考差异。**
+   这轮 **ENI 没有 `region` 字段、LB 多出 `lb_type`/`address_type`** ——
+   字段清单是逐页核对过的；如果只按"和上一页一样"去改，
+   这几个差异会被漏掉，表现为**某几个筛选条件静默不进 URL**（刷新后丢，且看不出来）。
+
+   **模板应该固定的是"结构与陷阱"，不是"字段清单"。**
