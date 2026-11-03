@@ -13429,3 +13429,65 @@ web 仓最新 run:**41630056443**(`afc61aa`,11:45:15Z)。
 **"项目里已有这个能力"不等于"这个页面用了它"。**
 另一条：**数据层正确、表现层缺失**是最容易被"自测通过"放过的形态 ——
 URL 里有 `sort_by` 我就想收工了，是浏览器截图里的空箭头把我拦住的。
+
+---
+
+## cam-eip-url-20261104（只在"有参数"时才炸的 bug）
+
+**状态**：**已合并**（`e-cam-web#238`，merge `e121dd4`）
+
+### 一、全仓审计：29 页还没接入 URL 状态
+
+| 类别 | 数量 |
+|---|---|
+| 已接入 `useUrlFilters` | 10 |
+| **未接入** | **29** |
+
+29 页不在这一轮批量改（每页筛选字段结构不同，批量改风险高于收益）。本轮做 `network/eip` 作模板。
+
+### 二、缺陷与修法（EIP）
+
+设筛选后 **URL 为空**，刷新即丢（回到 364 条）。修法：`urlState`（6 个筛选字段 + page）+ `useUrlFilters` 回填/写回 + `rebuildConditionsFromFilters()` 反向还原筛选标签。
+
+`buildListParams` 只用 `filters`（`searchConditions` 在查询前映射进去），所以 URL 只需存 `filters + page`。
+
+### 三、我引入并修掉的一个运行时 bug
+
+第一版把 `rebuildConditionsFromFilters()` 放在 setup 顶层调用，而它引用的 `searchConditions` 声明更靠后 → **暂时性死区**：
+
+```
+ReferenceError: Cannot access 'searchConditions' before initialization   （10 条 console 错误）
+```
+
+**只在不带 URL 参数时才正常** —— 当轮我"打开页面看一眼"的检查（无参数）完全干净。
+
+它的危险之处：`tsc` 通过、`build` 通过、`lint` 通过、vitest 通过、无参数打开也正常。
+**唯一能暴露它的是"带着 URL 参数进去跑一遍"。**
+
+已把调用移入 `onMounted`（此时所有声明已完成）。
+
+### 四、验收
+
+| 场景 | 结果 |
+|---|---|
+| `?keyword=zzz-notexist` 直接打开 | console 错误 **0**、标签「名称: zzz-notexist 清除」、共 0 条、「没有匹配的数据」✅ |
+| 刷新 | URL 与标签均保持 ✅ |
+
+| 门禁 | 结果 |
+|---|---|
+| `vitest run` | ✅ 1333 passed |
+| `vue-tsc` / `eslint` / `vite build` | ✅ 均 0 |
+| PR CI | ✅ 四项全绿 |
+
+### 未完成 / 边界
+
+- **其余 28 页仍未接入**。
+- 未验"筛选 + 翻页 + 重置"连续组合；未验浏览器前进/后退（用 `router.replace`）。
+
+### 教训
+
+**只在"有参数"时才触发的 bug，用"无参数打开看看"永远发现不了。**
+
+这一轮我差点把它当完成品提交：所有门禁绿、页面正常、无参数无报错。
+这补上了我此前的一个盲区 —— 我一直在验"页面能否打开/主流程是否正常"，
+但**同一个页面的不同入口状态（带参/不带参、有数据/无数据）本身也是被测对象**。
