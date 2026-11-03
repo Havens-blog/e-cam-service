@@ -1,13 +1,17 @@
 package web
 
 import (
+	"net/http"
 	"strconv"
+
+	"github.com/gotomicro/ego/core/elog"
+
+	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // ==================== 通用方法 ====================
@@ -59,7 +63,8 @@ func (h *AssetHandler) listAssets(ctx *gin.Context, assetType string) {
 
 	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -91,7 +96,8 @@ func (h *AssetHandler) getAsset(ctx *gin.Context, assetType string) {
 
 	instances, _, err := h.instanceSvc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 

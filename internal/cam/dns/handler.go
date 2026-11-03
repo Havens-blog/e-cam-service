@@ -115,7 +115,8 @@ func (h *DNSHandler) CreateRecord(ctx *gin.Context) {
 	record, err := h.svc.CreateRecord(ctx.Request.Context(), tenantID, domainName, req)
 	if err != nil {
 		if isValidationError(err) {
-			ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, err.Error()))
+			elog.DefaultLogger.Error("params error", elog.FieldErr(err))
+			ctx.JSON(http.StatusBadRequest, web.ErrorResult(errs.ParamsError))
 			return
 		}
 		h.handleError(ctx, err)
@@ -139,7 +140,8 @@ func (h *DNSHandler) UpdateRecord(ctx *gin.Context) {
 	record, err := h.svc.UpdateRecord(ctx.Request.Context(), tenantID, domainName, recordID, req)
 	if err != nil {
 		if isValidationError(err) {
-			ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, err.Error()))
+			elog.DefaultLogger.Error("params error", elog.FieldErr(err))
+			ctx.JSON(http.StatusBadRequest, web.ErrorResult(errs.ParamsError))
 			return
 		}
 		h.handleError(ctx, err)

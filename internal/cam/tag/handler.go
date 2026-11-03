@@ -402,7 +402,8 @@ func (h *TagHandler) CreateRule(ctx *gin.Context) {
 	rule, err := h.svc.CreateRule(ctx.Request.Context(), tenantID, req)
 	if err != nil {
 		if errors.Is(err, ErrRuleNameEmpty) || errors.Is(err, ErrRuleNoCondition) || errors.Is(err, ErrRuleNoTags) {
-			ctx.JSON(http.StatusBadRequest, web.ErrorResultWithMsg(errs.ParamsError, err.Error()))
+			elog.DefaultLogger.Error("params error", elog.FieldErr(err))
+			ctx.JSON(http.StatusBadRequest, web.ErrorResult(errs.ParamsError))
 			return
 		}
 		h.handleError(ctx, err)

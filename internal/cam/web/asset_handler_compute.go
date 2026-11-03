@@ -1,7 +1,10 @@
 package web
 
 import (
+	"net/http"
 	"strconv"
+
+	"github.com/gotomicro/ego/core/elog"
 
 	"github.com/gin-gonic/gin"
 
@@ -93,7 +96,8 @@ func (h *AssetHandler) ListECS(ctx *gin.Context) {
 
 	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -188,7 +192,8 @@ func (h *AssetHandler) ListDisk(ctx *gin.Context) {
 
 	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -278,7 +283,8 @@ func (h *AssetHandler) ListSnapshot(ctx *gin.Context) {
 
 	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -386,7 +392,8 @@ func (h *AssetHandler) ListImage(ctx *gin.Context) {
 
 	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
@@ -604,7 +611,8 @@ func (h *AssetHandler) ListSecurityGroup(ctx *gin.Context) {
 
 	instances, total, err := h.instanceSvc.List(ctx.Request.Context(), filter)
 	if err != nil {
-		ctx.JSON(500, ErrorResultWithMsg(errs.SystemError, err.Error()))
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
 		return
 	}
 
