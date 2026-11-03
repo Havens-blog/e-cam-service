@@ -12417,3 +12417,33 @@ PR #322 已合并;线上验证未执行(需服务端 4xx/5xx,无法安全触发)
 
 另外这次自查没有发现缺陷，我一开始有点"白跑一轮"的感觉；
 但换个角度：**没有这条基线，下次改动就没有对照物**。
+
+---
+
+## 2026-11-03 **泄露线归零**(#325):最后一处 web.ErrorResultWithMsg 形态 + **回归守卫**
+
+### 一、为什么这一轮才真正归零
+前两轮我用"`ctx.JSON(5xx, …)` + `ErrorResultWithMsg(errs.SystemError, …)`"两条正则统计,漏掉了:
+- `web.ErrorResultWithMsg(errs.ParamsError, err.Error())`(dns 2 处、tag 1 处,400 带原文);
+- `ginx.Result{Code: N, Msg: err.Error()}`(servicetree 已单独修掉)。
+本轮按**全形态**重扫(含 `web.` 前缀与 ginx.Result),最后 22 处:cam/web 资产类 9 文件 19 处 + dns 2 + tag 1。
+
+### 二、修复 + **防回潮**
+- 19 处 ⇒ `elog` 记细节 + `ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))`;
+- 3 处 ⇒ 状态仍 **400**,文案改 `web.ErrorResult(errs.ParamsError)`,细节进日志;
+- 新增 **`internal/cam/web/leak_guard_test.go`**:遍历 `internal/` 下**非测试** Go 文件,命中两种形态即失败;
+  例外用 `knownExceptions`(带原因)显式登记(当前仅 topology 1 处,原因写明"ginx 包装器无法表达 400")。
+  ⇒ **本会话 11-01 起累计清理的 300+ 处同类问题,自此由测试机械保证不再回潮。**
+- CI 首轮报 `gosec G304`(测试内按变量路径 `os.ReadFile`)⇒ 按"只给 CI 点名行加"的口径补 `//nolint:gosec`,第二轮通过。
+
+### 三、环境事件(又一次印证 #301 的口径)
+空档 19h53m 后 8002/8888 掉线;我用 `dev.ps1 start e-cmdb-service` 恢复,**但它前台托管**,
+我随后 kill 掉挂起的 job ⇒ **8002 当场又掉线**;改用 **`Start-Process` 分离启动** 才稳定。
+⇒ 再次确认:**dev.ps1 的 daemon 服务不能以后台 job 方式托管**。
+
+### 四、口径沉淀(第十九条:**"归零"要用测试固化,而不是用 grep 宣布**)
+- 用 grep 宣布"归零"不可靠:换一种写法就漏(本轮就是补漏);**把"归零"写成测试**,才是可复核的零。
+- 例外必须**显式登记并写原因**(`knownExceptions`),让"下一处例外"在评审里可见。
+
+### 五、状态
+PR #325 已合并;**线上验证未执行**(该线改动只在错误路径);遗留:topology 1 处需先决定 ginx 是否支持结果状态。
