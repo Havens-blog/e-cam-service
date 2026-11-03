@@ -13658,3 +13658,64 @@ CDN 的现象很怪：结构逐项对齐 WAF、所有门禁绿、chip 能显示�
 
 **半成品比没做更危险，因为它伪装成进度。**
 把「未定位根因」写进提交信息而不是悄悄回退，是有价值的：下一个人能接着查，而不是重新踩一遍。
+
+---
+
+## cam-cdn-rootcause-20261104（"机制失效"这个判断本身需要证据）
+
+**状态**：**已合并**（`e-cam-web#245`，merge `8443402`）
+
+上一轮我判定 CDN「`useUrlFilters` 整体失效、未定位根因」并回退。本轮查清 —— **根因是我自己漏了一步。**
+
+### 一、插桩实测（不是猜测）
+
+```
+[CDN-DEBUG] before useUrlFilters {"path":"/network/cdn","query":{"name":"zzz-notexist"},"hasRouter":true}
+[CDN-DEBUG] after  useUrlFilters {"name":"zzz-notexist"}
+[CDN-DEBUG] watch fired zzz2 -> {"name":"zzz-notexist"}
+[CDN-DEBUG] after set urlState, url= ?name=zzz2
+```
+
+`useUrlFilters` 在 CDN 上**一直正常**：参数成功读入 `urlState`，手动筛选也成功写入 URL。
+
+### 二、真正缺的两步
+
+| 步骤 | 上一轮 | 后果 |
+|---|---|---|
+| ① `urlState` → `filters` 回填 | 位置写错 | 有值但没落到 filters → 查询不变、无标签 |
+| ② `rebuildConditionsFromFilters()` 在 onMounted 内调用 | **整段漏掉** | 筛选标签不显示 |
+
+两者叠加 → 表现为「既不生效也不显示」，被我误读成「机制整体失效」。
+
+**回退是对的（半成品不该提交），但结论是错的。**
+
+### 三、修复与验收
+
+| 场景 | 结果 |
+|---|---|
+| 无参基线 | 共 **965** 条、错 0 |
+| 带参 `?name=zzz-notexist` | 标签「域名: zzz-notexist 清除」、共 **0** 条、**错 0** ✅ |
+| 刷新 | 标签保留、URL 保留 ✅ |
+
+| 门禁 | 结果 |
+|---|---|
+| `vitest run` | ✅ 1333 passed |
+| `vue-tsc` / `eslint` / `vite build` | ✅ 均 0 |
+| PR CI | ✅ 四项全绿 |
+
+### 四、欠账
+
+**29 页完成 7 页**（eip / vpc / vswitch / eni / lb / waf / cdn），其余 **22 页**未接入。
+
+### 教训
+
+**"机制失效"和"我漏了一步"能解释同样的现象 —— 后者往往是真相。**
+
+上一轮我看到「所有参数不生效 + 反向也不写 URL」，就推断"框架机制在整页失效"。
+这两个现象同样可以被"我自己漏了回填和重建"完美解释，而后者才是真的。
+
+代价是一整轮：先回退、再重做。
+
+**可操作的做法：当两者都能解释时，先插桩确认框架那一步到底有没有跑。**
+这次只用了 3 个 `console.log` 就定位了 —— **比读代码猜快得多**。
+这也补上了我的一个习惯漏洞：我倾向于用"读代码推理"代替"观测运行时事实"。
