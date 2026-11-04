@@ -13719,3 +13719,67 @@ CDN 的现象很怪：结构逐项对齐 WAF、所有门禁绿、chip 能显示�
 **可操作的做法：当两者都能解释时，先插桩确认框架那一步到底有没有跑。**
 这次只用了 3 个 `console.log` 就定位了 —— **比读代码猜快得多**。
 这也补上了我的一个习惯漏洞：我倾向于用"读代码推理"代替"观测运行时事实"。
+
+---
+
+## cam-url-batch4-20261104（第五轮：DDoS + NAS，欠账 9/29）
+
+**状态**：**已合并**（`e-cam-web#246`，merge `6a19e03`）
+
+### 一、本轮范围
+
+| 页面 | 同步字段 | 名称字段 |
+|---|---|---|
+| DDoS | `name / provider / status / edition / region` + `page` | `name` → 条件 `name` |
+| NAS | `keyword / provider / file_system_type / protocol_type / status / region` + `page` | `keyword` → 条件 `asset_name` |
+
+### 二、CDN 那轮的两步，这次连"缺了会怎样"一起写进注释
+
+```ts
+// URL 回填 → filters / page（缺这步会出现"urlState 有值但查询不变、无标签"）
+...
+onMounted(() => {
+  // 恢复筛选标签（引用 searchConditions，须在其声明之后；缺这步标签不显示）
+  rebuildConditionsFromFilters()
+})
+```
+
+上一轮我正因为漏这两步、又误判成"框架机制失效"，白花一轮。
+**注释里写清后果，比只写"要这么做"更能防止重犯。**
+
+### 三、两个机械问题（模板假设了上一页的写法）
+
+1. **NAS 的 `pagination` 是单行** `reactive({ page: 1, size: 20, total: 0 })`
+   → 按"找单独一行 `})`"定位失败 → 改为在 `pagination` 行之后插入。
+2. **NAS 未导入 `CloudProvider`**（其 provider 是普通字符串）→ 去掉 `as CloudProvider` 断言。
+
+再次印证：**模板应固定结构与陷阱，不该固定字段与写法细节。**
+
+### 四、验收（三态）
+
+| 页面 | 无参基线 | 带参 | 刷新后 |
+|---|---|---|---|
+| DDoS | 共 **0** 条、错 0 | 标签「实例名称/ID: zzz-notexist 清除」、错 0 | 标签保留 ✅ |
+| NAS | 共 **190** 条、错 0 | 标签「名称: zzz-notexist 清除」、共 0、错 0 | 标签保留 ✅ |
+
+> DDoS 本环境 0 行，但**标签与 URL 状态仍可验**。
+> 前几轮我曾把"没数据"当成"验不了"的借口；现在的做法是**看状态而不是看行数**。
+
+| 门禁 | 结果 |
+|---|---|
+| `vitest run` | ✅ 1333 passed |
+| `vue-tsc` / `eslint` / `vite build` | ✅ 均 0 |
+| PR CI | ✅ 四项全绿 |
+
+### 五、欠账
+
+**29 页完成 9 页**（eip / vpc / vswitch / eni / lb / waf / cdn / ddos / nas），其余 **20 页**未接入。
+
+剩余：`compute/*`（disk/image/snapshot/security-group/provision）、`databases/*`（rds/redis/mongodb）、
+`middleware/*`（es/kafka）、`storage/oss`、`accounts`、`assets`、`iam/*`（users/groups/sync/compare）、
+`tasks`、`cam/budget`。
+
+### 教训
+
+**0 数据不等于无法验证。** 这一轮 DDoS 是 0 行，但"筛选标签是否出现、URL 是否携带参数、刷新是否保留"这三件事都能验 ——
+它们验的是**状态机制**，不是数据渲染。区分"这份数据能不能验"和"这个机制能不能验"，能避免把很多东西误判为"无法验证"。
