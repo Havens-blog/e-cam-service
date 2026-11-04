@@ -14322,3 +14322,46 @@ handler.GetGlobalAssetStats → nodeAssetSvc.GetGlobalAssetStats
 ⇒ 实施顺序应为：**先写成独立端口+独立 cacheDir 的专用配置并检查生效，再启动**；
    绝不用"标准配置 + 换端口"直接跑（换端口不等于隔离）。
 ⇒ 另：`.vite` 这类**构建缓存属于共享可变状态**，与源码、锁文件同等级别对待。
+
+---
+
+## cam-url-batch6-20261104（第七轮：RDS/Redis/MongoDB，欠账 14/29）
+
+**状态**：**已合并**（`e-cam-web#253`，merge `270329f`）
+
+### 一、本轮范围
+
+三个数据库列表页，是同构兄弟页：`filters = reactive({ keyword, provider, status, region })`（单行、全普通 string）、
+`searchFields = asset_name/asset_id/status/provider/region`、`asset_name/asset_id → keyword`、pagination 单行。
+
+### 二、验收（三态，含带参）
+
+| 页面 | 无参基线 | 带参 `?keyword=zzz-notexist` | 刷新后 |
+|---|---|---|---|
+| RDS | 共 52 条、错 0 | 标签「名称: zzz-notexist 清除」、共 0、错 0 | 标签保留 ✅ |
+| Redis | 共 330 条、错 0 | 同上 | 标签保留 ✅ |
+| MongoDB | 共 54 条、错 0 | 同上 | 标签保留 ✅ |
+
+| 门禁 | 结果 |
+|---|---|
+| `vitest run` | ✅ 1333 passed |
+| `vue-tsc` / `eslint` / `vite build` | ✅ 均 0 |
+| PR CI | ✅ 四项全绿 |
+
+### 三、欠账
+
+**29 页完成 14 页**，其余 **15 页**未接入：
+`accounts`、`assets`、`cam/budget`、`compute/*`（disk/snapshot/security-group/provision）、
+`middleware/*`（es/kafka）、`iam/*`（users/groups/sync/compare）、`tasks`。
+
+### 四、教训
+
+上一轮 CDN 学到的「模板固定结构与陷阱、不固定字段与写法细节」在本轮再次印证：
+三页 provider 都是普通 string（无需 `as CloudProvider`），与之前 image 页需要断言不同 —— 逐页确认后按实际类型写。
+
+另一个小提醒：这三页的 `filters` 和 `pagination` 都是**单行声明**，之前的脚本按「找单独一行 `})`」会定位失败；
+本轮脚本已兼容单行/多行两种写法，所以一次通过、没有再踩 NAS 那次的定位坑。
+
+### 五、另有一条与本轮无关的待办
+
+e-iam 的 `生成链一致性` check 在 main 上仍红（±1 行号漂移），属生成文档元数据漂移、非代码缺陷，已在 e-iam#2 合并记录中说明。
