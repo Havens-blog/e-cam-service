@@ -51,11 +51,7 @@ func initViper() {
 //
 // 用 MergeInConfig 而非 ReadInConfig：后者会**覆盖**已有配置，前者只覆盖 local 文件里出现的键。
 func mergeLocalOverride() {
-	ext := filepath.Ext(confFile)
-	if ext == "" {
-		ext = ".yaml"
-	}
-	localFile := strings.TrimSuffix(confFile, filepath.Ext(confFile)) + ".local" + ext
+	localFile := localOverridePath(confFile)
 	if _, statErr := os.Stat(localFile); statErr != nil {
 		return // 没有本地覆盖文件属正常情况
 	}
@@ -64,6 +60,18 @@ func mergeLocalOverride() {
 	if mergeErr := viper.MergeInConfig(); mergeErr != nil {
 		panic(mergeErr)
 	}
+}
+
+// localOverridePath 由主配置路径推导本地覆盖文件路径：config/prod.yaml → config/prod.local.yaml。
+//
+// 无扩展名时按 .yaml 补全（否则会得到 "config/prod.local" 这种 viper 无法按格式解析的文件名）。
+// 抽成纯函数是为了能直接用表驱动用例覆盖各种路径形态，不必启动整个配置引导流程。
+func localOverridePath(conf string) string {
+	ext := filepath.Ext(conf)
+	if ext == "" {
+		return conf + ".local.yaml"
+	}
+	return strings.TrimSuffix(conf, ext) + ".local" + ext
 }
 
 func Execute(version string) {
