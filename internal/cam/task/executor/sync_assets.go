@@ -26,9 +26,6 @@ import (
 
 	"strings"
 
-	auditdomain "github.com/Havens-blog/e-cam-service/internal/audit/domain"
-	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
-	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 	cloudx "github.com/Havens-blog/e-cloudx-sdk"
 	"github.com/Havens-blog/e-cloudx-sdk/aliyun"
 	"github.com/Havens-blog/e-cloudx-sdk/asset"
@@ -37,6 +34,10 @@ import (
 	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gotomicro/ego/core/elog"
 	"go.mongodb.org/mongo-driver/mongo"
+
+	auditdomain "github.com/Havens-blog/e-cam-service/internal/audit/domain"
+	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
+	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
 )
 
 // 定义任务类型常量
@@ -658,7 +659,7 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 			if entry, ok := assetSyncFns[assetType]; ok {
 				synced, err := entry.fn(e, ctx, adapter, account, region)
 				if err != nil {
-					e.logger.Error(entry.label, elog.String("region", region), elog.FieldErr(err))
+					e.logSyncFailure(entry.label, region, err)
 					return
 				}
 				totalSynced += synced
@@ -684,7 +685,7 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 			}
 			synced, err := entry.fn(e, ctx, cloudxAdapter, account, region)
 			if err != nil {
-				e.logger.Error(entry.label, elog.String("region", region), elog.FieldErr(err))
+				e.logSyncFailure(entry.label, region, err)
 				return
 			}
 			totalSynced += synced
@@ -692,4 +693,44 @@ func (e *SyncAssetsExecutor) syncRegionAssets(
 	}
 
 	return totalSynced, skippedTypes, nil
+}
+
+// logSyncFailure 记录单个「资产类型×地域」的同步失败。
+//
+// 云厂商对部分地域不提供某些产品（实测腾讯云 ap-osaka、na-queretaro 不支持 MongoDB 与 Elasticsearch），
+// 返回 Code=UnsupportedRegion。这属于**能力边界**而非故障；若一律按 ERROR 记录，会让人误判成同步出了故障
+// （排查时确实被误导过）。故此类降级为 WARN 并给出可读说明，其余错误仍按 ERROR。
+func (e *SyncAssetsExecutor) logSyncFailure(label, region string, err error) {
+	if isRegionUnsupported(err) {
+		e.logger.Warn("该地域不支持此产品,已跳过",
+			elog.String("asset", label),
+			elog.String("region", region),
+			elog.FieldErr(err))
+		return
+	}
+	e.logger.Error(label, elog.String("region", region), elog.FieldErr(err))
+}
+
+// isRegionUnsupported 识别「该地域不支持该产品/接口」类错误（云厂商能力边界，不是故障）。
+//
+// 腾讯云返回 Code=UnsupportedRegion 与 "该接口不支持此地域访问。"；各 SDK 措辞略有差异，故按关键字匹配。
+// 腾讯云返回 Code=UnsupportedRegion 与 "该接口不支持此地域访问。"；各 SDK 措辞与语序略有差异
+// （"不支持此地域" / "该地域不支持"），故两种语序都覆盖。抽成纯函数便于表驱动测试。
+func isRegionUnsupported(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	keywords := []string{
+		"UnsupportedRegion",
+		"不支持此地域",
+		"不支持该地域",
+		"该地域不支持",
+	}
+	for _, kw := range keywords {
+		if strings.Contains(msg, kw) {
+			return true
+		}
+	}
+	return false
 }
