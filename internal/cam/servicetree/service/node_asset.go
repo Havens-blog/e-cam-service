@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gotomicro/ego/core/elog"
+
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/port"
 	"github.com/Havens-blog/e-cam-service/internal/cam/servicetree/repository"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // NodeAssetService 节点资产查询服务
@@ -276,6 +277,11 @@ func (s *nodeAssetService) GetNodeAssetStats(ctx context.Context, tenantID int64
 func (s *nodeAssetService) GetGlobalAssetStats(ctx context.Context, tenantID int64) (domain.AssetStats, error) {
 	result, err := s.cmdbPort.AggregateAllStats(ctx, tenantID)
 	if err != nil {
+		// 该链路经 e-cmdb-service 的 /internal 端点，需先换服务令牌（依赖 eiam.token_url）。
+		// 失败时若只靠 ginx 的 slog，本地 stderr 被重定向会丢失，仪表盘只剩 "internal error"
+		// 无法定位（Issue #355 即如此）⇒ 这里补一条持久化日志。
+		elog.DefaultLogger.Error("servicetree: AggregateAllStats failed",
+			elog.FieldErr(err), elog.Int64("tenantID", tenantID))
 		return domain.AssetStats{}, fmt.Errorf("统计全局资产失败: %w", err)
 	}
 
