@@ -14424,3 +14424,51 @@ e-iam 的 `生成链一致性` check 在 main 上仍红（±1 行号漂移），
   ⇒ 正确做法:错误判定要基于**失败 API/状态码/错误组件**,而不是正文里的关键字 ✓
 - **第三十五条**:自己做过的破坏性副作用,要**主动扩大排查面**。我上一条只验证了 2 个页面就宣布"已恢复",
   实际有 5 个页面打不开;是用户反馈才暴露。⇒ **影响面未摸清前,不要宣布"已修复"** ✓
+
+---
+
+## 2026-11-04 **CI 归因 + 页面/接口一致性核查**:本轮无新增代码需求
+
+### 一、CI 红灯归因(重要澄清)
+拉取 main 上失败 run(`41768169063`, sha `5987741`)的 job 明细:
+
+| job | 结果 |
+|---|---|
+| **Test** | **success** ✓ —— 20 步全绿:`Run tests`、`coverage`、`Codecov`、**`golangci-lint`**、**`go vet`**、`depcheck`(架构边界)、`deploycheck`(部署闭包) |
+| **Docker Build and Push** | **failure** ✗ —— 失败步骤 **`Login to Docker Hub`**,日志 `##[error]Username and password required` |
+| Build (windows/darwin×2/linux×2) | 全 **success** ✓,且都 `Upload artifacts` |
+| Release | skipped(前置失败所致) |
+
+⇒ **CI 失败与代码无关,纯粹是缺少镜像仓库凭据**;而且比之前记录的更精确:
+之前只记了 **Aliyun Registry** 缺凭据,实际 `CI/CD Pipeline` 这条里**还有 Docker Hub** 也缺。
+⇒ 已把完整证据补充到 **#336**(评论)。
+
+**影响面修正**:代码门禁(测试/lint/vet/架构边界/5 平台交叉编译)**全部通过**,
+二进制产物**可用**;缺的只是"发布镜像"这一步 ⇒ **不是"代码跑不过 CI"** ✓
+
+### 二、页面数字 vs 接口数字一致性核查(5 个列表页)
+| 页面 | UI 总数 | 接口 total | 结论 |
+|---|---|---|---|
+| `/cam/compute/ecs` | 3529 | 3529(`/assets/ecs`) | **一致** ✓ |
+| `/cam/network/vpc` | 119 | 119(`/assets/vpc`) | **一致** ✓ |
+| `/cam/network/eip` | 364 | 364(`/assets/eip`) | **一致** ✓ |
+| `/cam/resource/tags` | 3906 | 3906(`/tags`) | **一致** ✓ |
+| `/cam/storage/oss` | 1199 | 1199(`/assets/oss?offset=0&limit=20`) | **一致** ✓ |
+
+OSS 页的四个统计卡也逐个对上:`Standard=385`、`Archive=145`、`IA=83`、`ColdArchive=3` ✓
+
+### 三、服务树的新家(e-cmdb-web)也检查了
+`/cmdb/service-tree`、`/cmdb/service-tree/environments`、`/cmdb/service-tree/rules`、`/cmdb/`
+⇒ **0 个失败 API、0 个控制台错误**,页面正常渲染 ✓
+
+### 四、口径沉淀
+- **第三十六条**:核对"页面数字 vs 接口数字"时,必须抓**全部调用及其查询参数**,不能按 path 去重取最后一次。
+  本轮我第一次按 `/api/...` 路径去重,结果拿到的是 `?storage_class=ColdArchive` 那次调用的 `total=3`,
+  差点把"OSS 页 1199 vs 接口 3"当成真缺陷报出去 ✗ —— 实际那是**「冷归档」统计卡**的数字 ✓。
+  ⇒ **一个 URL 路径可能承载多个语义(主表 + 多个筛选计数),去重等于丢信息**。
+- **第三十七条**:判断"CI 红"必须先看**哪个 job**失败。同一个 workflow 里 `Test` 全绿、`Docker push` 因缺凭据失败,
+  结论应是"**发布通道缺凭据**",而不是"代码不过 CI" —— 后者会误导排期与信任。
+
+### 五、本轮结论
+**无可执行需求**(无待处理 PR / 无审核意见 / 无新增缺陷),按协议不制造提交。
+候选见下轮报告。
