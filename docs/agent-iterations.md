@@ -1,4 +1,4 @@
-﻿# 云管模块迭代记录（agent-iterations）
+# 云管模块迭代记录（agent-iterations）
 
 > 本记录由自动化迭代代理维护。每轮一个需求切片，记录需求、分支、Commit、PR、
 > 验收结果、证据位置与剩余事项。协议要点：浏览器 UI 验证为完成门槛；接口成功
@@ -14823,3 +14823,50 @@ iam/groups 是真实筛选列表页（直接绑定，无 chips）。URL 同步 `
 正确做法：搜「是否读写 route.query」，而非「是否用了某个 composable」。
 
 这也是「判据比结论更值得怀疑」的又一次印证 —— 我的审计判据（grep useUrlFilters）本身就漏掉了另一条路径。
+## 2026-11-04 **修 504(完成)** + **索引方案受阻(阻塞)** —— 一轮两件事
+
+### 一、504 Outdated Optimize Dep:已修复并验证 ✓
+**现象**:用户贴出 `/cam/node_modules/.vite/deps/element-plus_es_components_option-group_style_css.js?v=...` → 504。
+**排查**:
+1. 全站预热 49 页 → 每遍都**固定**报同样 3 个文件(skeleton / option-group / text)⇒ 不是"新依赖发现"的瞬时竞态,而是**稳定故障**;
+2. 查 `.vite/deps`:`skeleton`/`text` 的 `style/css.mjs` **源文件存在**但**没有预构建产物**;
+3. 查 `_metadata.json`:`optimized` 只剩 **1 条**(正常应 60+)、`hash=e688fe46` ⇒ **元数据损坏** ✗。
+
+**修复**:停 dev server → 删 `node_modules/.vite` → 重启 → 预热。
+**验证**:
+| 指标 | 修复前 | 修复后 |
+|---|---|---|
+| 界面 504 | 每遍 3 个 | **0**(连跑 3 遍) |
+| style 产物 | 54 | **102** |
+| metadata 条目 | 1 | **67** |
+| `/cam/accounts` | **空白(0 字)** | **746 字** |
+
+**注意**:`.vite` 缓存属**共享可变状态**。本轮未改任何源码(共享检出是并行会话的工作区),只做了缓存重建 —— 与此前"隔离实例污染共享缓存"是同一类风险,已在第三十二条口径中记录。
+
+### 二、变更统计索引(#379,已授权):**执行阻塞** ✗
+按授权实施了**草稿 PR #382**(抽纯函数 + 3 条 ESR 顺序复合索引 + 3 个用例,单测/构建全绿),
+但**真实环境验证失败**:
+```
+InitIndexes 失败(耗时 7.8s): connection(106.52.187.69:27017[-4]) socket was unexpectedly closed: EOF
+索引数仍为 5(_id_ / asset_id+ctime / tenant_id+ctime / model_uid+ctime / change_source)
+```
+再用**显式长超时 + 逐个 CreateOne + background**重试,三条仍全部被掐断(8s / 13s / 15s);
+已设 `SetSocketTimeout(0)` 与 `SetServerSelectionTimeout(60s)` ⇒ **不是驱动超时**。
+
+**核心结论**:这条远程 Mongo 链路上,**约 8–15 秒以上的操作会被中断**。它一次性解释了本 Issue 的全部现象:
+`group by model_uid`(1分38秒)、`group by field_name`(>200秒)、按 field_name 的 CountDocuments(>30秒)、
+**建索引**(数十秒~分钟)—— 全部被同一层掐断。
+
+⇒ **补索引在本环境不可执行**;即使建成,重聚合仍受同样约束。
+⇒ PR #382 已**转草稿**、Issue #379 已记录,等"DBA 服务端建索引"或"排查中间设备超时"后再合并。
+
+### 三、口径沉淀
+- **第五十一条**:同一类失败**反复出现在同一批对象上**时,不要按"偶发竞态"处理。
+  本轮 504 每遍都是同样 3 个文件 ⇒ 说明是**元数据损坏**这种确定性故障;
+  若只做一次"清缓存重启"而不验证"是否还会复发",就会误判为已解决。
+- **第五十二条**:**验证失败就必须降级结论**。索引方案代码与单测都过了,但真实环境建不出索引 ⇒
+  我把它转成草稿 PR 并在 Issue 记录阻塞,而不是"提交了就算完成"。
+- **第五十三条**:多个看似无关的超时(`group by` / `CountDocuments` / 建索引)可能是**同一个底层约束**。
+  把它们的耗时与中断点排在一起,才能看出"约 8–15 秒被掐断"这条共同根因 —— 否则会分别去优化 SQL/代码,白费功夫。
+- **第五十四条**:REST API 不支持改 `draft`,要用 GraphQL `convertPullRequestToDraft`。
+  本轮先试 PATCH 拿到 `draft=False`,改用 GraphQL 才生效 —— **"调用成功"不等于"字段已生效",要回读确认**。
