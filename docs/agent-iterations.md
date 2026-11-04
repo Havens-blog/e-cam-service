@@ -15586,3 +15586,65 @@ toast 消失后页面就变成"零资源"的样子。
 - **第八十七条**:**Playwright 的 `route` 处理函数必须可重入**。
   一个 handler 里 `await` 之后再次 `continue/fulfill` 会报 `Route is already handled`;
   并发场景下要么加状态位,要么在卸载前先等待在途请求结束。
+
+---
+
+## 2026-11-05 **查清"为什么检出一直没更新"**:被未提交文件挡住(已实测)
+
+### 一、问题
+连续几轮我都建议"把 main 合入 `fix/cam-tail-final`",但检出一直没变。本轮不再重复建议,
+而是**查清"这个动作到底能不能做、卡在哪"**。
+
+### 二、三步排查
+**① 试算合并(preview,不改工作区)**
+```
+git merge-tree --write-tree HEAD origin/main  → ✓ 预演无冲突
+```
+**② 但 main 确实改过那 3 个未提交文件**
+| 文件 | main 上的提交数 |
+|---|---|
+| `scripts/audit/cam-api-audit.mjs` | **11** |
+| `src/views/accounts/index.vue` | **4** |
+| `src/views/iam/groups/components/ExportGroupsDialog.vue` | **2** |
+
+**③ 实测:在临时工作树里复现你的状态,再真的合并一次**
+（临时工作树 + 复制你的工作副本,**未触碰你的检出**）
+```
+error: Your local changes to the following files would be overwritten by merge:
+        scripts/audit/cam-api-audit.mjs
+        src/views/accounts/index.vue
+退出码: 1
+```
+⇒ **实测确认:合并在"有未提交修改 + main 同改这些文件"时会直接中止** ✗
+（且实际只有 2 个文件构成阻塞,`ExportGroupsDialog.vue` 的副本与分支版本一致）
+
+### 三、所以结论很明确
+- **不是"我不愿做",而是"我做不了"**:要合并就得先处理你的未提交改动(commit / stash / 丢弃),
+  这三种都等于处置你的工作 ⇒ **必须由你或并行会话决定** ✗
+- 我**不会**替你做(stash 后万一 pop 冲突,反而制造更麻烦的问题)
+
+### 四、给你三种可选做法(任选其一,都是一条命令级)
+```bash
+# A. 先提交你的改动(推荐)
+cd D:\Haven\e-cam-web
+git add -A && git commit -m "wip: 审计脚本 + 账号页 + 导出弹窗"
+git merge origin/main
+
+# B. 暂存后合并,再恢复
+git stash push -u -m "wip-before-merge"
+git merge origin/main
+git stash pop        # 若冲突,按提示解决
+
+# C. 若这些改动已无用
+git restore scripts/audit/cam-api-audit.mjs src/views/accounts/index.vue
+git merge origin/main
+```
+合并后 `dev.ps1 restart e-cam-web`(或让 vite 自己重载)即可,504 根因随之消失。
+
+### 五、口径沉淀
+- **第八十八条**:**"建议"反复不被采纳时,应转去查"为什么做不了"**,而不是重复建议。
+  我前几轮反复说"请更新检出"却无人执行 —— 本轮实测出真实阻塞点(未提交文件为主因),
+  才第一次给出**可执行的三种解法**。
+- **第八十九条**:**"试算无冲突"≠"可以合并"**。
+  `merge-tree` 只看 HEAD 与目标分支的树级冲突,**完全不考虑工作区未提交修改**;
+  而 `git merge` 会因"本地修改将被覆盖"直接拒绝。⇒ 预演通过后**仍要实测一次**才敢断言。
