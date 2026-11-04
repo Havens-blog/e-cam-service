@@ -20,7 +20,7 @@ func TestChangeModelsJSONKeys(t *testing.T) {
 			v:    ChangeRecord{},
 			want: []string{"id", "asset_id", "asset_name", "model_uid", "tenant_id",
 				"account_id", "provider", "region", "field_name", "old_value", "new_value",
-				"change_source", "change_task_id", "ctime"},
+				"change_source", "change_task_id", "operator", "ctime"},
 		},
 		{
 			name: "ChangeFilter",
