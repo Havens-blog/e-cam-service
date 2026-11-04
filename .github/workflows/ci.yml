@@ -188,14 +188,14 @@ jobs:
         BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
         COMMIT_HASH=${GITHUB_SHA::8}
         
-        LDFLAGS="-ldflags -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.CommitHash=${COMMIT_HASH}"
+        LDFLAGS="-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.CommitHash=${COMMIT_HASH}"
         
         OUTPUT_NAME=${{ env.PROJECT_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
         if [ "${{ matrix.goos }}" = "windows" ]; then
           OUTPUT_NAME=${OUTPUT_NAME}.exe
         fi
         
-        go build ${LDFLAGS} -o ${OUTPUT_NAME} .
+        go build -ldflags "${LDFLAGS}" -o "${OUTPUT_NAME}" .
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
