@@ -13877,3 +13877,55 @@ admin:public_key, gist, read:org, repo
 **"你授权了"和"系统允许"是两件事。**
 你让我加，我确实加了、也验证了；但落地链条上还有一环我没有权限 ——
 这类阻塞要**明确区分"我没做"与"我做了但推不上去"**，并且交付物要让我做的部分不白做（补丁 + 本地分支已就绪）。
+
+---
+
+## 2026-11-04 **授权执行**:8001 切主干 + 前端重建 + **首次正规栈 A 类 UI 验证**
+
+### 一、做了什么(授权后)
+1. 先尝试 `pull --rebase` 对齐共享检出 ⇒ **被未提交改动挡住**(`M config/prod.yaml` + 未跟踪目录)。
+   按我的既有约束**不动 config**、也不 stash 他人在途修改 ⇒ **放弃 rebase**,改用更安全的路径:
+2. 从 **detached origin/main(cb447cd)** 构建服务二进制 ⇒ **停掉 CompileDaemon、以分离进程在 8001 运行主干二进制**;
+3. 从 **origin/main(e23d439)** `pnpm build` 重建前端 `dist`(旧 `dist` 备份为 `dist.bak-20261104`)并落位。
+⇒ 本地首次形成:**8001 = 主干后端**;**前端 = 主干构建**(经 nginx :8888)。
+
+### 二、API 层验证(主干行为)
+| 探针 | 期望 | 结果 |
+|---|---|---|
+| `GET /templates/999999` | 404 | **404** ✓ |
+| `GET /templates/abc` | 400 | **400** ✓ |
+| `GET /topology/nodes/nope` | 404 | **404** ✓ |
+| `GET /assets/statistics` | 200 | **200**(23504 资产) ✓ |
+| `GET /service-tree/environments/abc` | 400 | **200 + code400** ⚠ 已知 ginx 限制(参数分支返回 nil) |
+
+### 三、**首次正规栈 A 类 UI 验证**(登录 8888,admin)
+| 页面 | 结果 |
+|---|---|
+| 登录 | ✓ 落到 `/console/workbench` |
+| `/cam/dashboard` | 渲染 2247 字 ✓,但 **500 `/service-tree/assets/stats`** ✗ |
+| `/cam/iam/templates/999999` | 206 字,**0 控制台错误、0 API 错误** ✓(404 兜底页干净) |
+| `/cam/resource/tags` | 1175 字,干净 ✓ |
+| `/cam/network/dns` | 832 字,干净 ✓ |
+| `/cam/system/dictionary` | **504 Outdated Optimize Dep** + Unhandled Rejection ⚠(vite 首次预构建伪影) |
+| `/cam/assets/instances` | 0 字(路径可能不存在,非缺陷) ⚠ |
+
+### 四、由此发现的新问题
+1. **Issue #355**:`/service-tree/assets/stats` **稳定 500** —— 链路
+   `handler.GetGlobalAssetStats → nodeAssetSvc.GetGlobalAssetStats → cmdbPort.AggregateAllStats`;
+   已排除"8002 掉线"(端口/进程在)、"统计端点坏"(`/assets/statistics` 200)、"本轮状态码修复引入回归"
+   (handler 仅改成返回 `err`);上游真实错误被 `ginx` 的 slog 打到 stderr 且本地丢失 ⇒ 需先补 `elog`。
+2. **工作区 `config/prod.yaml` 的 `eiam` 段被清空**:`base_url/token_url/client_id/client_secret` **全空**
+   (HEAD 版本有键、但 token_url 值仅 2 字符 ⇒ 也基本是占位) ⇒ 运行期日志出现
+   `获取服务令牌失败: eiam.token_url 未配置`。**这是他人未提交改动,按约束我不动**,已如实记录。
+   ⇒ 同时**更正我 11-03 的"更正"**:那次我只确认了"键存在",**未确认值有效**,结论下得过早。
+3. **口径第二十四条**:"配置项是否存在"与"**值是否有效**"是两件事 —— 只 grep 键名会得出错误结论。
+
+### 五、口径沉淀(第二十五条:**打通"正规栈"比反复造隔离实例更省**)
+- 我用 3 轮尝试"隔离实例",均失败;获授权后**只需两步**(主干二进制接管 8001 + 主干 dist)就打通了正规栈,
+  并**当轮就发现了真缺陷**(#355)。
+- ⇒ 结论:**"隔离实例"只在"只需 API 层证据"时使用**;要 UI 验收,**直接让正规栈跑主干**才是最短路径。
+
+### 六、当前环境状态(与常规不同,需知悉)
+- **8001 不再由 CompileDaemon 托管**(由我分离启动的主干二进制进程运行)⇒ **改代码不会自动重建**;
+  若要恢复自动托管,执行 `.\dev.ps1 restart e-cam-service`(会用共享检出当前代码重建,即回到"旧代码"状态)。
+- `D:\Haven\e-cam-web\dist` 已是主干构建(旧版在 `dist.bak-20261104`);是否保留由你决定。
