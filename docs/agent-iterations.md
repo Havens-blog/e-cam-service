@@ -14028,3 +14028,66 @@ token scopes 实测：`admin:public_key, gist, read:org, repo` —— **无 `wor
 一个 workflow 红，不代表你盯着的那一项红；我因此让用户去改一件不需要改的事，且重复了很多轮。
 
 可操作规则：**在把某项标成 P1 之前，必须先看到它自己那一行的结论。**
+
+---
+
+## cam-url-batch5-20261104（第六轮：镜像 + OSS，欠账 11/29）
+
+**状态**：**已合并**（`e-cam-web#249`，merge `170026b`）
+
+### 一、本轮范围
+
+| 页面 | 同步字段 | 名称字段 |
+|---|---|---|
+| 镜像 | `name / account_id / architecture / os_type / platform / provider / region / image_owner_alias`（8 个）+ `page` | `name` → `name` |
+| OSS | `keyword / provider / storage_class / acl / region` + `page` | `keyword` → `asset_name` |
+
+### 二、定位逻辑改成单行/多行都兼容
+
+前几轮吃过「按单行 `})` 定位 pagination 失败」的亏（NAS 就是单行写法）。本轮改脚本：
+
+```js
+// 先找 pagination 声明行；若该行不含 '})' 才向后找结束行 —— 两种写法都能处理
+```
+
+同时发现：**同一模板，两页类型不同**
+- `image` 的 `filters.provider` 是 `'' | CloudProvider` 强类型 → 需 `as CloudProvider`
+- `oss` 的 `provider` 是普通字符串 → 不加断言（加了反而 tsc 报错）
+
+### 三、验收（三态）
+
+| 页面 | 无参基线 | 带参 | 刷新后 |
+|---|---|---|---|
+| 镜像 | 共 **1390** 条、错 0 | 标签「镜像名称/ID: zzz-notexist 清除」、共 0、错 0 | 标签保留 ✅ |
+| OSS | 共 **1199** 条、错 0 | 标签「名称: zzz-notexist 清除」、共 0、错 0 | 标签保留 ✅ |
+
+| 门禁 | 结果 |
+|---|---|
+| `vitest run` | ✅ 1333 passed |
+| `vue-tsc` / `eslint` / `vite build` | ✅ 均 0 |
+| PR CI | ✅ 四项全绿 |
+
+### 四、欠账
+
+**29 页完成 11 页**（eip / vpc / vswitch / eni / lb / waf / cdn / ddos / nas / image / oss），其余 **18 页**未接入。
+
+剩余：`compute/*`（disk / snapshot / security-group / provision）、`databases/*`（rds / redis / mongodb）、
+`middleware/*`（es / kafka）、`accounts`、`assets`、`iam/*`（users / groups / sync / compare）、`tasks`、`cam/budget`。
+
+### 五、另有一条待处理（与本轮功能无关）
+
+CI `Build binary` 修复已就绪（本地 `fc92809`，分支 `cam-iteration-20261104-cifix`），
+但 token 无 `workflow` scope，GitHub 拒绝推送 `.github/workflows/**`。
+
+并纠正此前多轮误判：**`Test` 一直是绿的**，不需要 Mongo DSN；
+`Docker Build and Push` 失败是缺 `DOCKER_USERNAME`/`DOCKER_PASSWORD` 仓库 Secrets。
+
+### 教训
+
+**模板的"定位逻辑"也该随教训一起变稳健。**
+这次把 pagination 的单行/多行兼容写进脚本，而不是每次靠"记得 NAS 是单行"。
+与此前"把 TDZ 修法放到 onMounted 固定位置"是同一思路：
+**教训要落进可复用的结构里，不能留在记忆里。**
+
+另一半：**模板能固定结构与陷阱，但不能固定类型与字段。**
+image 需要 `as CloudProvider`、oss 不需要 —— 如果无脑套用，两页会有其一编译不过。
