@@ -14556,3 +14556,39 @@ OSS 页的四个统计卡也逐个对上:`Standard=385`、`Archive=145`、`IA=83
   但本地 `origin/main` 仍停在 `5f5b205` —— 因为 fetch 经 `127.0.0.1:7890` 代理连不上。
   ⇒ **判定"是否已合并"要以 API 的 `merged`/`merge_commit_sha` 为准**,本地 ref 只作辅助;
   必要时改用 SSH 拉取(本轮改 SSH 后立即可见)。
+
+---
+
+## cam-url-batch8-20261104（第九轮：ES/Kafka，欠账 19/29）
+
+**状态**：**已合并**（`e-cam-web#256`，merge `da66247`）
+
+### 一、本轮范围
+
+两个 middleware 列表页，与 databases 页完全同构：`filters = reactive({ keyword, provider, status, region })`（单行、全普通 string）、pagination 单行。
+
+### 二、验收（三态，含带参）
+
+| 页面 | 无参基线 | 带参 `?keyword=zzz-notexist` | 刷新后 |
+|---|---|---|---|
+| ES | 共 74 条、错 0 | 标签「名称: zzz-notexist 清除」、共 0、错 0 | 标签保留 ✅ |
+| Kafka | 共 42 条、错 0 | 同上 | 标签保留 ✅ |
+
+| 门禁 | 结果 |
+|---|---|
+| `vitest run` | ✅ 1333 passed |
+| `vue-tsc` / `eslint` / `vite build` | ✅ 均 0 |
+| PR CI | ✅ 四项全绿 |
+
+### 三、欠账
+
+**29 页完成 19 页**，其余 **10 页**未接入：
+`accounts`、`assets`、`cam/budget`、`compute/provision`、`iam/users`、`iam/groups`、`iam/sync`、`iam/compare`、`tasks`。
+
+### 四、教训/提醒
+
+剩余 10 页里有两个要**先甄别是否真是列表页**：
+- `iam/users/detail.vue` 是详情页，不该强加筛选同步；
+- `iam/compare` 是比对工具页（非自动加载列表，需选 2-4 账号 + 按钮才取数）。
+
+后续轮次先确认这些页的「取数入口」，避免给非列表页套用筛选同步模板。
