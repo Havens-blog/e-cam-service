@@ -15,7 +15,10 @@ type ChangeRecord struct {
 	NewValue     string `json:"new_value" bson:"new_value"` // JSON 序列化
 	ChangeSource string `json:"change_source" bson:"change_source"`
 	ChangeTaskID string `json:"change_task_id" bson:"change_task_id"`
-	Ctime        int64  `json:"ctime" bson:"ctime"`
+	// Operator 操作者（用户名）。e-cmdb-service 写入审计时从登录会话 claims
+	// 的 username 提取；同步/导入等非交互操作可能为空。
+	Operator string `json:"operator" bson:"operator,omitempty"`
+	Ctime    int64  `json:"ctime" bson:"ctime"`
 }
 
 // ChangeFilter 变更记录查询过滤器
