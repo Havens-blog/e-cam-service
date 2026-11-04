@@ -14514,3 +14514,45 @@ OSS 页的四个统计卡也逐个对上:`Standard=385`、`Archive=145`、`IA=83
 「模板固定结构与陷阱、不固定字段与写法细节」第三轮印证：三页 provider 类型不一致
 （云盘普通 string、快照/安全组 `CloudProvider | ''`），逐页确认后才写 cast，
 否则 tsc 会对其中两类各报一类错（无 cast 报类型错、有 cast 报断言错）。
+
+---
+
+## 2026-11-04 **补齐 #362 的回归测试**:`cmd/` 包从 0 测试到 4 用例
+
+### 一、选题依据
+协议优先级 ④「补齐与当前功能有关的 UI 状态和回归测试」。
+#362 为 `cmd/root.go` 加了 `mergeLocalOverride()`(让 `.gitignore` 里 `config/*.local.yaml` 的约定真正生效),
+但 **`cmd/` 包此前没有任何测试文件**,该行为无回归保护。
+
+> 本轮开始时无待处理 PR、无审核意见;查了 main 的 CI:`CI/CD Pipeline` 失败**仅**来自
+> `Docker Build and Push` → `Login to Docker Hub`(缺凭据),`Test` 与 5 个平台的 `Build` **全绿** ——
+> 属既有阻塞(#336 已补精确证据),不是代码问题,故转向"补测试"这条可独立交付的切片。
+
+### 二、改了什么
+1. **抽出纯函数** `localOverridePath(conf string) string` —— 原逻辑内联且依赖包级 `confFile`,
+   无法单独覆盖路径形态;抽取后**行为不变**。
+2. **新增 `cmd/root_test.go`**,4 个用例(表驱动):
+   - `TestLocalOverridePath`:6 条形态(标准 yaml / yml 后缀保留 / **无扩展名补 .yaml** / 裸文件名 /
+     绝对路径 / 文件名含点)。重点是**无扩展名**:viper 靠后缀判解析器,推成 `prod.local` 会**静默读不出来**。
+   - `TestMergeLocalOverride_NoLocalFile`:无 local 文件 ⇒ 静默跳过,不 panic、不改配置。
+   - `TestMergeLocalOverride_OnlyOverridesLocalKeys`:**锁定核心语义** —— 只覆盖 local 出现的键,
+     `server.port` 必须保留。若有人改回 `ReadInConfig`,此用例立即失败。
+   - `TestMergeLocalOverride_LocalFileBroken`:local 语法错 ⇒ 必须 panic(显式失败),不能静默忽略。
+
+### 三、验证
+`go test ./cmd/... -v` ⇒ 4 用例(含 6 子用例)全 PASS ✓;`go build ./...` ✓;`go vet ./cmd/...` ✓;
+`goimports -local … -l cmd/root.go cmd/root_test.go` 无输出 ✓;改动行 ≤140 ✓;CI `Test` 一次通过 ✓ ⇒ 合并 `7769bd7`
+
+### 四、口径沉淀
+- **第三十八条**:**"改完就完"是债**。凡新增"配置加载/环境依赖"这类**隐式生效**的逻辑,
+  必须同时补一条能被后续改动打断的用例(本例锁死 `MergeInConfig` 语义);
+  否则别人改成 `ReadInConfig` 时,线上表现为"部分配置莫名丢失",而测试全绿。
+- **第三十九条**:报告"既有失败"前,必须在**0 改动的干净树**上复现一次。
+  本轮 `go test ./tests/...` 出现 27 个 `build failed`,但 `go build/vet ./tests/...` 均无报错、
+  单包 `go test` 也通过 ⇒ 是本机**并发编译 27 个测试二进制**的资源压力,不是代码问题;
+  若不做这一步,就会把环境噪声写成"项目有 27 个测试挂了"。
+- **第四十条**:`git fetch` 走 HTTP 代理失败时,`origin/main` 会**静默停留在旧提交**,
+  容易得出"我的 PR 没合并"的错误结论。本轮 `#371` 实际已合并(`merged=True`, `7769bd7`),
+  但本地 `origin/main` 仍停在 `5f5b205` —— 因为 fetch 经 `127.0.0.1:7890` 代理连不上。
+  ⇒ **判定"是否已合并"要以 API 的 `merged`/`merge_commit_sha` 为准**,本地 ref 只作辅助;
+  必要时改用 SSH 拉取(本轮改 SSH 后立即可见)。
