@@ -14917,3 +14917,49 @@ InitIndexes 失败(耗时 7.8s): connection(106.52.187.69:27017[-4]) socket was 
 **「判据（selector/窗口/间隔/采样时点/元素层级/数据量）比结论更值得怀疑」。**
 本轮再添两个实例：审计判据（grep composable）漏了手写 helper 这条路径；「是否同步了 URL」
 不能等价于「是否用了某个 composable」。每一次"没报错 ≠ 被检查到"的背后，都是判据有问题。
+
+---
+
+## 2026-11-04 **根治 504 Outdated Optimize Dep**(web#263 已合并)
+
+### 一、从"缓解"到"根治"
+上一轮我对 504 只做了**临时缓解**(清 `.vite` + 重启 dev server),并把它写进口径第五十一条。
+本轮把**根因**修掉了。
+
+**根因**:`unplugin-vue-components` + `ElementPlusResolver` 会在**每个页面首次访问时**才 import 该页
+用到的组件样式(`element-plus/es/components/<name>/style/css`)。Vite 依赖预构建一旦发现"新依赖"
+就重新打包,并让引用旧 hash 的产物请求返回 **504**;若 `_metadata.json` 处于不完整状态
+(实测只剩 1 条 `optimized`,正常 60+),这些组件就**每遍都 504**。
+
+**修复**(仅 `vite.config.ts`):
+新增 `elementPlusStyleEntries()` —— 扫描 `node_modules/element-plus/es/components`,
+**逐个校验 `style/css.mjs` 存在**(121 个组件里 117 个有该入口,写不存在的会导致解析失败),
+生成 117 条样式入口展开进 `optimizeDeps.include` ⇒ **启动时一次性预构建完毕,运行期不再重新预构建**。
+用**动态扫描而非硬编码**:组件清单随 element-plus 版本变化,硬编码必然漂移。
+
+### 二、验证(隔离实例:独立端口 3357 + **独立 cacheDir**)
+| 指标 | 修复前 | 修复后 |
+|---|---|---|
+| 启动后 element-plus style 产物 | 102 | **234** |
+| `_metadata.json` optimized 条目 | 67 | **133** |
+| **首次访问** 8 个页面的 504 | 偶发(accounts 曾整页空白) | **全部 0** |
+
+8 个首访页面均 0×504 且正常渲染(accounts 718 字 / iam.compare 236 / dictionary 574 /
+compute.ecs 2096 / certs.settings 235 / network.ddos 270 / storage.oss 1917 / audit.logs 1593)✓
+
+其他:`vitest` 110 文件 1333 用例全过;`vue-tsc` exit 0;`eslint` exit 0;`vite build` exit 0;
+CI 四项(Vitest/ESLint/Typecheck&Build/Gzip Budget)**全绿**,合并 `bfe9425` ✓
+
+### 三、口径沉淀
+- **第五十五条**:**"缓解"要显式标注为临时,并留下复发判据**。上一轮我写了"清缓存可恢复",
+  但同时记录了"每遍都报同样 3 个文件 ⇒ 属确定性故障",正因为留了这条判据,本轮才能一眼确认
+  "症状没变、根因没除",直接去做预构建名单,而不是再清一次缓存。
+- **第五十六条**:**治根要落在"机制"而不是"现象"上**。清缓存治的是"缓存坏了"这个现象,
+  而预构建全体组件样式治的是"运行期还会发现新依赖"这个机制 —— 后者才让 504 不再具备发生条件。
+- **第五十七条**:**改动共享配置前,必须在隔离实例上验证"首次访问"这一最差路径**。
+  我特意用全新 cacheDir + 首次访问(不预热)来测,因为预热过一遍会把问题掩盖掉。
+  若只在预热后的实例上验证,结论就是"看起来好了",但用户第一次打开仍会踩到。
+
+### 四、遗留
+- 共享检出的 `.vite` 仍是旧配置产物(56 条 optimized);待并行会话把 main 合入、或 `dev.ps1 restart e-cam-web` 后,
+  新配置才会在 8888 上生效。本轮**未擅自重启共享 dev server**。
