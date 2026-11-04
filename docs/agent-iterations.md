@@ -14091,3 +14091,63 @@ CI `Build binary` 修复已就绪（本地 `fc92809`，分支 `cam-iteration-202
 
 另一半：**模板能固定结构与陷阱，但不能固定类型与字段。**
 image 需要 `as CloudProvider`、oss 不需要 —— 如果无脑套用，两页会有其一编译不过。
+
+---
+
+## cam-ci-lflags-merged-20261104（CI 修复落地：5 个 Build job 全部转绿）
+
+**状态**：**已合并**（`e-cam-service#360`，merge `1bf6312`）
+
+### 一、这是近几轮最有价值的一次交付
+
+修复前，main 上 CI 的 `Build`（linux / darwin / windows × amd64 / arm64）**全部失败**，
+`malformed import path "-X": leading dash`。修复后本轮 PR 的真实 CI 结果：
+
+```
+Build (linux, amd64)     : success
+Build (linux, arm64)     : success
+Build (darwin, amd64)    : success
+Build (darwin, arm64)    : success
+Build (windows, amd64)   : success
+Test                     : success
+Docker Build and Push    : skipped（PR 不跑，正常）
+Release                  : skipped（PR 不跑，正常）
+```
+
+**5 个 Build job 全部从红转绿** —— 不是本地"看起来对"，是真实 CI 逐平台验证。
+
+### 二、修复内容（2 行）
+
+```diff
+-        LDFLAGS="-ldflags -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.CommitHash=${COMMIT_HASH}"
++        LDFLAGS="-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.CommitHash=${COMMIT_HASH}"
+-        go build ${LDFLAGS} -o ${OUTPUT_NAME} .
++        go build -ldflags "${LDFLAGS}" -o "${OUTPUT_NAME}" .
+```
+
+根因：变量里已含 `-ldflags`，且 `${LDFLAGS}` 未加引号 →
+`-ldflags` 只把紧随的 `-X` 当作值，其余参数被当成 import path。
+
+### 三、两个长期误判的最终纠正
+
+| 我此前的说法 | 最终结论 |
+|---|---|
+| `jobs.test` 需加 `CERT_TEST_MONGODB_DSN`（约 38-40 个 Mongo 认证失败）| ❌ **错**。`Test` 一直是 **success**；测试在 Mongo 不可达时 `t.Skipf` 跳过；`test` job 已有 `mongo:7.0` service。**无需任何改动** |
+| `Build binary` 未加引号 | ✅ 对，即本 PR |
+
+另有一条真实的红与代码无关：`Docker Build and Push` 缺 `DOCKER_USERNAME`/`DOCKER_PASSWORD` 仓库 Secrets。
+
+### 四、落地过程（两次阻塞，两次解决）
+
+1. **第一次阻塞**：token 无 `workflow` scope，GitHub 拒绝推送 `.github/workflows/**`。
+   → 用户加上 scope 后重推成功。
+2. 期间我发现并纠正了自己的误判（Test 不需要 DSN），把范围收窄到「只改 Build 这一处」。
+
+### 教训
+
+**这次的教训链完整走了一遍：**
+1. 长期把「Test 需 DSN」当 P1 写进每轮报告，却从没查过 job 级结论 —— **workflow 红 ≠ 每个 job 红**；
+2. 用户授权改 ci.yml 后，我改好了、也本地验证了，但落地链条上还有「token scope」这一环没权限 —— **授权 ≠ 系统允许**；
+3. 修复最终靠**真实 CI 逐平台结论**证明有效，而不是靠本地 `exit 0` 或"看起来对"。
+
+**一条 rule 固定下来：把某项标成 P1 之前，必须先看到它自己那一行的结论。**
