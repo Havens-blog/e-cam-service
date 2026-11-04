@@ -14151,3 +14151,54 @@ Release                  : skipped（PR 不跑，正常）
 3. 修复最终靠**真实 CI 逐平台结论**证明有效，而不是靠本地 `exit 0` 或"看起来对"。
 
 **一条 rule 固定下来：把某项标成 P1 之前，必须先看到它自己那一行的结论。**
+
+---
+
+## 2026-11-04 **#355 修复**:仪表盘资产统计 500 → 200,并补上久未生效的 `.local.yaml` 覆盖
+
+### 一、用户给的线索
+直接贴出浏览器里失败的请求:`GET /api/v1/cam/service-tree/assets/stats?include_children=true` → **500**。
+这正是我 11-04 早上定位的 #355,但当时结论是"配置问题,等所有者处置"。用户随后**要求我去解决**,于是本轮把它做完。
+
+### 二、根因链(完整)
+```
+handler.GetGlobalAssetStats → nodeAssetSvc.GetGlobalAssetStats
+→ cmdbPort.AggregateAllStats (remote_cmdb.go:110)
+→ RemoteCMDBAdapter.do() (:153) → tokenProvider.TokenFor()
+→ eiam.token_url / client_id / client_secret 全为空 ⇒ "获取服务令牌失败" ⇒ 500
+```
+- e-cmdb-service 是 **S2S 接收方**(只用 `eiam.public_key` 验签);
+- e-cam-service 是 **S2S 调用方**(必须用 client_credentials 换 token)——而它**从未配过凭据**;
+- `public_key` 在工作区被补过(那是"入站验签",与"出站换 token"是两回事)⇒ 此前误以为"已配置"。
+
+### 三、修复过程(含两次卡点)
+1. `eiam seedclient --client-id e-cam-service --tenants -1` ⇒ 输出 **`已存在 (id=3)`** ⇒ 客户端早就注册过,缺的只是消费方配置;
+2. 写临时 CLI 调 `ioc.InitSeedClientService()` + `GetByClientID` + `ResetSecret` 取新 secret:
+   - 卡点 A:直接调 ioc 报 `WaitForDBSetup 重试失败` ⇒ 因为 **没做 viper 配置引导**(`SetConfigFile`+`ReadInConfig`);
+   - 卡点 B:补了配置后报"接入应用不存在" ⇒ 因为 **写操作缺租户上下文**,需 `ctxutil.WithTenantID(ctx, ctxutil.SystemTenantID)`
+     (seedclient 源码注释已写明"S2S 是平台级资源,归系统租户,gormx 要求写操作携带租户上下文");
+   - 两次都靠**读源码/注释**而非猜测解决;临时工具用完**立即删除**。
+3. 先用 `curl` 验证 `POST http://127.0.0.1:9000/oauth/v2/token` 能换到 token(200 + access_token) ⇒ 证明值正确后再写配置;
+4. 配置落位**不碰受跟踪文件**:`prod.yaml/test.yaml` 保持占位符,真实值放 `config/prod.local.yaml`(gitignored)。
+
+### 四、顺带修掉一个**配置架构缺陷**(PR #362 已合并)
+`.gitignore` 早写着"真实值放 `*.local.yaml`",但 `cmd/root.go` 的 `initViper()` **从不读取**它 ⇒ 约定形同虚设
+⇒ 真实凭据只能塞进会被提交的 `prod.yaml`。补 `mergeLocalOverride()`:同目录 `<name>.local.yaml`,
+用 **`MergeInConfig`**(只覆盖 local 里出现的键;`ReadInConfig` 会整体覆盖,不可用),文件不存在静默跳过。
+
+### 五、验收(本地真实链路,经 8888,主干 127dc88)
+| 请求 | 修复前 | 修复后 |
+|---|---|---|
+| `/service-tree/assets/stats?include_children=true` | **500** | **200**(total 23506 + by_asset_type 明细) |
+| `/service-tree/assets/stats` | 500 | **200** |
+| `/assets/statistics` | 200 | 200 |
+| `/templates/999999` | 404 | 404(未回归) |
+| 浏览器 `/cam/dashboard` | 1 个 500 | **0 个 API 错误** |
+
+### 六、口径沉淀
+- **第二十六条**:"配置项有没有值"与"**链路需不需要它**"要一起看 —— `public_key` 有值不代表 S2S 出站可用;
+  判断"配置缺失"时必须顺着**实际调用链**确认缺的是哪个键(本例:出站 token 三件套)。
+- **第二十七条**:临时运维工具**可以写**,但要满足三条:① 只读/幂等优先 ② 用完即删 ③ 不把凭据写进受跟踪文件。
+  本轮两次卡点都是靠读源码注释解决,而不是反复试错。
+- **第二十八条**:`.gitignore` 里的约定若**没有代码实现**,就是**假约定** —— 它会诱导后来者把密钥放进受跟踪文件。
+  发现这类"文档-实现脱节"应立即补实现(或删约定),不能只当注释看。
