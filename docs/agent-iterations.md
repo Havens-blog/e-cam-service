@@ -14774,3 +14774,52 @@ URL 同步字段：`q`（searchKeyword）+ `provider/environment/status` + `page
   后者涉及接口字段与文案口径,**需先确认** ✗
 - **第五十条**:**把"待批准"变成可审核的方案**。注释里写着"需批准后执行"但没人跟进时,
   应把它整理成带测量证据、具体 DDL、风险与回滚的 Issue,让决策成本降到最低。
+
+---
+
+## cam-url-batch10-20261104（第十一轮：用户组页，欠账 21 + 审计口径更正）
+
+**状态**：**已合并**（`e-cam-web#261`，merge `27ddca9`）
+
+### 一、本轮范围
+
+iam/groups 是真实筛选列表页（直接绑定，无 chips）。URL 同步 `keyword` + `provider` + `page`。
+
+### 二、两个细节
+
+1. `filters.page/size` 是冗余字段（`fetchGroups` 里被 `pagination` 覆盖），不纳入 URL。
+2. `filters.provider` 是 `CloudProvider | undefined` 且该类型未 import，用 `NonNullable<ListGroupsParams['provider']>` 索引断言，避免新增 import。
+
+### 三、验收
+
+| 场景 | 结果 |
+|---|---|
+| 无参 | 错 0 |
+| 带参 `?keyword=zzz-notexist` | 关键词输入框回显、错 0 |
+| 刷新 | 输入框与 URL 均保留 ✅ |
+
+| 门禁 | 结果 |
+|---|---|
+| `vitest run` | ✅ 1333 passed |
+| `vue-tsc` / `eslint` / `vite build` | ✅ 均 0 |
+| PR CI | ✅ 四项全绿 |
+
+### 四、重要更正：审计口径错了
+
+重新审计发现 **`tasks` 页已用自定义 helper（`buildPageQuery`/`readFilterQuery`）同步 URL**，
+只是没用 `useUrlFilters`。之前只 `grep useUrlFilters` 误判它为缺口。
+
+### 五、最终缺口盘点
+
+真正还缺 URL 筛选同步的只剩 **2 页**：`iam/users`、`iam/sync`。
+其余不适用：`assets`（fetch-all）、`cam/budget`/`compute/provision`（无 filters reactive）、
+`iam/compare`（工具）、`iam/users/detail`（详情）。
+
+### 六、教训
+
+**「是否同步了 URL」不能只用「是否 import 了 useUrlFilters」判断。**
+项目里存在两条同步路径：`useUrlFilters` composable 和手写 helper。
+静态审计只认前者，会把「已同步但没用 composable」的页面误判成缺口。
+正确做法：搜「是否读写 route.query」，而非「是否用了某个 composable」。
+
+这也是「判据比结论更值得怀疑」的又一次印证 —— 我的审计判据（grep useUrlFilters）本身就漏掉了另一条路径。
