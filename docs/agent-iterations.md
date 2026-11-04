@@ -15051,3 +15051,64 @@ panic: HTTP server failed to start: listen tcp :8002: bind: ...
   阻塞结论才站得住,后续决策(找 DBA / 查网络)才有依据。
 - **第六十条**:**巡检维度要逐个补齐,不能因为"页面能开"就认为前端没问题**。
   本轮补了控制台维度(0 异常),此前补了 API 维度、504 维度 —— 三者都绿,才能较有把握地说"前端这块是干净的"。
+
+---
+
+## cam-rds-port-rootcause-20261104（RDS port=0 根因定位，待后端决策）
+
+**状态**：**根因已精确定位，未实现**（跨模块 4 个 provider SDK 改动 + 重采集，需架构决策）
+
+### 一、证据（真实浏览器 + 只读 API 复核）
+
+RDS 列表 `port` 按 provider 分布（本地后端 52 条）：
+
+| provider | 总数 | port=0 | 非0 |
+|---|---|---|---|
+| aliyun | 31 | **31** | 0 |
+| huawei | 13 | **13** | 0 |
+| volcano | 2 | **2** | 0 |
+| aws | 6 | 0 | **6** |
+
+即：阿里云/华为/火山 46 条 RDS 的 `port` 全是 0，`connection_string` 也空；AWS 6 条正常（port=5432 等）。
+
+### 二、根因（逐层定位到 SDK 具体文件）
+
+1. `e-cam-service/internal/cam/task/executor/sync_rds.go` 用 `inst.Port`/`inst.ConnectionString` 写 attributes —— 映射本身没问题。
+2. `inst` 来自 `e-cloudx-sdk` 的 `types.RDSInstance`，由各 provider 适配器填充。
+3. 各 provider 适配器 `*/rds.go` 的 port/connection_string 映射：
+
+| adapter | port 映射 | connection_string 映射 | 说明 |
+|---|---|---|---|
+| aws | ✅ | ✅ | 正常 |
+| aliyun | ⚠️ 仅详情 | ⚠️ 仅详情 | `convertAliyunRDSInstance`（详情 API `DescribeDBInstanceAttribute`）有，但同步走 `ListInstances`→`DescribeDBInstances`（列表 API）→`convertAliyunRDSListItem`（**不填 port/conn**）|
+| huawei | ❌ | ❌ | 完全没映射 |
+| tencent | ❌ | ❌ | 完全没映射 |
+| volcano | ❌ | ❌ | 完全没映射 |
+
+**核心**：阿里云列表 API `DescribeDBInstances` 的响应里**根本没有 port/connection_string**，
+只有详情 API `DescribeDBInstanceAttribute` 才有（该详情路径已实现为 `GetInstance`，但同步流程没用它）。
+华为/腾讯/火山引擎的适配器则连映射字段都没写。
+
+### 三、为什么这轮不直接实现（安全边界 + 成本）
+
+1. 横跨 `e-cloudx-sdk` **4 个 provider 适配器**，每个要按各自 SDK 响应字段补映射；
+2. 阿里云需要「列表后逐实例拉详情」（N+1 调用），有**云厂商限流风险**，需评估批量/节流；
+3. 修完还要**重采集回填**现有 46 条 0 值记录（migration）；
+4. 属「写路径 + 迁移」，符合安全边界里「云调用仅只读」——改采集器会触发真实云 API 写/读，需先定方案。
+
+### 四、候选修法（待产品/架构定）
+
+- **A**：同步流程列表后逐实例拉详情补 port/conn（正确但 N+1，需节流）；
+- **B**：按 engine 派生默认端口（MySQL=3306/PostgreSQL=5432/SQLServer=1433）—— 快但非真实端口、conn 仍缺；
+- **C**：换用能一次返回 port 的厂商 API（需逐 provider 验证是否有）。
+
+### 五、与上一轮 OSS 修复的对照（重要）
+
+上一轮 OSS「卡片漏算」我原也记为「数据层缺陷」，结果是**前端口径**问题、已修。
+这一轮 RDS port=0 用同样的只读 API 复核，结果是**真·后端采集缺陷**（SDK 适配器没映射字段）。
+**同样是「值=0/数字对不上」，根因可能在前端也可能在后端，必须用只读 API 把字段逐层追到底才下结论。**
+
+### 六、结论
+
+- **EIP bandwidth=0**：不是缺陷 —— AWS EIP 本身无带宽属性（带宽在实例/ENI），前端 `0→'-'` 是对的。
+- **RDS port=0**：真缺陷 —— 4/5 provider 的 RDS 采集没填 port/connection_string，根因在 `e-cloudx-sdk` 适配器。
