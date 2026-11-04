@@ -14260,3 +14260,41 @@ handler.GetGlobalAssetStats → nodeAssetSvc.GetGlobalAssetStats
 2. **生成链守卫是「严格零 diff」，工具链版本必须逐项对齐**（protoc 版本、Go 版本、wire/mockgen 版本）。一个版本不一致就 +N 行漂移。这类对齐成本很高，值得提前明确「以哪个环境的产物为准」。
 
 3. **「授权合并」和「合并后 main 是否有红 check」是两件事。** 用户授权了，实质门禁也绿了，但仍有一个 cosmetic guard 红着被我合并进 main。下一个人看到 main 上 `生成链一致性` 红，需要知道这是 ±1 行号漂移、不是代码坏 —— 所以我把它写进了记录，而不是悄悄合掉。
+
+---
+
+## 2026-11-04 **前端导航收尾**:服务树已迁入 CMDB,去掉侧边栏入口(web#252 已合并)
+
+### 一、需求来源
+用户直接提出:"服务树已经迁移到 cmdb 了 前端导航栏可以去掉了" ✓
+
+### 二、改动(仅前端 3 处)
+| 文件 | 改动 |
+|---|---|
+| `src/layouts/menu-config.ts` | 删除 `service-tree` 菜单组(服务树总览/环境管理/绑定规则,原指向 `/cmdb/service-tree*`) |
+| `src/layouts/components/AppSidebar.vue` | 默认展开键 `['assets','service-tree']` → `['assets']` |
+| `src/layouts/__tests__/menu-contract.test.ts` | 原"必须指向 e-cmdb"的**过渡期**锚点 ⇒ 改为**反向锚点**(断言不得再出现),防回潮 |
+
+### 三、刻意未改
+- `src/api/service-tree-stats.ts` + dashboard 调用:**「全局资产统计」接口**(`GET /api/v1/cam/service-tree/assets/stats`)
+  后端仍在、是 dashboard 数据来源,**与导航无关**;上一轮刚把它修好(500→200),本就不能删 ✓
+- `src/utils/fieldLabels.ts` 服务树节点状态文案:纯文案单源 ✓
+
+### 四、验证
+- `npx vitest run` ⇒ **110 files / 1333 tests passed** ✓
+- `npx vue-tsc --noEmit` ⇒ exit 0 ✓;`npx eslint <3 文件>` ⇒ exit 0 ✓
+- **浏览器验收**(真实后端 + 本分支前端):打开 `/cam/dashboard` ⇒ 渲染 2219 字、
+  **导航无「服务树」(文本与 HTML 双检 false)**、其余 6 项菜单齐全、**0 控制台错误 / 0 API 错误** ✓
+- CI 4/4 通过(Vitest / ESLint / Typecheck & Build / Gzip Budget)⇒ 合并 `8b00aa6` ✓
+
+### 五、口径沉淀
+- **第二十九条**:验证"前端改动"必须让**我自己的代码**真的跑起来。本轮打通隔离实例踩了三个坑,每个都是"先看报错再定位",不是猜:
+  1. 工作树放在 `%TEMP%` ⇒ Vite **拒绝加载**源码(`Failed to load url /src/main.ts`)⇒ 挪到 `D:\Haven\.cam-wt-nav` 即好;
+  2. `node_modules` 是 **junction**,目标在项目根之外 ⇒ `fs.strict` 对 `/@fs/...` 返回 **403** ⇒ 需配 `server.fs.allow`;
+  3. 与共享实例共用 vite 依赖缓存 ⇒ **504 Outdated Optimize Dep** ⇒ 用独立 `cacheDir` + `--force`。
+  ⇒ **口径**:隔离验证实例要满足"三独立"——**独立路径(非 Temp)、独立 fs.allow、独立 cacheDir**。
+- **第三十条**:跨端口 cookie 是**共享**的(host 级,不含端口) ⇒ 在 :8888 登录拿到的 `ecmdb-token-key`
+  可直接给 :3355 的隔离实例用,**不必重新登录**;这也说明"必须经 :8888"的约束主要来自 **`/api/iam` 路由**
+  与登录页,而不是 cookie 本身 ✓
+- **第三十一条**:"迁移类"需求要区分**入口**与**数据源**。本轮服务树**入口**该删,但同名 **API** 不能删
+  (dashboard 仍在用);删之前必须确认调用方,否则会把上一轮刚修好的功能打回去 ✓
