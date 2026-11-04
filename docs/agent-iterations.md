@@ -14870,3 +14870,50 @@ InitIndexes 失败(耗时 7.8s): connection(106.52.187.69:27017[-4]) socket was 
   把它们的耗时与中断点排在一起,才能看出"约 8–15 秒被掐断"这条共同根因 —— 否则会分别去优化 SQL/代码,白费功夫。
 - **第五十四条**:REST API 不支持改 `draft`,要用 GraphQL `convertPullRequestToDraft`。
   本轮先试 PATCH 拿到 `draft=False`,改用 GraphQL 才生效 —— **"调用成功"不等于"字段已生效",要回读确认**。
+
+---
+
+## cam-url-batch11-20261104（第十二轮：iam/users + iam/sync，功能收尾）
+
+**状态**：**已合并**（`e-cam-web#262`，merge `67bc42b`）
+
+### 一、本轮范围
+
+| 页面 | 同步字段 |
+|---|---|
+| iam/users | `keyword / provider / user_type / status` + `page` |
+| iam/sync | `task_type / status / cloud_account_id / provider` + `page` |
+
+### 二、验收
+
+| 页面 | 带参 | 刷新后 |
+|---|---|---|
+| 用户 | `?keyword=zzz-notexist`（URL 写入）、错 0 | URL 保留 ✅ |
+| 同步 | `?status=zzz-notexist`（URL 写入）、错 0 | URL 保留 ✅ |
+
+| 门禁 | 结果 |
+|---|---|
+| `vitest run` | ✅ 1333 passed |
+| `vue-tsc` / `eslint` / `vite build` | ✅ 均 0 |
+| PR CI | ✅ 四项全绿 |
+
+### 三、功能收尾盘点
+
+**「列表页筛选状态进 URL」功能完成**：用 `useUrlFilters` 接入 23 页 + `tasks`（手写 helper 已同步），
+全部真实筛选列表页的筛选/排序/页码刷新、分享、返回不再丢失。
+
+不适用（已甄别）：`assets`（fetch-all）、`cam/budget`/`compute/provision`（无 filters reactive）、
+`iam/compare`（工具页）、`iam/users/detail`（详情页）。
+
+### 四、贯穿十二轮的复盘（固定成规则）
+
+1. 模板固定「结构与陷阱」，不固定「字段与写法细节」—— 字段清单/provider 类型/单行多行声明逐页确认。
+2. 带参路径是必测项 —— 首轮 TDZ bug（只在带参时触发）教训固定进模板。
+3. 审计判据本身要反复质疑 —— 只 grep useUrlFilters 会把 tasks（手写 helper）误判为缺口；判据应是「是否读写 route.query」。
+4. 数量型欠账如实说数量 —— 每轮报「N/29」，不笼统说「已接入」。
+
+### 五、贯穿本项目反复出现的一条元教训
+
+**「判据（selector/窗口/间隔/采样时点/元素层级/数据量）比结论更值得怀疑」。**
+本轮再添两个实例：审计判据（grep composable）漏了手写 helper 这条路径；「是否同步了 URL」
+不能等价于「是否用了某个 composable」。每一次"没报错 ≠ 被检查到"的背后，都是判据有问题。
