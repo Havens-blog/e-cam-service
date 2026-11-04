@@ -14680,3 +14680,53 @@ CI `Test` 一次通过 ⇒ 合并 `91e029c` ✓
   `Select-String` 受控制台编码影响会产生**假阴性**(本轮两次误判"代码里没有")。
 - **第四十七条**:越界判断要显式化。本轮发现的是**真 bug**,但它在协议授权的两个仓之外 ⇒
   **只记录、不修改**,并给出可直接套用的补丁 —— 这比"顺手改掉"更符合边界。
+
+---
+
+## cam-url-batch9-20261104（第十轮：账号页，欠账 20/29）
+
+**状态**：**已合并**（`e-cam-web#258`，merge `efbadfb`）
+
+### 一、进入异构页面阶段
+
+账号页是第一个不套 chips 模板的页面：无「条件 chips」，是**直接 v-model 绑定 + 本地搜索**。
+
+| 状态 | 类型 |
+|---|---|
+| `searchKeyword` | 本地过滤（不发请求）|
+| `filters.provider/environment/status` | 服务端筛选（el-select 直接绑定）|
+| `pagination.page` | 自定义分页 |
+
+URL 同步字段：`q`（searchKeyword）+ `provider/environment/status` + `page`。
+`filters.tenant_id` 是死字段（声明了但 buildListParams 未用），不纳入 URL。
+
+### 二、验收（真实浏览器）
+
+| 场景 | 结果 |
+|---|---|
+| 无参基线 | 共 5 个账号、错 0 |
+| 带参 `?provider=aliyun` | 共 1 个（筛选生效）、错 0 |
+| 刷新 | URL 保留、共 1 ✅ |
+| 带参 `?q=zzz-notexist` | 搜索框回显 → 刷新仍保留 ✅ |
+
+| 门禁 | 结果 |
+|---|---|
+| `vitest run` | ✅ 1333 passed |
+| `vue-tsc` / `eslint` / `vite build` | ✅ 均 0 |
+| PR CI | ✅ 四项全绿 |
+
+### 三、欠账
+
+**29 页完成 20 页**，其余 **9 页**未接入。
+
+其中：
+- `iam/users/detail`（详情页）、`iam/compare`（比对工具页）**不适用**筛选同步；
+- `cam/budget`、`compute/provision` **无 filters reactive**，状态模型不同，需单独设计（不是套模板）；
+- `assets`、`tasks`、`iam/users`、`iam/groups`、`iam/sync` 可能仍是标准列表页，可继续评估。
+
+### 四、教训
+
+**同构批次做完了，剩下的页面不该再当「同一批」处理。**
+前 19 页是复制粘贴兄弟页，套模板一次过；从账号页起，每页的筛选机制都不一样
+（本地过滤 / 死字段 / 自定义分页 / 无 filters），必须**先读通这一页的取数与筛选链路**再动手，
+否则会把「本地搜索」误当成「服务端筛选」、把「死字段」误当成「要同步的筛选维度」。
