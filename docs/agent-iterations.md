@@ -15306,3 +15306,35 @@ WARN sync_assets.go:705 该地域不支持此产品,已跳过
 - **第七十四条**:（与 67 条呼应)**猜文案是巡检的第一大误判来源**。
   本轮把「＋ 添加标签」猜成「新建」、把 `el-drawer` 猜成 `el-dialog`,
   都是先枚举再断言就能避免的。
+
+---
+
+## cam-url-audit-final-20261104（URL 同步审计最终更正：provision 是表单页非列表页）
+
+**状态**：仅记录（无代码改动）
+
+### 最终更正
+
+浏览器巡检发现 `/cam/compute/provision` 返回 404，追查后确认：
+
+- `compute/provision/index.vue` 是**主机模板创建/编辑表单页**（标题「创建主机模板/编辑主机模板/创建云主机」），**不是列表页**；
+- 其真实路由是 `/cam/compute/template/create`（name `ComputeProvision`，`hideInMenu: true`）；
+- `/cam/compute/provision` 本就不是有效路由，404 正常。
+
+这是 URL 同步审计的**第二个误报更正**（第一个是 `tasks` 用手写 helper 已同步）。
+`provision` 之前被静态审计（grep 取数函数）误判为「缺 URL 同步的列表页」，实为创建表单。
+
+### URL 同步审计最终结论（准确清单）
+
+**所有真实「筛选列表页」的筛选/排序/页码均已进 URL，无剩余缺口。** 具体：
+
+- `useUrlFilters` 接入：10 个既有页 + 23 个本轮系列新增页（audit/logs、network 9、storage 2、databases 3、compute 4、middleware 2、accounts、iam 3 等）；
+- `tasks`：手写 helper（`buildPageQuery`/`readFilterQuery`）已同步，非缺口；
+- 不适用（非列表页/无筛选，经甄别）：`assets`（fetch-all）、`cam/budget`（无 filters reactive）、
+  `compute/provision`（创建表单）、`iam/compare`（比对工具）、`iam/users/detail`（详情页）。
+
+### 教训
+
+**「静态审计的命中」不等于「该修」。** 我一连串审计里至少有两个命中（tasks、provision）是误报：
+tasks 已用另一条路径同步、provision 根本不是列表页。判据（grep composable / grep 取数函数）都不够 ——
+**最终判据应该是「它是一个会自动取数的列表页 + 它没把筛选写进 route.query」**，二者缺一都不是缺口。
