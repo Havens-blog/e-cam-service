@@ -13783,3 +13783,97 @@ onMounted(() => {
 
 **0 数据不等于无法验证。** 这一轮 DDoS 是 0 行，但"筛选标签是否出现、URL 是否携带参数、刷新是否保留"这三件事都能验 ——
 它们验的是**状态机制**，不是数据渲染。区分"这份数据能不能验"和"这个机制能不能验"，能避免把很多东西误判为"无法验证"。
+
+---
+
+## cam-ci-lflags-fix-20261104（用户授权后我来改，但 token 无权推送 workflow）
+
+**状态**：**代码改动已完成并本地验证通过，但推送被 GitHub 硬性拒绝。**
+
+### 一、根因（两处叠加，不是"少个引号"这么简单）
+
+```yaml
+# 修改前（.github/workflows/ci.yml:191,198）
+LDFLAGS="-ldflags -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.CommitHash=${COMMIT_HASH}"
+go build ${LDFLAGS} -o ${OUTPUT_NAME} .
+```
+
+1. **变量里已经含 `-ldflags`** —— 它不该出现在变量里；
+2. **`${LDFLAGS}` 未加引号** —— 展开后 `-ldflags` 只把紧随其后的 `" -X"` 当作自己的值，
+   后面的 `main.Version=...`、`main.BuildTime=...`、`main.CommitHash=...` 全被 `go` 当成 **import path**。
+
+于是报：
+
+```
+malformed import path "-X": leading dash
+```
+
+`Build (linux)` / `Build (darwin)` 长期红，就是这个原因（main 上多轮 CI 均红）。
+
+### 二、修法（2 行）
+
+```yaml
+-# 修改前
+-LDFLAGS="-ldflags -X main.Version=${VERSION} ..."
+-go build ${LDFLAGS} -o ${OUTPUT_NAME} .
++# 修改后
++LDFLAGS="-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.CommitHash=${COMMIT_HASH}"
++go build -ldflags "${LDFLAGS}" -o "${OUTPUT_NAME}" .
+```
+
+顺带把 `-o` 的目标也加了引号（防路径含空格）。
+
+### 三、本地验证（不是"看起来对"）
+
+```
+GOOS=linux GOARCH=amd64
+go build -ldflags "-X main.Version=test -X main.BuildTime=... -X main.CommitHash=..." -o ... .
+→ exit 0，产物 452,410,291 bytes 正常生成
+```
+
+### 四、推送被拒（硬阻塞）
+
+```
+! [remote rejected] HEAD -> cam-iteration-20261104-cifix
+  (refusing to allow an OAuth App to create or update workflow
+   `.github/workflows/ci.yml` without `workflow` scope)
+```
+
+token 实际 scopes：
+
+```
+admin:public_key, gist, read:org, repo
+```
+
+**没有 `workflow`**。GitHub 对 `.github/workflows/**` 的写入要求该 scope，
+所以无论是否获得你的口头授权，我都推不上去 —— 这不是判断问题，是权限问题。
+
+### 五、产出：可直接应用的补丁
+
+补丁已生成：`D:\Haven\.browser-verify\ci-build-lflags-fix.patch`
+
+```diff
+@@ -188,14 +188,14 @@ jobs:
+-        LDFLAGS="-ldflags -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.CommitHash=${COMMIT_HASH}"
++        LDFLAGS="-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.CommitHash=${COMMIT_HASH}"
+-        go build ${LDFLAGS} -o ${OUTPUT_NAME} .
++        go build -ldflags "${LDFLAGS}" -o "${OUTPUT_NAME}" .
+```
+
+改动已提交在本地分支 `cam-iteration-20261104-cifix`（commit `fc92809`），一旦 token 具备 scope 即可直接推送。
+
+### 六、解除条件（二选一）
+
+1. **给 token 加 `workflow` scope**（GitHub → Settings → Developer settings → Tokens → 勾选 `workflow`），我立刻重推；
+2. **你自己应用上面 2 行**（或在 GitHub 网页上直接编辑 ci.yml）。
+
+### 未完成
+
+- 另一项 P1「`jobs.test` 加 `CERT_TEST_MONGODB_DSN`」同在 `ci.yml` 里，**同一个 scope 限制**，本轮未动。
+  该项涉及数据库凭据，建议用 GitHub Secrets（`${{ secrets.CERT_TEST_MONGODB_DSN }}`）而非明文写入。
+
+### 教训
+
+**"你授权了"和"系统允许"是两件事。**
+你让我加，我确实加了、也验证了；但落地链条上还有一环我没有权限 ——
+这类阻塞要**明确区分"我没做"与"我做了但推不上去"**，并且交付物要让我做的部分不白做（补丁 + 本地分支已就绪）。
