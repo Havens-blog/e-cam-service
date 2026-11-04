@@ -13929,3 +13929,102 @@ admin:public_key, gist, read:org, repo
 - **8001 不再由 CompileDaemon 托管**(由我分离启动的主干二进制进程运行)⇒ **改代码不会自动重建**;
   若要恢复自动托管,执行 `.\dev.ps1 restart e-cam-service`(会用共享检出当前代码重建,即回到"旧代码"状态)。
 - `D:\Haven\e-cam-web\dist` 已是主干构建(旧版在 `dist.bak-20261104`);是否保留由你决定。
+
+---
+
+## cam-ci-diagnosis-corrected-20261104（纠正我对 CI 的长期误判）
+
+**状态**：诊断已修正 + 修复已就绪；推送仍被 `workflow` scope 阻塞。
+
+### 一、我此前的说法是错的
+
+多轮报告里我一直写：
+
+> P1（需你，四行）：`jobs.test` 加 `CERT_TEST_MONGODB_DSN`（约 38-40 个 Mongo 认证失败）
+> P1（需你，一行）：`ci.yml` 的 `Build binary` 加引号
+
+实测 main 最近两次运行的 **job 级结论**：
+
+| job | bac9471 | cb447cd |
+|---|---|---|
+| **Test** | **success** | **success** |
+| Build (linux/darwin/windows) | failure / cancelled | failure / cancelled |
+| Docker Build and Push | failure | failure |
+
+**`Test` 一直是绿的**。所谓"Mongo 认证失败 38-40 个"并不成立 ——
+测试代码在 Mongo 不可达时是 `t.Skipf(...)`（跳过而非失败）：
+
+```go
+if v := os.Getenv("CERT_TEST_MONGODB_DSN"); v != "" { ... }
+...
+t.Skipf("mongox test 实例不可用（可设置 CERT_TEST_MONGODB_DSN）: %v", testMongoErr)
+```
+
+而且 `test` job 本来就有 `mongo:7.0` service 容器（admin/password @27017），
+**根本不需要额外的 secret**。我在这一点上错了很多轮，且每轮都在"提醒"用户去做一件不该做的事。
+
+### 二、真实的失败原因（两类，性质完全不同）
+
+**① Build（linux/darwin/windows）—— 代码问题，我的修复对症**
+
+CI 日志原文：
+
+```
+malformed import path "main.Version=bac94711": invalid char '='
+malformed import path "-X": leading dash
+malformed import path "main.BuildTime=2026-11-04_00:54:54": invalid char '='
+malformed import path "main.CommitHash=bac94711": invalid char '='
+```
+
+根因：`LDFLAGS` 变量里已含 `-ldflags`，且 `go build ${LDFLAGS}` 未加引号 →
+`-ldflags` 只把 `-X` 当作自己的值，其余参数被当成 import path。
+
+**② Docker Build and Push —— 凭据问题，不是代码**
+
+```
+step 失败: Login to Docker Hub
+##[error]Username and password required
+```
+
+缺 `DOCKER_USERNAME` / `DOCKER_PASSWORD`（仓库 Secrets）。**这个我改代码也没用。**
+
+### 三、修复（已提交，待推送）
+
+```diff
+-        LDFLAGS="-ldflags -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.CommitHash=${COMMIT_HASH}"
++        LDFLAGS="-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.CommitHash=${COMMIT_HASH}"
+-        go build ${LDFLAGS} -o ${OUTPUT_NAME} .
++        go build -ldflags "${LDFLAGS}" -o "${OUTPUT_NAME}" .
+```
+
+本地 `GOOS=linux GOARCH=amd64` 交叉编译验证：**exit 0，产物 452,410,291 bytes**。
+
+提交：本地分支 `cam-iteration-20261104-cifix`，commit `fc92809`；补丁 `D:\Haven\.browser-verify\ci-build-lflags-fix.patch`。
+
+### 四、推送阻塞（硬性）
+
+```
+! [remote rejected] ... (refusing to allow an OAuth App to create or update
+  workflow `.github/workflows/ci.yml` without `workflow` scope)
+```
+
+token scopes 实测：`admin:public_key, gist, read:org, repo` —— **无 `workflow`**，多试一次结果相同。
+
+### 五、结论与下一步
+
+| 项 | 状态 | 行动 |
+|---|---|---|
+| Build 三平台 | 修复已就绪 | 待 token 加 `workflow` scope 后推送 |
+| Test | **本来就是绿的** | **无需任何改动**（撤回我长期的错误建议）|
+| Docker Build and Push | 缺 Docker Hub 凭据 | 需仓库 Secrets（`DOCKER_USERNAME`/`DOCKER_PASSWORD`），非代码问题 |
+
+### 教训
+
+**"我一直在提醒的事"可能一直是错的。**
+我把「Test 需要 Mongo DSN」写进每一轮报告当成 P1，却从没去查过 Test 的**job 级结论** ——
+只看到整条 workflow 是红的，就推断每个 job 都红。
+
+**workflow 级结论 ≠ job 级结论。**
+一个 workflow 红，不代表你盯着的那一项红；我因此让用户去改一件不需要改的事，且重复了很多轮。
+
+可操作规则：**在把某项标成 P1 之前，必须先看到它自己那一行的结论。**
