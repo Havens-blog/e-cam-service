@@ -1,10 +1,15 @@
 package cmd
 
 import (
-	"github.com/Havens-blog/e-cam-service/cmd/endpoint"
-	"github.com/Havens-blog/e-cam-service/cmd/start"
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/Havens-blog/e-cam-service/cmd/endpoint"
+	"github.com/Havens-blog/e-cam-service/cmd/start"
 )
 
 var (
@@ -33,6 +38,31 @@ func initViper() {
 
 	if err != nil {
 		panic(err)
+	}
+
+	mergeLocalOverride()
+}
+
+// mergeLocalOverride 合并同目录的 <name>.local.yaml（如 config/prod.yaml → config/prod.local.yaml）。
+//
+// 仓库里 config/prod.yaml 只放**占位符**（提交安全），真实凭据（如 eiam client_secret）应放在
+// *local.yaml 中；.gitignore 早已约定 `config/*.local.yaml`，但此前**没有任何代码读取它**，
+// 导致真实值只能写进会被提交的 prod.yaml。此函数补上这一环，使 .gitignore 的约定真正生效。
+//
+// 用 MergeInConfig 而非 ReadInConfig：后者会**覆盖**已有配置，前者只覆盖 local 文件里出现的键。
+func mergeLocalOverride() {
+	ext := filepath.Ext(confFile)
+	if ext == "" {
+		ext = ".yaml"
+	}
+	localFile := strings.TrimSuffix(confFile, filepath.Ext(confFile)) + ".local" + ext
+	if _, statErr := os.Stat(localFile); statErr != nil {
+		return // 没有本地覆盖文件属正常情况
+	}
+
+	viper.SetConfigFile(localFile)
+	if mergeErr := viper.MergeInConfig(); mergeErr != nil {
+		panic(mergeErr)
 	}
 }
 
