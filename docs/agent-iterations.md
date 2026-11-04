@@ -14472,3 +14472,45 @@ OSS 页的四个统计卡也逐个对上:`Standard=385`、`Archive=145`、`IA=83
 ### 五、本轮结论
 **无可执行需求**(无待处理 PR / 无审核意见 / 无新增缺陷),按协议不制造提交。
 候选见下轮报告。
+
+---
+
+## cam-url-batch7-20261104（第八轮：云盘/快照/安全组，欠账 17/29）
+
+**状态**：**已合并**（`e-cam-web#254`，merge `b26a4f5`）
+
+### 一、本轮范围
+
+三个 compute 列表页，字段与 provider 类型不同（逐页确认）：
+
+| 页面 | 同步字段 | provider 类型 |
+|---|---|---|
+| 云盘 | `keyword / provider / status / disk_type / region` | 普通 string |
+| 快照 | `keyword / provider / region / source_disk_id` | `CloudProvider \| ''` |
+| 安全组 | `keyword / provider / region / vpc_id` | `CloudProvider \| ''` |
+
+### 二、验收（三态，含带参）
+
+| 页面 | 无参基线 | 带参 `?keyword=zzz-notexist` | 刷新后 |
+|---|---|---|---|
+| 云盘 | 共 6871 条、错 0 | 标签「名称: zzz-notexist 清除」、共 0、错 0 | 标签保留 ✅ |
+| 快照 | 共 7205 条、错 0 | 同上 | 标签保留 ✅ |
+| 安全组 | 共 1412 条、错 0 | 同上 | 标签保留 ✅ |
+
+| 门禁 | 结果 |
+|---|---|
+| `vitest run` | ✅ 1333 passed |
+| `vue-tsc` / `eslint` / `vite build` | ✅ 均 0 |
+| PR CI | ✅ 四项全绿 |
+
+### 三、欠账
+
+**29 页完成 17 页**，其余 **12 页**未接入：
+`accounts`、`assets`、`cam/budget`、`compute/provision`、`middleware/*`（es/kafka）、
+`iam/*`（users/groups/sync/compare）、`tasks`。
+
+### 四、教训
+
+「模板固定结构与陷阱、不固定字段与写法细节」第三轮印证：三页 provider 类型不一致
+（云盘普通 string、快照/安全组 `CloudProvider | ''`），逐页确认后才写 cast，
+否则 tsc 会对其中两类各报一类错（无 cast 报类型错、有 cast 报断言错）。
