@@ -16477,3 +16477,50 @@ PR #421 CI（合并前）：Test success；Build ×5 平台全 success；Docker/
 - **第一百二十五条**:**并行会话合并的特性,不进入我的部署二进制——这是正常且正确的**。
   各自合并到 main ≠ 立即部署;谁的功能谁按自己的节奏发布,
   跨实例"代为部署"等于替别人做发布决策 ✗
+
+---
+
+## cam-auditpage-20261105（统一审计 P0 前端块：统一审计事件检索页）
+
+**状态**：**已合并**（`e-cam-web#287`，merge `180ed18`，CI 四项全绿）
+
+### 一、交付
+
+消费 e-cam-service#421 的统一查询 API（GET /api/v1/cam/audit/events）的用户入口：
+
+| 组件 | 说明 |
+|---|---|
+| `src/api/audit.ts` | `AuditEvent/AuditEventParams` 契约（与 SDK AuditEvent JSON 一致）+ `listAuditEventsApi` |
+| `/audit/events` 路由 | 审计组下新页（AuditEvents）|
+| 统一审计事件页 | 筛选（服务/业务域/结果下拉、动作/操作者输入、时间范围）+ 表格（时间/来源/动作/操作者/资源/结果 tag/状态码/耗时）+ 分页 + **useUrlFilters 从第一版接入** + useListError 持久错误态 |
+
+### 二、浏览器验证（:3338 独立 vite 实例，服务本 worktree）
+
+| 场景 | 结果 |
+|---|---|
+| 页面渲染 | 标题「统一审计事件」、总数标 ✅ |
+| 错误态（本地旧后端无该端点 → 404）| 持久错误块「获取统一审计事件失败」+ 重试按钮 ✅ |
+| JS 异常 | 0 ✅ |
+| 全量数据 E2E | **待后端 rollout**（如实标注未验证）|
+
+门禁：tsc/build/lint 均 0；vitest 1333 passed；PR CI 四项全绿。
+
+### 三、过程中的坑（两个，同类根因）
+
+1. **API 追加脚本静默失败**：`Set-Content -Path x -Value $code` 混用管道导致脚本文件写坏，node 仍跑了旧内容并打印「成功」—— 但文件实际未变。tsc 在页面创建前通过（无引用），掩盖了缺失。
+2. **路由注册脚本插错位置且无回读验证**：routes.ts 实际未变更，门禁通过是因为文件未被改动 —— 直到浏览器验证出 404 才发现。
+
+**修复方式转变**：小改动改用 edit 工具直接编辑 + 回读验证；脚本化编辑必须「改完回读断言」。
+（这条教训在本会话已第三次出现：Replace 静默 no-op / 脚本未写盘伪装成功 —— 已固化为规则：**任何脚本化编辑后必须回读验证**。）
+
+### 四、范围说明（诚实记录）
+
+- **e-iam OperationLog 接入 SDK 顺延**：e-iam 主工作树 86 个 WIP 条目占用 `ioc/wire*` 文件
+  （并行特性进行中），现在动 wire 必与其冲突。待 WIP 特性落地后接入（届时 e-iam 走
+  GORM writer 写自己的 audit_events 表，同一 envelope）。
+- 当前统一页展示 e-cam-service 域的操作审计（双写已生效）；e-iam 域事件待其接入后自动出现。
+
+### 五、验证环境说明
+
+:3337 的 vite 实例服务的是其他 worktree（并行会话启动），本轮起 **:3338 独立实例**
+（`vite.verify3338.config.ts`，服务 e-cam-web70）专用于本 worktree 验证，互不干扰。
