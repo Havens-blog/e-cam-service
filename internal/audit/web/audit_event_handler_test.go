@@ -7,14 +7,15 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
-	"github.com/Havens-blog/e-cam-service/internal/audit/service"
-	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-common-go/auditlog"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
+	"github.com/Havens-blog/e-cam-service/internal/audit/service"
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 )
 
 // fakeEventDAO 只捕获过滤器与返回桩数据（不连存储）。

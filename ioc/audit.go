@@ -4,6 +4,10 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/Havens-blog/e-common-go/auditlog"
+	"github.com/Havens-blog/e-common-go/mongox"
+	"github.com/gotomicro/ego/core/elog"
+
 	"github.com/Havens-blog/e-cam-service/internal/audit"
 	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
 	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
@@ -11,9 +15,6 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/logquery"
 	logqueryweb "github.com/Havens-blog/e-cam-service/internal/logquery/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/Havens-blog/e-common-go/auditlog"
-	"github.com/Havens-blog/e-common-go/mongox"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // InitAuditModule 初始化审计模块

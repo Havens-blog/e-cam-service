@@ -4,11 +4,12 @@ package web
 import (
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
+
 	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/audit/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/gin-gonic/gin"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // AuditEventHandler 统一审计事件查询处理器

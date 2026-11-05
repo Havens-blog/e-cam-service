@@ -5,10 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 	"github.com/Havens-blog/e-common-go/auditlog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 )
 
 // ==================== renderAuditEntryToEvent 映射 表驱动测试 ====================
