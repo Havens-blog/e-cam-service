@@ -16969,3 +16969,36 @@ e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓
 后端早已存在的降级路径（#382 的 total=-1），而降级契约从落地那天起就没有
 UI 消费者 —— 「后端能力先行、前端消费缺位」的不一致不仅发生在功能层，
 也发生在**错误/降级语义层**。
+
+---
+
+## cam-secrets-checklist-20261106（部署管道修复精确清单：Secrets 全空）
+
+**状态**：只读核查 + 文档（无代码改动）。
+**决定性发现**：三个仓库的 Actions Secrets **全部未配置**（API 实测均为空列表）——
+每一次「Login to Aliyun Registry」失败都只是 Secret 不存在，无其他原因。
+
+### 精确修复清单（Settings → Secrets and variables → Actions → New repository secret）
+
+| 仓库 | 需添加的 Secret | 用途（所在 workflow）|
+|---|---|---|
+| e-cam-web | `ALIYUN_REGISTRY_USER` / `ALIYUN_REGISTRY_PASS` | 阿里云容器镜像服务登录（deploy.yml 构建推送镜像）|
+| e-cam-web | `DEPLOY_USER` | 部署目标机用户（deploy.yml）|
+| e-cam-service | `DOCKER_USERNAME` / `DOCKER_PASSWORD` | Docker Hub 登录（ci.yml 的 Docker Build and Push job）|
+| e-cam-service | `ALIYUN_REGISTRY_USER` / `ALIYUN_REGISTRY_PASS` | 阿里云镜像登录（deploy.yml）|
+| e-cam-service | `DEPLOY_USER` | 部署目标机用户（deploy.yml）|
+| e-iam | `ALIYUN_USERNAME` / `ALIYUN_PASSWORD` | 阿里云镜像登录（docker-publish.yml；**注意命名与 e-cam 两侧不同**）|
+
+值来源：阿里云容器镜像服务（ACR）的登录用户名与密码（ACR 控制台设置；
+不是阿里云账号密码）。`DEPLOY_USER` 为部署目标服务器的 SSH 用户。
+
+### 配置后的预期链路
+
+Secrets 配齐 → push-CI 的部署步骤转绿 → 镜像发布恢复 → 本地/远程部署更新 →
+统一审计全线能力（统一页真数据、变更筛选、e-iam 读侧、双写数据）一次性上线 →
+执行积压的全量 E2E（统一页真数据/field_name 大表降级/联邦前置验证）。
+
+### 命名不一致的提醒
+
+e-iam 用 `ALIYUN_USERNAME/PASSWORD`，e-cam 两侧用 `ALIYUN_REGISTRY_USER/PASS`
+—— 同一批凭据要按各仓 workflow 里的名字分别建（或后续统一命名，属另一个 PR）。
