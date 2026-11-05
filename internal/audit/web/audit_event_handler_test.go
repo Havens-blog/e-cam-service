@@ -66,8 +66,10 @@ func TestAuditEventHandler_ListEvents(t *testing.T) {
 		r := newEventsTestRouter(t, fake)
 
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet,
-			"/api/v1/cam/audit/events?actor_id=7&service=e-cam-service&domain=audit&action=delete&result=failed&start_time=1&end_time=2&offset=5&limit=50&order=asc", http.NoBody)
+		const withFiltersURL = "/api/v1/cam/audit/events?actor_id=7&service=e-cam-service" +
+			"&domain=audit&action=delete&result=failed&start_time=1&end_time=2" +
+			"&offset=5&limit=50&order=asc"
+		req := httptest.NewRequest(http.MethodGet, withFiltersURL, http.NoBody)
 		r.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusOK, w.Code)
