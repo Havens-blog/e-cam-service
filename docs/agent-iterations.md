@@ -16838,3 +16838,36 @@ e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓
 
 - 真实数据端到端：待部署管道修复（三仓 registry 登录断裂，docs #436）。
 - 权限流：capability 注册后需管理员角色实际调用（部署后）。
+
+---
+
+## cam-permgen-fix-20261106（permgen 治本：工程名与检出位置解耦）
+
+**状态**：**已合并**（`e-iam#7`，merge `6838afa`；CI 四项全绿）
+
+### 一、需求来源（上轮实测教训）
+
+上一轮（e-iam#6）在 worktree 里跑 permgen，`docs/permissions.md` 标题被生成为
+`# .TMP-EIAM-AUDIT ...`（检出目录名大写），与 CI（`e-iam` 目录）产出一行漂移，
+触发**生成链一致性误报**，多花两轮才定位。
+
+### 二、根因与修复
+
+- **根因**：`parser.go` 的 `ProjectName = strings.ToUpper(filepath.Base(cwd))`
+  —— 检出目录名直接烧进生成产物。
+- **修复**：`projectNameFrom(dir)` 向上逐级查找 go.mod，取 module 路径末段大写
+  （`github.com/Havens-blog/e-iam` → `E-IAM`），与检出位置彻底解耦；
+  找不到 go.mod 回退目录名（旧行为兜底）。
+- **端到端验证**：worktree 内重跑 permgen，`permissions.md` 内容与提交版
+  **零 diff**（修复前必有一行标题漂移）；CI 生成链一致性 ✅。
+
+### 三、测试
+
+`TestProjectNameFrom` 表驱动 4 例：根目录 go.mod / worktree 任意目录名 /
+子目录向上查找 / 无 go.mod 回退。全量 build/vet/test 通过。
+
+### 四、影响
+
+- 此后**任何 worktree 里跑生成链都不会再产生路径泄漏类漂移** ——
+  为多会话并行开发（各自 worktree）扫清一类系统性 CI 摩擦。
+- 该修复同时惠及 swaggergen 同族工具（若未来同类问题出现，参照此模式）。
