@@ -16146,3 +16146,48 @@ go get github.com/Havens-blog/e-cloudx-sdk@<#12 合并后 commit>
 - **第一百一十三条**:**共享检出落后 + go.work 本地路径,会让"构建最新代码"变成编排难题**。
   主检出落后、worktree 又不在 go.work 里 ⇒ 要用 `GOWORK=<临时 go.work>` 显式组合,
   或在主检出更新后再构建。这不是技术难点,是**状态管理**问题,应先厘清再动手 ✓
+
+---
+
+## cam-auditsdk-20261105（统一审计日志 · P0 第一块：公共 SDK 落地）
+
+**状态**：**已合并**（`e-common-go#1`，merge `7b4f2bf`，5 文件 +638）
+
+### 一、需求来源与决策
+
+用户点名「设计统一的审计日志」。证据盘点发现 **4 套割裂的审计实现**（e-cam-service 的
+AuditLog/ChangeRecord/ChangeOrderAuditEntry + e-iam 的 OperationLog/AuthLog），
+操作者/时间/动作/资源/结果五类字段命名互不一致。
+
+产品拍板三项：**① 写入模型也统一；② SDK 抽公共库（e-common-go）；③ MVP 先接 AuditLog + e-iam OperationLog。**
+
+### 二、本轮交付（P0 第一块：SDK 本体）
+
+`e-common-go/auditlog/` 包（5 文件 +638，无新外部依赖）：
+
+| 组件 | 说明 |
+|---|---|
+| `AuditEvent` | 统一事件信封（Who/When/Where/What/Result + 弱类型 Detail）；`ActorID` 统一 string 兼容两仓库 |
+| `Validate` | 骨架校验（必填/枚举）—— 开发期暴露漏填，不静默写入残缺审计 |
+| `Sanitize` | 递归脱敏（password/secret/token/private_key/access_key…）—— 「审计不落明文凭证」的安全边界只实现一次 |
+| `Writer` + `NonBlocking` | 写入端口 + 失败不阻塞业务包装（四套旧实现共同约定收敛到 SDK）|
+| `MongoWriter` | 单集合 `audit_events`、append-only（无 update/delete）、DedupKey 唯一稀疏索引幂等、4 组检索索引 |
+
+### 三、测试
+
+```
+表驱动 24 例全过（build/vet/test 均 0）：
+  Validate 11 / Sanitize 5 / NonBlocking 1 / isDupOnly 5 / Mongo 集成（DSN 门控，本地 skip）
+```
+
+### 四、P0 剩余（后续轮次）
+
+1. e-cam-service 接入 SDK（AuditLog 写入路径 emit 统一事件）+ 统一查询 API；
+2. e-iam 接入 SDK（OperationLog 写入路径 emit 统一事件）；
+3. e-cam-web 统一审计检索页。
+
+### 五、风险与回滚
+
+- 新集合 `audit_events` 独立于旧 4 个存储，旧链路不动，随时可回退；
+- SDK 无新外部依赖（复用 e-common-go 已有 mongo-driver）；
+- 弱类型 Detail 的强校验缺口由各域调用方在使用处补校验（后续可加 schema 注册机制）。
