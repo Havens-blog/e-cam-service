@@ -16022,3 +16022,52 @@ summary 耗时: 5028 ms
 - **第 105 条**:**启动服务类作业 = 常驻,验证完放着,不要 job_kill**。若需停止服务,用 `dev.ps1 stop <svc>` 而不是杀进程树 ✓
 - **第 106 条**:**PowerShell 里 `stash@{0}` 的 `@{...}` 会被解析成哈希表**,必须写成 `'stash@{0}'`(加引号),
   否则报 `unknown switch 'e'` 且**静默不执行** —— 我第一次 apply 就没跑,差点误判成"已恢复" ✓
+
+---
+
+## 2026-11-05 **#376 的华为 AAD 凭证 bug 已修**(e-cloudx-sdk,SDK PR #12,待审核)
+
+### 一、需求来源
+用户授权:"其他都授权"。本轮做其中的 #376 发现③(华为 DDoS AAD 用错凭证类型)。
+
+### 二、错误(日志实测,每次同步周期必现)
+```
+ERROR executor/sync_assets.go:711 同步DDoS失败
+  {"region":"cn-north-1","error":"获取DDoS防护实例列表失败: 创建AAD客户端失败:
+    创建华为云AAD客户端失败: need credential type is [global.Credentials]..."}
+```
+⇒ 华为云 **DDoS 高防(AAD)同步 100% 失败** ✗
+
+### 三、根因 + 修复(与 cdn.go 对齐)
+| | |
+|---|---|
+| 根因 | AAD 是华为云**全局服务**,但 `huawei/ddos.go` 用 `basic`(地域)凭证 ✗ |
+| 同仓库正确写法 | `cdn.go`/`cdn_metrics.go`(同为全局服务)用 `global.NewCredentialsBuilder()` ✓ |
+| 修复 | 第 13 行 `core/auth/basic`→`core/auth/global`;第 54 行 `basic.NewCredentialsBuilder()`→`global.NewCredentialsBuilder()`(共 2 行)✓ |
+
+### 四、验证
+| 项 | 结果 |
+|---|---|
+| `go build ./huawei/...`(GOWORK=off)| OK ✓ |
+| `go vet ./huawei/...` | OK ✓ |
+| `go test ./huawei/ -run 'DDOS|Ddos|AAD|Aad'` | ok ✓ |
+
+### 五、为什么"待审核"而不自动合并
+1. 属**第三仓**(e-cloudx-sdk),影响所有 go.work 使用方 ✗
+2. **无法运行时验证**真实 AAD 调用(需真实华为 AK/SK + 真实云调用,协议 §九 的外部边界)✗
+   —— 修复依据是 SDK **显式报错** + 同仓库既有正确写法,确定性高,但仍应人工过一眼 ✓
+
+### 六、运行时闭环(下一步)
+SDK PR #12 合并后,在 e-cam-service 执行:
+```
+go get github.com/Havens-blog/e-cloudx-sdk@<#12 合并后 commit>
+```
+重建并等下一个自然同步周期,确认 `同步DDoS失败` 不再出现 `need credential type` 错误。
+
+### 七、口径沉淀
+- **第一百零七条**:**修复前先看"同仓库同类服务是怎么写的"**。
+  本 bug 的正确解法不是猜,而是**对照 cdn.go(同为全局服务)的既有写法** —— 全局服务用 global、地域服务用 basic,
+  这个规律在仓库里已经成立,ddos.go 是唯一错配 ✓
+- **第一百零八条**:**跨仓修复"待审核"是诚实状态,不是偷懒**。
+  第三仓改动影响所有使用方,且无法本地运行时验证真实云调用 ⇒ 留 PR 供人工审核,
+  比"无运行时闭环就自动合并"更符合协议"禁止自动合并"的精神 ✓
