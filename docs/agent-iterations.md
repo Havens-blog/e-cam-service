@@ -16191,3 +16191,173 @@ AuditLog/ChangeRecord/ChangeOrderAuditEntry + e-iam 的 OperationLog/AuthLog）�
 - 新集合 `audit_events` 独立于旧 4 个存储，旧链路不动，随时可回退；
 - SDK 无新外部依赖（复用 e-common-go 已有 mongo-driver）；
 - 弱类型 Detail 的强校验缺口由各域调用方在使用处补校验（后续可加 schema 注册机制）。
+
+---
+
+## 2026-11-05 **华为 AAD 修复运行时闭环完成**:同步从 100% 失败变为真实成功
+
+### 一、构建编排(上轮遗留问题的解法)
+- 建临时 `go.work`(**只含两项**:service worktree + 已修复的本地 e-cloudx-sdk)
+- **教训**:第一版临时 go.work 把 `e-common-go`/`eiam` 也钉在本地旧检出 ⇒ origin/main 的新 service 代码
+  引用新符号(`syncerpkg.Syncer`/`capability.PermissionProvider`)而本地旧检出没有 ⇒ 编译失败 ✗
+- 修正:**其余模块走 go.mod 的 module cache 版本**(那是 origin/main go.mod 钉好的兼容版本)✓
+- 构建:`GOWORK=<临时go.work> go build .` ⇒ `e-cam-service.aadfix.exe`(426.7MB)✓
+
+### 二、部署(按口径 101,无中断)
+停 8001(PID 17380)→ **轮询端口释放(True ✓)** → 起新二进制 → 8001 恢复 ✓ → health ok ✓
+
+### 三、运行时验证(判定性证据)
+**部署前基线**:每次同步周期必现 `同步DDoS失败 need credential type is [global.Credentials]`(最后一次 19:21:56)
+**部署后**:
+```
+[20:29:19] WARN  huawei/ddos.go:64 AAD地域不在SDK地域表内,回退到全局地域cn-north-4 {"region":"cn-north-1"}
+[20:29:19] INFO  获取华为云DDoS高防实例列表成功 {"region":"cn-north-1","count":0}
+[20:29:19] INFO  同步地域DDoS完成 {"region":"cn-north-1","synced":0,"deleted":0}
+```
+⇒ AAD 客户端**用 global 凭证构建成功** ✓ → **真实调用华为 AAD API 成功**(该账号 0 个高防实例)✓ → 同步干净完成 ✓
+⇒ `need credential type` 部署后 **0 次** ✓;华为 AAD 同步从 **100% 失败 → 成功** ✓✓
+
+### 四、验证方法论(为什么这个结论站得住)
+不是"部署后没看到错误"就下结论(口径 63:未观察到 ≠ 已生效),而是抓到**正向证据**:
+1. `AAD地域不在SDK地域表内` WARN 出现 ⇒ 证明华为 AAD 同步**真的跑了**(走到了客户端构建前)✓
+2. 紧随其后是 `获取华为云DDoS高防实例列表成功` ⇒ 客户端构建成功且**真实 API 调用成功** ✓
+3. 全程无 `need credential type` ✓
+**错误消失 + 正向成功证据**两面都成立,才算闭环 ✓
+
+### 五、顺带发现
+`cost_unified_bills 聚合优化索引创建完成` ✓ —— 说明**写操作并非全被掐断**,
+被掐的是 `ecam_change_history` 这张 5.4M 大表的长建索引 ✓(进一步支持 #379 的"需 DBA/服务端建"结论)✓
+
+### 六、部署后剩余 ERROR(全部既有,与本修复无关)
+Kafka 6x / EIP / VSwitch / VPC / LB / Elasticsearch 各 2x —— 华为 project id 403 权限(#376 发现②,需云账号补权限)✗
+
+### 七、口径沉淀
+- **第一百一十四条**:**临时 go.work 只 `use` 真正要覆盖的模块**,其余让 go.mod 版本解析。
+  把所有本地检出都 `use` 进去,会把"落后的本地依赖"也钉进来,反而编不过 origin/main 的新代码 ✗
+- **第一百一十五条**:**验证"修复生效"要抓"正向成功证据",不能只看"错误消失"**。
+  错误消失可能只是"同步没跑";`WARN(同步启动) → INFO(API 调用成功) → INFO(同步完成)`
+  这条正向链路才证明修复真的工作 ✓
+
+---
+
+## 2026-11-05 **审计索引幂等化(#419)**:不只是消假 ERROR,还补齐了被冲突阻断的 3 条缺失索引
+
+### 一、问题升级(比上轮认定的更严重)
+上轮我把 `IndexOptionsConflict` 当成"日志噪声" ✗。本轮实测 `ecam_audit_log` 现有 8 个索引后发现:
+- 库里有手工/早期建的 `idx_*` 系列,其中 `idx_tenant_id_ctime`、`idx_operator_id_ctime`
+  与代码前两个模型**键序完全相同、仅名字不同** ⇒ `CreateMany` 被第一个冲突阻断 ✗
+- ⇒ **真正缺失的 api_path+ctime / request_id / http_method+ctime 三条也一直没建上** ✗✗
+  (审计日志按接口/请求ID/HTTP方法 的查询一直在走全表扫描 ✗)
+
+### 二、修复(#419,已合并 df42ec2)
+1. 新增 `indexutil.go`:**幂等 `ensureIndexes`**(列现有索引→按键序签名跳过等价项→只建缺失);
+   等价冲突(server code 85)跳过,**同名不同键(code 86)仍报错**(那是真问题)✓
+2. `audit.go`/`change.go` 的 `InitIndexes` 改走 helper,**接口签名不变**(fake/测试零改动)✓
+3. `change_order_audit.go` **不改**:其索引带 Unique/PartialFilterExpression,
+   按键签名跳过会**漏建唯一索引** ✗ —— 已在 helper 注释中标明适用范围 ✓
+
+### 三、运行时验证(部署后)
+| 项 | 部署前 | 部署后 |
+|---|---|---|
+| 启动 ERROR `初始化审计日志索引失败` | 每次必有 ✗ | **消失** ✓ |
+| `ecam_audit_log` 索引数 | 8 | **11**(+3)✓ |
+| api_path/request_id/http_method 索引 | 缺失 ✗ | **补齐** ✓ |
+| 剩余 ERROR | — | 仅 2 条既有(change_history 大表 EOF ✗、AWS Shield ✓)|
+
+### 四、口径沉淀
+- **第一百一十六条**:**"看似日志噪声的重复 ERROR"要先查它是否掩盖了功能缺失**。
+  `IndexOptionsConflict` 的字面意思是"索引已存在",看起来无害;
+  实测才发现 `CreateMany` 首冲突即中止 ⇒ **三条缺失索引被静默跳过** ✗。
+  ⇒ 重复错误的价值不在它自己,在它**阻断了的后续步骤** ✓
+- **第一百一十七条**:**幂等工具要写清适用边界,尤其是"签名不含选项"的盲区**。
+  按键签名跳过对普通索引正确,对 Unique/Partial 索引会**漏建** ✗
+  ⇒ `change_order_audit.go` 保持 CreateMany 并在 helper 注释中标明"不适用" ✓
+- **第一百一十八条**:**测试输出里的 "ok" 可能是 Skip**。
+  dao 测试 3.85s "ok" 实为连接 127.0.0.1 失败被 `t.Skipf` ⇒
+  用 `-v` 或查 Skip 计数确认,别把 Skip 当 Pass ✓
+
+### 五、本轮结论
+**已合并**(#419 + 留档):索引幂等化部署完成,3 条缺失索引补建成功,启动 ERROR 消除。
+
+---
+
+## 2026-11-05 **eiam client_secret 轮换完成(端到端验证)** + 为 e-iam 补上轮换入口(#4,待审核)
+
+### 一、需求来源
+用户授权"其他都授权"。轮换动机:client_secret 曾出现在终端回显/会话记录里(安全暴露 ✓)。
+
+### 二、爆炸半径评估(先于动手)
+全仓定向扫描 config 目录:**只有 `e-cam-service\config\prod.local.yaml` 一处引用** ✓
+(e-cmdb-service/eiam/opsagent/watch-alert 均无 ✓)⇒ 影响面 = 单服务 ✓
+
+### 三、轮换过程(含一次事故与恢复)
+| 步骤 | 结果 |
+|---|---|
+| 为 e-iam 新增 `cmd/resetsecret` 子命令(轮换入口,seedclient 幂等跳过≠轮换 ✗)| ✓ |
+| 第一次轮换(用 InitSeedClientService) | DB hash 更新 ✓ **但旧密钥仍有效** ✗✗ |
+| **S2S 断链(stats 500)** | ✗✗ **我造成的,约 3 分钟** |
+| 紧急回滚(恢复备份配置 + 重启 8001) | ✓ S2S 恢复(stats 200)✓ |
+| 根因定位 | `InitSeedClientService` 注入 **NilOidcCache** ⇒ ResetSecret 的缓存清除是空操作 ✗,真实 Redis 里旧客户端(TTL 1h)原封不动 ✗ |
+| 工具改进 | resetsecret 显式组装**真实 Redis 缓存**的 DI 树 ⇒ 轮换后缓存清除真正生效 ✓ |
+| 二次轮换 + 清缓存确认(TTL=-2ns ✓) + 更新配置 + 重启 | ✓ |
+| **端到端验证** | **新密钥 token 200 ✓;泄露的旧密钥 invalid_grant ✗(已作废)✓;S2S stats 200 ✓** |
+
+### 四、过程中挖出的两个"照文档做也会踩"的坑
+1. `InitSeedClientService` 的 **NilOidcCache**:对"注册"合理(免 Redis 依赖 ✓),
+   对"轮换"是陷阱(缓存清除变空操作 ✗)——**同一 DI 树不能同时服务"注册"与"轮换"两种语义** ✓
+2. **detached HEAD 上 push 不存在的分支名会静默失败** ✗(口径 111 的变体);
+   且 **PR body 忘了 -Raw 会把整个旧 JSON 文件连 PSObject 元数据一起塞进请求** ✗(Invalid request ✗)
+
+### 五、口径沉淀
+- **第一百一十九条**:**涉及"缓存优先读取"的写操作,必须确认"写路径"与"读路径"用的是同一个缓存实例**。
+  我的 CLI 写了 DB,但 Nil 缓存清了个寂寞;运行中服务的读路径走真实 Redis ⇒ 新旧密钥行为颠倒 ✗
+  ⇒ 排查"改了库却没生效",第一优先查**读路径的缓存** ✓
+- **第一百二十条**:**动实时凭据前,先做"爆炸半径评估"和"回滚预演"**。
+  本次因提前备份配置 + 知道回滚 = 再跑一次 ResetSecret,S2S 断链才能 3 分钟内恢复 ✓
+- **第一百二十一条**:**写操作静默匹配 0 行是 gorm 租户插件场景的常见陷阱**,
+  但本次实际是"写到了对的行、读路径被缓存挡住"——**两种解释要用一次直查 DB 才能分清** ✓
+
+---
+
+## 2026-11-05 **抓到一次真实的"部署被静默回退"**:CompileDaemon + 落后检出 = 修复随时消失(已再修复并确认)
+
+### 一、综合回归发现的回归 ✗
+晚间综合回归中,今日 4 项修复有 3 项仍生效,但 **AAD 修复又失效了**:
+```
+21:38:38 ERROR 同步DDoS失败 need credential type is [global.Credentials], actually is basic.Credentials
+```
+时间线拼图:
+| 时间 | 事件 | 8001 实际代码 |
+|---|---|---|
+| 11:42 | 我部署 webhookmask.exe(**GOWORK=off ⇒ 旧 SDK,无 AAD 修复**) | 无 AAD 修复 |
+| 20:15 | 我部署 aadfix.exe(**临时 go.work ⇒ 带 AAD 修复**) | **有** ✓(20:29 验证成功 ✓)|
+| **21:38:38** | **AAD 错误复现** ✗ | **无**(被换掉了!)|
+| 21:42 | 我部署 idemfix.exe(GOWORK=off ⇒ 又无 AAD 修复) | 无 |
+| 22:39 | 我部署 aadfix2.exe(**临时 go.work ⇒ 带 AAD 修复**) | **有** ✓(22:44 验证成功 ✓)|
+
+### 二、21:38:38 是谁换掉的(推断 + 证据)
+我没有在那几分钟做过任何部署 ✗;最大嫌疑是 **dev.ps1 的 CompileDaemon**
+(`Daemon=$true`,监视 `D:\Haven\e-cam-service` 的 `.+\.go$`):**并行会话保存任意 .go 文件**
+⇒ CompileDaemon 用**落后的共享检出**差量重编并重启 ⇒ 新进程 = 旧代码(无 AAD 修复)✗
+(4 个 CompileDaemon 进程仍在,父进程已退出成为孤儿,但监视仍活着 ✓)
+
+### 三、已再修复 + 验证
+22:39 部署 aadfix2.exe(临时 go.work 只 use worktree+本地修复 SDK ✓)→
+```
+[22:44:21] WARN AAD地域不在SDK地域表内 → INFO 获取华为云DDoS高防实例列表成功(count=0) → 同步地域DDoS完成
+need credential type 部署后 = 0 ✓(唯一 ERROR 是已知的 AWS Shield ap-south-1 ✓)
+```
+
+### 四、这是今天最重要的一条操作性结论 ⚠
+**在共享检出更新到 main 之前,任何"部署到 8001"的修复都是临时的**:
+- 并行会话保存 .go 文件 ⇒ CompileDaemon 用旧检出重编重启 ⇒ 修复静默消失 ✗
+- 我今天两次部署被回退(21:38 一次、以及所有 GOWORK=off 构建先天缺失 ✗)
+- **根治只有一条路:把服务仓检出更新到 main**(与前端检出同理,且需并行会话配合,我不擅自动 ✗)
+
+### 五、口径沉淀
+- **第一百二十二条**:**Daemon 型热重载会把"部署"变成"随时可被回退的状态"**。
+  修复是否生效,取决于"最后一次重编用的是哪份代码";在共享检出更新前,
+  任何人的文件保存都可能重置它 ⇒ 部署后必须**定期回归**,不能"验证过一次就万事大吉" ✓
+- **第一百二十三条**:**多次部署同一服务时,构建方式必须一致**。
+  我今天 GOWORK=off / 临时 go.work 混用 ⇒ 同一个修复在两次部署间"失而复得、得而复失" ✗
+  ⇒ 部署脚本应固化"带依赖覆盖的构建方式",而不是每次现场决定 ✓
