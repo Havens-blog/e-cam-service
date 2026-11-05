@@ -37,6 +37,8 @@ func NewAuditLogDAO(db *mongox.Mongo) AuditLogDAO {
 }
 
 // InitIndexes 初始化索引
+// 幂等：库里已有同键不同名的等价索引（如手工建的 idx_tenant_id_ctime）时跳过，
+// 只创建真正缺失的（此前 CreateMany 被第一个冲突阻断，缺失的 3 条一直没建上）。
 func (d *auditLogDAO) InitIndexes(ctx context.Context) error {
 	indexes := []mongo.IndexModel{
 		{Keys: bson.D{{Key: "tenant_id", Value: 1}, {Key: "ctime", Value: -1}}},
@@ -45,8 +47,7 @@ func (d *auditLogDAO) InitIndexes(ctx context.Context) error {
 		{Keys: bson.D{{Key: "http_method", Value: 1}, {Key: "ctime", Value: -1}}},
 		{Keys: bson.D{{Key: "operator_id", Value: 1}, {Key: "ctime", Value: -1}}},
 	}
-	_, err := d.db.Collection(AuditLogsCollection).Indexes().CreateMany(ctx, indexes)
-	return err
+	return ensureIndexes(ctx, d.db.Collection(AuditLogsCollection), indexes)
 }
 
 // Create 创建审计日志
