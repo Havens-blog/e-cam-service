@@ -28,10 +28,13 @@ type ChangeFilter struct {
 	ModelUID  string `json:"model_uid"`
 	Provider  string `json:"provider"`
 	FieldName string `json:"field_name"`
-	StartTime *int64 `json:"start_time"`
-	EndTime   *int64 `json:"end_time"`
-	Offset    int64  `json:"offset"`
-	Limit     int64  `json:"limit"`
+	// ChangeSource 变更来源（manual=手工 / sync_task=云同步），精确匹配。
+	// ecam_change_history 已有 change_source 单字段索引，等值过滤安全。
+	ChangeSource string `json:"change_source"`
+	StartTime    *int64 `json:"start_time"`
+	EndTime      *int64 `json:"end_time"`
+	Offset       int64  `json:"offset"`
+	Limit        int64  `json:"limit"`
 }
 
 // ChangeSummary 变更统计汇总

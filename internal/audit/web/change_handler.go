@@ -27,6 +27,8 @@ func NewChangeHandler(tracker *service.ChangeTracker, logger *elog.Component) *C
 // @Param X-Tenant-ID header string true "租户ID"
 // @Param asset_id query string false "资产ID（可选；缺省时按租户统计全部资产变更）"
 // @Param field_name query string false "变更字段名"
+// @Param model_uid query string false "模型UID（精确匹配）"
+// @Param change_source query string false "变更来源（manual=手工 / sync_task=云同步，精确匹配）"
 // @Param start_time query int false "开始时间(Unix毫秒)"
 // @Param end_time query int false "结束时间(Unix毫秒)"
 // @Param offset query int false "偏移量"
@@ -41,11 +43,13 @@ func (h *ChangeHandler) ListAssetChanges(c *gin.Context) {
 	assetID := c.Query("asset_id")
 
 	filter := domain.ChangeFilter{
-		AssetID:   assetID,
-		TenantID:  tenantID,
-		FieldName: c.Query("field_name"),
-		Offset:    parseIntDefault(c.Query("offset"), 0),
-		Limit:     paging.ClampInt64(parseIntDefault(c.Query("limit"), 20)),
+		AssetID:      assetID,
+		TenantID:     tenantID,
+		FieldName:    c.Query("field_name"),
+		ModelUID:     c.Query("model_uid"),
+		ChangeSource: c.Query("change_source"),
+		Offset:       parseIntDefault(c.Query("offset"), 0),
+		Limit:        paging.ClampInt64(parseIntDefault(c.Query("limit"), 20)),
 	}
 	if st := c.Query("start_time"); st != "" {
 		v := parseIntDefault(st, 0)
