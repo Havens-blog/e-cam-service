@@ -16723,3 +16723,57 @@ e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓
 
 - 统一页全量 E2E：后端部署阻塞（本轮带会话探测复核仍 404）。
 - 菜单入口：待与并行会话协调（eiam 控制台菜单系统）。
+
+---
+
+## cam-healthcheck-20261106（只读健康核查：部署管道断裂 = 统一页 E2E 阻塞根因）
+
+**状态**：只读核查轮（无代码改动）。候选需求全部处于阻塞/待协调/待产品确认状态，按节流规则输出健康报告。
+
+### 一、重大发现：部署管道断裂（仓库级，非代码可修）
+
+三个仓库 main 的 push-CI **全部失败在同一个步骤**（Test/Build/Vitest 全绿，仅部署步红）：
+
+| 仓库 | main | 失败 job | 失败步骤 |
+|---|---|---|---|
+| e-cam-web | `332266a` | Build & Deploy | **Login to Aliyun Registry** |
+| e-cam-service | `a94aecc` | Build & Deploy | **Login to Aliyun Registry** |
+| e-iam | `3f062ec` | build | **Login into registry** |
+
+**这就是统一页 E2E 阻塞的根因链**：registry 登录失败 → 镜像不发布 → 部署物停在旧二进制
+（:8001 = aadfix2，早于 #421）→ `/audit/events` 等新端点不上线 → 全量 E2E 无法执行。
+**需要用户侧处理**（Aliyun Registry 凭据缺失/过期/配置不匹配 —— 与此前 #421 时发现的
+Docker Secrets 缺失同类，但现在波及全部仓库的部署）。
+
+### 二、各仓库健康明细
+
+| 仓库 | main | 代码 CI | open PR |
+|---|---|---|---|
+| e-common-go | `7b4f2bf` | — | 0 |
+| e-cam-web | `332266a` | Test/Vitest/Typecheck ✅（仅部署步红）| 0 |
+| e-cam-service | `a94aecc` | Test ✅ Build×5 ✅（仅部署步红）| 0 |
+| e-iam | `3f062ec` | build/-race/生成链/gofmt ✅（仅部署步红）| #4（并行会话 resetsecret，CI 四项全绿，由其自行合并）|
+
+### 三、CAM 关键页面回归扫描（:3338 + :8001，1440 视口）
+
+| 页面 | JS 异常 | 4xx/5xx | 结论 |
+|---|---|---|---|
+| /cam/dashboard | 0 | 0 | ✅ |
+| /cam/assets | 0 | 0 | ✅ |
+| /cam/audit/logs | 0 | 0 | ✅ |
+| /cam/audit/changes | 0 | 0 | ✅（汇总态）|
+| /cam/tasks | 0 | 0 | ✅ |
+| /cam/audit/events | 0 | 404（已知：旧后端无该端点）| 错误态符合设计 |
+
+**本会话大量合并（前端 3 个 PR + 后端 3 个 PR + e-iam 1 个 PR）无回归。**
+
+### 四、候选需求清单（下一轮可选）
+
+| 候选 | 状态 |
+|---|---|
+| 统一页全量 E2E | **阻塞于部署管道修复**（用户侧）|
+| 跨服务联邦查询 | 等待产品决策（S2S 联邦 vs 前端双源聚合）|
+| e-iam 统一事件读侧端点 | 技术 wire-free 可行，但联邦设计未定前无消费者（挂起）|
+| 统一页菜单入口 | 待与并行会话协调（eiam 控制台菜单系统）|
+| 旧页退役 | 待统一页真实数据运行稳定后 |
+| IAM 服务筛选项标注「联邦待接入」 | 可选小改进（诚实 UX）|
