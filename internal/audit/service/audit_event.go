@@ -26,7 +26,7 @@ func NewAuditEventService(eventDAO dao.AuditEventDAO, logger *elog.Component) *A
 // ListEvents 跨域查询统一审计事件。
 // 租户隔离在 filter 上强制：TenantID 由 handler 从登录上下文注入，
 // 服务层不接受调用方自报租户（防跨租户拉取他人审计）。
-func (s *AuditEventService) ListEvents(ctx context.Context, filter dao.AuditEventFilter) ([]auditlog.AuditEvent, int64, error) {
+func (s *AuditEventService) ListEvents(ctx context.Context, filter *dao.AuditEventFilter) ([]auditlog.AuditEvent, int64, error) {
 	events, err := s.dao.List(ctx, filter)
 	if err != nil {
 		return nil, 0, fmt.Errorf("查询统一审计事件失败: %w", err)

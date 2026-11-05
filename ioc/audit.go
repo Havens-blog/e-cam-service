@@ -56,16 +56,17 @@ func (s auditDAOSink) Write(ctx context.Context, e middleware.AuditEntry) error 
 type unifiedAuditSink struct {
 	legacy   middleware.AuditSink
 	writer   auditlog.Writer
-	renderAs func(e middleware.AuditEntry) auditlog.AuditEvent
+	renderAs func(e *middleware.AuditEntry) auditlog.AuditEvent
 }
 
+//nolint:gocritic // 接口签名约束：AuditSink.Write 按值传递（shared 叶子包契约），结构体体积由接口定义方权衡
 func (s unifiedAuditSink) Write(ctx context.Context, e middleware.AuditEntry) error {
 	// 1) 旧存储：失败即返回（中间件已异步记日志，不阻塞业务）。
 	if err := s.legacy.Write(ctx, e); err != nil {
 		return err
 	}
 	// 2) 统一事件：翻译/写入失败同样仅被中间件记日志（审计是旁路）。
-	ue := s.renderAs(e)
+	ue := s.renderAs(&e)
 	return s.writer.Emit(ctx, &ue)
 }
 
@@ -75,7 +76,7 @@ func (s unifiedAuditSink) Write(ctx context.Context, e middleware.AuditEntry) er
 //   - Action 从 HTTP method 派生（与 OperationType 尾段语义一致）；
 //   - 旧字段 http_method/api_path/request_body/request_id/operation_type
 //     收进 Detail（统一 envelope 不为 API 级审计单开列）。
-func renderAuditEntryToEvent(e middleware.AuditEntry) auditlog.AuditEvent {
+func renderAuditEntryToEvent(e *middleware.AuditEntry) auditlog.AuditEvent {
 	return auditlog.AuditEvent{
 		ActorType:    auditlog.ActorTypeHuman,
 		ActorID:      e.OperatorID,
@@ -103,7 +104,7 @@ func renderAuditEntryToEvent(e middleware.AuditEntry) auditlog.AuditEvent {
 }
 
 // actionFromHTTPMethod 与 shared/middleware.actionOf 的 method 派生保持同口径
-//（sync 尾段特判已体现在 OperationType，统一 Action 层用粗粒度四类）。
+// （sync 尾段特判已体现在 OperationType，统一 Action 层用粗粒度四类。）
 func actionFromHTTPMethod(method string) string {
 	switch method {
 	case "POST":

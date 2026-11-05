@@ -71,7 +71,7 @@ func (h *AuditEventHandler) ListEvents(c *gin.Context) {
 		filter.EndTime = &v
 	}
 
-	events, total, err := h.eventSvc.ListEvents(c.Request.Context(), filter)
+	events, total, err := h.eventSvc.ListEvents(c.Request.Context(), &filter)
 	if err != nil {
 		c.JSON(500, gin.H{"code": 500, "msg": err.Error()})
 		return

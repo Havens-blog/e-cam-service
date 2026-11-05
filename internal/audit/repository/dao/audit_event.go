@@ -36,8 +36,8 @@ type AuditEventFilter struct {
 // 读侧只暴露 List/Count；写侧由 e-common-go/auditlog 的 MongoWriter 承担
 //（append-only，无 update/delete 路径）。
 type AuditEventDAO interface {
-	List(ctx context.Context, filter AuditEventFilter) ([]auditlog.AuditEvent, error)
-	Count(ctx context.Context, filter AuditEventFilter) (int64, error)
+	List(ctx context.Context, filter *AuditEventFilter) ([]auditlog.AuditEvent, error)
+	Count(ctx context.Context, filter *AuditEventFilter) (int64, error)
 	InitIndexes(ctx context.Context) error
 }
 
@@ -57,7 +57,7 @@ func (d *auditEventDAO) InitIndexes(ctx context.Context) error {
 }
 
 // List 查询统一审计事件（按 at 倒序，asc 显式指定时升序）。
-func (d *auditEventDAO) List(ctx context.Context, filter AuditEventFilter) ([]auditlog.AuditEvent, error) {
+func (d *auditEventDAO) List(ctx context.Context, filter *AuditEventFilter) ([]auditlog.AuditEvent, error) {
 	query := buildAuditEventQuery(filter)
 	opts := options.Find().SetSort(buildAuditEventSort(filter))
 	if filter.Limit > 0 {
@@ -79,14 +79,14 @@ func (d *auditEventDAO) List(ctx context.Context, filter AuditEventFilter) ([]au
 }
 
 // Count 统一审计事件计数。
-func (d *auditEventDAO) Count(ctx context.Context, filter AuditEventFilter) (int64, error) {
+func (d *auditEventDAO) Count(ctx context.Context, filter *AuditEventFilter) (int64, error) {
 	return d.db.Collection(AuditEventsCollection).CountDocuments(ctx, buildAuditEventQuery(filter))
 }
 
 // buildAuditEventQuery 构建查询条件。
 // 过滤字段名与 auditlog.AuditEvent 的 bson 标签保持一致（写入/读取同源，
 // 避免手写字符串键与 SDK 漂移）。
-func buildAuditEventQuery(filter AuditEventFilter) bson.M {
+func buildAuditEventQuery(filter *AuditEventFilter) bson.M {
 	query := bson.M{}
 	if filter.TenantID != 0 {
 		query["tenant_id"] = filter.TenantID
@@ -128,7 +128,7 @@ func buildAuditEventQuery(filter AuditEventFilter) bson.M {
 
 // buildAuditEventSort 有序 bson.D 排序（驱动对多键 bson.M 会报
 // "multi-key map passed in for ordered parameter sort"）。
-func buildAuditEventSort(filter AuditEventFilter) bson.D {
+func buildAuditEventSort(filter *AuditEventFilter) bson.D {
 	dir := -1
 	if filter.Order == "asc" {
 		dir = 1

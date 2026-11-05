@@ -19,17 +19,17 @@ import (
 
 // fakeEventDAO 只捕获过滤器与返回桩数据（不连存储）。
 type fakeEventDAO struct {
-	captured dao.AuditEventFilter
+	captured *dao.AuditEventFilter
 	events   []auditlog.AuditEvent
 	total    int64
 }
 
-func (f *fakeEventDAO) List(_ context.Context, filter dao.AuditEventFilter) ([]auditlog.AuditEvent, error) {
+func (f *fakeEventDAO) List(_ context.Context, filter *dao.AuditEventFilter) ([]auditlog.AuditEvent, error) {
 	f.captured = filter
 	return f.events, nil
 }
 
-func (f *fakeEventDAO) Count(_ context.Context, filter dao.AuditEventFilter) (int64, error) {
+func (f *fakeEventDAO) Count(_ context.Context, filter *dao.AuditEventFilter) (int64, error) {
 	f.captured = filter
 	return f.total, nil
 }
@@ -95,7 +95,7 @@ func TestAuditEventHandler_ListEvents(t *testing.T) {
 		fake := &fakeEventDAO{total: 0}
 		r := newEventsTestRouter(t, fake)
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/cam/audit/events?limit=999999", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/cam/audit/events?limit=999999", http.NoBody)
 		r.ServeHTTP(w, req)
 		require.Equal(t, http.StatusOK, w.Code)
 		assert.Equal(t, int64(1000), fake.captured.Limit, "单页上限与 audit/logs 同口径（防大查询放大内存带宽）")
@@ -105,7 +105,7 @@ func TestAuditEventHandler_ListEvents(t *testing.T) {
 		fake := &fakeEventDAO{total: 0}
 		r := newEventsTestRouter(t, fake)
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/cam/audit/events?tenant_id=999", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/cam/audit/events?tenant_id=999", http.NoBody)
 		r.ServeHTTP(w, req)
 		require.Equal(t, http.StatusOK, w.Code)
 		assert.Equal(t, int64(3), fake.captured.TenantID, "tenant_id 查询参数必须被忽略")
@@ -115,7 +115,7 @@ func TestAuditEventHandler_ListEvents(t *testing.T) {
 		fake := &fakeEventDAO{events: []auditlog.AuditEvent{stub}, total: 1}
 		r := newEventsTestRouter(t, fake)
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/cam/audit/events", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/cam/audit/events", http.NoBody)
 		r.ServeHTTP(w, req)
 
 		var body struct {

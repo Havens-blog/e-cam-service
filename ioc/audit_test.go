@@ -31,7 +31,7 @@ func TestRenderAuditEntryToEvent(t *testing.T) {
 		Ctime:         1700000000000,
 	}
 
-	e := renderAuditEntryToEvent(entry)
+	e := renderAuditEntryToEvent(&entry)
 
 	// 骨架字段逐项断言（统一 envelope 的映射契约）
 	assert.Equal(t, auditlog.ActorTypeHuman, e.ActorType)
