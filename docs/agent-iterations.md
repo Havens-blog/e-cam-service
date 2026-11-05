@@ -16237,3 +16237,44 @@ Kafka 6x / EIP / VSwitch / VPC / LB / Elasticsearch 各 2x —— 华为 project
 - **第一百一十五条**:**验证"修复生效"要抓"正向成功证据",不能只看"错误消失"**。
   错误消失可能只是"同步没跑";`WARN(同步启动) → INFO(API 调用成功) → INFO(同步完成)`
   这条正向链路才证明修复真的工作 ✓
+
+---
+
+## 2026-11-05 **审计索引幂等化(#419)**:不只是消假 ERROR,还补齐了被冲突阻断的 3 条缺失索引
+
+### 一、问题升级(比上轮认定的更严重)
+上轮我把 `IndexOptionsConflict` 当成"日志噪声" ✗。本轮实测 `ecam_audit_log` 现有 8 个索引后发现:
+- 库里有手工/早期建的 `idx_*` 系列,其中 `idx_tenant_id_ctime`、`idx_operator_id_ctime`
+  与代码前两个模型**键序完全相同、仅名字不同** ⇒ `CreateMany` 被第一个冲突阻断 ✗
+- ⇒ **真正缺失的 api_path+ctime / request_id / http_method+ctime 三条也一直没建上** ✗✗
+  (审计日志按接口/请求ID/HTTP方法 的查询一直在走全表扫描 ✗)
+
+### 二、修复(#419,已合并 df42ec2)
+1. 新增 `indexutil.go`:**幂等 `ensureIndexes`**(列现有索引→按键序签名跳过等价项→只建缺失);
+   等价冲突(server code 85)跳过,**同名不同键(code 86)仍报错**(那是真问题)✓
+2. `audit.go`/`change.go` 的 `InitIndexes` 改走 helper,**接口签名不变**(fake/测试零改动)✓
+3. `change_order_audit.go` **不改**:其索引带 Unique/PartialFilterExpression,
+   按键签名跳过会**漏建唯一索引** ✗ —— 已在 helper 注释中标明适用范围 ✓
+
+### 三、运行时验证(部署后)
+| 项 | 部署前 | 部署后 |
+|---|---|---|
+| 启动 ERROR `初始化审计日志索引失败` | 每次必有 ✗ | **消失** ✓ |
+| `ecam_audit_log` 索引数 | 8 | **11**(+3)✓ |
+| api_path/request_id/http_method 索引 | 缺失 ✗ | **补齐** ✓ |
+| 剩余 ERROR | — | 仅 2 条既有(change_history 大表 EOF ✗、AWS Shield ✓)|
+
+### 四、口径沉淀
+- **第一百一十六条**:**"看似日志噪声的重复 ERROR"要先查它是否掩盖了功能缺失**。
+  `IndexOptionsConflict` 的字面意思是"索引已存在",看起来无害;
+  实测才发现 `CreateMany` 首冲突即中止 ⇒ **三条缺失索引被静默跳过** ✗。
+  ⇒ 重复错误的价值不在它自己,在它**阻断了的后续步骤** ✓
+- **第一百一十七条**:**幂等工具要写清适用边界,尤其是"签名不含选项"的盲区**。
+  按键签名跳过对普通索引正确,对 Unique/Partial 索引会**漏建** ✗
+  ⇒ `change_order_audit.go` 保持 CreateMany 并在 helper 注释中标明"不适用" ✓
+- **第一百一十八条**:**测试输出里的 "ok" 可能是 Skip**。
+  dao 测试 3.85s "ok" 实为连接 127.0.0.1 失败被 `t.Skipf` ⇒
+  用 `-v` 或查 Skip 计数确认,别把 Skip 当 Pass ✓
+
+### 五、本轮结论
+**已合并**(#419 + 留档):索引幂等化部署完成,3 条缺失索引补建成功,启动 ERROR 消除。
