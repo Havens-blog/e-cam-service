@@ -9,9 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Havens-blog/e-common-go/auditlog"
+	"github.com/gotomicro/ego/core/elog"
+
 	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
 	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // 默认忽略字段（每次同步都会变化的瞬态字段）
@@ -61,6 +63,9 @@ type ChangeTracker struct {
 	logger       *elog.Component
 	ignoreFields map[string]bool
 
+	// events 统一审计事件写入端口（旁路双写：写失败仅记日志，不影响旧存储主链路）。
+	events auditlog.Writer
+
 	// countCache 缓存 Count 结果，避免 540 万行全表 count 在每次翻页/首屏重复执行。
 	// key 由 filter 的关键维度拼成（tenant + asset + field + 时间区间），
 	// 保证不同筛选条件互不污染。
@@ -69,10 +74,11 @@ type ChangeTracker struct {
 }
 
 // NewChangeTracker 创建变更追踪器
-func NewChangeTracker(dao dao.ChangeRecordDAO, logger *elog.Component) *ChangeTracker {
+func NewChangeTracker(dao dao.ChangeRecordDAO, logger *elog.Component, events auditlog.Writer) *ChangeTracker {
 	return &ChangeTracker{
 		dao:          dao,
 		logger:       logger,
+		events:       events,
 		ignoreFields: defaultIgnoreFields,
 		countCache:   make(map[string]changeCountCacheItem),
 	}
@@ -224,11 +230,98 @@ func (t *ChangeTracker) TrackChanges(ctx context.Context, meta domain.ChangeMeta
 		return 0, fmt.Errorf("记录资产变更失败: %w", err)
 	}
 
+	// 统一审计事件旁路双写：变更记录以统一 envelope 进 audit_events 集合。
+	// 失败仅记日志——统一事件是增量能力，绝不影响旧存储主链路。
+	t.emitChangeEvents(ctx, records)
+
 	t.logger.Debug("记录资产变更",
 		elog.String("asset_id", meta.AssetID),
 		elog.Int("changes", len(records)),
 	)
 	return len(records), nil
+}
+
+// changeSourceManual 手工变更来源标识（旧存储以字符串区分变更来源）。
+const changeSourceManual = "manual"
+
+// toChangeEventFromRecord 把单条字段级变更记录映射为统一审计事件（纯函数，表驱动测试）。
+//
+// 口径：Domain=change；Action 按字段增删改派生（旧空=create、新空=delete、否则=update）；
+// ActorType 按变更来源（manual=human / 其他=system）；ChangeRecord 旧存储未记录操作者，
+// manual 场景 ActorID 如实标 unknown（缺陷随统一事件 Detail 的 change_source 可追溯）。
+// 参数用指针：ChangeRecord 约 208 字节，按值传递被 gocritic hugeParam 判违规。
+func toChangeEventFromRecord(r *domain.ChangeRecord) auditlog.AuditEvent {
+	action := "update"
+	switch {
+	case r.OldValue == "":
+		action = "create"
+	case r.NewValue == "":
+		action = "delete"
+	}
+	actorType := auditlog.ActorTypeSystem
+	actorID := "e-cam-service"
+	if r.ChangeSource == changeSourceManual {
+		actorType = auditlog.ActorTypeHuman
+		actorID = "unknown"
+	}
+	if r.ChangeTaskID != "" {
+		actorID = r.ChangeTaskID
+	}
+	return auditlog.AuditEvent{
+		ActorType:    actorType,
+		ActorID:      actorID,
+		At:           r.Ctime,
+		TenantID:     r.TenantID,
+		Service:      auditlog.ServiceCAM,
+		Domain:       auditlog.DomainChange,
+		Action:       action,
+		ResourceType: r.ModelUID,
+		ResourceID:   r.AssetID,
+		ResourceURN:  "urn:cam:asset:" + r.ModelUID + ":" + r.AssetID,
+		Result:       auditlog.ResultSuccess,
+		Detail: map[string]any{
+			"field_name":     r.FieldName,
+			"old_value":      r.OldValue,
+			"new_value":      r.NewValue,
+			"asset_name":     r.AssetName,
+			"provider":       r.Provider,
+			"region":         r.Region,
+			"account_id":     r.AccountID,
+			"change_source":  r.ChangeSource,
+			"change_task_id": r.ChangeTaskID,
+		},
+	}
+}
+
+// emitChangeEvents 批量旁路写统一事件：逐条 Validate（骨架不完整跳过）+ Sanitize
+// （值可能含敏感配置片段）后 Emit；失败仅记日志。
+func (t *ChangeTracker) emitChangeEvents(ctx context.Context, records []domain.ChangeRecord) {
+	if t.events == nil || len(records) == 0 {
+		return
+	}
+	events := make([]*auditlog.AuditEvent, 0, len(records))
+	for i := range records {
+		ev := toChangeEventFromRecord(&records[i])
+		if err := ev.Validate(); err != nil {
+			t.logger.Warn("统一变更事件骨架校验失败，跳过",
+				elog.FieldErr(err),
+				elog.String("asset_id", records[i].AssetID),
+				elog.String("field_name", records[i].FieldName),
+			)
+			continue
+		}
+		ev.Sanitize()
+		events = append(events, &ev)
+	}
+	if len(events) == 0 {
+		return
+	}
+	if err := t.events.Emit(ctx, events...); err != nil {
+		t.logger.Warn("统一变更事件写入失败（不影响旧存储）",
+			elog.FieldErr(err),
+			elog.Int("events", len(events)),
+		)
+	}
 }
 
 // ListByAssetID 查询资产变更历史

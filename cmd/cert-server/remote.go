@@ -25,6 +25,12 @@ import (
 	"strconv"
 	"strings"
 
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
+	"github.com/Havens-blog/e-common-go/auditlog"
+	"github.com/Havens-blog/e-common-go/mongox"
+	"github.com/gotomicro/ego/core/elog"
+	"github.com/spf13/viper"
+
 	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
 	accountdao "github.com/Havens-blog/e-cam-service/internal/account/repository/dao"
 	assetrepo "github.com/Havens-blog/e-cam-service/internal/asset/repository"
@@ -32,10 +38,6 @@ import (
 	auditdao "github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
 	auditservice "github.com/Havens-blog/e-cam-service/internal/audit/service"
 	certservice "github.com/Havens-blog/e-cam-service/internal/cert/service"
-	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
-	"github.com/Havens-blog/e-common-go/mongox"
-	"github.com/gotomicro/ego/core/elog"
-	"github.com/spf13/viper"
 )
 
 // defaultRemoteTimeout 远程上游调用超时（覆盖率分母等只读查询，不宜长阻塞）。
@@ -391,5 +393,5 @@ func selectAuditStore(db *mongox.Mongo, logger *elog.Component) (certservice.Cha
 	if err := auditDAO.InitIndexes(context.Background()); err != nil {
 		logger.Error("cert-server: 审计索引初始化失败（仅告警，不阻断启动）", elog.FieldErr(err))
 	}
-	return localAuditStore{svc: auditservice.NewChangeOrderAuditService(auditDAO, logger)}, nil
+	return localAuditStore{svc: auditservice.NewChangeOrderAuditService(auditDAO, logger, auditlog.NewMongoWriter(db.Database()))}, nil
 }
