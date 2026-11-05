@@ -176,6 +176,11 @@ func (d *changeRecordDAO) buildQuery(filter domain.ChangeFilter) bson.M {
 	if filter.FieldName != "" {
 		query["field_name"] = filter.FieldName
 	}
+	// change_source 精确匹配。ecam_change_history 已有 change_source 单字段索引，
+	// 等值过滤走索引，不会重蹈 field_name 全表扫描超时的覆辙。
+	if filter.ChangeSource != "" {
+		query["change_source"] = filter.ChangeSource
+	}
 
 	timeQuery := bson.M{}
 	if filter.StartTime != nil {
