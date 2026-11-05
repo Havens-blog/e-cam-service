@@ -16115,3 +16115,34 @@ go get github.com/Havens-blog/e-cloudx-sdk@<#12 合并后 commit>
 - **第一百一十一条**:**detached HEAD 上 `git push -u origin <新分支名>` 会静默失败**。
   需先 `git checkout -b <branch>` 再 push;且 push 失败被 `| Out-Null` 吞掉时,
   要**用 `git ls-remote --heads` 回读确认**远端分支真的存在,别等 PR 创建失败才发现 ✗
+
+---
+
+## 2026-11-05 **SDK #12 已合并 + 本地 e-cloudx-sdk 已更新到修复**(AAD 修复接近闭环)
+
+### 一、做了什么(用户"其他都授权")
+1. **合并 SDK PR #12**(e-cloudx-sdk,华为 AAD 凭证修复)✓ —— merge sha `72613a1`
+2. **本地 e-cloudx-sdk 检出 fast-forward 到 `72613a1`** ✓ —— 因为 `go.work` 用 `./e-cloudx-sdk` 本地路径,
+   只有本地检出含修复,后续 service 构建才会真正用上
+3. 快进过程**未动并行会话的 2 个未提交文件**(`logquery/aliyun/mapper*.go`,与 ddos.go 修复无交集)✓
+
+### 二、为什么"接近闭环"而不是"已闭环"
+- e-cam-service 要真正用上修复,需**重建二进制**(编译时经 go.work 引用本地 SDK)✓
+- 但"用最新的 service 代码 + 修复后的本地 SDK"一起编译,需要临时 go.work 覆盖 ——
+  原 `D:\Haven\go.work` 的 `./e-cam-service` 指向**落后 470+ 的主检出** ✗,
+  若在主检出上直接 build 会用旧 service 代码;若在 worktree 上 build 又不被原 go.work 识别 ✗
+- 这是"共享检出落后 + go.work 本地路径"两件事叠加导致的**构建编排障碍** ✗,
+  不是修复本身的问题 ✓
+
+### 三、剩下的运行时闭环(下一步,低风险)
+1. 待服务仓**下一次自然重建/部署**(届时经 go.work 自动带上本地 SDK 修复)
+2. 或我下一轮用 `GOWORK=<临时go.work>` 显式指定「worktree + 本地 e-cloudx-sdk」重编一次,
+   再观察 DDoS 同步错误是否从 `need credential type is [global.Credentials]` 变为成功/其它错误
+
+### 四、口径沉淀
+- **第一百一十二条**:**`go.work` 用本地路径时,"合并了 SDK PR"不等于"服务会用上"**。
+  必须同时把**本地 SDK 检出**更新到含该 commit,否则下次构建用的还是旧 SDK ——
+  这就是"代码已合并/二进制未构建/进程未重启"三层缺口(口径 98)在**依赖层**的翻版 ✓
+- **第一百一十三条**:**共享检出落后 + go.work 本地路径,会让"构建最新代码"变成编排难题**。
+  主检出落后、worktree 又不在 go.work 里 ⇒ 要用 `GOWORK=<临时 go.work>` 显式组合,
+  或在主检出更新后再构建。这不是技术难点,是**状态管理**问题,应先厘清再动手 ✓
