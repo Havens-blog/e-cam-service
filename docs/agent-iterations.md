@@ -16191,3 +16191,49 @@ AuditLog/ChangeRecord/ChangeOrderAuditEntry + e-iam 的 OperationLog/AuthLog）�
 - 新集合 `audit_events` 独立于旧 4 个存储，旧链路不动，随时可回退；
 - SDK 无新外部依赖（复用 e-common-go 已有 mongo-driver）；
 - 弱类型 Detail 的强校验缺口由各域调用方在使用处补校验（后续可加 schema 注册机制）。
+
+---
+
+## 2026-11-05 **华为 AAD 修复运行时闭环完成**:同步从 100% 失败变为真实成功
+
+### 一、构建编排(上轮遗留问题的解法)
+- 建临时 `go.work`(**只含两项**:service worktree + 已修复的本地 e-cloudx-sdk)
+- **教训**:第一版临时 go.work 把 `e-common-go`/`eiam` 也钉在本地旧检出 ⇒ origin/main 的新 service 代码
+  引用新符号(`syncerpkg.Syncer`/`capability.PermissionProvider`)而本地旧检出没有 ⇒ 编译失败 ✗
+- 修正:**其余模块走 go.mod 的 module cache 版本**(那是 origin/main go.mod 钉好的兼容版本)✓
+- 构建:`GOWORK=<临时go.work> go build .` ⇒ `e-cam-service.aadfix.exe`(426.7MB)✓
+
+### 二、部署(按口径 101,无中断)
+停 8001(PID 17380)→ **轮询端口释放(True ✓)** → 起新二进制 → 8001 恢复 ✓ → health ok ✓
+
+### 三、运行时验证(判定性证据)
+**部署前基线**:每次同步周期必现 `同步DDoS失败 need credential type is [global.Credentials]`(最后一次 19:21:56)
+**部署后**:
+```
+[20:29:19] WARN  huawei/ddos.go:64 AAD地域不在SDK地域表内,回退到全局地域cn-north-4 {"region":"cn-north-1"}
+[20:29:19] INFO  获取华为云DDoS高防实例列表成功 {"region":"cn-north-1","count":0}
+[20:29:19] INFO  同步地域DDoS完成 {"region":"cn-north-1","synced":0,"deleted":0}
+```
+⇒ AAD 客户端**用 global 凭证构建成功** ✓ → **真实调用华为 AAD API 成功**(该账号 0 个高防实例)✓ → 同步干净完成 ✓
+⇒ `need credential type` 部署后 **0 次** ✓;华为 AAD 同步从 **100% 失败 → 成功** ✓✓
+
+### 四、验证方法论(为什么这个结论站得住)
+不是"部署后没看到错误"就下结论(口径 63:未观察到 ≠ 已生效),而是抓到**正向证据**:
+1. `AAD地域不在SDK地域表内` WARN 出现 ⇒ 证明华为 AAD 同步**真的跑了**(走到了客户端构建前)✓
+2. 紧随其后是 `获取华为云DDoS高防实例列表成功` ⇒ 客户端构建成功且**真实 API 调用成功** ✓
+3. 全程无 `need credential type` ✓
+**错误消失 + 正向成功证据**两面都成立,才算闭环 ✓
+
+### 五、顺带发现
+`cost_unified_bills 聚合优化索引创建完成` ✓ —— 说明**写操作并非全被掐断**,
+被掐的是 `ecam_change_history` 这张 5.4M 大表的长建索引 ✓(进一步支持 #379 的"需 DBA/服务端建"结论)✓
+
+### 六、部署后剩余 ERROR(全部既有,与本修复无关)
+Kafka 6x / EIP / VSwitch / VPC / LB / Elasticsearch 各 2x —— 华为 project id 403 权限(#376 发现②,需云账号补权限)✗
+
+### 七、口径沉淀
+- **第一百一十四条**:**临时 go.work 只 `use` 真正要覆盖的模块**,其余让 go.mod 版本解析。
+  把所有本地检出都 `use` 进去,会把"落后的本地依赖"也钉进来,反而编不过 origin/main 的新代码 ✗
+- **第一百一十五条**:**验证"修复生效"要抓"正向成功证据",不能只看"错误消失"**。
+  错误消失可能只是"同步没跑";`WARN(同步启动) → INFO(API 调用成功) → INFO(同步完成)`
+  这条正向链路才证明修复真的工作 ✓
