@@ -16532,3 +16532,49 @@ PR #421 CI（合并前）：Test success；Build ×5 平台全 success；Docker/
 aadfix2.exe 未回退(PID 不变 ✓)|need credential type=0 ✓|S2S stats 200(total=23549)✓|webhook 脱敏 ✓|health ✓
 e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓)
 本轮判定:**无可执行需求** ✓(口径 124:周期回归 = 最低成本的保险 ✓)
+
+---
+
+## cam-eiam-audit-20261106（统一审计 P0 第三块：e-iam OperationLog 接入）
+
+**状态**：**已合并**（`e-iam#5`，merge `3f062ec`；CI 四项全绿含 -race 与生成链一致性）
+
+### 一、交付
+
+| 项 | 说明 |
+|---|---|
+| 依赖 | e-common-go v0.2.0（auditlog SDK）|
+| `AuditEventRow` | 统一 envelope 的 GORM 实体（列名与契约一致、Append-only、DedupKey 唯一索引幂等），注册进 `InitTables` |
+| `IAuditDAO` +方法 | `BatchInsertAuditEvents`（批量失败时逐条降级、跳过冲突），mock 已按 mockgen 模式同步 |
+| **双写** | `BatchSaveOperationLogs`：旧 OperationLog 照写 + `toUnifiedEvent` 映射（ActorID 统一 string、Service=e-iam、Domain=operation、Result 大写归一、Before/After/FailReason 收进 Detail）→ SDK Validate + Sanitize → 落库 |
+| 旁路语义 | 统一事件失败不上抛（旧存储主写入不受影响，测试断言）|
+
+### 二、分层合规（eiam AGENTS.md）
+
+- 领域映射在 **Repository 层**（`toUnifiedEvent` 纯函数，表驱动 3 例）；DAO 仅 GORM 操作。
+- **零 wire_gen.go 改动** —— e-iam 主工作树 86 个 WIP 条目占用 wire 文件（tenant-quota 特性进行中），
+  本轮在隔离 worktree（origin/main）开发且不触 wire，与其零冲突。
+- 测试：表驱动（映射 3）+ sqlite 内存库集成（双写/幂等/空批次/故障旁路 5）；
+  全量 49 包 ok、0 FAIL；build/vet 0。本地无 CGO 未跑 -race（CI -race job 有 CGO，已由 CI 验证 ✅）。
+
+### 三、CI 对齐过程（两轮）
+
+| 轮 | 违规 | 修复 |
+|---|---|---|
+| 1 | gofmt -l 全仓扫描发现 2 个未格式化文件（我的）+ 生成链 go.sum 缺 4 行 | gofmt -w + 从 CI 日志提取精确 4 行补齐（wire/mockgen 工具链依赖）|
+| — | （无更多）| **四项全绿** |
+
+### 四、统一审计 P0 总览（三块全部落地）
+
+| 块 | PR | 内容 |
+|---|---|---|
+| SDK | e-common-go#1 | 统一事件模型 + 写入端口 + Mongo 实现 |
+| e-cam-service | #421 | 操作审计双写 + /audit/events 统一查询 API |
+| e-iam | #5 | OperationLog 双写（GORM 版 audit_events 表，同一 envelope）|
+| 前端 | e-cam-web#287 | /audit/events 统一检索页（消费统一 API）|
+
+### 五、边界与 P1
+
+- e-iam 的统一事件在**自己的 MySQL audit_events 表**（e-iam 无 Mongo；跨服务查询联邦为 P1——
+  届时 e-cam /audit/events 可经 S2S 联邦拉取 e-iam 侧，或前端双源聚合）。
+- e-iam 读侧（本地查询端点）未建（MVP 仅写侧；检索联邦属 P1）。
