@@ -3,6 +3,12 @@ package ioc
 import (
 	"context"
 
+	"github.com/Havens-blog/e-common-go/auditlog"
+	"github.com/Havens-blog/e-common-go/mongox"
+	"github.com/Havens-blog/e-common-go/taskx"
+	"github.com/gotomicro/ego/core/elog"
+	"github.com/gotomicro/ego/task/ecron"
+
 	accountrepo "github.com/Havens-blog/e-cam-service/internal/account/repository"
 	accountdao "github.com/Havens-blog/e-cam-service/internal/account/repository/dao"
 	alertdao "github.com/Havens-blog/e-cam-service/internal/alert/repository/dao"
@@ -16,11 +22,6 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cert/scheduler"
 	certservice "github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/Havens-blog/e-common-go/auditlog"
-	"github.com/Havens-blog/e-common-go/mongox"
-	"github.com/Havens-blog/e-common-go/taskx"
-	"github.com/gotomicro/ego/core/elog"
-	"github.com/gotomicro/ego/task/ecron"
 )
 
 // InitCertModule 初始化证书管理功能域模块（任务 7.1，风格对齐 InitAlertModule）。

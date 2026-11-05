@@ -5,11 +5,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
 	"github.com/Havens-blog/e-common-go/auditlog"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
 )
 
 // ==================== 映射口径 表驱动测试 ====================
@@ -43,8 +44,14 @@ func TestToChangeEventFromRecord(t *testing.T) {
 			wantAction: "delete", wantActor: auditlog.ActorTypeSystem, wantActorI: "task-9",
 		},
 		{
-			name:       "手工变更 → human + unknown（旧存储未记录操作者，如实标注）",
-			mutate:     func(r *domain.ChangeRecord) { r.ChangeSource = "manual"; r.ChangeTaskID = ""; r.FieldName = "spec"; r.OldValue = "a"; r.NewValue = "b" },
+			name: "手工变更 → human + unknown（旧存储未记录操作者，如实标注）",
+			mutate: func(r *domain.ChangeRecord) {
+				r.ChangeSource = "manual"
+				r.ChangeTaskID = ""
+				r.FieldName = "spec"
+				r.OldValue = "a"
+				r.NewValue = "b"
+			},
 			wantAction: "update", wantActor: auditlog.ActorTypeHuman, wantActorI: "unknown",
 		},
 	}
@@ -52,7 +59,7 @@ func TestToChangeEventFromRecord(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := base
 			tc.mutate(&r)
-			ev := toChangeEventFromRecord(r)
+			ev := toChangeEventFromRecord(&r)
 			assert.Equal(t, auditlog.ServiceCAM, ev.Service)
 			assert.Equal(t, auditlog.DomainChange, ev.Domain)
 			assert.Equal(t, tc.wantAction, ev.Action)
@@ -83,24 +90,30 @@ func TestToChangeEventFromOrderEntry(t *testing.T) {
 		wantResult auditlog.Result
 	}{
 		{
-			name:       "人工确认 → human + success",
-			entry:      domain.ChangeOrderAuditEntry{OrderID: "CO-1", Actor: "admin", Action: "confirm", At: 1700000000000},
-			wantActor:  auditlog.ActorTypeHuman, wantResult: auditlog.ResultSuccess,
+			name:      "人工确认 → human + success",
+			entry:     domain.ChangeOrderAuditEntry{OrderID: "CO-1", Actor: "admin", Action: "confirm", At: 1700000000000},
+			wantActor: auditlog.ActorTypeHuman, wantResult: auditlog.ResultSuccess,
 		},
 		{
-			name:       "executor 动作 → executor 类型",
-			entry:      domain.ChangeOrderAuditEntry{OrderID: "CO-1", Actor: "executor-1", Action: "execute", At: 1700000000000, Success: &success},
-			wantActor:  auditlog.ActorTypeExecutor, wantResult: auditlog.ResultSuccess,
+			name: "executor 动作 → executor 类型",
+			entry: domain.ChangeOrderAuditEntry{
+				OrderID: "CO-1", Actor: "executor-1", Action: "execute",
+				At: 1700000000000, Success: &success,
+			},
+			wantActor: auditlog.ActorTypeExecutor, wantResult: auditlog.ResultSuccess,
 		},
 		{
-			name:       "scheduler 清理失败 → scheduler + failed",
-			entry:      domain.ChangeOrderAuditEntry{OrderID: "CO-1", Actor: "scheduler-orphan", Action: "orphan_cleanup", At: 1700000000000, Success: &failed},
-			wantActor:  auditlog.ActorTypeScheduler, wantResult: auditlog.ResultFailed,
+			name: "scheduler 清理失败 → scheduler + failed",
+			entry: domain.ChangeOrderAuditEntry{
+				OrderID: "CO-1", Actor: "scheduler-orphan", Action: "orphan_cleanup",
+				At: 1700000000000, Success: &failed,
+			},
+			wantActor: auditlog.ActorTypeScheduler, wantResult: auditlog.ResultFailed,
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ev := toChangeEventFromOrderEntry(tc.entry)
+			ev := toChangeEventFromOrderEntry(&tc.entry)
 			assert.Equal(t, tc.wantActor, ev.ActorType)
 			assert.Equal(t, tc.wantResult, ev.Result)
 			assert.Equal(t, auditlog.DomainChange, ev.Domain)
@@ -111,7 +124,7 @@ func TestToChangeEventFromOrderEntry(t *testing.T) {
 		})
 	}
 	t.Run("DedupKey 透传", func(t *testing.T) {
-		ev := toChangeEventFromOrderEntry(domain.ChangeOrderAuditEntry{
+		ev := toChangeEventFromOrderEntry(&domain.ChangeOrderAuditEntry{
 			OrderID: "CO-2", Actor: "admin", Action: "orphan_cleanup",
 			At: 1700000000000, DedupKey: "dedup-1",
 		})

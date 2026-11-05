@@ -9,10 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
-	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
 	"github.com/Havens-blog/e-common-go/auditlog"
 	"github.com/gotomicro/ego/core/elog"
+
+	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
+	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
 )
 
 // 默认忽略字段（每次同步都会变化的瞬态字段）
@@ -240,12 +241,16 @@ func (t *ChangeTracker) TrackChanges(ctx context.Context, meta domain.ChangeMeta
 	return len(records), nil
 }
 
+// changeSourceManual 手工变更来源标识（旧存储以字符串区分变更来源）。
+const changeSourceManual = "manual"
+
 // toChangeEventFromRecord 把单条字段级变更记录映射为统一审计事件（纯函数，表驱动测试）。
 //
 // 口径：Domain=change；Action 按字段增删改派生（旧空=create、新空=delete、否则=update）；
 // ActorType 按变更来源（manual=human / 其他=system）；ChangeRecord 旧存储未记录操作者，
 // manual 场景 ActorID 如实标 unknown（缺陷随统一事件 Detail 的 change_source 可追溯）。
-func toChangeEventFromRecord(r domain.ChangeRecord) auditlog.AuditEvent {
+// 参数用指针：ChangeRecord 约 208 字节，按值传递被 gocritic hugeParam 判违规。
+func toChangeEventFromRecord(r *domain.ChangeRecord) auditlog.AuditEvent {
 	action := "update"
 	switch {
 	case r.OldValue == "":
@@ -255,7 +260,7 @@ func toChangeEventFromRecord(r domain.ChangeRecord) auditlog.AuditEvent {
 	}
 	actorType := auditlog.ActorTypeSystem
 	actorID := "e-cam-service"
-	if r.ChangeSource == "manual" {
+	if r.ChangeSource == changeSourceManual {
 		actorType = auditlog.ActorTypeHuman
 		actorID = "unknown"
 	}
@@ -295,13 +300,13 @@ func (t *ChangeTracker) emitChangeEvents(ctx context.Context, records []domain.C
 		return
 	}
 	events := make([]*auditlog.AuditEvent, 0, len(records))
-	for _, r := range records {
-		ev := toChangeEventFromRecord(r)
+	for i := range records {
+		ev := toChangeEventFromRecord(&records[i])
 		if err := ev.Validate(); err != nil {
 			t.logger.Warn("统一变更事件骨架校验失败，跳过",
 				elog.FieldErr(err),
-				elog.String("asset_id", r.AssetID),
-				elog.String("field_name", r.FieldName),
+				elog.String("asset_id", records[i].AssetID),
+				elog.String("field_name", records[i].FieldName),
 			)
 			continue
 		}

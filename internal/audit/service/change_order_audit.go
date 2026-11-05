@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
-	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
 	"github.com/Havens-blog/e-common-go/auditlog"
 	"github.com/gotomicro/ego/core/elog"
+
+	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
+	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
 )
 
 // ChangeOrderAuditService 变更单维度审计流水服务（任务 7.2）。
@@ -43,7 +44,7 @@ func (s *ChangeOrderAuditService) Record(ctx context.Context, entry domain.Chang
 		)
 		return fmt.Errorf("变更审计写入失败: %w", err)
 	}
-	s.emitUnifiedEvent(ctx, entry)
+	s.emitUnifiedEvent(ctx, &entry)
 	return nil
 }
 
@@ -61,7 +62,7 @@ func (s *ChangeOrderAuditService) RecordDedup(ctx context.Context, entry domain.
 	}
 	if inserted {
 		// 幂等命中（inserted=false）不重复双写，统一集合与旧存储口径一致。
-		s.emitUnifiedEvent(ctx, entry)
+		s.emitUnifiedEvent(ctx, &entry)
 	}
 	return inserted, nil
 }
@@ -71,7 +72,8 @@ func (s *ChangeOrderAuditService) RecordDedup(ctx context.Context, entry domain.
 // 口径：Domain=change；Actor 按 entry.Actor 语义（executor/scheduler 前缀识别为
 // 对应系统类型，其余视为 EIAM 人工账号=human）；Result 由 Success 三态映射
 // （nil=生命周期动作本身成功）；DedupKey 透传（两套存储的幂等键一致）。
-func toChangeEventFromOrderEntry(e domain.ChangeOrderAuditEntry) auditlog.AuditEvent {
+// 参数用指针：ChangeOrderAuditEntry 约 192 字节，按值传递被 gocritic hugeParam 判违规。
+func toChangeEventFromOrderEntry(e *domain.ChangeOrderAuditEntry) auditlog.AuditEvent {
 	actorType := auditlog.ActorTypeHuman
 	switch {
 	case strings.HasPrefix(e.Actor, string(auditlog.ActorTypeExecutor)):
@@ -117,7 +119,7 @@ func toChangeEventFromOrderEntry(e domain.ChangeOrderAuditEntry) auditlog.AuditE
 // emitUnifiedEvent 旁路写统一事件：Validate + Sanitize + Emit，失败仅记日志。
 // TenantID 不在旧条目里（变更单审计按单号全局组织），统一事件置 0 由
 // Validate 的租户可空约定放行（跨租户检索时以 service/domain 维度过滤）。
-func (s *ChangeOrderAuditService) emitUnifiedEvent(ctx context.Context, entry domain.ChangeOrderAuditEntry) {
+func (s *ChangeOrderAuditService) emitUnifiedEvent(ctx context.Context, entry *domain.ChangeOrderAuditEntry) {
 	if s.events == nil {
 		return
 	}
