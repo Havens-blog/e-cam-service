@@ -17018,3 +17018,10 @@ e-iam 用 `ALIYUN_USERNAME/PASSWORD`，e-cam 两侧用 `ALIYUN_REGISTRY_USER/PAS
 
 - **教训**：写「某字段无索引」这类论断前，先查 indexutil/InitIndexes 的实际索引清单 ——
   并行会话补的索引不会在任何提示里出现，全靠主动核对。
+
+---
+
+## 2026-11-06 **周期回归(05:35)**:全部修复仍生效,无可执行需求
+aadfix2.exe 未回退 ✓|need credential type=0 ✓|S2S stats 200(total=23548)✓|webhook 脱敏 ✓|health ✓
+e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓)
+本轮判定:**无可执行需求** ✓(口径 124 ✓)
