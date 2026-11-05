@@ -16607,3 +16607,44 @@ e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓
 aadfix2.exe 未回退 ✓|need credential type=0 ✓|S2S stats 200(total=23548)✓|webhook 脱敏 ✓|health ✓
 e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓)
 本轮判定:**无可执行需求** ✓(口径 124 ✓)
+
+---
+
+## cam-change-audit-20261106（统一审计 P1 第一项：ChangeRecord 与变更单审计接入）
+
+**状态**：**已合并**（`e-cam-service#431`，merge `19847f4`；CI Test+Build×5 全绿）
+
+### 一、交付
+
+四套割裂审计的剩余两套写入路径接入统一 envelope（操作审计双写 #421 已落地）：
+
+| 写入路径 | 统一口径 |
+|---|---|
+| `ChangeTracker.TrackChanges`（字段级变更）| Domain=change；Action 按字段增删改派生（旧空=create/新空=delete/否则=update）；ActorType 按 change_source（manual=human/其他=system）；ActorID=ChangeTaskID（manual 场景旧存储未记录操作者，如实标 unknown，Detail 可追溯）；ResourceURN=`urn:cam:asset:<model>:<asset_id>`；Detail 收 field_name/old_value/new_value/asset_name/provider/region 等 |
+| `ChangeOrderAuditService.Record/RecordDedup`（变更单审计）| Actor 按 entry.Actor 语义识别（executor/scheduler 前缀→系统类型，其余=human）；Result 由 Success 三态映射（nil=生命周期动作成功）；DedupKey 透传且幂等命中不重复双写；Detail 收 item_id/cloud/orphan_action/unmet_domains |
+
+旁路语义：统一事件失败仅记日志，不影响旧存储主链路（测试断言）；写入前 SDK Validate + Sanitize。
+装配：Module writer 提前注入两服务；cert 域与 cert-server 本地 store 各配独立 MongoWriter；wire_gen 零改动。
+
+### 二、lint 迭代（两轮）
+
+| 轮 | 违规 | 修复 |
+|---|---|---|
+| 1 | gocritic hugeParam×2（208B/192B 结构体按值传）+ rangeValCopy + goconst + goimports×2 + lll×2 + gofmt×1 | 指针传参 + 索引遍历 + changeSourceManual 常量 + import 三组分列 + 长行拆分 |
+| — | **四项全绿** | |
+
+**goimports 三分组规则已彻底内化**：std | third-party（e-common-go/ego/gin）| local（e-cam-service）——本仓库 `.golangci.yml` 的 `local-prefixes` 要求本仓库 import 独立成组且置于末组。本地验证命令：`goimports -local github.com/Havens-blog/e-cam-service -l`。
+
+### 三、测试
+
+新增 `change_unified_test.go`：映射表驱动 7 例（字段增删改/来源识别/Actor 三态/DedupKey 透传，均含 SDK Validate 自洽断言）+ 双写旁路 3 例（落库后 Emit/失败不影响旧存储/nil writer 跳过）。
+全量 105 包 ok、0 FAIL；build/vet 0。
+
+### 四、范围说明
+
+- 统一集合中的真实数据展示待本地后端部署（含 #421+#431）后随 E2E 一并验证（同 #430 记录的阻塞）。
+- **发现并记录（未顺手改）**：统一审计事件页 `/audit/events` 无导航菜单入口——CAM 页嵌入 eiam 控制台，菜单由 eiam Menu 表（能力同步）驱动，加入口涉及并行会话领域（eiam 控制台菜单系统），留待协调。
+
+### 五、验证边界
+
+浏览器验证：本轮为后端写侧（无 UI 改动；变更历史页等旧页面零改动），未执行（未执行事项如实标注）。
