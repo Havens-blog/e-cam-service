@@ -40,6 +40,8 @@ github.com/Havens-blog/e-cloudx-sdk v0.2.0 h1:EaUB69U/O5aqUZsuR/BPlbISWMv+BCbP5G
 github.com/Havens-blog/e-cloudx-sdk v0.2.0/go.mod h1:ZeP0MBqlIj74jKrcNny34F2m6Dhlic3yV/e+Qb1QsEE=
 github.com/Havens-blog/e-common-go v0.1.0 h1:3gNbzFcY0xBY+okkJTI+KO06B/zOJmIyn9S9IsIR9gA=
 github.com/Havens-blog/e-common-go v0.1.0/go.mod h1:ndkP6J/pqVB11QtFLafpkxZ0Aj7c81IPSqhGZeHc0rc=
+github.com/Havens-blog/e-common-go v0.2.0 h1:PswPNas+hU2hgSQ+llg6wut2+oRNyY098Lk7IOIgsc8=
+github.com/Havens-blog/e-common-go v0.2.0/go.mod h1:ndkP6J/pqVB11QtFLafpkxZ0Aj7c81IPSqhGZeHc0rc=
 github.com/Havens-blog/e-iam v0.0.27 h1:ugwROgmU0Sp5Y5PHiBdvsRZo7mSf0LeXVgV/ORzuGBQ=
 github.com/Havens-blog/e-iam v0.0.27/go.mod h1:ikqP8kr6XUeJ55UHGDH4B+qp5e22qHFjK3iGBUs0CTw=
 github.com/HdrHistogram/hdrhistogram-go v1.1.0/go.mod h1:yDgFjdqOqDEKOvasDdhWNXYg9BVp4O+o5f6V/ehm6Oo=
