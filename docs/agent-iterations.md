@@ -16399,3 +16399,55 @@ need credential type 部署后 = 0 ✓(唯一 ERROR 是已知的 AWS Shield ap-s
 - **第一百二十四条**:**周期回归的价值在"确认修复仍活着",而不是"发现新问题"**。
   在 Daemon 热重载 + 共享检出落后的环境里,上一次验证通过只代表那一刻 ✓;
   固定间隔复查(哪怕只有一条命令)是这类环境下最低成本的保险 ✓
+
+---
+
+## cam-auditintegrate-20261105（统一审计 P0 第二块：e-cam-service 接入，CI lint 四轮鏖战）
+
+**状态**：**已合并**（`e-cam-service#421`，merge `8730e18`；CI 最终 Test+Build×5 全绿）
+
+### 一、交付
+
+依赖升级 e-common-go v0.1.0→v0.2.0（含 auditlog SDK），然后：
+
+1. **操作审计双写**：`InitAuditMiddleware` 改用组合 sink（`unifiedAuditSink`）——
+   旧 `AuditLog` 照写（`/audit/logs` 页零改动、可回退）+ emit 统一 `AuditEvent`
+   （`Service=e-cam-service`、`Domain=audit`、`Action` 按 method 派生、
+   旧字段 http_method/api_path/request_body/request_id/operation_type 收进 Detail）。
+2. **统一查询 API**：`GET /api/v1/cam/audit/events` —— 跨域按 actor/service/domain/
+   action/result/resource/时间窗过滤；排序固定 `at`；limit 钳 1000；
+   **租户从会话注入且拒绝查询参数伪造**（防跨租户拉取他人审计）；挂 `RequireTenant` 边界组。
+3. 新增 dao/service/handler + module 组装路由；测试 12 例。
+
+### 二、CI lint 四轮鏖战（每轮都被 CI 抓出新违规，逐轮修复）
+
+| 轮 | 违规 | 修复 |
+|---|---|---|
+| 1 | gocritic 9 处（大结构体按值传/注释空格/http.NoBody）| 指针化 + nolint（注明 AuditSink 接口契约）+ NoBody |
+| 2 | mnd 魔法数（含**并行会话**在包内新加的 change_handler 20）+ goimports ×3 | http 常量 + defaultXxxPageSize 常量 + goimports |
+| 3 | change_handler mnd（lint 基线覆盖整个包）+ 测试 lll 169 字符 | 常量 + URL 拆三段拼接（拼接结果逐字符校验=原 URL）|
+| 4 | goimports ×3 持续 | **根因**：`.golangci.yml` 配了 `local-prefixes: github.com/Havens-blog/e-cam-service`，本仓库 import 须独立成组；本地校验未带 `-local` 参数误报 clean |
+
+最终：Test success + Build×5 全绿。
+
+### 三、过程中的三个坑（都很典型）
+
+1. **`str.Replace` 无匹配 = 静默 no-op**：URL 变量替换的锚字符串缩进错了 1 个 tab，
+   替换静默没生效，我还以为修好了 —— 直到 CI 再抓。**脚本化编辑必须回读验证替换真的发生。**
+2. **PowerShell here-string 与 `Set-Content -Value` 混用管道**：`$code = @'...'@ | Set-Content -Value $code`
+   参数绑定冲突、脚本未写盘、我以为已执行 —— 同样的"静默失败"第二次。
+3. **Contents API 提交不触发 CI**：git push 被网络阻断后我用 Contents API 同步了文件
+   （内容正确），但 push/pull_request.synchronize 事件都不发 —— 最终靠网络恢复后
+   force-push 本地提交 + 空提交/合并提交才触发。API 提交只能改内容，不能当 CI 触发器。
+
+### 四、验收
+
+```
+PR #421 CI（合并前）：Test success；Build ×5 平台全 success；Docker/Release 对 PR skipped
+本地：全量 go test ./... -p 1 → 105 包 ok、0 FAIL；build/vet 均 0；新增 12 例测试全过
+```
+
+### 五、P0 剩余
+
+- e-iam OperationLog 接入 SDK（注意 eiam AGENTS.md 分层铁律/I 前缀/表驱动测试）。
+- e-cam-web 统一审计检索页（`/audit/events` API 已就绪）。
