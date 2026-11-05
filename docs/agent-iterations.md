@@ -16784,3 +16784,57 @@ Docker Secrets 缺失同类，但现在波及全部仓库的部署）。
 aadfix2.exe 未回退 ✓|need credential type=0 ✓|S2S stats 200(total=23548)✓|webhook 脱敏 ✓|health ✓
 e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓)
 本轮判定:**无可执行需求** ✓(口径 124 ✓)
+
+---
+
+## cam-events-read-20261106（e-iam 统一事件读侧端点 + 修复 #5 空去重键数据丢失）
+
+**状态**：**已合并**（`e-iam#6`，merge `c50ff0c`；CI 四项全绿含 -race 与生成链一致性）
+
+### 一、读侧端点（联邦查询的共同构件）
+
+四层链路走**既有接口扩展**，零 wire_gen.go 改动（不与 tenant-quota WIP 冲突）：
+
+| 层 | 交付 |
+|---|---|
+| domain | `UnifiedAuditEvent`（envelope 领域对象）+ `UnifiedAuditEventFilter`（**租户维度不在入参** —— gormx fail-closed 自动注入，显式携带反留越权口子）|
+| dao | `ListAuditEvents`（at 降序命中 idx_tenant_at；Count+Find 复用查询构造）|
+| repository | `IAuditRepository.ListAuditEvents` + `toUnifiedEventDomain` 映射 |
+| service | `IAuditService.ListAuditEvents` 透传 |
+| web | `POST /api/audit/events/list`（capability Define 权限注册，私有会话组，与旧 /auth/list、/operation/list 并列）|
+
+### 二、修复 #5 数据丢失 BUG（本轮测试意外抓出）
+
+`AuditEventRow.DedupKey` 由 `string` 改 `*string`：
+- **BUG**：MySQL/SQLite 唯一索引把空串当值（空串≠NULL），多条无去重键事件互相冲突，
+  且被逐条降级**静默跳过** —— #5 的写入路径从第二条无键事件起全部丢失。
+- **修复**：指针化（空→NULL），多条无键事件共存；回归测试断言 3 条全落库。
+- SDK Mongo 侧无此问题（`bson:"dedup_key,omitempty"` + 稀疏索引：字段缺失即跳过）。
+- 表未在任何真实环境建过（部署管道断裂中），无迁移负担。
+
+### 三、测试
+
+- dao：ListAuditEvents 表驱动 5（无过滤降序/domain/result/时间窗/组合无命中）+ 分页 1
+  + **空去重键共存回归 1** + 幂等 1（sqlite 内存库）；
+- service：表驱动 2（成功/错误透传，gomock）；
+- 全量 49 包 ok 0 FAIL；build/vet 0。
+
+### 四、CI 对齐过程（三轮，两个新教训）
+
+| 轮 | 违规 | 修复 |
+|---|---|---|
+| 1 | gofmt×2 + swagger 文档缺新路由 | gofmt -w + `go run ./cmd/swaggergen` |
+| 2 | permgen 产物缺新权限点（103→104）| `go run ./cmd/permgen` |
+| 3 | **permissions.md 标题是 `.TMP-EIAM-AUDIT`** | 一行还原 `E-IAM` |
+
+**新教训**：
+1. **permgen 把检出目录名烧进文档标题** —— worktree 路径泄漏进生成产物。
+   在 worktree 里跑生成链，产物与 CI（`e-iam` 目录）必然差一行标题。
+   治本需 permgen 改为固定标题（超本轮范围，已记录）。
+2. **`git add -A` 两次把提交信息暂存文件带进提交**（.m2.txt/.m14.txt）——
+   应改为显式文件列表 add（本轮第二次犯，规则再次强化：**提交前必须 `git show --stat` 自查**）。
+
+### 五、未验证项
+
+- 真实数据端到端：待部署管道修复（三仓 registry 登录断裂，docs #436）。
+- 权限流：capability 注册后需管理员角色实际调用（部署后）。
