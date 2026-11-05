@@ -16648,3 +16648,43 @@ e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓
 ### 五、验证边界
 
 浏览器验证：本轮为后端写侧（无 UI 改动；变更历史页等旧页面零改动），未执行（未执行事项如实标注）。
+
+---
+
+## cam-changes-filters-20261106（变更历史页筛选对齐：field_name/change_source/model_uid）
+
+**状态**：**已合并**（`e-cam-web#288`，merge `95e92b4`，CI 四项全绿）
+
+### 一、需求来源（前后端不一致，代码证据）
+
+- 后端 `/audit/changes` 支持 `field_name`（既有）、`model_uid` 与 `change_source`（#418 新增）。
+- 前端列表查询**只传 offset/limit** —— 三个筛选维度全部未暴露，用户无法按
+  变更来源/资源类型/字段名筛选列表。
+
+### 二、交付
+
+| 项 | 说明 |
+|---|---|
+| `AssetChangeParams` | 补 `model_uid`/`change_source` 字段（对齐后端契约）|
+| 变更历史页 | 列表模式新增筛选条：变更来源下拉（手工/云同步）+ 资源类型下拉 + 字段名输入 |
+| 交互 | 筛选变化 → 重置页码重查；独立 `useUrlFilters` 实例（挂载自动回填、变化自动写回 —— 刷新/分享链接保持筛选）|
+
+### 三、浏览器验证（:3338 + :8001）
+
+| 场景 | 结果 |
+|---|---|
+| 筛选条渲染 | ✅ |
+| URL 同步 | ✅（`?assetId=...&change_source=manual` 回填与写回双向验证）|
+| 请求参数透传 | ✅（实际请求含 `change_source=...&model_uid=...&asset_id=...`）|
+| **field_name 过滤真实生效** | ✅ API 级：同一资产 total 3 → 筛选 snapshot_id 后 1（旧后端既有能力，端到端）|
+| change_source/model_uid 服务端过滤 | 待 #418 后端部署后生效（旧后端忽略未知参数，无害）|
+| JS 异常 | 0 ✅ |
+
+门禁：tsc/build/lint 均 0；vitest 1333 passed；PR CI 四项全绿。
+
+### 四、范围说明
+
+- 统一审计页 `/audit/events` 菜单入口：调研确认 CAM 页嵌入 eiam 控制台、菜单由
+  eiam Menu 表（能力同步）驱动；CommandPalette 虽从 routes 派生但 :3338 下未挂载
+  （属控制台壳层行为）。加入口涉及并行会话领域，维持「记录待协调」。
+- 统一页全量 E2E：后端部署阻塞不变（本轮带会话探测复核仍 404）。
