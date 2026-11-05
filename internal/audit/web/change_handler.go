@@ -38,6 +38,9 @@ func NewChangeHandler(tracker *service.ChangeTracker, logger *elog.Component) *C
 // asset_id 为可选：缺省时 DAO 的 buildQuery 只按 tenant_id 过滤，返回该租户全部资产的变更，
 // 前端「变更历史」页就是依赖这一行为做全局列表（曾经注解写的是 required，与实现不一致）。
 // 若将来要强制必填，需同时改造前端页面，否则该页会直接 400。
+// defaultChangePageSize 变更历史默认页大小（与 audit/logs 的 20 同口径）。
+const defaultChangePageSize = 20
+
 func (h *ChangeHandler) ListAssetChanges(c *gin.Context) {
 	tenantID := middleware.GetTenantID(c)
 	assetID := c.Query("asset_id")
@@ -49,8 +52,9 @@ func (h *ChangeHandler) ListAssetChanges(c *gin.Context) {
 		ModelUID:     c.Query("model_uid"),
 		ChangeSource: c.Query("change_source"),
 		Offset:       parseIntDefault(c.Query("offset"), 0),
-		Limit:        paging.ClampInt64(parseIntDefault(c.Query("limit"), 20)),
+		Limit:        paging.ClampInt64(parseIntDefault(c.Query("limit"), defaultChangePageSize)),
 	}
+
 	if st := c.Query("start_time"); st != "" {
 		v := parseIntDefault(st, 0)
 		filter.StartTime = &v

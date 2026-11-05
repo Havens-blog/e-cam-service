@@ -4,6 +4,10 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/Havens-blog/e-common-go/auditlog"
+	"github.com/Havens-blog/e-common-go/mongox"
+	"github.com/gotomicro/ego/core/elog"
+
 	"github.com/Havens-blog/e-cam-service/internal/audit"
 	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
 	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
@@ -11,8 +15,6 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/logquery"
 	logqueryweb "github.com/Havens-blog/e-cam-service/internal/logquery/web"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
-	"github.com/Havens-blog/e-common-go/mongox"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // InitAuditModule 初始化审计模块
@@ -45,6 +47,76 @@ func (s auditDAOSink) Write(ctx context.Context, e middleware.AuditEntry) error 
 		Ctime:         e.Ctime,
 	})
 	return err
+}
+
+// unifiedAuditSink 双写组合：旧 audit 领域 AuditLog（向后兼容，audit/logs 页
+// 继续可用）+ e-common-go/auditlog 统一事件（跨域统一检索的写入侧）。
+//
+// 双写而非迁移：统一集合是新事物，旧存储/旧前端零改动即回退；待统一检索页
+// 稳定后再考虑旧页退役。
+type unifiedAuditSink struct {
+	legacy   middleware.AuditSink
+	writer   auditlog.Writer
+	renderAs func(e *middleware.AuditEntry) auditlog.AuditEvent
+}
+
+//nolint:gocritic // 接口签名约束：AuditSink.Write 按值传递（shared 叶子包契约），结构体体积由接口定义方权衡
+func (s unifiedAuditSink) Write(ctx context.Context, e middleware.AuditEntry) error {
+	// 1) 旧存储：失败即返回（中间件已异步记日志，不阻塞业务）。
+	if err := s.legacy.Write(ctx, e); err != nil {
+		return err
+	}
+	// 2) 统一事件：翻译/写入失败同样仅被中间件记日志（审计是旁路）。
+	ue := s.renderAs(&e)
+	return s.writer.Emit(ctx, &ue)
+}
+
+// renderAuditEntryToEvent 把领域无关 AuditEntry 翻译为统一审计事件。
+// 映射口径：
+//   - ActorType=human：中间件只拦截登录会话里的写操作（GET/OPTIONS/HEAD 直通）；
+//   - Action 从 HTTP method 派生（与 OperationType 尾段语义一致）；
+//   - 旧字段 http_method/api_path/request_body/request_id/operation_type
+//     收进 Detail（统一 envelope 不为 API 级审计单开列）。
+func renderAuditEntryToEvent(e *middleware.AuditEntry) auditlog.AuditEvent {
+	return auditlog.AuditEvent{
+		ActorType:    auditlog.ActorTypeHuman,
+		ActorID:      e.OperatorID,
+		ActorName:    e.OperatorName,
+		At:           e.Ctime,
+		TenantID:     e.TenantID,
+		ClientIP:     e.ClientIP,
+		UserAgent:    e.UserAgent,
+		Service:      auditlog.ServiceCAM,
+		Domain:       auditlog.DomainAudit,
+		Action:       actionFromHTTPMethod(e.HTTPMethod),
+		ResourceType: "api",
+		ResourceID:   e.APIPath,
+		Result:       auditlog.Result(e.Result),
+		StatusCode:   e.StatusCode,
+		DurationMs:   e.DurationMs,
+		Detail: map[string]any{
+			"http_method":    e.HTTPMethod,
+			"api_path":       e.APIPath,
+			"request_body":   e.RequestBody,
+			"request_id":     e.RequestID,
+			"operation_type": e.OperationType,
+		},
+	}
+}
+
+// actionFromHTTPMethod 与 shared/middleware.actionOf 的 method 派生保持同口径
+// （sync 尾段特判已体现在 OperationType，统一 Action 层用粗粒度四类。）
+func actionFromHTTPMethod(method string) string {
+	switch method {
+	case "POST":
+		return "create"
+	case "PUT", "PATCH":
+		return "update"
+	case "DELETE":
+		return "delete"
+	default:
+		return "generic"
+	}
 }
 
 // logQueryAuditSink 把 logquery 域的结构化检索审计翻译为 audit 领域模型,
@@ -92,9 +164,15 @@ func (s logQueryAuditSink) WriteLogQuery(ctx context.Context, e logqueryweb.LogQ
 	return err
 }
 
-// InitAuditMiddleware 初始化 API 审计中间件
+// InitAuditMiddleware 初始化 API 审计中间件（双写：旧 AuditLog + 统一事件）。
 func InitAuditMiddleware(auditModule *audit.Module) *middleware.AuditMiddleware {
-	return middleware.NewAuditMiddleware(auditDAOSink{dao: auditModule.AuditDAO}, elog.DefaultLogger)
+	legacy := auditDAOSink{dao: auditModule.AuditDAO}
+	composite := unifiedAuditSink{
+		legacy:   legacy,
+		writer:   auditModule.EventWriter,
+		renderAs: renderAuditEntryToEvent,
+	}
+	return middleware.NewAuditMiddleware(composite, elog.DefaultLogger)
 }
 
 // WireLogQueryAudit 把日志查询模块接到审计 DAO 上(结构化检索审计)。
