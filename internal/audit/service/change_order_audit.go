@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
 	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
+	"github.com/Havens-blog/e-common-go/auditlog"
 	"github.com/gotomicro/ego/core/elog"
 )
 
@@ -18,11 +21,14 @@ import (
 type ChangeOrderAuditService struct {
 	dao    dao.ChangeOrderAuditDAO
 	logger *elog.Component
+
+	// events 统一审计事件写入端口（旁路双写，失败仅记日志）。
+	events auditlog.Writer
 }
 
 // NewChangeOrderAuditService 创建变更单审计流水服务。
-func NewChangeOrderAuditService(dao dao.ChangeOrderAuditDAO, logger *elog.Component) *ChangeOrderAuditService {
-	return &ChangeOrderAuditService{dao: dao, logger: logger}
+func NewChangeOrderAuditService(dao dao.ChangeOrderAuditDAO, logger *elog.Component, events auditlog.Writer) *ChangeOrderAuditService {
+	return &ChangeOrderAuditService{dao: dao, logger: logger, events: events}
 }
 
 // Record 追加一条普通审计事件（无去重键）。写入失败记日志并返回错误，
@@ -37,6 +43,7 @@ func (s *ChangeOrderAuditService) Record(ctx context.Context, entry domain.Chang
 		)
 		return fmt.Errorf("变更审计写入失败: %w", err)
 	}
+	s.emitUnifiedEvent(ctx, entry)
 	return nil
 }
 
@@ -52,7 +59,88 @@ func (s *ChangeOrderAuditService) RecordDedup(ctx context.Context, entry domain.
 		)
 		return false, fmt.Errorf("变更审计写入失败: %w", err)
 	}
+	if inserted {
+		// 幂等命中（inserted=false）不重复双写，统一集合与旧存储口径一致。
+		s.emitUnifiedEvent(ctx, entry)
+	}
 	return inserted, nil
+}
+
+// toChangeEventFromOrderEntry 把变更单审计条目映射为统一审计事件（纯函数，表驱动测试）。
+//
+// 口径：Domain=change；Actor 按 entry.Actor 语义（executor/scheduler 前缀识别为
+// 对应系统类型，其余视为 EIAM 人工账号=human）；Result 由 Success 三态映射
+// （nil=生命周期动作本身成功）；DedupKey 透传（两套存储的幂等键一致）。
+func toChangeEventFromOrderEntry(e domain.ChangeOrderAuditEntry) auditlog.AuditEvent {
+	actorType := auditlog.ActorTypeHuman
+	switch {
+	case strings.HasPrefix(e.Actor, string(auditlog.ActorTypeExecutor)):
+		actorType = auditlog.ActorTypeExecutor
+	case strings.HasPrefix(e.Actor, string(auditlog.ActorTypeScheduler)):
+		actorType = auditlog.ActorTypeScheduler
+	}
+	result := auditlog.ResultSuccess
+	if e.Success != nil && !*e.Success {
+		result = auditlog.ResultFailed
+	}
+	detail := map[string]any{"detail": e.Detail}
+	if e.ItemID != "" {
+		detail["item_id"] = e.ItemID
+	}
+	if e.Cloud != "" {
+		detail["cloud"] = e.Cloud
+	}
+	if e.CloudCertID != "" {
+		detail["cloud_cert_id"] = e.CloudCertID
+	}
+	if e.OrphanAction != "" {
+		detail["orphan_action"] = e.OrphanAction
+	}
+	if len(e.UnmetDomains) > 0 {
+		detail["unmet_domains"] = e.UnmetDomains
+	}
+	return auditlog.AuditEvent{
+		ActorType:    actorType,
+		ActorID:      e.Actor,
+		At:           e.At,
+		Service:      auditlog.ServiceCAM,
+		Domain:       auditlog.DomainChange,
+		Action:       e.Action,
+		ResourceType: "change_order",
+		ResourceID:   e.OrderID,
+		Result:       result,
+		Detail:       detail,
+		DedupKey:     e.DedupKey,
+	}
+}
+
+// emitUnifiedEvent 旁路写统一事件：Validate + Sanitize + Emit，失败仅记日志。
+// TenantID 不在旧条目里（变更单审计按单号全局组织），统一事件置 0 由
+// Validate 的租户可空约定放行（跨租户检索时以 service/domain 维度过滤）。
+func (s *ChangeOrderAuditService) emitUnifiedEvent(ctx context.Context, entry domain.ChangeOrderAuditEntry) {
+	if s.events == nil {
+		return
+	}
+	ev := toChangeEventFromOrderEntry(entry)
+	if err := ev.Validate(); err != nil {
+		s.logger.Warn("统一变更单事件骨架校验失败，跳过",
+			elog.FieldErr(err),
+			elog.String("order_id", entry.OrderID),
+			elog.String("action", entry.Action),
+		)
+		return
+	}
+	ev.Sanitize()
+	if _, err := json.Marshal(ev.Detail); err != nil {
+		s.logger.Warn("统一变更单事件序列化失败，跳过", elog.FieldErr(err))
+		return
+	}
+	if err := s.events.Emit(ctx, &ev); err != nil {
+		s.logger.Warn("统一变更单事件写入失败（不影响旧存储）",
+			elog.FieldErr(err),
+			elog.String("order_id", entry.OrderID),
+		)
+	}
 }
 
 // ListByOrder 按单号查询审计流水（at 升序稳定返回）。

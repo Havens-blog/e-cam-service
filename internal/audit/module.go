@@ -46,9 +46,12 @@ func NewModule(db *mongox.Mongo) *Module {
 		logger.Error("初始化统一审计事件索引失败", elog.FieldErr(err))
 	}
 
+	// 统一审计事件写入端口：先于服务创建（变更追踪/变更单审计的旁路双写需要）
+	eventWriter := auditlog.NewMongoWriter(db.Database())
+
 	// 初始化 Service
 	auditSvc := service.NewAuditService(auditDAO, logger)
-	changeTracker := service.NewChangeTracker(changeDAO, logger)
+	changeTracker := service.NewChangeTracker(changeDAO, logger, eventWriter)
 	eventSvc := service.NewAuditEventService(eventDAO, logger)
 
 	// 初始化 Handler
@@ -63,7 +66,7 @@ func NewModule(db *mongox.Mongo) *Module {
 		ChangeTracker: changeTracker,
 		AuditDAO:      auditDAO,
 		AuditEventDAO: eventDAO,
-		EventWriter:   auditlog.NewMongoWriter(db.Database()),
+		EventWriter:   eventWriter,
 	}
 }
 

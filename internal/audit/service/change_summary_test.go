@@ -52,7 +52,7 @@ func (f *fakeChangeDAO) InitIndexes(ctx context.Context) error {
 }
 
 func newTracker(f *fakeChangeDAO) *ChangeTracker {
-	return NewChangeTracker(f, elog.DefaultLogger)
+	return NewChangeTracker(f, elog.DefaultLogger, nil)
 }
 
 // TestGetSummary_AllSuccess 全部统计成功时，四项都应返回。

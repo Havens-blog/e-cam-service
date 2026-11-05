@@ -16,6 +16,7 @@ import (
 	"github.com/Havens-blog/e-cam-service/internal/cert/repository"
 	"github.com/Havens-blog/e-cam-service/internal/cert/scheduler"
 	certservice "github.com/Havens-blog/e-cam-service/internal/cert/service"
+	"github.com/Havens-blog/e-common-go/auditlog"
 	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/Havens-blog/e-common-go/taskx"
 	"github.com/gotomicro/ego/core/elog"
@@ -77,7 +78,7 @@ func InitCertModule(db *mongox.Mongo, camModule *cam.Module) (*cert.Module, erro
 	if err := auditDAO.InitIndexes(context.Background()); err != nil {
 		logger.Error("cert: 变更单审计索引初始化失败（仅告警，不阻断启动）", elog.FieldErr(err))
 	}
-	audits := auditservice.NewChangeOrderAuditService(auditDAO, logger)
+	audits := auditservice.NewChangeOrderAuditService(auditDAO, logger, auditlog.NewMongoWriter(db.Database()))
 
 	return cert.InitCertModule(db, logger, accounts, assetInstanceCounter{repo: instances}, queue, publisher, dnsSource, certAuditStore{svc: audits})
 }
