@@ -17002,3 +17002,19 @@ Secrets 配齐 → push-CI 的部署步骤转绿 → 镜像发布恢复 → 本�
 
 e-iam 用 `ALIYUN_USERNAME/PASSWORD`，e-cam 两侧用 `ALIYUN_REGISTRY_USER/PASS`
 —— 同一批凭据要按各仓 workflow 里的名字分别建（或后续统一命名，属另一个 PR）。
+
+---
+
+## cam-correction-20261106（更正：field_name 筛选有索引，#292 的动机描述有误）
+
+**更正 #292 记录**：其描述称「field_name 无索引，大表 Count 必超时」——经查 **不成立**：
+并行会话 #382 已补 `(tenant_id, field_name, ctime)` 复合索引（change.go:67），
+且代码注释明确「等值过滤走索引，不会重蹈全表扫描超时的覆辙」。索引在我加筛选之前就存在。
+
+- **仍然有效的部分**：totalUnknown 降级分支是有价值的防御（total=-1 契约对其他
+  无索引模式——如纯时间窗 count、按字段分组统计——依然可能触发），UI 处理该契约正确。
+
+- **错误的部分**：把「field_name 筛选」当作降级易触达路径的动机描述（事实是索引化的快路径）。
+
+- **教训**：写「某字段无索引」这类论断前，先查 indexutil/InitIndexes 的实际索引清单 ——
+  并行会话补的索引不会在任何提示里出现，全靠主动核对。
