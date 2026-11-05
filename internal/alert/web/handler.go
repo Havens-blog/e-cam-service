@@ -349,6 +349,13 @@ func (h *AlertHandler) ListChannels(c *gin.Context) {
 		return
 	}
 
+	// 列表响应脱敏回调凭据（webhook 的 key/token/secret 等查询参数），
+	// 避免把"可向企业微信群发消息的机器人 key"明文返回给任意已登录用户。
+	// 详情接口 GetChannel 保留完整值，供编辑表单回填。
+	for i := range channels {
+		maskChannelConfig(&channels[i])
+	}
+
 	c.JSON(200, gin.H{"code": 0, "msg": "success", "data": gin.H{"items": channels, "total": total}})
 }
 
