@@ -35,9 +35,10 @@ func NewChangeRecordDAO(db *mongox.Mongo) ChangeRecordDAO {
 }
 
 // InitIndexes 初始化索引
+// 幂等：跳过已存在的等价索引；一旦索引（如经 DBA 服务端）建齐，
+// 后续启动不再对 5.4M 大表重复发起长建索引操作（此前每轮启动都被 socket EOF 掐断）。
 func (d *changeRecordDAO) InitIndexes(ctx context.Context) error {
-	_, err := d.db.Collection(ChangeHistoryCollection).Indexes().CreateMany(ctx, changeHistoryIndexes())
-	return err
+	return ensureIndexes(ctx, d.db.Collection(ChangeHistoryCollection), changeHistoryIndexes())
 }
 
 // changeHistoryIndexes 返回 ecam_change_history 的索引定义。
