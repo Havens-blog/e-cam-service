@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
 	"github.com/Havens-blog/e-common-go/mongox"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
 )
 
 const ChangeHistoryCollection = "ecam_change_history"
@@ -35,14 +36,36 @@ func NewChangeRecordDAO(db *mongox.Mongo) ChangeRecordDAO {
 
 // InitIndexes 初始化索引
 func (d *changeRecordDAO) InitIndexes(ctx context.Context) error {
-	indexes := []mongo.IndexModel{
+	_, err := d.db.Collection(ChangeHistoryCollection).Indexes().CreateMany(ctx, changeHistoryIndexes())
+	return err
+}
+
+// changeHistoryIndexes 返回 ecam_change_history 的索引定义。
+//
+// 抽成纯函数，便于用表驱动用例锁住"索引形状"（键顺序），防止后续改动无意删掉某个前缀
+// 而悄悄把统计接口重新变成全表扫描。
+//
+// 【为什么补这三条】（2026-11-04，实测 ecam_change_history 5,399,871 条）
+//   - group by model_uid  → 1 分 38 秒
+//   - group by field_name → 超过 200 秒仍未返回
+//   - 按 field_name 的 CountDocuments → 全表扫描 >30 秒后 Mongo 断开连接
+//
+// 而 asset_id 有索引时同条件仅 2.9 秒 ⇒ 慢的根因是**缺索引**，不是代码。
+//
+// 【键顺序依据】GetSummary 的三项统计都是 "$match(租户等值) + $group(按某字段) ，
+// 可能附带 ctime 区间"，按 MongoDB 的 ESR 原则排序：
+// 等值→分组字段→区间。把 ctime 放在末尾，既能支撑分组，也能在带时间区间时继续用索引收敛范围。
+func changeHistoryIndexes() []mongo.IndexModel {
+	return []mongo.IndexModel{
 		{Keys: bson.D{{Key: "asset_id", Value: 1}, {Key: "ctime", Value: -1}}},
 		{Keys: bson.D{{Key: "tenant_id", Value: 1}, {Key: "ctime", Value: -1}}},
 		{Keys: bson.D{{Key: "model_uid", Value: 1}, {Key: "ctime", Value: -1}}},
 		{Keys: bson.D{{Key: "change_source", Value: 1}}},
+		// 补齐的三条：覆盖"租户内按 分组字段 统计"（此前 field_name / provider 完全没有索引）
+		{Keys: bson.D{{Key: "tenant_id", Value: 1}, {Key: "model_uid", Value: 1}, {Key: "ctime", Value: -1}}},
+		{Keys: bson.D{{Key: "tenant_id", Value: 1}, {Key: "field_name", Value: 1}, {Key: "ctime", Value: -1}}},
+		{Keys: bson.D{{Key: "tenant_id", Value: 1}, {Key: "provider", Value: 1}, {Key: "ctime", Value: -1}}},
 	}
-	_, err := d.db.Collection(ChangeHistoryCollection).Indexes().CreateMany(ctx, indexes)
-	return err
 }
 
 // BatchCreate 批量创建变更记录
