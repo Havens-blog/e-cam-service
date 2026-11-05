@@ -34,7 +34,7 @@ type AuditEventFilter struct {
 
 // AuditEventDAO 统一审计事件数据访问接口。
 // 读侧只暴露 List/Count；写侧由 e-common-go/auditlog 的 MongoWriter 承担
-//（append-only，无 update/delete 路径）。
+// （append-only，无 update/delete 路径）。
 type AuditEventDAO interface {
 	List(ctx context.Context, filter *AuditEventFilter) ([]auditlog.AuditEvent, error)
 	Count(ctx context.Context, filter *AuditEventFilter) (int64, error)

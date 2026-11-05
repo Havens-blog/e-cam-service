@@ -97,6 +97,7 @@ type fakeLegacySink struct {
 	err     error
 }
 
+//nolint:gocritic // 接口签名约束：AuditSink.Write 按值传递
 func (f *fakeLegacySink) Write(_ context.Context, e middleware.AuditEntry) error {
 	if f.err != nil {
 		return f.err

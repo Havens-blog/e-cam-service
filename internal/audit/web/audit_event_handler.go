@@ -2,6 +2,8 @@
 package web
 
 import (
+	"net/http"
+
 	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/audit/service"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
@@ -19,6 +21,9 @@ type AuditEventHandler struct {
 func NewAuditEventHandler(eventSvc *service.AuditEventService, logger *elog.Component) *AuditEventHandler {
 	return &AuditEventHandler{eventSvc: eventSvc, logger: logger}
 }
+
+// defaultEventPageSize 统一审计事件默认页大小（与 audit/logs 的 20 同口径）。
+const defaultEventPageSize = 20
 
 // RegisterRoutes 注册统一审计事件路由
 func (h *AuditEventHandler) RegisterRoutes(r *gin.RouterGroup) {
@@ -59,7 +64,7 @@ func (h *AuditEventHandler) ListEvents(c *gin.Context) {
 		ResourceType: c.Query("resource_type"),
 		ResourceID:   c.Query("resource_id"),
 		Offset:       parseIntDefault(c.Query("offset"), 0),
-		Limit:        min(parseIntDefault(c.Query("limit"), 20), int64(maxPageLimit)),
+		Limit:        min(parseIntDefault(c.Query("limit"), defaultEventPageSize), int64(maxPageLimit)),
 		Order:        c.Query("order"),
 	}
 	if st := c.Query("start_time"); st != "" {
@@ -73,8 +78,8 @@ func (h *AuditEventHandler) ListEvents(c *gin.Context) {
 
 	events, total, err := h.eventSvc.ListEvents(c.Request.Context(), &filter)
 	if err != nil {
-		c.JSON(500, gin.H{"code": 500, "msg": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": http.StatusInternalServerError, "msg": err.Error()})
 		return
 	}
-	c.JSON(200, gin.H{"code": 0, "msg": "success", "data": gin.H{"items": events, "total": total}})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "success", "data": gin.H{"items": events, "total": total}})
 }
