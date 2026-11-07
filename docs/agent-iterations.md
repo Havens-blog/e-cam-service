@@ -17303,3 +17303,39 @@ e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓
 aadfix2.exe 未回退 ✓|need credential type=0 ✓|S2S stats 200(total=23509)✓|webhook 脱敏 ✓|health ✓
 e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓)
 本轮判定:**无可执行需求** ✓(口径 124 ✓)
+
+---
+
+## cam-fed-f2-20261107（联邦 F2：e-cam 联邦读客户端与双源归并）
+
+**状态**：**已合并**（`e-cam-service#485`，merge `3d22aa2`；CI Test+Build×5 全绿）
+
+### 一、交付（统一页自此可查 IAM 侧事件）
+
+| 项 | 说明 |
+|---|---|
+| `IAMEventFederationClient` | S2S 令牌经 ServiceTokenProvider（client_credentials 逐租户缓存）换取；调用 e-iam#8 的 `/api/s2s/audit/events`，解析 ginx 信封映射 SDK 类型 |
+| `ListEventsFederated` | 双源归并：每源拉 `[0, offset+limit)` 窗口按 at 归并切片（深分页正确）；联合 total = 两源之和 |
+| 降级语义 | e-iam 不可达 → 本侧单源 + `federation_degraded=true` 响应字段（前端可提示「IAM 侧暂不可用」），绝不丢本侧数据 |
+| fail-closed 防御 | 无租户上下文（tenant_id<=0）跳过联邦调用 |
+| 装配 | viper 构建（`eiam.base_url` 回退 `policy.auth_url`；token_url/client_id/client_secret），任一缺失 = nil 单源降级；InitAuditModule 签名不变 wire_gen 零改动 |
+
+### 二、测试
+
+`federation_merge_test` 4 例：双源归并 at 降序交错+联合 total / 降级单源+标记 /
+未配置单源 / 无租户跳过联邦。全量 105 包 ok 0 FAIL；build/vet 0。
+
+### 三、CI 迭代（两轮）
+
+| 轮 | 违规 | 修复 |
+|---|---|---|
+| 1 | gocyclo 17（查询构造内联）+ rangeValCopy×2 + httpNoBody + unnamedResult + lll×2 + goimports/gofmt | 拆 buildFederationQuery 助手 / 索引遍历 / http.NoBody / 命名返回值 / 长行拆分 / import 三组分列 |
+| — | **四项全绿** | |
+
+### 四、未验证项
+
+真实 S2S 调用端到端（部署管道修复后，#445/#469）。
+
+### 五、F3 待办
+
+前端解禁「IAM 服务」选项 + 消费 `federation_degraded` 提示（统一页已具备全部后端支撑）。
