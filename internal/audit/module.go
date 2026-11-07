@@ -27,7 +27,8 @@ type Module struct {
 }
 
 // NewModule 初始化审计模块
-func NewModule(db *mongox.Mongo) *Module {
+// fed 为联邦读客户端（F2，可为 nil = 未配置联邦，统一检索退化为本侧单源）。
+func NewModule(db *mongox.Mongo, fed *service.IAMEventFederationClient) *Module {
 	logger := elog.DefaultLogger
 
 	// 初始化 DAO
@@ -53,7 +54,7 @@ func NewModule(db *mongox.Mongo) *Module {
 	// 初始化 Service
 	auditSvc := service.NewAuditService(auditDAO, logger)
 	changeTracker := service.NewChangeTracker(changeDAO, logger, eventWriter)
-	eventSvc := service.NewAuditEventService(eventDAO, logger)
+	eventSvc := service.NewAuditEventService(eventDAO, logger, fed)
 
 	// 初始化 Handler
 	auditHandler := web.NewAuditHandler(auditSvc, logger)
