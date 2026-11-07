@@ -17289,3 +17289,10 @@ e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓
   用 `.String()` + `strconv` 才可靠。
 - gin.W 的 `Result.Code` 写在响应 body 的 code 字段（HTTP 恒 200）——
   测试断言要打 body 而非 HTTP 状态码（:8001/:9000「中间件先答」教训的第三次变体）。
+
+---
+
+## 2026-11-07 **周期回归(14:35)**:全部修复仍生效,无可执行需求
+aadfix2.exe 未回退 ✓|need credential type=0 ✓|S2S stats 200(total=23508)✓|webhook 脱敏 ✓|health ✓
+e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓)
+本轮判定:**无可执行需求** ✓(口径 124 ✓)
