@@ -21,7 +21,9 @@ type fakeFederationClient struct {
 	calls  int
 }
 
-func (f *fakeFederationClient) FetchIAMEvents(ctx context.Context, tenantID int64, filter *dao.AuditEventFilter, offset, limit int) ([]auditlog.AuditEvent, int64, error) {
+func (f *fakeFederationClient) FetchIAMEvents(ctx context.Context, tenantID int64,
+	filter *dao.AuditEventFilter, offset, limit int,
+) ([]auditlog.AuditEvent, int64, error) {
 	f.calls++
 	return f.events, f.total, f.err
 }
@@ -33,11 +35,11 @@ type fakeEventDAOFed struct {
 
 func (d *fakeEventDAOFed) List(ctx context.Context, filter *dao.AuditEventFilter) ([]auditlog.AuditEvent, error) {
 	out := []auditlog.AuditEvent{}
-	for _, r := range d.rows {
-		if filter.TenantID != 0 && r.TenantID != filter.TenantID {
+	for i := range d.rows {
+		if filter.TenantID != 0 && d.rows[i].TenantID != filter.TenantID {
 			continue
 		}
-		out = append(out, r)
+		out = append(out, d.rows[i])
 	}
 	// 简化分页（测试用例只断言归并结果，不做深分页）
 	if int(filter.Offset) >= len(out) {
@@ -56,8 +58,8 @@ func (d *fakeEventDAOFed) InitIndexes(ctx context.Context) error {
 
 func (d *fakeEventDAOFed) Count(ctx context.Context, filter *dao.AuditEventFilter) (int64, error) {
 	var n int64
-	for _, r := range d.rows {
-		if filter.TenantID != 0 && r.TenantID != filter.TenantID {
+	for i := range d.rows {
+		if filter.TenantID != 0 && d.rows[i].TenantID != filter.TenantID {
 			continue
 		}
 		n++

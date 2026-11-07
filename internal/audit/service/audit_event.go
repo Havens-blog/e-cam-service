@@ -53,23 +53,23 @@ func (s *AuditEventService) ListEvents(ctx context.Context, filter *dao.AuditEve
 // 归并取窗：每源拉 [0, offset+limit)（at 降序），归并后切 [offset, offset+limit)
 // —— 深分页时两侧拉取量线性放大，但结果始终正确（审计浏览分页浅，可接受）。
 // 返回值第三位为 degraded 标记。
-func (s *AuditEventService) ListEventsFederated(ctx context.Context, filter *dao.AuditEventFilter) ([]auditlog.AuditEvent, int64, bool, error) {
+func (s *AuditEventService) ListEventsFederated(ctx context.Context, filter *dao.AuditEventFilter) (events []auditlog.AuditEvent, total int64, degraded bool, err error) {
 	// 本侧：放大取窗（副本 filter，避免污染调用方）
 	localFilter := *filter
 	localFilter.Offset = 0
 	localFilter.Limit = filter.Offset + filter.Limit
-	localEvents, err := s.dao.List(ctx, &localFilter)
+	localEvents, listErr := s.dao.List(ctx, &localFilter)
 	if err != nil {
-		return nil, 0, false, fmt.Errorf("查询统一审计事件失败: %w", err)
+		return nil, 0, false, fmt.Errorf("查询统一审计事件失败: %w", listErr)
 	}
-	localTotal, err := s.dao.Count(ctx, filter)
+	localTotal, countErr := s.dao.Count(ctx, filter)
 	if err != nil {
-		return nil, 0, false, fmt.Errorf("统计统一审计事件失败: %w", err)
+		return nil, 0, false, fmt.Errorf("统计统一审计事件失败: %w", countErr)
 	}
 
 	merged := append([]auditlog.AuditEvent{}, localEvents...)
-	total := localTotal
-	degraded := false
+	total = localTotal
+	degraded = false
 
 	if s.fedClient != nil && filter.TenantID > 0 {
 		iamEvents, iamTotal, fedErr := s.fedClient.FetchIAMEvents(ctx, filter.TenantID, filter, 0, int(filter.Offset+filter.Limit))

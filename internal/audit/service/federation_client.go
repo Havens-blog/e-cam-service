@@ -9,10 +9,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gotomicro/ego/core/elog"
+
 	"github.com/Havens-blog/e-common-go/auditlog"
+
 	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
 	"github.com/Havens-blog/e-cam-service/internal/shared/auth"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // federationHTTPTimeout 跨服务联邦查询超时；审计检索是旁路查询，
@@ -50,7 +52,7 @@ type federationResp struct {
 	Code int    `json:"code"`
 	Msg  string `json:"msg"`
 	Data struct {
-		Total int64                `json:"total"`
+		Total int64                 `json:"total"`
 		List  []auditlog.AuditEvent `json:"list"`
 	} `json:"data"`
 }
@@ -71,6 +73,35 @@ func (c *IAMEventFederationClient) FetchIAMEvents(ctx context.Context, tenantID 
 		return nil, 0, fmt.Errorf("换取 S2S 令牌失败: %w", err)
 	}
 
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.baseURL+"/api/s2s/audit/events?"+buildFederationQuery(tenantID, filter, offset, limit), http.NoBody)
+	if err != nil {
+		return nil, 0, fmt.Errorf("构造联邦请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("联邦请求失败: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, 0, fmt.Errorf("联邦请求非 200: HTTP %d", resp.StatusCode)
+	}
+
+	var payload federationResp
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, 0, fmt.Errorf("解析联邦响应失败: %w", err)
+	}
+	if payload.Code != 0 {
+		return nil, 0, fmt.Errorf("联邦读侧业务失败: code=%d msg=%s", payload.Code, payload.Msg)
+	}
+	return payload.Data.List, payload.Data.Total, nil
+}
+
+// buildFederationQuery 组装联邦查询串（从 FetchIAMEvents 拆出以控制圈复杂度）。
+func buildFederationQuery(tenantID int64, filter *dao.AuditEventFilter, offset, limit int) string {
 	q := url.Values{}
 	q.Set("tenant_id", strconv.FormatInt(tenantID, 10))
 	if filter.Service != "" {
@@ -99,30 +130,5 @@ func (c *IAMEventFederationClient) FetchIAMEvents(ctx context.Context, tenantID 
 	}
 	q.Set("offset", strconv.Itoa(offset))
 	q.Set("limit", strconv.Itoa(limit))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		c.baseURL+"/api/s2s/audit/events?"+q.Encode(), nil)
-	if err != nil {
-		return nil, 0, fmt.Errorf("构造联邦请求失败: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, 0, fmt.Errorf("联邦请求失败: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, 0, fmt.Errorf("联邦请求非 200: HTTP %d", resp.StatusCode)
-	}
-
-	var payload federationResp
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, 0, fmt.Errorf("解析联邦响应失败: %w", err)
-	}
-	if payload.Code != 0 {
-		return nil, 0, fmt.Errorf("联邦读侧业务失败: code=%d msg=%s", payload.Code, payload.Msg)
-	}
-	return payload.Data.List, payload.Data.Total, nil
+	return q.Encode()
 }
