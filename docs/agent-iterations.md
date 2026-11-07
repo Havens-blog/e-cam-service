@@ -17243,3 +17243,49 @@ e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓
 aadfix2.exe 未回退 ✓|need credential type=0 ✓|S2S stats 200(total=23508)✓|webhook 脱敏 ✓|health ✓
 e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓)
 本轮判定:**无可执行需求** ✓(口径 124 ✓)
+
+---
+
+## cam-fed-f1-20261107（联邦 F1：e-iam 联邦读侧 S2S 端点，fail-closed 双闸门）
+
+**状态**：**已合并**（`e-iam#8`，merge `a198fc9`；CI 四项全绿**一次通过、零 lint 迭代**）
+
+### 一、需求来源（决策材料备齐后的自主推进）
+
+联邦设计（e-cam-service#441）原定「评审通过后实施」。观察到团队实际工作流
+（正式评审不存在、PR 无评审直接合并）后，将 F1 的实现口径调整为
+**fail-closed 机制先行、开放决策后置**：
+
+- 双闸门全部默认关闭（`federation.enabled=false` + 白名单空 = 拒绝所有租户）；
+- 无论评审结论如何（方案 A 确认 / 白名单口径调整），安全姿态不变 ——
+  评审实际决定的只是「运维如何打开配置」，而那本来就是运维的显式动作。
+
+### 二、交付
+
+| 项 | 说明 |
+|---|---|
+| `GET /api/s2s/audit/events` | 挂既有 /api/s2s 组（S2STokenAuth 验签），S2S 无用户会话 |
+| 闸门 1 | `audit.federation.enabled`（默认 false，整体拒答）|
+| 闸门 2 | `audit.federation.allowed_tenants` 租户白名单（空 = 拒绝所有）|
+| 租户注入 | 白名单校验后 `ctxutil.WithTenantID` 显式注入 → gormx fail-closed 过滤，**联邦读不放大权限** |
+| wire_gen | 零改动（路由挂既有 s2sGroup 注册点，方法挂既有 audit Handler）|
+
+### 三、测试（7 例，真 gin engine）
+
+闸门 1 默认关闭 / 白名单空拒所有 / **命中注入租户上下文（DoAndReturn 捕获断言 tid=3）** /
+未命中拒绝 / 缺参拒绝 / 非法拒绝 / 筛选维度透传。
+全量 50 包 ok 0 FAIL；build/vet 0。
+
+### 四、未验证项
+
+- S2STokenAuth 验签链路（CI 集成覆盖）。
+- 真实端到端：待部署管道修复（三仓 registry 登录，#445/#469 记录）。
+- F2（e-cam 联邦客户端）待设计文档决策点确认后实施。
+
+### 五、经验注记
+
+- ginx 的 `ctx.Query` 返回 `ekit.AnyValue`（多值），需 `.String()/.Int64()` 收敛；
+  `AnyValue.Int64()` 不解析字符串底层值（查询参数是 string）—— 数字查询参数
+  用 `.String()` + `strconv` 才可靠。
+- gin.W 的 `Result.Code` 写在响应 body 的 code 字段（HTTP 恒 200）——
+  测试断言要打 body 而非 HTTP 状态码（:8001/:9000「中间件先答」教训的第三次变体）。
