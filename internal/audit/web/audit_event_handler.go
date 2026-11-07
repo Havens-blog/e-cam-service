@@ -77,10 +77,10 @@ func (h *AuditEventHandler) ListEvents(c *gin.Context) {
 		filter.EndTime = &v
 	}
 
-	events, total, err := h.eventSvc.ListEvents(c.Request.Context(), &filter)
+	events, total, degraded, err := h.eventSvc.ListEventsFederated(c.Request.Context(), &filter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": http.StatusInternalServerError, "msg": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "success", "data": gin.H{"items": events, "total": total}})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "success", "data": gin.H{"items": events, "total": total, "federation_degraded": degraded}})
 }

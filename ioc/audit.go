@@ -7,19 +7,37 @@ import (
 	"github.com/Havens-blog/e-common-go/auditlog"
 	"github.com/Havens-blog/e-common-go/mongox"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/spf13/viper"
 
 	"github.com/Havens-blog/e-cam-service/internal/audit"
 	"github.com/Havens-blog/e-cam-service/internal/audit/domain"
 	"github.com/Havens-blog/e-cam-service/internal/audit/repository/dao"
+	auditservice "github.com/Havens-blog/e-cam-service/internal/audit/service"
 	"github.com/Havens-blog/e-cam-service/internal/cam"
 	"github.com/Havens-blog/e-cam-service/internal/logquery"
 	logqueryweb "github.com/Havens-blog/e-cam-service/internal/logquery/web"
+	"github.com/Havens-blog/e-cam-service/internal/shared/auth"
 	"github.com/Havens-blog/e-cam-service/internal/shared/middleware"
 )
 
 // InitAuditModule 初始化审计模块
 func InitAuditModule(db *mongox.Mongo) *audit.Module {
-	return audit.NewModule(db)
+	// 联邦读客户端（F2）：eiam 基址或 S2S 凭据未配置时为 nil（单源降级，
+	// 统一检索仍可用）；装配期不报错，与 governance 客户端的装配口径一致。
+	baseURL := viper.GetString("eiam.base_url")
+	if baseURL == "" {
+		baseURL = viper.GetString("policy.auth_url")
+	}
+	tokenURL := viper.GetString("eiam.token_url")
+	clientID := viper.GetString("eiam.client_id")
+	clientSecret := viper.GetString("eiam.client_secret")
+	var fed *auditservice.IAMEventFederationClient
+	if baseURL != "" && tokenURL != "" && clientID != "" && clientSecret != "" {
+		fed = auditservice.NewIAMEventFederationClient(baseURL,
+			auth.NewServiceTokenProvider(tokenURL, clientID, clientSecret, elog.DefaultLogger),
+			elog.DefaultLogger)
+	}
+	return audit.NewModule(db, fed)
 }
 
 // auditDAOSink 把中间件的领域无关 AuditEntry 翻译为 audit 领域持久化模型，

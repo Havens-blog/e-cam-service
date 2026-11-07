@@ -40,7 +40,7 @@ func (f *fakeEventDAO) InitIndexes(_ context.Context) error { return nil }
 func newEventsTestRouter(t *testing.T, fake *fakeEventDAO) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	svc := service.NewAuditEventService(fake, elog.DefaultLogger)
+	svc := service.NewAuditEventService(fake, elog.DefaultLogger, nil)
 	h := NewAuditEventHandler(svc, elog.DefaultLogger)
 	r := gin.New()
 	// 注入租户中间件桩：模拟登录会话已选定租户 3
@@ -76,7 +76,8 @@ func TestAuditEventHandler_ListEvents(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Code)
 		got := w.Body.String()
 		assert.Contains(t, got, `"total":1`)
-		assert.Contains(t, got, `"actor_id":"7"`)
+		// 注：offset=5 + 单行数据 → 本页为空是正确语义（归并切片按全局偏移）；
+		// 事件渲染断言由「响应体为 SDK 事件的原样 JSON」子测试覆盖（offset=0）。
 
 		f := fake.captured
 		assert.Equal(t, int64(3), f.TenantID, "租户必须来自上下文而非查询参数")
