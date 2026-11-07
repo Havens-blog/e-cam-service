@@ -53,7 +53,9 @@ func (s *AuditEventService) ListEvents(ctx context.Context, filter *dao.AuditEve
 // 归并取窗：每源拉 [0, offset+limit)（at 降序），归并后切 [offset, offset+limit)
 // —— 深分页时两侧拉取量线性放大，但结果始终正确（审计浏览分页浅，可接受）。
 // 返回值第三位为 degraded 标记。
-func (s *AuditEventService) ListEventsFederated(ctx context.Context, filter *dao.AuditEventFilter) (events []auditlog.AuditEvent, total int64, degraded bool, err error) {
+func (s *AuditEventService) ListEventsFederated(
+	ctx context.Context, filter *dao.AuditEventFilter,
+) (events []auditlog.AuditEvent, total int64, degraded bool, err error) {
 	// 本侧：放大取窗（副本 filter，避免污染调用方）
 	localFilter := *filter
 	localFilter.Offset = 0

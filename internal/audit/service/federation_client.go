@@ -60,7 +60,9 @@ type federationResp struct {
 // FetchIAMEvents 拉取 e-iam 侧统一审计事件（at 降序）。
 // tenantID 来自 e-cam 侧会话租户（经 S2S 令牌租户上下文 + 查询参数双重传递，
 // e-iam 侧白名单校验后 fail-closed 过滤）。
-func (c *IAMEventFederationClient) FetchIAMEvents(ctx context.Context, tenantID int64, filter *dao.AuditEventFilter, offset, limit int) ([]auditlog.AuditEvent, int64, error) {
+func (c *IAMEventFederationClient) FetchIAMEvents(
+	ctx context.Context, tenantID int64, filter *dao.AuditEventFilter, offset, limit int,
+) ([]auditlog.AuditEvent, int64, error) {
 	if c.baseURL == "" {
 		return nil, 0, fmt.Errorf("eiam.base_url 未配置，联邦读不可用")
 	}
