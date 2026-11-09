@@ -17713,3 +17713,34 @@ e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓
 aadfix2.exe 未回退 ✓|need credential type=0 ✓|S2S stats 200(total=23520)✓|webhook 脱敏 ✓|health ✓
 e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓)
 本轮判定:**无可执行需求** ✓(口径 124 ✓)
+
+---
+
+## 2026-11-09 **环境事故与恢复(17:42-18:50)**:服务全面宕机→完全恢复;一条口径
+
+### 一、事故
+17:42 周期回归发现 **8001/8002/5173/8888 全 DOWN**(仅 eiam 9000 存活);根因未明
+(疑似 17:42 前后宿主机或并行会话重启了 dev 环境)。
+
+### 二、恢复过程(三步)
+1. 8888/9000 自行恢复(或由并行会话恢复)
+2. **8001**:检查发现 CompileDaemon 已于 17:44 从**过期共享检出**重建了
+   `e-cam-service.exe` ✗(无 AAD 修复)→ 按部署不变量改用验证过的
+   `e-cam-service.aadfix2.exe` 手动启动(PID 41636)✓;8002 用新 exe 启动 ✓
+3. **5173**:第一次用 `Start-Job` 启动 vite——**失败** ✗:每个 pwsh 工具调用是独立
+   进程,Start-Job 随进程退出而死;改用**工具级后台作业**
+   (`run_in_background` 的 `pnpm run dev`,job id pwsh-c744e48ae79646ad)✓
+
+### 三、恢复后回归(全绿 ✓)
+8001=aadfix2.exe PID 41636|need credential type=0|S2S stats 200(total=23520)|
+webhook 脱敏 ✓|health ✓|前端 /cam/ 经 nginx HTTP 200 ✓|5 端口全 UP ✓
+
+### 四、口径沉淀
+- **第一百二十六条**:**`Start-Job` 不能跨 pwsh 工具调用存活**——每个工具调用是全新
+  进程,进程退出其 Job 即死。需要持久守护进程时,用 pwsh 工具的 `run_in_background`
+  (工具级托管作业,如 dev.ps1 的守护作业)或 `Start-Process` 直接脱离进程树。
+
+### 五、遗留
+- 8001 为手动启动,**无 CompileDaemon 守护**(反而更稳:不会��过期检出回退 ✓);
+  下次需要热重载时由用户/并行会话重启 dev.ps1
+- 待外部操作 3 项不变(checkout 更新 / DBA 索引 / e-iam PR #4 审查)
