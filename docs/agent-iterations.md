@@ -17892,3 +17892,26 @@ e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓
 aadfix2.exe ✓|need credential type=0 ✓|S2S stats 200(total=23633)✓|webhook 脱敏 ✓|health ✓|前端 /cam/ 200 ✓|5 端口 UP ✓
 e-iam PR #4 open/clean 待审核;并行会话 #421 已合并(不代为部署 ✓)
 本轮判定:**无可执行需求** ✓(口径 124 ✓)
+
+---
+
+## 2026-11-10 **需求迭代:dashboard 即将过期资源排除已开自动续费(PR #559 已合并)**
+
+### 一、需求(用户原话)
+「dashboard 即将过期资源 如果是包年包月 自动续费的就不用再显示 我们聚焦的是即将到期而且没有自动续费的资源」
+
+### 二、实现(仅后端 dao/dashboard.go 聚合过滤)
+- auto_renew 为真(bool true 或字符串 "true"/"1",$toString 归一化)→ 不进入列表与计数
+- 字段缺失(磁盘/Redis 等未同步)保守保留;列表内均带 expired_time=包年包月,按量付费不受影响
+- 数据画像:30 天窗口 7973 条,auto_renew 仅 ECS 类同步(当前全 false)
+
+### 三、验收
+- live 测试(哨兵租户 -999909,夹具 true/false/缺失/"true"):PASS,仅 false+缺失返回 ✓
+- dao/service 单测 PASS;部署 expiring-ar.exe 后 API total=7973 与基线一致 ✓
+- 浏览器 UI(1500×950):卡片 7973=API ✓ 20 行 ✓ 30→7 天切换(1075) ✓ 0 控制台错误 ✓
+- 部署回归:health/S2S/脱敏/need-credential-type=0/前端 200 全绿 ✓
+- 截图:%TEMP%\dsh-ui-verify\expiring-ar-dashboard.png
+
+### 四、部署与回滚
+- 8001=e-cam-service.expiring-ar.exe(临时 go.work 构建含 AAD 修复);回滚=换回 aadfix2.exe
+- PR #559 已合并(sha 068defd);边界:字段缺失类型仍显示,精确过滤需执行器补同步 auto_renew
