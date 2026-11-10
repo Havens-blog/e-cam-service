@@ -125,3 +125,10 @@ main-latest.exe ✓|need credential type=0 ✓|S2S ✓|expiring API ✓(7973→8
 ## 2026-11-11 **周期回归(01:35)**:全部稳定,无可执行需求
 main-latest.exe ✓|need credential type=0 ✓|S2S ✓|expiring API ✓(7884,同步波动)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
 本轮判定:**无可执行需求** ✓(口径 124 ✓);剩余外部待办:检出更新 / DBA 索引
+
+---
+
+## cam-f3-filter-20261111（F3「IAM 服务」筛选联邦运行态验证 —— 统一审计验证面收口）
+
+**状态**：验证通过。service=e-iam 筛选 total=8 全部 IAM 来源（服务端过滤对联邦数据生效）；无筛选 total=9 双源混合；degraded=false。F3 此前只能验证禁用态，联邦运行态补齐。**统一审计可验证项全部完成**（双写/读侧/降级/恢复/筛选/双源归并）。
+
