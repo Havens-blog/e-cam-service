@@ -38,3 +38,10 @@
 - :8001 = 最新 main（含统一审计 #421/#431/#485 全部成果）
 - :9000 = e-iam 旧二进制（无 F1 联邦端点 → 联邦呈降级态，符合设计）
 - 联邦完整链路（IAM 侧事件并入）需 e-iam 同步升级后自动恢复
+
+---
+
+## 2026-11-10 **周期回归(17:35)**:新功能二进制稳定;e-iam PR #4 已被维护者合并
+8001=expiring-ar.exe ✓|need credential type=0 ✓|S2S ✓|expiring API ✓(total=7973)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
+**e-iam PR #4(resetsecret)state=closed merged=True** ✓——常设待办第 3 项的审核部分完成
+本轮判定:**无可执行需求** ✓(口径 124 ✓);剩余外部待办:检出更新 / DBA 索引
