@@ -88,3 +88,34 @@ main-latest.exe ✓|need credential type=0 ✓|S2S ✓|expiring API ✓(7973)|�
 ## 2026-11-11 **周期回归(00:35)**:全部稳定,无可执行需求
 main-latest.exe ✓|need credential type=0 ✓|S2S ✓|expiring API ✓(7973→8069,同步波动正常)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
 本轮判定:**无可执行需求** ✓(口径 124 ✓);剩余外部待办:检出更新 / DBA 索引
+
+---
+
+## cam-fed-e2e-20261110（联邦全链路 E2E 成功 + e-iam 两处真 BUG 修复 e-iam#9）
+
+**状态**：**已验证 + 修复合并**（e-iam#9 MERGED，CI 四项全绿）—— **联邦检索 F1→F2→F3 端到端真实打通。**
+
+### 一、联调环境（不动共享工作树）
+
+- e-iam 第二实例 :9001（我的 worktree 构建，隔离配置 --config，F1 双闸门开启+白名单[3]）
+- e-cam :8001（最新 main）经 config/prod.local.yaml（本地覆盖机制）把 eiam.base_url 指向 :9001
+- S2S 令牌仍由主实例 :9000 签发（共享 MySQL/Redis，密钥互通）
+
+### 二、发现并修复的两处真 BUG（e-iam#9）
+
+| # | 缺陷 | 实证 | 修复 |
+|---|---|---|---|
+| 1 | InitTables 缺 AuditEventRow——全新部署建不出 audit_events 表 | 共享 dev 库真实缺表（错误 1146），双写静默失败、读侧 500 | AutoMigrate 补模型 |
+| 2 | AuditEventVO.Detail 为 string——违背 SDK 对象契约，F2 反序列化失败→永久降级 | app.log: cannot unmarshal string into map | json.RawMessage 透传（空/非法→null）|
+
+### 三、全链路最终断言（e2e-federation-SUCCESS.png）
+
+修复前：degraded=true（404→401→500→unmarshal 逐层排障）；修复后：
+- **total=3（e-iam:2 + e-cam-service:1）——IAM 侧事件真实并入统一页**
+- **federation_degraded=false**；前端降级提示消失（F3 条件渲染正确）
+- S2S 鉴权/租户白名单/双写/at 归并全部生产验证
+
+### 四、排障链教训（判据系列新增）
+
+404（端口被无关进程 watch-alert.exe 占用）→ 缺 server 子命令 → 401（路由存在）→ 500（缺表）→ unmarshal（契约）——**每一步都以日志/直连探测区分，无猜测**。
+
