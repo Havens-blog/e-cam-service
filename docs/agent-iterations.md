@@ -57,3 +57,10 @@ expiring-ar.exe ✓|need credential type=0 ✓|S2S ✓|expiring API ✓(7973)|�
 ## 2026-11-10 **周期回归(19:35)**:全部稳定,无可执行需求
 expiring-ar.exe ✓|need credential type=0 ✓|S2S ✓|expiring API ✓(7973)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
 本轮判定:**无可执行需求** ✓(口径 124 ✓);剩余外部待办:检出更新 / DBA 索引
+
+---
+
+## 2026-11-10 **周期回归(20:35)**:全部稳定;并行会话已部署 main-latest(含 #559)
+8001=e-cam-service.main-latest.exe(并行会话部署的最新 main 构建)✓|need credential type=0 ✓(**AAD 修复在位**)|S2S ✓|expiring API ✓(7973,**#559 功能包含且生效**)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
+我的 expiring-ar.exe 已被 main-latest 替代(符合口径 125:各自按节奏发布;功能已合入 main 故自然继承 ✓)
+本轮判定:**无可执行需求** ✓(口径 124 ✓);剩余外部待办:检出更新 / DBA 索引
