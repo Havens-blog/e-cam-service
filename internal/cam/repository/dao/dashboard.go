@@ -105,14 +105,27 @@ func (d *dashboardDAO) GetExpiringInstances(ctx context.Context, tenantID int64,
 		bson.M{"$dateFromString": bson.M{"dateString": "$attributes.expired_time", "format": "%Y-%m-%d", "timezone": "+08:00", "onError": nil}},
 	}}
 
+	// 自动续费归一化：能进入本列表的资源均带 expired_time（即包年包月，按量付费无到期时间）。
+	// 执行器（sync_ecs/sync_ddos）把自动续费写成 attributes.auto_renew（当前为 bool），
+	// 用 $toString 统一 bool/字符串两种形态后判 "true"/"1"，避免字符串 "true" 漏过滤。
+	// 字段缺失（磁盘/Redis 等未同步该字段）视为未开自动续费，保守保留——无法确认会自动续费的到期资源仍需人工关注。
+	arOnExpr := bson.M{"$in": bson.A{
+		bson.M{"$toString": bson.M{"$ifNull": bson.A{"$attributes.auto_renew", false}}},
+		bson.A{"true", "1"},
+	}}
+
 	pipeline := mongo.Pipeline{
 		{{Key: "$match", Value: bson.M{
 			// 租户过滤恒定生效：0 不作通配。未选定租户时本查询返回空集
 			"tenant_id":               tenantID,
 			"attributes.expired_time": bson.M{"$exists": true, "$nin": bson.A{"", nil}},
 		}}},
-		{{Key: "$addFields", Value: bson.M{"_exp": expExpr}}},
-		{{Key: "$match", Value: bson.M{"_exp": bson.M{"$gt": now, "$lte": deadline}}}},
+		{{Key: "$addFields", Value: bson.M{"_exp": expExpr, "_ar_on": arOnExpr}}},
+		{{Key: "$match", Value: bson.M{
+			"_exp": bson.M{"$gt": now, "$lte": deadline},
+			// 包年包月且已开自动续费的资源到期会自动续费，无需人工关注，不进入"即将过期"列表
+			"_ar_on": bson.M{"$ne": true},
+		}}},
 		{{Key: "$facet", Value: bson.M{
 			"total": bson.A{bson.M{"$count": "n"}},
 			"items": bson.A{
