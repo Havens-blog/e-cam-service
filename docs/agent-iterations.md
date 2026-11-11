@@ -235,3 +235,25 @@ main-latest.exe ✓|need credential type=0 ✓|S2S ✓|expiring API ✓(7829)|�
 ## 2026-11-11 **周期回归(19:35)**:全部稳定,无可执行需求
 main-latest.exe ✓|need credential type=0 ✓|S2S ✓|expiring API ✓(7829)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
 本轮判定:**无可执行需求** ✓(口径 124 ✓);剩余外部待办:检出更新 / DBA 索引
+
+---
+
+## 2026-11-11 **缺陷修复:华为 DDoS AAD 凭证错误根治(PR #591 已合并+已部署+已验证)**
+
+### 一、缺陷(周期回归 20:35 捕获)
+`need credential type is [global.Credentials], actually is basic.Credentials` 每小时 1 次(huawei cn-north-1 DDoS),自 11-10 20:33 起 23+ 次——此前 tail 600 窗口大多错过:口径 127:**周期回归窗口应覆盖完整同步周期(~1h),必要时扫全日志**
+
+### 二、根因(非 CompileDaemon,是版本回退新形态)
+main-latest.exe(并行会话 11/10 19:42 构建)解析到**模块缓存 e-cloudx-sdk v0.2.0**(早于 PR #12);其 ddos.go 用 basic 凭证建 AAD 客户端;AAD 全局服务+账号默认 region cn-north-1 不在 SDK 地域表→每周期恰 1 次触发,其余华为资源正常故难察觉
+
+### 三、修复(SDK v0.2.1 + go.mod 钉版)
+- e-cloudx-sdk 打 tag **v0.2.1**(=v0.2.0+PR#12+PR#11)已推送
+- 服务 go.mod v0.2.0→v0.2.1(PR #591 已合并):**GOWORK=off/缓存构建同样携带修复,封死版本回退路径**(部署不变量升级:版本钉死优于 go.work 依赖)
+
+### 四、验收(真实周期验证)
+- 部署 e-cam-service.v021fix.exe(PID 42840)后**下一真实周期 21:39:54**:回退 WARN 正常+**列表获取成功(count=0)**+同步完成 ✓;need credential type=0 ✓
+- GOWORK=off 构建 ✓ dao/service 单测 ✓ health/S2S/expiring 7829/脱敏/前端 200 ✓
+- 无 UI 改动(后端同步路径),前端回归 200 即烟测
+
+### 五、遗留
+aliyun ddosbgp/ap-south-1 等 403 为账号权限问题(既有,另计);回滚=换回 main-latest.exe
