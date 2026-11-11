@@ -3,7 +3,7 @@ module github.com/Havens-blog/e-cam-service
 go 1.25.5
 
 require (
-	github.com/Havens-blog/e-cloudx-sdk v0.2.0
+	github.com/Havens-blog/e-cloudx-sdk v0.2.1
 	github.com/Havens-blog/e-common-go v0.2.0
 	github.com/Havens-blog/e-iam v0.0.27
 	github.com/alicebob/miniredis/v2 v2.34.0
