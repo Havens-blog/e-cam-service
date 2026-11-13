@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/robfig/cron/v3"
+
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/robfig/cron/v3"
 )
 
 // ---------------------------------------------------------------------
@@ -202,14 +203,15 @@ func specByName(t *testing.T, specs []CertJobSpec, name string) CertJobSpec {
 // AC-1：10 类任务按 Scheduler Tasks 表频率注册（含 cert-volcano-import-sync 任务 4）
 // ---------------------------------------------------------------------
 
-// TestCertJobs_JobSpecs_CoversSchedulerTasks 9 个调度点承载 10 类任务
+// TestCertJobs_JobSpecs_CoversSchedulerTasks 10 个调度点承载 11 类任务
 // （probe 天级由 cert:inspection 第三步承载；cert:cert-import 为
-// cert-volcano-import-sync 任务 4 新增，见 jobs.go 头注释），频率逐项对表。
+// cert-volcano-import-sync 任务 4 新增；cert:internal-probe 为 T2 内网域周级降频轮，
+// 见 docs/req-probe-classification.md 决策记录），频率逐项对表。
 func TestCertJobs_JobSpecs_CoversSchedulerTasks(t *testing.T) {
 	jobs, scan, _, _, _, _, sync := newTestCertJobs()
 	specs := jobs.JobSpecs(10)
-	if len(specs) != 9 {
-		t.Fatalf("期望 9 个调度点（10 类任务，probe 天级折叠进 inspection），实际 %d", len(specs))
+	if len(specs) != 10 {
+		t.Fatalf("期望 10 个调度点（11 类任务，probe 天级折叠进 inspection），实际 %d", len(specs))
 	}
 
 	expect := []struct{ name, spec string }{
@@ -221,6 +223,7 @@ func TestCertJobs_JobSpecs_CoversSchedulerTasks(t *testing.T) {
 		{JobPauseTimeout, "0 * * * *"},       // pause-timeout 每小时
 		{JobOrphanSweep, "0 3 * * *"},        // orphan-cleanup 天级批扫
 		{JobCrdRecheck, "* * * * *"},         // crd-recheck 分钟级扫描（recheckDelayMinutes 默认 5）
+		{JobInternalProbe, "0 6 * * 0"},      // internal-probe 内网域周级降频轮（周日 06:00）
 		{JobExecutingTimeout, "*/5 * * * *"}, // executing-timeout 每 5 分钟
 	}
 	for _, e := range expect {

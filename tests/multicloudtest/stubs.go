@@ -18,14 +18,15 @@ import (
 	"sync"
 	"time"
 
+	awscloud "github.com/Havens-blog/e-cloudx-sdk/aws"
+	azurecloud "github.com/Havens-blog/e-cloudx-sdk/azure"
+	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
+	huaweicloud "github.com/Havens-blog/e-cloudx-sdk/huawei"
+	"go.mongodb.org/mongo-driver/mongo"
+
 	"github.com/Havens-blog/e-cam-service/internal/cert/deployer"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	awscloud "github.com/Havens-blog/e-cloudx-sdk/aws"
-	azurecloud "github.com/Havens-blog/e-cloudx-sdk/azure"
-	huaweicloud "github.com/Havens-blog/e-cloudx-sdk/huawei"
-	sharedomain "github.com/Havens-blog/e-cloudx-sdk/domain"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // BindCall is one structured bind invocation recorded by the stubs.
@@ -1072,6 +1073,11 @@ func (r *StubProbeRunner) ProbeLedgerDomains(ctx context.Context) ([]domain.Prob
 }
 
 // ProbeAllTenantDNS implements service.ProbeService ( DNS path unused here ).
+// ProbeInternalDomains 内网域周级轮桩（T2）：测试不区分频率，直接复用全量桩。
+func (r *StubProbeRunner) ProbeInternalDomains(ctx context.Context) ([]domain.ProbeResult, error) {
+	return r.ProbeAllTenantDNS(ctx)
+}
+
 func (r *StubProbeRunner) ProbeAllTenantDNS(_ context.Context) ([]domain.ProbeResult, error) {
 	return nil, service.ErrNoDNSSource
 }

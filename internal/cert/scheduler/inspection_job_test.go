@@ -10,11 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // ---------------------------------------------------------------------
@@ -72,6 +73,10 @@ func (f *fakeProbeService) ProbeAllTenantDNS(_ context.Context) ([]domain.ProbeR
 }
 
 // ProbeTenantDNS 单租户 DNS 探测（fake 不接入 DNS 源，返回 ErrNoDNSSource）。
+func (f *fakeProbeService) ProbeInternalDomains(_ context.Context) ([]domain.ProbeResult, error) {
+	return nil, nil
+}
+
 func (f *fakeProbeService) ProbeTenantDNS(_ context.Context, _ int64) ([]domain.ProbeResult, error) {
 	return nil, service.ErrNoDNSSource
 }

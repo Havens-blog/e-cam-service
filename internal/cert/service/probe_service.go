@@ -177,6 +177,11 @@ type ProbeService interface {
 	// 等价 TriggerProbeAsync 全量；根域无可拨测目标返回 ErrNoProbeTargets（同步
 	// 预检，不空转起 goroutine）。防重同 TriggerProbeAsync。
 	TriggerProbeRootAsync(ctx context.Context, rootDomain string) error
+	// ProbeInternalDomains 内网域周级轮：只拨测上一轮状态为 internal 的域名
+	// （公网探测端不可达的内网域名，降频到周级以省拨号预算，但仍保留证书到期
+	// 监控）。隔离静态：若某域已改为公网解析，本周轮会把它改判为常规状态，
+	// 随后自动回到日轮目标集。
+	ProbeInternalDomains(ctx context.Context) ([]domain.ProbeResult, error)
 }
 
 // DNSLinkedResource 链路关联资源（cdn/waf/external 等）的 cert 侧投影，等价
@@ -481,6 +486,41 @@ func isWildcardSAN(name string) bool {
 	return strings.HasPrefix(name, "*.")
 }
 
+// internalDomainSet 上一轮判定为 internal 的域名集合（周级轮的目标集，也是日轮
+// 的排除集）。读失败时返回空集并入 err——日轮不因该读取失败而中断（保守退化：
+// 内网域仍被日轮拨测，只是没省下预算，不会漏拨）。
+func (s *probeService) internalDomainSet(ctx context.Context) (map[string]bool, error) {
+	latest, err := s.probes.LatestPerDomain(ctx)
+	if err != nil {
+		return map[string]bool{}, fmt.Errorf("probe: load latest per domain: %w", err)
+	}
+	out := make(map[string]bool)
+	for i := range latest {
+		if latest[i].Status == domain.ProbeStatusInternal {
+			out[strings.ToLower(strings.TrimSpace(latest[i].Domain))] = true
+		}
+	}
+	return out, nil
+}
+
+// ProbeInternalDomains 内网域周级轮：只拨测上一轮状态为 internal 的域名。
+// 语义：内网域证书变更频率低，没必要参与日轮；但完全停拨会失去到期监控，
+// 故降频到周级。若某域已改为公网解析，本周轮会把它改判回常规状态并回到日轮。
+func (s *probeService) ProbeInternalDomains(ctx context.Context) ([]domain.ProbeResult, error) {
+	set, err := s.internalDomainSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(set) == 0 {
+		return nil, nil
+	}
+	names := make([]string, 0, len(set))
+	for name := range set {
+		names = append(names, name)
+	}
+	return s.ProbeDomains(ctx, names)
+}
+
 // leafFingerprintHex 线上证书指纹：SHA256(leaf.Raw) 小写 hex，与台账指纹口径一致。
 func leafFingerprintHex(cert *x509.Certificate) string {
 	sum := sha256.Sum256(cert.Raw)
@@ -600,7 +640,23 @@ func (s *probeService) ProbeTenantDNS(ctx context.Context, tenantID int64) ([]do
 	if err != nil {
 		return nil, fmt.Errorf("probe: list dns targets for tenant %d: %w", tenantID, err)
 	}
-	return s.probeTargets(ctx, targets)
+	return s.probeTargets(ctx, s.dropInternalTargets(ctx, targets))
+}
+
+// dropInternalTargets 日轮排除上一轮判定为 internal 的内网域（降频到周级轮，
+// 见 ProbeInternalDomains）。读取失败时保守返回原目标集——宁可多拨也不漏拨。
+func (s *probeService) dropInternalTargets(ctx context.Context, targets []DNSProbeTarget) []DNSProbeTarget {
+	set, err := s.internalDomainSet(ctx)
+	if err != nil || len(set) == 0 {
+		return targets
+	}
+	kept := targets[:0:0] // 新底层数组，避免改动调用方切片
+	for _, t := range targets {
+		if !set[strings.ToLower(strings.TrimSpace(t.Hostname))] {
+			kept = append(kept, t)
+		}
+	}
+	return kept
 }
 
 // probeTargets 拨测主干：受控并发 SNI 拨测 + 六态判定 + 逐域落库（全量轮与
