@@ -9,6 +9,11 @@ import (
 	"github.com/Havens-blog/e-cloudx-sdk/domain"
 )
 
+const (
+	testAK = "LTAI5tTESTKEY1234567890AB"
+	testSK = "testSecretValue1234567890abcdef"
+)
+
 // TestClassifyProbeError 权限探测错误归类：403/AccessDenied 类必须归为 denied，
 // 其余网络类错误归为 error，成功为 ok。
 func TestClassifyProbeError(t *testing.T) {
@@ -29,7 +34,7 @@ func TestClassifyProbeError(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			status, code, _ := classifyProbeError(tc.err)
+			status, code, _ := classifyProbeError(tc.err, testAK, testSK)
 			if status != tc.wantStatus {
 				t.Fatalf("status = %q, want %q", status, tc.wantStatus)
 			}
@@ -40,12 +45,48 @@ func TestClassifyProbeError(t *testing.T) {
 	}
 }
 
+// TestClassifyProbeErrorRedactsSecrets 阿里云 SDK 报错会带上完整签名 URL，
+// 落库/回显前必须抹掉 AccessKeyId、Secret 与查询串。
+func TestClassifyProbeErrorRedactsSecrets(t *testing.T) {
+	raw := `Post "https://slb.aliyuncs.com/?AccessKeyId=` + testAK + `&Signature=abc&AccessKeySecret=` + testSK + `": dial tcp: i/o timeout`
+	_, _, msg := classifyProbeError(errors.New(raw), testAK, testSK)
+
+	if strings.Contains(msg, testAK) {
+		t.Fatalf("message leaks AccessKeyId: %s", msg)
+	}
+	if strings.Contains(msg, testSK) {
+		t.Fatalf("message leaks AccessKeySecret: %s", msg)
+	}
+	if strings.Contains(msg, "Signature=") || strings.Contains(msg, "AccessKeyId=") {
+		t.Fatalf("message leaks signed query: %s", msg)
+	}
+	if !strings.Contains(msg, "i/o timeout") {
+		t.Fatalf("message should keep the underlying reason: %s", msg)
+	}
+}
+
 // TestClassifyProbeErrorTruncates 超长错误信息必须被截断，避免整段堆栈落库
 func TestClassifyProbeErrorTruncates(t *testing.T) {
 	long := strings.Repeat("x", 1000)
-	_, _, msg := classifyProbeError(errors.New(long))
+	_, _, msg := classifyProbeError(errors.New(long), "", "")
 	if len(msg) > 400 {
 		t.Fatalf("message not truncated, len=%d", len(msg))
+	}
+}
+
+// TestIsTransientProbeError 网络类抖动应被识别为可重试
+func TestIsTransientProbeError(t *testing.T) {
+	if !isTransientProbeError(errors.New("dial tcp 1.2.3.4:443: i/o timeout")) {
+		t.Fatal("i/o timeout should be transient")
+	}
+	if !isTransientProbeError(errors.New("connection reset by peer")) {
+		t.Fatal("connection reset should be transient")
+	}
+	if isTransientProbeError(errors.New("Forbidden")) {
+		t.Fatal("Forbidden must not be treated as transient")
+	}
+	if isTransientProbeError(nil) {
+		t.Fatal("nil must not be transient")
 	}
 }
 
@@ -83,5 +124,20 @@ func TestPrimaryAccountForbiddenMessage(t *testing.T) {
 	}
 	if !strings.Contains(errPrimaryAccountForbidden, "RAM 子账号") {
 		t.Fatalf("message must mention RAM 子账号, got %q", errPrimaryAccountForbidden)
+	}
+}
+
+// TestPrimaryAccountRejection 主账号身份必须被拒绝（用身份串驱动，不依赖线上 STS）
+func TestPrimaryAccountRejection(t *testing.T) {
+	if err := rejectPrimaryIdentity("PrimaryAccount"); err == nil {
+		t.Fatal("PrimaryAccount must be rejected")
+	} else if !strings.Contains(err.Error(), "禁止接入主账号") {
+		t.Fatalf("unexpected message: %v", err)
+	}
+
+	for _, ok := range []string{"RAMUser", "RAMRole", ""} {
+		if err := rejectPrimaryIdentity(ok); err != nil {
+			t.Fatalf("identity %q must be allowed, got %v", ok, err)
+		}
 	}
 }

@@ -137,6 +137,10 @@ func (h *Handler) ListCloudAccounts(ctx *gin.Context) {
 	accountVOs := make([]CloudAccount, len(accounts))
 	for i, account := range accounts {
 		accountVOs[i] = h.toCloudAccountVO(*account)
+		// 附带最近一次权限体检快照，供列表「权限不足 N 项」角标使用
+		if check, checkErr := h.accountSvc.GetPermissionCheck(ctx.Request.Context(), account.ID); checkErr == nil && check != nil {
+			accountVOs[i].PermissionCheck = toPermissionCheckVO(check)
+		}
 	}
 
 	resp := CloudAccountListResp{

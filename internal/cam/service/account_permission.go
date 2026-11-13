@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -112,6 +113,8 @@ func aliyunProbeSpecs() []aliyunProbeSpec {
 			}
 			req := ddosbgp.CreateDescribeInstanceListRequest()
 			req.Scheme = "https"
+			req.PageNo = "1"
+			req.PageSize = "1"
 			_, err = client.DescribeInstanceList(req)
 			return err
 		}},
@@ -151,18 +154,46 @@ var aliyunDeniedHints = []string{
 	"403",
 }
 
-// classifyProbeError 将探测错误归类为 ok / denied / error
-func classifyProbeError(err error) (status, code, message string) {
+// urlQueryPattern 匹配 URL 查询串，用于脱敏（阿里云 SDK 报错会把完整签名 URL 带上）
+var urlQueryPattern = regexp.MustCompile(`\?[^"\s]*`)
+
+// redactMessage 从错误信息中抹掉凭证与签名查询串，避免落库/回显泄露
+func redactMessage(msg, accessKeyID, accessKeySecret string) string {
+	if accessKeyID != "" {
+		msg = strings.ReplaceAll(msg, accessKeyID, "***")
+	}
+	if accessKeySecret != "" {
+		msg = strings.ReplaceAll(msg, accessKeySecret, "***")
+	}
+	return urlQueryPattern.ReplaceAllString(msg, "?<redacted>")
+}
+
+// classifyProbeError 将探测错误归类为 ok / denied / error（消息已脱敏）
+func classifyProbeError(err error, accessKeyID, accessKeySecret string) (status, code, message string) {
 	if err == nil {
 		return camdomain.PermissionStatusOK, "", ""
 	}
-	raw := err.Error()
+	raw := redactMessage(err.Error(), accessKeyID, accessKeySecret)
 	for _, hint := range aliyunDeniedHints {
 		if strings.Contains(raw, hint) {
 			return camdomain.PermissionStatusDenied, hint, truncateMessage(raw)
 		}
 	}
 	return camdomain.PermissionStatusError, "", truncateMessage(raw)
+}
+
+// isTransientProbeError 判断是否为可重试的瞬时网络错误
+func isTransientProbeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	raw := err.Error()
+	for _, hint := range []string{"i/o timeout", "connection reset", "TLS handshake timeout", "use of closed network connection"} {
+		if strings.Contains(raw, hint) {
+			return true
+		}
+	}
+	return false
 }
 
 // truncateMessage 截断过长的错误信息，避免把整段堆栈落库
@@ -186,19 +217,38 @@ func resolveAliyunRegion(account *domain.CloudAccount) string {
 	return "cn-hangzhou"
 }
 
-// aliyunCallerIdentity 调用 STS GetCallerIdentity 识别调用者身份
+// aliyunCallerIdentity 调用 STS GetCallerIdentity 识别调用者身份（网络抖动时重试一次）
 func aliyunCallerIdentity(account *domain.CloudAccount) (identityType string, accountID string, err error) {
-	client, err := sts.NewClientWithAccessKey("cn-hangzhou", account.AccessKeyID, account.AccessKeySecret)
-	if err != nil {
-		return "", "", err
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		client, cErr := sts.NewClientWithAccessKey("cn-hangzhou", account.AccessKeyID, account.AccessKeySecret)
+		if cErr != nil {
+			return "", "", cErr
+		}
+		req := sts.CreateGetCallerIdentityRequest()
+		req.Scheme = "https"
+
+		var resp *sts.GetCallerIdentityResponse
+		resp, err = client.GetCallerIdentity(req)
+		if err == nil {
+			return resp.IdentityType, resp.AccountId, nil
+		}
+		lastErr = err
+		if !isTransientProbeError(err) {
+			break
+		}
+		time.Sleep(300 * time.Millisecond)
 	}
-	req := sts.CreateGetCallerIdentityRequest()
-	req.Scheme = "https"
-	resp, err := client.GetCallerIdentity(req)
-	if err != nil {
-		return "", "", err
+	return "", "", lastErr
+}
+
+// rejectPrimaryIdentity 身份判定：PrimaryAccount 一律拒绝，其余放行
+// 单独抽成纯函数，便于在不依赖线上 STS 的情况下验证规则本身。
+func rejectPrimaryIdentity(identityType string) error {
+	if strings.EqualFold(identityType, "PrimaryAccount") {
+		return fmt.Errorf("%s（当前身份：%s）", errPrimaryAccountForbidden, identityType)
 	}
-	return resp.IdentityType, resp.AccountId, nil
+	return nil
 }
 
 // assertNotPrimaryAccount 拒绝主账号 AK（仅阿里云；其他厂商暂不校验）
@@ -207,26 +257,22 @@ func (s *cloudAccountService) assertNotPrimaryAccount(ctx context.Context, accou
 		return nil
 	}
 
-	identityCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
 	identityType, accountID, err := aliyunCallerIdentity(account)
 	if err != nil {
 		// 识别失败不阻断接入：可能只是 STS 端点不可达，凭证有效性由后续验证兜底
 		s.ensureLogger().Warn("识别阿里云调用者身份失败，跳过主账号校验",
 			elog.String("provider", string(account.Provider)),
-			elog.FieldErr(err))
+			elog.String("error", redactMessage(err.Error(), account.AccessKeyID, account.AccessKeySecret)))
 		return nil
 	}
 
-	if strings.EqualFold(identityType, "PrimaryAccount") {
+	if err := rejectPrimaryIdentity(identityType); err != nil {
 		s.ensureLogger().Warn("拒绝接入阿里云主账号 AK",
 			elog.String("account_id", accountID),
 			elog.String("identity_type", identityType))
-		return fmt.Errorf("%s（当前身份：%s）", errPrimaryAccountForbidden, identityType)
+		return err
 	}
 
-	_ = identityCtx
 	return nil
 }
 
@@ -259,7 +305,17 @@ func (s *cloudAccountService) CheckPermissions(ctx context.Context, id int64) (*
 		identityType, _, identityErr := aliyunCallerIdentity(&account)
 		if identityErr != nil {
 			s.ensureLogger().Warn("权限体检：识别调用者身份失败",
-				elog.Int64("account_id", account.ID), elog.FieldErr(identityErr))
+				elog.Int64("account_id", account.ID),
+				elog.String("error", redactMessage(identityErr.Error(), account.AccessKeyID, account.AccessKeySecret)))
+			// 身份未识别必须显式提示：否则「禁止主账号」在这条链路上是静默失效的
+			check.Items = append(check.Items, camdomain.PermissionItem{
+				AssetType: "identity",
+				AssetName: "AK 身份识别",
+				Status:    camdomain.PermissionStatusError,
+				Code:      "IdentityUnavailable",
+				Message:   "STS 不可达，未能确认该 AK 是否为主账号；主账号拦截此刻无法生效，请检查网络后重试体检",
+			})
+			check.Summary.Error++
 		}
 		check.IdentityType = identityType
 		check.IsPrimaryAccount = strings.EqualFold(identityType, "PrimaryAccount")
@@ -269,7 +325,14 @@ func (s *cloudAccountService) CheckPermissions(ctx context.Context, id int64) (*
 			probeErr := spec.Probe(probeCtx, account.AccessKeyID, account.AccessKeySecret, region)
 			cancel()
 
-			status, code, message := classifyProbeError(probeErr)
+			// 瞬时网络错误重试一次，减少把「网络抖动」误报成「异常」
+			if isTransientProbeError(probeErr) {
+				retryCtx, retryCancel := context.WithTimeout(ctx, 8*time.Second)
+				probeErr = spec.Probe(retryCtx, account.AccessKeyID, account.AccessKeySecret, region)
+				retryCancel()
+			}
+
+			status, code, message := classifyProbeError(probeErr, account.AccessKeyID, account.AccessKeySecret)
 			check.Items = append(check.Items, camdomain.PermissionItem{
 				AssetType: spec.AssetType,
 				AssetName: spec.AssetName,
