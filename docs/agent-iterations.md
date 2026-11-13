@@ -760,3 +760,51 @@ permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(762
 permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7624)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
 权限体检复验：ok=10 denied=0 error=0，无 AK 泄露 ✓
 本轮判定:**无可执行需求** ✓；待确认：STS 不可达时 fail-open/fail-closed、denied 分支需受限 AK 演练
+
+---
+
+## cam-probe-nxdomain-stale-20261114（T4 僵尸记录打标）
+
+**状态**：**已合并**（e-cam-service#656，CI Test + Build×5 全绿）。
+
+### 一、证据与决策
+
+- 证据：150 样本 DNS 实测中 **15% 的 unreachable 是 NXDOMAIN**（外推 ≈147 个）——云上已删、平台仍有记录的僵尸域名，长期占用清单；
+- 决策（`docs/req-probe-classification.md`）：**连续 3 轮 NXDOMAIN 才打「疑似僵尸」标**，前两轮只计数不告警，恢复解析后清零；**只打标不删记录**（清理需人工确认）。
+
+### 二、实现要点
+
+1. **区分 DNS 失败与 TLS 失败**：`net.DNSError.IsNotFound` → 包装 `errProbeNXDomain`。这是关键设计——TLS 握手超时不是僵尸证据，若混为一类会造成误标；
+2. **连续轮次计数**：`ProbeResult.nxdomainCount`，NXDOMAIN 时上一轮 +1；非 NXDOMAIN 失败与解析成功**一律重置 0**；
+3. **阈值单点**：`staleNXDomainThreshold = 3` + 导出 `StaleNXDomainThreshold`（展示层判定 `staleMarked` 不重复定义魔数）；
+4. **展示**：探测列表 VO 下发 `nxDomainCount` / `staleMarked`；
+5. **schema 同步**：`schema.sql` 补 `internal`/`protocol_skipped` 枚举（修 T1 遗留滞后）+ `nxdomainCount: int ≥ 0`；`models_test` 的预期清单同步（该测试强制 bson ↔ schema 1:1，是本次能发现滞后的原因）。
+
+### 三、测试
+
+新增 8 例：NXDOMAIN 首轮计数 1、连续第 3 轮达阈值、**普通失败重置 0**、解析成功重置 0、大小写归一命中、DNS 源路径累加且租赁/链路字段不丢、`nxDomainCounts` 只收 >0 且小写归一、读取失败空表不阻断拨测。
+
+### 四、CI 往返与教训（累计四轮）
+
+| PR | 失败 | 修法 |
+|---|---|---|
+| #645 | trips 桩缺接口方法 | 补桩 |
+| #645 | gocritic rangeValCopy 184B | 索引遍历 |
+| #650 | exhaustive 未覆盖新枚举 | 补空分支 |
+| #656 | lll 144>140 + 未用字段 leaf | 拆行 / 删字段 |
+
+**新增教训**：本仓 CI 的 lint 面（lll=140 / unused / exhaustive / gocritic / goimports-local）在本地未装 golangci-lint 时不可见。可行做法是提交前跑固定预检脚本：① 全文件行宽 ≤140；② `go vet ./...`（含 tests）；③ gofmt/goimports 对 LF 副本校验。本轮已按此自查，但首次仍漏行宽——因为脚本只校验了改动文件的行数，未覆盖测试文件全文。
+
+### 五、后端四件套收口
+
+| 阶段 | PR | 内容 |
+|---|---|---|
+| T1 | #643 | 分类：internal / protocol_skipped |
+| T2 | #645 | 降频：日轮剔除 + 周轮 |
+| T3 | #650 | 指标：可拨测域分母 + 新两率 |
+| T4 | #656 | 打标：NXDOMAIN 连续 3 轮 |
+
+### 六、未验证项 / 待做
+
+- **线上效果未验证**：日轮拨测量 ≈3029→≈2274、unreachable 1212→≈58 需下一轮真实探测数据；
+- **T5 前端看板未开始**（展示新分类计数、新口径两率、staleCount），需真实浏览器双视口验收。
