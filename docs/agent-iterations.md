@@ -885,3 +885,10 @@ permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(761
 ### 六、未验证项
 
 分类/降频的**线上生效情况**仍未验证：验收时 API 返回 `internal=0`、`protocol=0`，说明尚未跑过含新代码的全量探测轮。需观察下一轮（每日 05:00）后 `internal`/`protocol_skipped` 是否出现、`unreachable` 是否从 1212 显著下降。
+
+---
+
+## 2026-11-14 **周期回归(06:35)**:全部稳定
+permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7611)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
+权限体检复验：ok=10 denied=0 error=0，无 AK 泄露 ✓
+本轮判定:**无可执行需求** ✓；待确认：STS 不可达时 fail-open/fail-closed、denied 分支需受限 AK 演练
