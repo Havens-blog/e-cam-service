@@ -672,3 +672,63 @@ permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(769
 permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7694)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
 权限体检复验：ok=10 denied=0 error=0，无 AK 泄露 ✓
 本轮判定:**无可执行需求** ✓；待确认：STS 不可达时 fail-open/fail-closed、denied 分支需受限 AK 演练
+
+---
+
+## cam-probe-classification-20261113（探测分类治理 T1-T3：内网域 / 协议记录 / 新口径指标）
+
+**状态**：T1 分类 + T2 降频 + T3 指标全部**已合并**（#643 / #645 / #650，CI 全绿）。T4 僵尸打标、T5 前端展示待做。
+
+### 一、证据链（连续三轮真实数据驱动）
+
+| 轮次 | 证据 | 结论 |
+|---|---|---|
+| 盘点 | `GET /api/v1/certs/probes?limit=5000` 全量 3029 域 | consistent 1567 / diff 189 / unreachable 1212 / wildcard 61 |
+| 样本 | 对非畸形 unreachable（960）等距抽 150 做 A 记录解析 | **79% 解析到内网 IP**（外推 ≈755）、15% NXDOMAIN、6% 公网但 TLS 失败 |
+| 补充 | 域名结构扫描 | 32 个下划线标签协议记录（ACME `_hash.` / DKIM `_domainkey.`）漏过既有「仅查 rr 前缀」口径 |
+
+### 二、用户决策（2026-11-13）
+
+1. 内网域**降频，非停拨**；
+2. 指标**新口径 + 旧字段保留一版**；
+3. 僵尸阈值 **连续 3 轮 NXDOMAIN**；
+4. 三个 test 域**保持原状**（不做证书变更）。
+
+### 三、实现（三个 PR）
+
+**T1 #643 分类核心**
+- `ProbeStatus` 新增 `internal` / `protocol_skipped`（validator 枚举 6→8）；
+- `dialResult.RemoteIP`（握手后对端 IP）；
+- 任一下划线标签 → `protocol_skipped`（不拨测）；对端命中 RFC1918/100.64/10/169.254/127/8/IPv6 私网 → `internal`（指纹照记供到期监控）；
+- 徽标优先序把两态归「跳过类」，不让内网域把整证徽标拉成告警。
+
+**T2 #645 降频**
+- 日轮 `dropInternalTargets` 剔除上一轮 `internal` 目标（省 ≈755 域/天）；
+- 新增 `cert:internal-probe` 周轮（`0 6 * * 0`），只拨内网域，保留到期监控；
+- **自愈**：内网域若改公网解析，周轮改判回常规状态并自动回到日轮；
+- 读取失败保守退化（宁可多拨不漏拨）。
+
+**T3 #650 新口径**
+- 新增 `probeTotalCount` / `internalCount` / `protocolSkippedCount` / `probeableCount` / `reachableRateOnProbeable` / `diffRateOnProbeable`；
+- 分母 = 总数 − internal − protocol_skipped − wildcard_skipped；`computeProbeRates` 纯函数，分母 ≤0 时取 0（不产生 NaN）；
+- 典型场景：3000 域 → 分母 2152，拨通率 52.2% → **72.8%**。
+
+### 四、测试
+
+新增 15 个用例（5 组）：`hasUnderscoreLabel` 7（含中段 `_domainkey` 漏网形态）、`isPrivateProbeIP` 16（各私网段边界 + 公网对照 + 空/非法保守）、`probeOne`/`probeOneDNS` 分类 5、`internalDomainSet`/`dropInternalTargets`/`ProbeInternalDomains` 4 组（含不改动入参底层数组）、`computeProbeRates` 6（含 NaN 防御与「新口径必须高于旧口径」验收）。
+
+### 五、三轮 CI 往返（教训）
+
+| 失败 | 原因 | 修法 |
+|---|---|---|
+| #645 trips 编译失败 | `tests/multicloudtest/StubProbeRunner` 未实现新接口方法 | 补桩（复用全量桩）|
+| #645 gocritic | `rangeValCopy` 每次迭代拷贝 184B | 改索引遍历 |
+| #650 exhaustive | switch 未覆盖新增枚举值 | 补 `unreachable`/`wildcard_skipped` 空分支 + 注释 |
+| #643/#650 flaky | `TestTaskxDispatch_ExecutesViaQueue`（本地 6/6 通过、与改动无关）| 重跑 CI；**未改动/未跳过测试** |
+
+**教训**：给枚举加值时，`exhaustive` 与 `gocritic` 会在**所有**既有 switch/loop 上同时触发；给接口加方法时，全仓 fake/stub（含 `tests/` 下的 Trips 桩）都会编译失败。下一次同类改动应先在本地 `go vet ./...`（含 tests）与 grep 枚举用量，再提交，可省 1-2 轮 CI。
+
+### 六、未验证项
+
+- 降频与分类的**线上效果**：需下一轮真实探测数据确认（日轮拨测量 ≈3029 → ≈2274、unreachable 1212 → ≈58 真不可达）；
+- T4 僵尸打标（连续 3 轮 NXDOMAIN）、T5 前端看板新字段均未开始。
