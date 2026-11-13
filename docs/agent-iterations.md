@@ -732,3 +732,10 @@ permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(769
 
 - 降频与分类的**线上效果**：需下一轮真实探测数据确认（日轮拨测量 ≈3029 → ≈2274、unreachable 1212 → ≈58 真不可达）；
 - T4 僵尸打标（连续 3 轮 NXDOMAIN）、T5 前端看板新字段均未开始。
+
+---
+
+## 2026-11-13 **周期回归(23:35)**:全部稳定
+permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7694)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
+权限体检复验：ok=10 denied=0 error=0，无 AK 泄露 ✓
+本轮判定:**无可执行需求** ✓；待确认：STS 不可达时 fail-open/fail-closed、denied 分支需受限 AK 演练
