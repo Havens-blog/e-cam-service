@@ -18,7 +18,6 @@ import (
 type nxDialer struct {
 	nx    map[string]bool // 该域名返回 NXDOMAIN
 	fail  map[string]bool // 该域名返回普通失败（非 NXDOMAIN）
-	leaf  bool
 	calls int
 }
 
@@ -30,7 +29,8 @@ func (d *nxDialer) Dial(_ context.Context, name string) (dialResult, error) {
 	if d.fail[name] {
 		return dialResult{}, errors.New("probe: tls handshake timeout")
 	}
-	return dialResult{Leaf: &x509.Certificate{NotAfter: time.Now().Add(90 * 24 * time.Hour)}, TLSVersion: "TLS 1.3", RemoteIP: "113.96.128.9"}, nil
+	leaf := &x509.Certificate{NotAfter: time.Now().Add(90 * 24 * time.Hour)}
+	return dialResult{Leaf: leaf, TLSVersion: "TLS 1.3", RemoteIP: "113.96.128.9"}, nil
 }
 
 // TestNXDomainErrorIsWrapped 真实 net.DNSError(IsNotFound) → errProbeNXDomain 包装。
