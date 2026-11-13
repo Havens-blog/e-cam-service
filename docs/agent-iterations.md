@@ -808,3 +808,10 @@ permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(762
 
 - **线上效果未验证**：日轮拨测量 ≈3029→≈2274、unreachable 1212→≈58 需下一轮真实探测数据；
 - **T5 前端看板未开始**（展示新分类计数、新口径两率、staleCount），需真实浏览器双视口验收。
+
+---
+
+## 2026-11-14 **周期回归(03:35)**:全部稳定
+permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7611)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
+权限体检复验：ok=10 denied=0 error=0，无 AK 泄露 ✓
+本轮判定:**无可执行需求** ✓；待确认：STS 不可达时 fail-open/fail-closed、denied 分支需受限 AK 演练
