@@ -72,13 +72,21 @@ func (r *recordReadPort) ListProbeTargets(ctx context.Context, tenantID int64) (
 // buildProbeHostname 由 rr + domain 拼全限定子域名：
 //   - rr="@" 或空 → 根域 domain 本身
 //   - rr 含 "*"（通配符记录）→ 空串（调用方跳过；通配符无法直接 SNI 拨测）
+//   - rr 已是完整域名（等于根域或以 .<根域> 结尾）→ 原样返回，不再拼接
 //   - 其余 → rr + "." + domain
+//
+// 第三分支是畸形域名治理：部分 DNS 源返回的 rr 是**完整域名**而非相对标签，
+// 无条件拼接会产出 api.jlcpcb.com.jlcpcb.com 这类重复后缀主机名——生产探测
+// 实测 252 例（占探测域 8.3%），全部落成 unreachable，既污染域名清单又白白
+// 消耗拨测并发。
 func buildProbeHostname(rr, domain string) string {
 	rr = strings.TrimSpace(rr)
 	domain = strings.TrimSpace(domain)
 	if domain == "" {
 		return ""
 	}
+	// 去掉 FQDN 尾部点（api.example.com. → api.example.com），避免拼出双点
+	rr = strings.TrimSuffix(rr, ".")
 	if rr == "" || rr == "@" {
 		return domain
 	}
@@ -87,6 +95,11 @@ func buildProbeHostname(rr, domain string) string {
 	}
 	if strings.HasPrefix(rr, "_") {
 		return "" // 下划线前缀协议记录（CA 域名校验/SPF/DKIM 等）非 TLS 端点，跳过
+	}
+	// rr 已含根域（完整域名形态）→ 不再拼接，否则产生重复后缀
+	lowerRR, lowerDomain := strings.ToLower(rr), strings.ToLower(domain)
+	if lowerRR == lowerDomain || strings.HasSuffix(lowerRR, "."+lowerDomain) {
+		return rr
 	}
 	return rr + "." + domain
 }
