@@ -479,3 +479,49 @@ v021fix.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7752)
 ## 2026-11-13 **周期回归(10:35)**:全部稳定,无可执行需求
 v021fix.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7752)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
 本轮判定:**无可执行需求** ✓(口径 124 ✓);剩余外部待办:检出更新 / DBA 索引 / 云账号权限
+
+---
+
+## cam-cert-san-wildcard-20261113（三个 test 域证书差异根因：通配符 SAN 单标签覆盖）
+
+**状态**：**已定位 + 需求卡归档**（e-cam-service#615 已合并）。无代码改动（调查 + 记录轮）。
+
+### 一、现象
+
+用户报告三个 test 域在证书探测中显示「差异」，且 OSS 桶上已绑定证书：
+- test.order-static.jlc-layout.com
+- test.pub-static.jlc-layout.com
+- test.temp-static.jlc-layout.com
+
+### 二、调查（真实拨测 + 代码口径）
+
+| 域名 | CNAME 指向 | 线上证书 | 指纹 | 结论 |
+|---|---|---|---|---|
+| order-static（非 test）| `...c.vedcdnlb.com`（CDN）| `*.jlc-layout.com` | d8ef18ba… | 一致 |
+| pub-static / temp-static（非 test）| 同上 CDN | 同上 | d8ef18ba… | 一致 |
+| test.order-static | 直连 OSS 桶 | `*.oss-cn-shenzhen.aliyuncs.com` | 579b1947… | 差异 |
+| test.pub-static / test.temp-static | 直连各自 OSS 桶 | 同上 | 579b1947… | 差异 |
+
+判定代码：`internal/cert/service/probe_service.go` 六态判定 + `coverageIndex.covers`（通配符按 `coversSingleLabel`）；覆盖口径在 `internal/cert/domain/cert_parse.go` `CheckSANCover`，单测 `cert_parse_test.go` 明确断言 `"wildcard does not cover two labels"`。
+
+### 三、根因
+
+**`*.jlc-layout.com` 只覆盖单标签的三级域，不覆盖四级的 `test.order-static.jlc-layout.com`**（RFC 6125）。
+因此：证书 SAN 不覆盖 → OSS 绑定无法生效（或生效后浏览器不认）→ 线上回落 OSS 区域通配证 → 探测判 `diff`。
+
+**结论：差异告警是真实配置缺口，不是探测误报。**「证书已绑定」≠「证书覆盖该域名」。
+
+### 四、交付与修复方案
+
+需求卡 #615（已合并）：OSS 自定义域名纳入证书平台自动化的契约与验收（P2 平台能力）；附根因更正。
+三个 test 域的直接修复（待决策）：
+- A（推荐）签发 `*.order-static.jlc-layout.com` / `*.pub-static…` / `*.temp-static…`（正好覆盖其下四级域）；
+- B 现有证书追加三条显式 SAN；
+- C 测试域改三级命名（`test-order-static…`），现有通配符直接覆盖；
+- D（否）改走 CDN——CDN 同样校验证书覆盖，证书不换无效。
+
+### 五、教训
+
+1. **判断证书类差异，第一步比对「线上 SAN 是否覆盖主机名」，再查绑定链路**——绑定成功与服务能力是两件事；
+2. 域名标签层级是通配符证书的硬约束（`*.a.com` 覆盖 `x.a.com`，不覆盖 `x.y.a.com`）；
+3. 对照组（非 test 版走 CDN）是本次定位的关键证据——同一张证书在两套链路上表现不同，直接把范围从「证书问题」收窄到「路径 + 层级」。
