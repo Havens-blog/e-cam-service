@@ -495,9 +495,9 @@ func (s *probeService) internalDomainSet(ctx context.Context) (map[string]bool, 
 		return map[string]bool{}, fmt.Errorf("probe: load latest per domain: %w", err)
 	}
 	out := make(map[string]bool)
-	for _, r := range latest {
-		if r.Status == domain.ProbeStatusInternal {
-			out[strings.ToLower(strings.TrimSpace(r.Domain))] = true
+	for i := range latest {
+		if latest[i].Status == domain.ProbeStatusInternal {
+			out[strings.ToLower(strings.TrimSpace(latest[i].Domain))] = true
 		}
 	}
 	return out, nil
