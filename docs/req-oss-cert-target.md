@@ -111,3 +111,30 @@ ListOSSCertRefs(creds *CloudAccount, bucket string) ([]CloudCertRef, error)
 
 1. **目标形态**：这三个 test 域名长期应「直连 OSS + 平台托管证书」，还是「回归 CDN 层」（改 CNAME 一步解决）？前者才需要本需求；后者只需修 DNS。
 2. 是否把「发现到的 OSS 自定义域名」自动纳入探测域清单（当前探测域来自台账证书 SAN）。
+
+---
+
+## 更正（2026-11-13，证据驱动）
+
+**原判断**：「OSS 自定义域名的证书绑定未生效 / 缺失 / 绑错桶」。
+
+**更正后的根因**：**证书 SAN 本身不覆盖这些主机名**。`*.jlc-layout.com` 按 RFC 6125 只覆盖单标签（如 order-static.jlc-layout.com），**不覆盖四级的 test.order-static.jlc-layout.com**。因此无论 OSS 绑定是否执行，TLS 都无法为该主机名正确服务；实测线上回落到 OSS 区域通配证书（*.oss-cn-shenzhen.aliyuncs.com）与此一致。
+
+### 证据
+
+1. 平台判定口径：`internal/cert/domain/cert_parse.go` 的 `CheckSANCover` 注释与实现——通配符按单标签通配，不覆盖多级；
+2. 单测钉死口径：`cert_parse_test.go` 用例 `"wildcard does not cover two labels"`；
+3. 探测归属索引同口径：`probe_service.go` 的 `coverageIndex.covers` → `coversSingleLabel`；
+4. 线上证书 SAN 实测：仅 `*.jlc-layout.com` + `jlc-layout.com` 两条，无四级域显式 SAN（对应指纹 d8ef18ba…）；
+5. 对照组：非 test 版（三级域）经 CDN 正常一致——与「标签层级」结论吻合。
+
+### 对需求卡的影响
+
+- 本需求（OSS 自定义域名纳入证书平台自动化）**仍然成立**，但它**不是**这三个 test 域差异的根因，降级为 P2 平台能力建设；
+- 差异的直接修复是**证书 SAN 覆盖**，三选一（另有一个不成立项）：
+  - **A（推荐）**：为各 test 区签发 `*.order-static.jlc-layout.com` / `*.pub-static.jlc-layout.com` / `*.temp-static.jlc-layout.com`——这些通配符正好覆盖其下的四级域名；
+  - **B**：在现有证书上追加三条显式 SAN（三个 test FQDN），每新增测试域需重签；
+  - **C**：测试域改回三级命名（如 `test-order-static.jlc-layout.com`），现有 `*.jlc-layout.com` 直接覆盖，零证书变更；
+  - **D（不可单独成立）**：改走 CDN——CDN 同样校验证书是否覆盖域名，证书不换依然失败。
+
+**结论**：三个 test 域当前的 `diff` 告警是**真实配置缺口**（非探测误报）；按 A/B/C 修复证书后告警自然消除。
