@@ -543,3 +543,45 @@ v021fix.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7702)
 ## 2026-11-13 **周期回归(13:35)**:全部稳定,无可执行需求
 v021fix.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7695)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
 本轮判定:**无可执行需求** ✓(口径 124 ✓);剩余外部待办:检出更新 / DBA 索引 / 云账号权限
+
+---
+
+## cam-dns-probe-hostname-20261113（探测主机名拼接去重：252 例重复后缀畸形域名根治）
+
+**状态**：**已合并**（e-cam-service#634，CI Test + Build×5 全绿）。kicked off by 全平台探测数据盘点（3029 域）。
+
+### 一、证据（真实数据，非推断）
+
+认证后拉取 `GET /api/v1/certs/probes?limit=5000`：**3029 个探测域名**，状态分布：
+
+| 状态 | 数量 |
+|---|---|
+| consistent | 1567 |
+| unreachable | 1212 |
+| diff | 189 |
+| wildcard_skipped | 61 |
+
+进一步分桶发现两类噪声：
+- **重复后缀畸形域名 252 个（8.3%）**：`api.jlcpcb.com.jlcpcb.com`、`3d.jlcpcb.com.jlcpcb.com`、`account.forface3d.net.forface3d.net` —— **100% 落成 unreachable**（必然拨不通），既污染域名清单又消耗拨测并发；
+- 随机短标签主机名 81 个（2.7%）：`23ecpui2h5t7.jlc3dp.com` 等（疑似 AAD/CDN 自动别名；其中 17 个 consistent，说明部分真实存在，暂不动）。
+
+### 二、根因
+
+`internal/cam/dns/probe_port.go` `buildProbeHostname` 无条件 `rr + "." + domain`。部分 DNS 源的 rr 字段返回**完整域名**而非相对标签（云厂商 API 实现差异），拼接后即产生重复后缀。
+
+### 三、修复与验收
+
+- rr 已含根域（相等，或以 `.<根域>` 结尾，大小写不敏感）→ 原样返回；
+- 顺带归一 FQDN 尾部点（避免 `api.example.com..`）；
+- 相对标签路径行为完全不变（既有 7 用例回归锁定），新增 9 用例：完整 rr / apex rr / 大小写 / 尾部点 / 多级根域 / **易误伤边界**（`xxxexample.com` 非 `example.com` 子域，必须继续拼接）；
+- 门禁：`go build ./...` 0、`go test ./internal/cam/dns/` ok、gofmt/goimports(-local) clean、CI 全绿。
+
+### 四、未验证项
+
+存量探测记录不回溯；需下一轮 DNS 采集后对比 252 → 0 验证生效。
+
+### 五、教训
+
+1. **8.3% 的探测目标必然是噪声**——这类系统性浪费只有做「全量分布盘点」才看得见，逐域名排查永远发现不了；
+2. 修「数据噪声」要找**生成点**（拼接函数）而不是在消费端过滤——生成点修复让存量与增量一并收敛；
+3. 防御性归一必须配「易误伤边界」用例（`xxxexample.com` vs `example.com`），否则去重逻辑本身会制造新 bug。
