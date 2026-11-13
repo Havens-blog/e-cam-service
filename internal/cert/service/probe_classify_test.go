@@ -86,7 +86,7 @@ func TestProbeOne_Classification(t *testing.T) {
 	t.Run("中段下划线标签 → protocol_skipped 且不拨测", func(t *testing.T) {
 		d := &fakeClassifyDialer{remoteIP: "113.96.128.9"}
 		svc := &probeService{dialer: d}
-		r := svc.probeOne("strong2._domainkey.example.com", nil, nil, nil)
+		r := svc.probeOne("strong2._domainkey.example.com", nil, nil, nil, nil)
 		assert.Equal(t, domain.ProbeStatusProtocolSkipped, r.Status)
 		assert.Equal(t, 0, d.called, "协议记录不得触发拨测")
 	})
@@ -94,7 +94,7 @@ func TestProbeOne_Classification(t *testing.T) {
 	t.Run("对端私网 IP → internal（记录指纹但不判差异）", func(t *testing.T) {
 		d := &fakeClassifyDialer{remoteIP: "10.25.1.10"}
 		svc := &probeService{dialer: d}
-		r := svc.probeOne("dev-app.example.com", nil, nil, nil)
+		r := svc.probeOne("dev-app.example.com", nil, nil, nil, nil)
 		assert.Equal(t, domain.ProbeStatusInternal, r.Status)
 		assert.NotEmpty(t, r.OnlineFingerprint, "内网域仍记录线上指纹（到期监控用）")
 	})
@@ -102,14 +102,14 @@ func TestProbeOne_Classification(t *testing.T) {
 	t.Run("对端公网 IP → 走常规判定（无归属证书命中则 diff）", func(t *testing.T) {
 		d := &fakeClassifyDialer{remoteIP: "113.96.128.9"}
 		svc := &probeService{dialer: d}
-		r := svc.probeOne("www.example.com", nil, map[string]map[string]bool{}, nil)
+		r := svc.probeOne("www.example.com", nil, map[string]map[string]bool{}, nil, nil)
 		assert.Equal(t, domain.ProbeStatusDiff, r.Status)
 	})
 
 	t.Run("DNS 源：协议记录 → protocol_skipped", func(t *testing.T) {
 		d := &fakeClassifyDialer{remoteIP: "113.96.128.9"}
 		svc := &probeService{dialer: d}
-		r := svc.probeOneDNS(DNSProbeTarget{Hostname: "_hash.example.com", RecordType: "A"}, nil, nil, nil, nil)
+		r := svc.probeOneDNS(DNSProbeTarget{Hostname: "_hash.example.com", RecordType: "A"}, nil, nil, nil, nil, nil)
 		assert.Equal(t, domain.ProbeStatusProtocolSkipped, r.Status)
 		assert.Equal(t, 0, d.called)
 	})
@@ -118,7 +118,7 @@ func TestProbeOne_Classification(t *testing.T) {
 		d := &fakeClassifyDialer{remoteIP: "192.168.2.39"}
 		svc := &probeService{dialer: d}
 		tgt := DNSProbeTarget{Hostname: "dev-cart.example.com", RecordType: "A", TenantID: 3}
-		r := svc.probeOneDNS(tgt, nil, nil, nil, nil)
+		r := svc.probeOneDNS(tgt, nil, nil, nil, nil, nil)
 		assert.Equal(t, domain.ProbeStatusInternal, r.Status)
 		assert.Equal(t, int64(3), r.TenantID)
 	})

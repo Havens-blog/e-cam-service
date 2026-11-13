@@ -46,4 +46,8 @@ type ProbeResult struct {
 	RecordType        string             `bson:"recordType,omitempty"`     // DNS 源探测：记录类型（A/AAAA/CNAME；SAN 探测缺省）
 	RecordValue       string             `bson:"recordValue,omitempty"`    // DNS 源探测：解析地址（记录值/IP/CNAME 目标；SAN 探测缺省）
 	TLSVersion        string             `bson:"tlsVersion,omitempty"`     // 协商 TLS 版本（如 TLS 1.3；unreachable 缺省）
+	// NXDomainCount 连续 NXDOMAIN 轮次（T4 僵尸记录判定）：DNS 解析成功或非 NXDOMAIN
+	// 失败时重置为 0；连续 ≥3 轮视为「疑似僵尸记录」（云上已删、平台仍有记录），
+	// 阈值常量见 service.staleNXDomainThreshold。
+	NXDomainCount int `bson:"nxdomainCount,omitempty"`
 }
