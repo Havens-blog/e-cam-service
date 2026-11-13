@@ -5,9 +5,10 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/gin-gonic/gin"
 )
 
 // DashboardHandler 到期看板端点（任务 4.5，全角色含只读）+ 探测结果列表/触发。
@@ -49,9 +50,16 @@ type DashboardSummaryVO struct {
 	DiffAlertCount       int            `json:"diffAlertCount"`
 	ExemptCount          int            `json:"exemptCount"`
 	WildcardSkippedCount int            `json:"wildcardSkippedCount"`
-	RegistrationRate     float64        `json:"registrationRate"`
-	ReplaceableRate      float64        `json:"replaceableRate"`
-	FingerprintOnlyRate  float64        `json:"fingerprintOnlyRate"`
+	// 探测新口径（T3）：内网域/协议记录从拨通率分母剔除；旧字段保留一版。
+	ProbeTotalCount          int     `json:"probeTotalCount"`
+	InternalCount            int     `json:"internalCount"`
+	ProtocolSkippedCount     int     `json:"protocolSkippedCount"`
+	ProbeableCount           int     `json:"probeableCount"`
+	ReachableRateOnProbeable float64 `json:"reachableRateOnProbeable"`
+	DiffRateOnProbeable      float64 `json:"diffRateOnProbeable"`
+	RegistrationRate         float64 `json:"registrationRate"`
+	ReplaceableRate          float64 `json:"replaceableRate"`
+	FingerprintOnlyRate      float64 `json:"fingerprintOnlyRate"`
 }
 
 // DashboardItemVO 看板证书行（证书粒度，每证一行；Hard Rule：不含任何
@@ -120,14 +128,20 @@ func (h *DashboardHandler) Dashboard(c *gin.Context) {
 	}
 	WriteOK(c, http.StatusOK, DashboardVO{
 		Summary: DashboardSummaryVO{
-			CountsByLevel:        counts,
-			HiddenCount:          view.Summary.HiddenCount,
-			DiffAlertCount:       view.Summary.DiffAlertCount,
-			ExemptCount:          view.Summary.ExemptCount,
-			WildcardSkippedCount: view.Summary.WildcardSkippedCount,
-			RegistrationRate:     view.Summary.RegistrationRate,
-			ReplaceableRate:      view.Summary.ReplaceableRate,
-			FingerprintOnlyRate:  view.Summary.FingerprintOnlyRate,
+			CountsByLevel:            counts,
+			HiddenCount:              view.Summary.HiddenCount,
+			DiffAlertCount:           view.Summary.DiffAlertCount,
+			ExemptCount:              view.Summary.ExemptCount,
+			WildcardSkippedCount:     view.Summary.WildcardSkippedCount,
+			ProbeTotalCount:          view.Summary.ProbeTotalCount,
+			InternalCount:            view.Summary.InternalCount,
+			ProtocolSkippedCount:     view.Summary.ProtocolSkippedCount,
+			ProbeableCount:           view.Summary.ProbeableCount,
+			ReachableRateOnProbeable: view.Summary.ReachableRateOnProbeable,
+			DiffRateOnProbeable:      view.Summary.DiffRateOnProbeable,
+			RegistrationRate:         view.Summary.RegistrationRate,
+			ReplaceableRate:          view.Summary.ReplaceableRate,
+			FingerprintOnlyRate:      view.Summary.FingerprintOnlyRate,
 		},
 		Items:            items,
 		LastInspectionAt: formatTimePtr(view.LastInspectionAt),
