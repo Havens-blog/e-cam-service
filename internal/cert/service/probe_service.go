@@ -35,6 +35,10 @@ const (
 type dialResult struct {
 	Leaf       *x509.Certificate
 	TLSVersion string // tls.VersionName 形态（如 "TLS 1.3"）
+	// RemoteIP 对端 IP（握手成功后 TCP 层 RemoteAddr）。用于内网域分类：
+	// 解析到 RFC1918/100.64/10/链路本地地址 = 公网探测端不可达的内网域名，
+	// 归 internal 而非 unreachable（避免稀释可达率、白耗拨号预算）。
+	RemoteIP string
 }
 
 // tlsDialer TLS 握手拨测端口：按 SNI 对目标域发起 TLS 握手并返回对端 leaf 证书
@@ -88,7 +92,60 @@ func (d *stdTLSDialer) Dial(ctx context.Context, domainName string) (dialResult,
 	if len(state.PeerCertificates) == 0 {
 		return dialResult{}, fmt.Errorf("probe: no peer certificate from %s", domainName)
 	}
-	return dialResult{Leaf: state.PeerCertificates[0], TLSVersion: tls.VersionName(state.Version)}, nil
+	res := dialResult{Leaf: state.PeerCertificates[0], TLSVersion: tls.VersionName(state.Version)}
+	// addrOverride 是测试/开发缝（拨本地 TLS server），对端必为回环地址，
+	// 不参与内网域分类——否则全部用例会被误判 internal。
+	if d.addrOverride == "" {
+		if ra, ok := raw.RemoteAddr().(*net.TCPAddr); ok && ra != nil && ra.IP != nil {
+			res.RemoteIP = ra.IP.String()
+		}
+	}
+	return res, nil
+}
+
+// hasUnderscoreLabel 任一标签以 "_" 开头即视为协议记录（ACME DNS-01 的 `_hash.`、
+// DKIM 的 `_domainkey.`、SPF/策略记录等）：这类名字不存在 TLS 端点，拨测必然
+// unreachable，只会污染清单并白耗并发。仅看首标签不够——`strong2._domainkey.x`
+// 的 "_" 在第二段，生产实测漏网 32 例。
+func hasUnderscoreLabel(hostname string) bool {
+	for _, label := range strings.Split(hostname, ".") {
+		if strings.HasPrefix(label, "_") {
+			return true
+		}
+	}
+	return false
+}
+
+// privateProbeRanges RFC1918 + 100.64/10（运营商级 NAT）+ 169.254/16（链路本地）
+// + 127/8（回环）。命中即视为「内网域」：公网探测端不可达，归 internal 不归 unreachable。
+var privateProbeRanges = func() []*net.IPNet {
+	cidrs := []string{
+		"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+		"100.64.0.0/10", "169.254.0.0/16", "127.0.0.0/8",
+		"fc00::/7", "fe80::/10", "::1/128",
+	}
+	out := make([]*net.IPNet, 0, len(cidrs))
+	for _, c := range cidrs {
+		if _, n, err := net.ParseCIDR(c); err == nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}()
+
+// isPrivateProbeIP 判断对端 IP 是否落在内网/保留段（空串或解析失败一律 false，
+// 宁可保守归 unreachable 也不误标 internal）。
+func isPrivateProbeIP(ipStr string) bool {
+	ip := net.ParseIP(strings.TrimSpace(ipStr))
+	if ip == nil {
+		return false
+	}
+	for _, n := range privateProbeRanges {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------
@@ -319,7 +376,7 @@ func (s *probeService) ProbeDomains(ctx context.Context, domains []string) ([]do
 	return results, errors.Join(writeErrs...)
 }
 
-// probeOne 单域探测与六态判定（结果不落库，由调用方统一写入）。
+// probeOne 单域探测与八态判定（结果不落库，由调用方统一写入）。
 func (s *probeService) probeOne(
 	name string,
 	exemptSet map[string]bool,
@@ -330,6 +387,10 @@ func (s *probeService) probeOne(
 	//（计数可见、不告警、不计差异；override 替换已在目标解析阶段完成）
 	if isWildcardSAN(name) {
 		return domain.ProbeResult{Domain: name, Status: domain.ProbeStatusWildcardSkipped}
+	}
+	// 协议记录（任一标签下划线开头）不存在 TLS 端点 → 不拨测，记 protocol_skipped
+	if hasUnderscoreLabel(name) {
+		return domain.ProbeResult{Domain: name, Status: domain.ProbeStatusProtocolSkipped}
 	}
 	dr, err := s.dialer.Dial(context.Background(), name)
 	if err != nil {
@@ -344,6 +405,12 @@ func (s *probeService) probeOne(
 		OnlineFingerprint: onlineFP,
 		OnlineNotAfter:    &notAfter,
 		TLSVersion:        dr.TLSVersion,
+	}
+	// 内网域：握手成功但对端是私网地址 → internal（记录指纹供到期监控，但不参与
+	// 可达率分母与差异告警；降频轮次由 internalProbeIntervalDays 控制）
+	if isPrivateProbeIP(dr.RemoteIP) {
+		result.Status = domain.ProbeStatusInternal
+		return result
 	}
 	switch {
 	// 豁免清单命中：仍探测（线上指纹已记录）但不做差异判定、不告警
@@ -612,6 +679,11 @@ func (s *probeService) probeOneDNS(
 		TenantID:       tgt.TenantID,
 		LinkedResource: linkedResourceType(tgt.LinkedResource),
 	}
+	// 协议记录（任一标签下划线开头）：不拨测，记 protocol_skipped
+	if hasUnderscoreLabel(tgt.Hostname) {
+		result.Status = domain.ProbeStatusProtocolSkipped
+		return result
+	}
 	dr, err := s.dialer.Dial(context.Background(), tgt.Hostname)
 	if err != nil {
 		result.Status = domain.ProbeStatusUnreachable
@@ -625,6 +697,11 @@ func (s *probeService) probeOneDNS(
 	result.RecordType = tgt.RecordType
 	result.RecordValue = tgt.RecordValue
 	result.TLSVersion = dr.TLSVersion
+	// 内网域：对端私网地址 → internal（指纹照记供到期监控，不参与可达率/差异告警）
+	if isPrivateProbeIP(dr.RemoteIP) {
+		result.Status = domain.ProbeStatusInternal
+		return result
+	}
 	// expected 判定：豁免 > 引用索引（资源级权威）> 台账覆盖（SAN 通配符感知）
 	switch {
 	case exemptSet[tgt.Hostname]:

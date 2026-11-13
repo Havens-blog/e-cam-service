@@ -7,7 +7,7 @@ import (
 )
 
 // ProbeStatus TLS 探测结果状态。
-// 对齐 schema.sql cert_probe_results.status enum（6 值）。
+// 对齐 schema.sql cert_probe_results.status enum（8 值：原 6 值 + internal/protocol_skipped）。
 type ProbeStatus string
 
 const (
@@ -23,20 +23,27 @@ const (
 	ProbeStatusExempt ProbeStatus = "exempt"
 	// ProbeStatusWildcardSkipped 通配符 SAN 默认跳过拨测（可经 wildcardProbeOverrides 指定子域名替代探测）。
 	ProbeStatusWildcardSkipped ProbeStatus = "wildcard_skipped"
+	// ProbeStatusInternal 解析到内网地址（RFC1918/100.64/10/链路本地）：公网探测端不可达，
+	// 不参与可达率分母与差异告警；按 internalProbeIntervalDays 降频另轮拨测（判据见
+	// probe_service.classifyInternal）。
+	ProbeStatusInternal ProbeStatus = "internal"
+	// ProbeStatusProtocolSkipped 任一标签以下划线开头（ACME `_hash.` / DKIM `_domainkey.` 等
+	// 协议记录）：不存在 TLS 端点，不拨测、不计入分母。
+	ProbeStatusProtocolSkipped ProbeStatus = "protocol_skipped"
 )
 
 // ProbeResult TLS 探测结果文档（cert_probe_results，TTL 90 天自动清理）。
 type ProbeResult struct {
 	ID                primitive.ObjectID `bson:"_id,omitempty"`
 	Domain            string             `bson:"domain"`
-	ProbeAt           time.Time          `bson:"probeAt"`                      // DEFAULT=now()；TTL 基准
-	OnlineFingerprint string             `bson:"onlineFingerprint,omitempty"`  // unreachable 时缺省
+	ProbeAt           time.Time          `bson:"probeAt"`                     // DEFAULT=now()；TTL 基准
+	OnlineFingerprint string             `bson:"onlineFingerprint,omitempty"` // unreachable 时缺省
 	OnlineNotAfter    *time.Time         `bson:"onlineNotAfter,omitempty"`
 	Status            ProbeStatus        `bson:"status"`
-	ChangeOrderID     string             `bson:"changeOrderId,omitempty"`     // change_linked_diff 时关联变更单
-	TenantID          int64              `bson:"tenantId,omitempty"`           // DNS 源探测：记录所属租户（SAN 探测缺省 0）
-	LinkedResource    string             `bson:"linkedResource,omitempty"`     // DNS 源探测：链路关联资源类型（cdn/waf/external；SAN 探测缺省）
-	RecordType        string             `bson:"recordType,omitempty"`         // DNS 源探测：记录类型（A/AAAA/CNAME；SAN 探测缺省）
-	RecordValue       string             `bson:"recordValue,omitempty"`        // DNS 源探测：解析地址（记录值/IP/CNAME 目标；SAN 探测缺省）
-	TLSVersion        string             `bson:"tlsVersion,omitempty"`         // 协商 TLS 版本（如 TLS 1.3；unreachable 缺省）
+	ChangeOrderID     string             `bson:"changeOrderId,omitempty"`  // change_linked_diff 时关联变更单
+	TenantID          int64              `bson:"tenantId,omitempty"`       // DNS 源探测：记录所属租户（SAN 探测缺省 0）
+	LinkedResource    string             `bson:"linkedResource,omitempty"` // DNS 源探测：链路关联资源类型（cdn/waf/external；SAN 探测缺省）
+	RecordType        string             `bson:"recordType,omitempty"`     // DNS 源探测：记录类型（A/AAAA/CNAME；SAN 探测缺省）
+	RecordValue       string             `bson:"recordValue,omitempty"`    // DNS 源探测：解析地址（记录值/IP/CNAME 目标；SAN 探测缺省）
+	TLSVersion        string             `bson:"tlsVersion,omitempty"`     // 协商 TLS 版本（如 TLS 1.3；unreachable 缺省）
 }

@@ -8,8 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"go.mongodb.org/mongo-driver/mongo"
+
+	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 )
 
 // ---------------------------------------------------------------------
@@ -348,11 +349,15 @@ func cloudsFromRefs(refs []domain.CertReference) map[string]map[string]bool {
 }
 
 // probeBadgeRank 探测徽标最差优先序（小=最差；未探测排序尾）。
+// internal / protocol_skipped 与 wildcard_skipped 同属「跳过拨测」类（不构成告警），
+// 并列排序避免内网域把整张证书的徽标拉低成告警态。
 var probeBadgeRank = map[domain.ProbeStatus]int{
 	domain.ProbeStatusDiff:             0,
 	domain.ProbeStatusChangeLinkedDiff: 1,
 	domain.ProbeStatusUnreachable:      2,
 	domain.ProbeStatusWildcardSkipped:  3,
+	domain.ProbeStatusProtocolSkipped:  3,
+	domain.ProbeStatusInternal:         3,
 	domain.ProbeStatusExempt:           4,
 	domain.ProbeStatusConsistent:       5,
 }
