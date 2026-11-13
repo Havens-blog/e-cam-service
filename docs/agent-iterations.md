@@ -746,3 +746,10 @@ permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(769
 permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7624)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
 权限体检复验：ok=10 denied=0 error=0，无 AK 泄露 ✓
 本轮判定:**无可执行需求** ✓；待确认：STS 不可达时 fail-open/fail-closed、denied 分支需受限 AK 演练
+
+---
+
+## 2026-11-14 **周期回归(01:35)**:全部稳定
+permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7624)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
+权限体检复验：ok=10 denied=0 error=0，无 AK 泄露 ✓
+本轮判定:**无可执行需求** ✓；待确认：STS 不可达时 fail-open/fail-closed、denied 分支需受限 AK 演练
