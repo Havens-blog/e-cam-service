@@ -632,3 +632,11 @@ v021fix.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7695)
 - 本机 `sts.aliyuncs.com` 网络不稳定：创建账号时若 STS 不可达，主账号拦截会退化为「放行 + 提示」，是否改为 fail-closed 待确认。
 - `denied` 分支：当前 5 个账号权限齐全，未构造真实受限 AK，denied 状态仅由单测覆盖归类逻辑与前端 tag 映射。
 - 预存在的 `sync_assets` 日志同样打印含 AK 的 SDK 错误（本轮未改，建议后续统一脱敏）。
+
+---
+
+## 2026-11-13 **周期回归(18:35)**:全部稳定 + 新功能复验
+permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7695)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
+**新功能复验**：`POST /cloud-accounts/1/permission-check` → ok=10 denied=0 error=0，响应不含 AccessKeyId（脱敏生效）✓
+本轮判定:**无可执行需求** ✓（上一轮 #644/#374 已合并并部署）
+待确认：①STS 不可达时是否 fail-closed ②denied 分支需受限 AK 演练
