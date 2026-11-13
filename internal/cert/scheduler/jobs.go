@@ -62,6 +62,7 @@ const (
 	JobOrphanSweep      = "cert:orphan-sweep"      // orphan-cleanup：天级批扫
 	JobCrdRecheck       = "cert:crd-recheck"       // crd-recheck：到期复检扫描
 	JobExecutingTimeout = "cert:executing-timeout" // executing-timeout：心跳超时恢复
+	JobInternalProbe    = "cert:internal-probe"    // internal-probe：内网域周级降频轮（T2）
 )
 
 // 固定频率调度点的 cron 表达式（5 字段：分 时 日 月 周，ego ecron 默认解析器）。
@@ -74,6 +75,9 @@ const (
 	SpecOrphanSweepDaily   = "0 3 * * *"    // orphan-cleanup 天级批扫（03:00）
 	SpecCrdRecheckMinutely = "* * * * *"    // crd-recheck 分钟级（延迟契约承载）
 	SpecExecutingTimeout5m = "*/5 * * * *"  // executing-timeout 每 5 分钟（表值）
+	// SpecInternalProbeWeekly 内网域周级轮（周日 06:00）：内网证书变更频率低，
+	// 日轮已排除（dropInternalTargets），此处仅补到期监控；频率调整改此表达式。
+	SpecInternalProbeWeekly = "0 6 * * 0"
 )
 
 // ---------------------------------------------------------------------
@@ -137,7 +141,12 @@ var (
 	_ CertificateSyncer  = (service.CertSyncService)(nil)
 )
 
-// CertJobs 10 类定时任务的调度依赖集（ioc 装配注入，字段均为已实现服务）。
+// InternalProbeRunner 内网域周级轮入口（T2 降频：只拨测上一轮 status=internal 的域）。
+type InternalProbeRunner interface {
+	ProbeInternalDomains(ctx context.Context) ([]domain.ProbeResult, error)
+}
+
+// CertJobs 定时任务的调度依赖集（ioc 装配注入，字段均为已实现服务）。
 type CertJobs struct {
 	Scan       ScanRunner                 // 3.5 引用扫描（scan + scan-timeout）
 	Inspection InspectionRunner           // 4.4 巡检流水线（inspection + probe 天级）
@@ -147,6 +156,7 @@ type CertJobs struct {
 	Orphan     OrphanConsumer             // 5.9 孤儿清理
 	Recheck    RecheckConsumer            // 5.9 CRD 复检
 	Sync       CertificateSyncer          // cert:cert-import 多云增量同步（volcano-import 任务 3）
+	Internal   InternalProbeRunner        // cert:internal-probe 内网域周级降频轮（T2）
 	Publisher  service.CertAlertPublisher // pause-timeout 处置通知（ops 类）
 }
 
@@ -268,6 +278,19 @@ func (j *CertJobs) JobSpecs(verifyProbeIntervalMinutes int) []CertJobSpec {
 				}
 				return nil
 			}),
+		},
+		{
+			Name: JobInternalProbe,
+			Spec: SpecInternalProbeWeekly,
+			Run: func(ctx context.Context) error {
+				if j.Internal == nil {
+					return nil // 未装配（测试/降级）：静默跳过，不影响其他调度点
+				}
+				if _, err := j.Internal.ProbeInternalDomains(ctx); err != nil {
+					return fmt.Errorf("cert internal-probe: %w", err)
+				}
+				return nil
+			},
 		},
 		{
 			Name: JobCrdRecheck,

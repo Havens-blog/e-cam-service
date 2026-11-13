@@ -9,12 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
-	"github.com/Havens-blog/e-cam-service/internal/cert/deployer"
-	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+
+	"github.com/Havens-blog/e-cam-service/internal/cert/certtest"
+	"github.com/Havens-blog/e-cam-service/internal/cert/deployer"
+	"github.com/Havens-blog/e-cam-service/internal/cert/domain"
 )
 
 // ---------------------------------------------------------------------
@@ -758,6 +759,10 @@ func (f *failingProber) ProbeAllTenantDNS(context.Context) ([]domain.ProbeResult
 }
 
 func (f *failingProber) ProbeTenantDNS(context.Context, int64) ([]domain.ProbeResult, error) {
+	return nil, f.err
+}
+
+func (f *failingProber) ProbeInternalDomains(context.Context) ([]domain.ProbeResult, error) {
 	return nil, f.err
 }
 

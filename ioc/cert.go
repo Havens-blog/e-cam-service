@@ -104,6 +104,7 @@ func initCertJobs(certModule *cert.Module, logger *elog.Component) []*ecron.Comp
 		Orphan:     certModule.OrphanCleanupSvc,
 		Recheck:    certModule.CrdRecheckSvc,
 		Sync:       certModule.CertSyncSvc, // cert:cert-import 多云增量同步（volcano-import 任务 3）
+		Internal:   certModule.ProbeSvc,    // cert:internal-probe 内网域周级降频轮（T2）
 		Publisher:  certModule.AlertPublisher,
 	}
 	specs := jobs.JobSpecs(certModule.VerifyProbeIntervalMinutes)
