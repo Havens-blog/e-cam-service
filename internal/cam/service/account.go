@@ -6,6 +6,7 @@ import (
 	"slices"
 	"time"
 
+	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
 	"github.com/Havens-blog/e-cam-service/internal/cam/errs"
 	"github.com/Havens-blog/e-cam-service/internal/cam/governance"
 	"github.com/Havens-blog/e-cam-service/internal/cam/repository"
@@ -43,6 +44,12 @@ type CloudAccountService interface {
 	// TestConnection 测试云账号连接
 	TestConnection(ctx context.Context, id int64) (*domain.ConnectionTestResult, error)
 
+	// CheckPermissions 权限体检：探测各资源类型的列举权限并落库
+	CheckPermissions(ctx context.Context, id int64) (*camdomain.PermissionCheck, error)
+
+	// GetPermissionCheck 读取最近一次权限体检快照；未体检过返回 nil
+	GetPermissionCheck(ctx context.Context, id int64) (*camdomain.PermissionCheck, error)
+
 	// EnableAccount 启用云账号
 	EnableAccount(ctx context.Context, id int64) error
 
@@ -60,6 +67,8 @@ type cloudAccountService struct {
 	taskQueue        *taskx.Queue
 	logger           *elog.Component
 	validatorFactory cloudx.CloudValidatorFactory
+	// permissionRepo 权限体检快照仓储；nil 表示不持久化（单测场景）
+	permissionRepo repository.AccountPermissionRepository
 	// governance 租户治理配置端口（eiam MaxAccounts/AllowedVendors），
 	// CreateAccount 侧的 R2.4/R7 强制校验数据源；nil 视为查询失败 fail-closed
 	governance governance.TenantGovernancePort
@@ -81,6 +90,7 @@ func NewCloudAccountService(
 	taskQueue *taskx.Queue,
 	logger *elog.Component,
 	governancePort governance.TenantGovernancePort,
+	permissionRepo repository.AccountPermissionRepository,
 ) CloudAccountService {
 	if logger == nil {
 		logger = elog.Load("default").Build()
@@ -92,6 +102,7 @@ func NewCloudAccountService(
 		taskQueue:        taskQueue,
 		logger:           logger,
 		validatorFactory: cloudx.NewCloudValidatorFactory(),
+		permissionRepo:   permissionRepo,
 		governance:       governancePort,
 	}
 }
@@ -523,6 +534,11 @@ func (s *cloudAccountService) validateCloudCredentials(ctx context.Context, acco
 
 	if !result.Valid {
 		return fmt.Errorf("凭证无效: %s", result.Message)
+	}
+
+	// 凭证有效后再做身份校验：禁止接入主账号 AK（只允许 RAM 子账号）
+	if err := s.assertNotPrimaryAccount(ctx, account); err != nil {
+		return err
 	}
 
 	s.logger.Info("cloud credentials validated successfully",

@@ -69,6 +69,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 
 		// 云账号操作
 		camGroup.POST("/cloud-accounts/:id/test-connection", h.TestCloudAccountConnection)
+		camGroup.POST("/cloud-accounts/:id/permission-check", h.CheckCloudAccountPermissions)
 		camGroup.POST("/cloud-accounts/:id/enable", h.EnableCloudAccount)
 		camGroup.POST("/cloud-accounts/:id/disable", h.DisableCloudAccount)
 		camGroup.POST("/cloud-accounts/:id/sync", ginx.WrapBody[SyncAccountReq](h.SyncCloudAccount))

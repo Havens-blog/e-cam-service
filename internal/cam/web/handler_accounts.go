@@ -83,7 +83,13 @@ func (h *Handler) GetCloudAccount(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(200, Result(h.toCloudAccountVO(*account)))
+	vo := h.toCloudAccountVO(*account)
+	// 附带最近一次权限体检快照（未体检过为 nil）
+	if check, checkErr := h.accountSvc.GetPermissionCheck(ctx.Request.Context(), id); checkErr == nil && check != nil {
+		vo.PermissionCheck = toPermissionCheckVO(check)
+	}
+
+	ctx.JSON(200, Result(vo))
 }
 
 // ListCloudAccounts 获取云账号列表
@@ -265,6 +271,35 @@ func (h *Handler) TestCloudAccountConnection(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, Result(resp))
+}
+
+// CheckCloudAccountPermissions 云账号权限体检
+// @Summary 云账号权限体检
+// @Description 逐项探测各资源类型是否具备列举权限，结果落库并返回快照
+// @Tags 云账号操作
+// @Accept json
+// @Produce json
+// @Param id path int true "云账号ID"
+// @Success 200 {object} ginx.Result{data=PermissionCheckVO} "成功"
+// @Failure 400 {object} ginx.Result "请求参数错误"
+// @Failure 500 {object} ginx.Result "体检失败"
+// @Router /cam/cloud-accounts/{id}/permission-check [post]
+func (h *Handler) CheckCloudAccountPermissions(ctx *gin.Context) {
+	idStr := ctx.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		ctx.JSON(400, ErrorResult(errs.ParamsError))
+		return
+	}
+
+	check, err := h.accountSvc.CheckPermissions(ctx.Request.Context(), id)
+	if err != nil {
+		elog.DefaultLogger.Error("cam web handler error", elog.FieldErr(err))
+		ctx.JSON(http.StatusInternalServerError, ErrorResult(errs.SystemError))
+		return
+	}
+
+	ctx.JSON(200, Result(toPermissionCheckVO(check)))
 }
 
 // EnableCloudAccount 启用云账号

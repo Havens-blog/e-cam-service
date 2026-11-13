@@ -1,6 +1,10 @@
 package web
 
-import "time"
+import (
+	"time"
+
+	camdomain "github.com/Havens-blog/e-cam-service/internal/cam/domain"
+)
 
 // Page 分页参数
 type Page struct {
@@ -157,6 +161,67 @@ type CloudAccount struct {
 	ErrorMessage    string               `json:"error_message"`
 	CreateTime      time.Time            `json:"create_time"`
 	UpdateTime      time.Time            `json:"update_time"`
+	// PermissionCheck 最近一次权限体检快照；未体检过为 null
+	PermissionCheck *PermissionCheckVO `json:"permission_check,omitempty"`
+}
+
+// PermissionCheckItemVO 权限体检单项
+type PermissionCheckItemVO struct {
+	AssetType string `json:"asset_type"` // 资源类型，如 ecs
+	AssetName string `json:"asset_name"` // 资源类型名称，如 云服务器 ECS
+	Status    string `json:"status"`     // ok / denied / error / unsupported
+	Code      string `json:"code"`       // 云厂商错误码
+	Message   string `json:"message"`    // 可读说明
+}
+
+// PermissionSummaryVO 权限体检汇总
+type PermissionSummaryVO struct {
+	OK          int `json:"ok"`
+	Denied      int `json:"denied"`
+	Error       int `json:"error"`
+	Unsupported int `json:"unsupported"`
+}
+
+// PermissionCheckVO 权限体检快照
+type PermissionCheckVO struct {
+	AccountID        int64                   `json:"account_id"`
+	Provider         string                  `json:"provider"`
+	IdentityType     string                  `json:"identity_type"`
+	IsPrimaryAccount bool                    `json:"is_primary_account"`
+	Items            []PermissionCheckItemVO `json:"items"`
+	Summary          PermissionSummaryVO     `json:"summary"`
+	CheckedAt        time.Time               `json:"checked_at"`
+}
+
+// toPermissionCheckVO 领域模型转VO
+func toPermissionCheckVO(check *camdomain.PermissionCheck) *PermissionCheckVO {
+	if check == nil {
+		return nil
+	}
+	items := make([]PermissionCheckItemVO, 0, len(check.Items))
+	for _, it := range check.Items {
+		items = append(items, PermissionCheckItemVO{
+			AssetType: it.AssetType,
+			AssetName: it.AssetName,
+			Status:    it.Status,
+			Code:      it.Code,
+			Message:   it.Message,
+		})
+	}
+	return &PermissionCheckVO{
+		AccountID:        check.AccountID,
+		Provider:         check.Provider,
+		IdentityType:     check.IdentityType,
+		IsPrimaryAccount: check.IsPrimaryAccount,
+		Items:            items,
+		Summary: PermissionSummaryVO{
+			OK:          check.Summary.OK,
+			Denied:      check.Summary.Denied,
+			Error:       check.Summary.Error,
+			Unsupported: check.Summary.Unsupported,
+		},
+		CheckedAt: check.CheckedAt,
+	}
 }
 
 // CloudAccountConfigVO 云账号配置VO
