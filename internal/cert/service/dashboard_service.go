@@ -229,8 +229,10 @@ func (s *dashboardService) Dashboard(ctx context.Context, includeHidden bool) (D
 		case domain.ProbeStatusConsistent, domain.ProbeStatusDiff,
 			domain.ProbeStatusChangeLinkedDiff, domain.ProbeStatusExempt:
 			view.Summary.ProbeSuccessCount++
+		case domain.ProbeStatusUnreachable, domain.ProbeStatusWildcardSkipped:
+			// 拨了但不通 / 未拨（通配符）：既不算拨通成功，也不算被跳过的分母扣除项
+			// （wildcard_skipped 在下方按 SAN 去重后从分母扣除，此处不重复处理）
 		}
-		// unreachable / wildcard_skipped 不计入成功也不计入可拨测（见下方口径）
 	}
 	computeProbeRates(&view.Summary)
 
