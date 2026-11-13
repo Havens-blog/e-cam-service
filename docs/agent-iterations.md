@@ -829,3 +829,59 @@ permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(761
 permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7611)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
 权限体检复验：ok=10 denied=0 error=0，无 AK 泄露 ✓
 本轮判定:**无可执行需求** ✓；待确认：STS 不可达时 fail-open/fail-closed、denied 分支需受限 AK 演练
+
+---
+
+## cam-cert-probe-ui-20261114（T5 前端：探测口径卡 + 疑似僵尸标签，含真实浏览器验收）
+
+**状态**：**已合并**（e-cam-web#385，CI ESLint / Typecheck&Build / Vitest / Gzip 全绿 + 浏览器 18 项断言全 PASS）。
+
+### 一、来源与契约
+
+后端 T1–T4 已合并（#643 分类 / #645 降频 / #650 指标 / #656 打标）。前端消费两个已在线的契约：
+
+| 接口 | 新增字段 |
+|---|---|
+| `GET /certs/dashboard` → `summary` | `probeTotalCount` / `internalCount` / `protocolSkippedCount` / `probeableCount` / `reachableRateOnProbeable` / `diffRateOnProbeable` |
+| `GET /certs/probes` → 每行 | `nxDomainCount` / `staleMarked` |
+
+### 二、变更
+
+1. `src/api/cert.ts`：两处类型补齐；
+2. `OverviewCards.vue`：新增「探测口径」三卡——可拨测域数（副文案列明三类剔除：内网域 / 协议记录 / 通配符）、拨通率、差异率；比率经 `percent()` 格式化（null/NaN → 「—」）；三卡为 `.static` 纯展示（无筛选语义、默认光标）；
+3. `probes/index.vue`：状态徽标旁「疑似僵尸」琥珀标签，仅 `staleMarked` 时出现，title 含连续失败轮次与处置建议。
+
+### 三、真实浏览器验收（D:\Haven\.browser-verify\cam-t5\）
+
+环境：独立后端 :8012（本次构建 `-f config/verify8012.yaml`，含 T1–T4）+ 前端 :3339（`vite.verify3339.config.ts`，`VITE_BACKEND_URL=http://localhost:8012`）。
+
+| 断言 | 结果 |
+|---|---|
+| 入口导航 `/cam/certs/dashboard` | PASS |
+| 三卡渲染 | PASS（3）|
+| 真实数值 | **3064 域 / 57.0% / 5.8%**（非 mock）|
+| 无 NaN / undefined | PASS |
+| 既有 5 分级卡 + 2 特殊卡未破坏 | PASS |
+| 三卡纯展示（`.static`×3）| PASS |
+| 390 视口单列折叠 + 无横向溢出 | PASS（columns=230px）|
+| 刷新后三卡仍在 | PASS |
+| **后端缺字段 → 降级「—」且无 NaN** | PASS（拦截真实响应删除 6 字段的负向测试）|
+| 无僵尸数据不显示标签 | PASS（tags=0，表体 78 行）|
+| console errors / failed requests | **0 / 0** |
+
+### 四、环境合规处理
+
+- 探测发现 **:8002 被他人 `e-cmdb-service` 占用** → 未触碰，改用 :8012；
+- 验收后停止 :8012/:3339，删除临时后端配置（含 local 覆盖）、临时 vite 配置与临时二进制；
+- 他人在 `src/components.d.ts` 的未提交改动全程未触碰（只提交自己改的 4 个文件）。
+
+### 五、几个踩坑（可复用）
+
+1. **路由前缀**：该前端 `base=/cam/`，证书域真实路径是 `/cam/certs/dashboard`，`/certs/dashboard` 会被 Vite 提示 base 不匹配；`/cam/dashboard` 是多云概览，不是证书看板；
+2. **跨源被 CORS 拦截**：页面内 `fetch('http://localhost:8012/...')` 失败，改用 Playwright `context.request`（共享 cookie 容器、不受 CORS 限制）；
+3. **PowerShell 读写 UTF-8 脚本会乱码**：`Get-Content/Set-Content` 默认编码破坏了中文断言文案 → 改用 .NET `ReadAllText/WriteAllText` + `UTF8Encoding($false)`；
+4. **登录后会被重定向到门户首页** → 登录完成后再显式 `goto` 目标页，否则断言对象不存在。
+
+### 六、未验证项
+
+分类/降频的**线上生效情况**仍未验证：验收时 API 返回 `internal=0`、`protocol=0`，说明尚未跑过含新代码的全量探测轮。需观察下一轮（每日 05:00）后 `internal`/`protocol_skipped` 是否出现、`unreachable` 是否从 1212 显著下降。
