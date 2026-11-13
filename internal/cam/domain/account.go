@@ -63,10 +63,10 @@ type CloudAccount struct {
 	LastTestTime    *time.Time         `json:"last_test_time" bson:"last_test_time"`       // 最后测试时间
 	AssetCount      int64              `json:"asset_count" bson:"asset_count"`             // 资产数量
 	ErrorMessage    string             `json:"error_message" bson:"error_message"`         // 错误信息
-	CreateTime      time.Time          `json:"create_time" bson:"create_time"`             // 创建时间
-	UpdateTime      time.Time          `json:"update_time" bson:"update_time"`             // 更新时间
-	CTime           int64              `json:"ctime" bson:"ctime"`                         // 创建时间戳
-	UTime           int64              `json:"utime" bson:"utime"`                         // 更新时间戳
+	CreateTime      time.Time        `json:"create_time" bson:"create_time"` // 创建时间
+	UpdateTime      time.Time        `json:"update_time" bson:"update_time"` // 更新时间
+	CTime           int64            `json:"ctime" bson:"ctime"`             // 创建时间戳
+	UTime           int64            `json:"utime" bson:"utime"`             // 更新时间戳
 }
 
 // CloudAccountFilter 云账号查询过滤器

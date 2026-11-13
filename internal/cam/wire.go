@@ -147,7 +147,8 @@ func InitModule(db *mongox.Mongo) (*Module, error) {
 		eiamBaseURL = viper.GetString("policy.auth_url")
 	}
 	tenantGovernance := governance.NewEIAMTenantClient(eiamBaseURL, tokenProvider, component)
-	cloudAccountService := service.NewCloudAccountService(cloudAccountRepository, instanceRepository, adapterFactory, queue, component, tenantGovernance)
+	permissionCheckRepository := repository.NewAccountPermissionRepository(dao.NewAccountPermissionCheckDAO(db))
+	cloudAccountService := service.NewCloudAccountService(cloudAccountRepository, instanceRepository, adapterFactory, queue, component, tenantGovernance, permissionCheckRepository)
 
 	// Task Service
 	taskRepository := InitTaskRepository(db)

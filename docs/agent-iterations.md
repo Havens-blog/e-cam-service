@@ -603,3 +603,32 @@ v021fix.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7695)
 ## 2026-11-13 **周期回归(16:35)**:全部稳定,无可执行需求
 v021fix.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7695)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
 本轮判定:**无可执行需求** ✓(口径 124 ✓);剩余外部待办:检出更新 / DBA 索引 / 云账号权限
+
+---
+
+## 2026-11-13 **云账号接入：禁止主账号 AK + 权限体检**（需求确认）
+**需求来源**：用户 17:25 确认三条规则 —— ①禁止接入主账号 AK；②暂不支持 RAM 角色 AssumeRole；③权限不足必须提示出来。
+
+**范围（本轮）**
+- 后端：接入/更新时用 STS `GetCallerIdentity` 识别身份，`PrimaryAccount` 直接拒绝；新增 `POST /cam/cloud-accounts/:id/permission-check`，按 10 类资源做最小列举探测（ECS/RDS/Redis/SLB/VPC/NAS/CDN/DDoS/DNS/OSS），快照落 `ecam_account_permission_check`（按 account_id upsert），详情与列表接口返回 `permission_check`。
+- 前端：接入表单提示 RAM 子账号+只读策略；详情抽屉「权限体检」面板（开始体检/汇总/状态表/体检时间/主账号告警）；卡片与列表在 denied>0 时显示「权限不足 N 项」。
+
+**API**
+`POST /api/v1/cam/cloud-accounts/{id}/permission-check` → `{account_id,provider,identity_type,is_primary_account,checked_at,summary{ok,denied,error,unsupported},items[{asset_type,asset_name,status,code,message}]}`
+
+**验收（真实前后端 + 真实测试库，A 类）**
+- 浏览器：14/14 断言通过（登录→云账号管理→添加账号提示→详情体检面板→开始体检 loading→结果表 10 行→体检时间→窄屏 390px→无控制台错误）；截图 perm-form-alert.png / perm-panel-loaded.png / perm-panel-checked.png / perm-panel-narrow.png。
+- 非阿里云（华为云）体检：10 项「未支持」，汇总显示「未支持 10 项」（perm-panel-unsupported.png）。
+- 阿里云真实账号体检：ok=10 / denied=0；`identity_type=RAMUser`、`is_primary_account=false`。
+- 单测：错误归类（Forbidden/AccessDenied→denied；超时/限流→error）、message 脱敏（不含 AK/Secret/Signature 查询串）、地域解析、非阿里云跳过、主账号判定拒绝 + 文案。
+
+**已修复的真实缺陷（本轮发现）**
+- 阿里云 SDK 报错含完整签名 URL，会把 `AccessKeyId` 打进体检结果与日志 → 统一脱敏（`?<redacted>` + 凭证替换）。
+- DDoS 高防探测缺 `PageNo` → 补 `PageNo/PageSize`。
+- 瞬时网络错误被误判为「异常」→ 单次重试。
+- STS 端点在本机解析到不可达 IP（106.11.232.4）→ 身份识别加重试；仍失败时在体检结果显式列出「AK 身份识别 / IdentityUnavailable」，避免主账号拦截静默失效。
+
+**风险/未覆盖**
+- 本机 `sts.aliyuncs.com` 网络不稳定：创建账号时若 STS 不可达，主账号拦截会退化为「放行 + 提示」，是否改为 fail-closed 待确认。
+- `denied` 分支：当前 5 个账号权限齐全，未构造真实受限 AK，denied 状态仅由单测覆盖归类逻辑与前端 tag 映射。
+- 预存在的 `sync_assets` 日志同样打印含 AK 的 SDK 错误（本轮未改，建议后续统一脱敏）。

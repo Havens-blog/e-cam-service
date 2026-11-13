@@ -31,7 +31,7 @@ func (suite *CloudAccountGovernanceTestSuite) SetupTest() {
 // newGovernanceService 构造注入了 mock 治理端口的服务
 // （adapterFactory/taskQueue/logger 同既有套件的取值口径）
 func (suite *CloudAccountGovernanceTestSuite) newGovernanceService() CloudAccountService {
-	return NewCloudAccountService(suite.repo, nil, nil, nil, elog.DefaultLogger, suite.gov)
+	return NewCloudAccountService(suite.repo, nil, nil, nil, elog.DefaultLogger, suite.gov, nil)
 }
 
 func governanceTestReq() *domain.CreateCloudAccountRequest {
@@ -220,7 +220,7 @@ func (suite *CloudAccountGovernanceTestSuite) TestCheckTenantGovernance() {
 
 // TestGovernancePortNotAssembled 治理端口未装配时 fail-closed（构造缺省防线）
 func (suite *CloudAccountGovernanceTestSuite) TestGovernancePortNotAssembled() {
-	svc := NewCloudAccountService(suite.repo, nil, nil, nil, elog.DefaultLogger, nil)
+	svc := NewCloudAccountService(suite.repo, nil, nil, nil, elog.DefaultLogger, nil, nil)
 
 	result, err := svc.CreateAccount(suite.ctx, governanceTestReq())
 

@@ -100,7 +100,7 @@ func (suite *CloudAccountServiceTestSuite) SetupTest() {
 	// taskQueue is nil: no test in this suite exercises the async sync-submit path.
 	// logger uses elog.DefaultLogger (the repo-wide test pattern) because the
 	// constructor's nil-guard calls elog.Load("default"), which panics without ego config.
-	suite.service = NewCloudAccountService(suite.repo, nil, suite.adapterFactory, nil, elog.DefaultLogger, suite.gov)
+	suite.service = NewCloudAccountService(suite.repo, nil, suite.adapterFactory, nil, elog.DefaultLogger, suite.gov, nil)
 	suite.ctx = context.Background()
 }
 
