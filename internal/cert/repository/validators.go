@@ -251,6 +251,7 @@ var collectionValidators = map[string]bson.M{
 			"status": enumStr("consistent", "diff", "change_linked_diff",
 				"unreachable", "exempt", "wildcard_skipped", "internal", "protocol_skipped"),
 			"changeOrderId": str(),
+			"nxdomainCount": bson.M{"bsonType": "int", "minimum": 0},
 		},
 	),
 

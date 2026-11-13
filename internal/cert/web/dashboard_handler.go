@@ -159,7 +159,10 @@ type ProbeResultVO struct {
 	LinkedResource    string  `json:"linkedResource,omitempty"` // cdn/waf/external（DNS 源探测链路分层）
 	RecordType        string  `json:"recordType,omitempty"`     // A/AAAA/CNAME（DNS 源探测；SAN 探测缺省）
 	RecordValue       string  `json:"recordValue,omitempty"`    // 解析地址（记录值：IP / CNAME 目标）
-	TLSVersion        string  `json:"tlsVersion,omitempty"`     // 协商 TLS 版本（unreachable 缺省）
+	// 僵尸记录判定（T4）：连续 NXDOMAIN 轮次与「疑似僵尸」标记（≥3 轮）。
+	NXDomainCount int    `json:"nxDomainCount,omitempty"`
+	StaleMarked   bool   `json:"staleMarked,omitempty"`
+	TLSVersion    string `json:"tlsVersion,omitempty"` // 协商 TLS 版本（unreachable 缺省）
 }
 
 // ListProbes GET /api/v1/certs/probes —— 每域最近一次探测结果（全角色含只读）。
@@ -183,6 +186,8 @@ func (h *DashboardHandler) ListProbes(c *gin.Context) {
 			RecordType:        r.RecordType,
 			RecordValue:       r.RecordValue,
 			TLSVersion:        r.TLSVersion,
+			NXDomainCount:     r.NXDomainCount,
+			StaleMarked:       r.NXDomainCount >= service.StaleNXDomainThreshold,
 		})
 	}
 	WriteOK(c, http.StatusOK, items, nil)

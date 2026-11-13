@@ -31,6 +31,10 @@ const (
 // 拨测端口（crypto/tls 注入缝：生产 stdTLSDialer / 测试本地多证书 SNI server）
 // ---------------------------------------------------------------------
 
+// errProbeNXDomain DNS 解析失败（NXDOMAIN/无记录）专项错误：与 TLS 握手失败区分开，
+// 用于「疑似僵尸记录」判定（连续 3 轮 NXDOMAIN 才打标，见 staleNXDomainThreshold）。
+var errProbeNXDomain = errors.New("probe: dns name not found")
+
 // dialResult TLS 握手产物：leaf 证书 + 协商版本（探测结果展示/审计用）。
 type dialResult struct {
 	Leaf       *x509.Certificate
@@ -72,6 +76,11 @@ func (d *stdTLSDialer) Dial(ctx context.Context, domainName string) (dialResult,
 	}
 	raw, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", addr)
 	if err != nil {
+		// DNS 解析失败单独标注（T4 僵尸记录判定依据）；IP 直连/TLS 失败不属此类
+		var dnsErr *net.DNSError
+		if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+			return dialResult{}, fmt.Errorf("%w: %s", errProbeNXDomain, domainName)
+		}
 		return dialResult{}, fmt.Errorf("probe: dial %s: %w", addr, err)
 	}
 	defer raw.Close()
@@ -102,6 +111,14 @@ func (d *stdTLSDialer) Dial(ctx context.Context, domainName string) (dialResult,
 	}
 	return res, nil
 }
+
+// staleNXDomainThreshold 「疑似僵尸记录」阈值：连续 N 轮 DNS 解析失败才打标
+// （决策见 docs/req-probe-classification.md：3 轮，避免 DNS 瞬时故障误标）。
+const staleNXDomainThreshold = 3
+
+// StaleNXDomainThreshold 导出给展示层（web VO 判定 staleMarked 用），
+// 保持「阈值只在服务层定义一处」。
+const StaleNXDomainThreshold = staleNXDomainThreshold
 
 // hasUnderscoreLabel 任一标签以 "_" 开头即视为协议记录（ACME DNS-01 的 `_hash.`、
 // DKIM 的 `_domainkey.`、SPF/策略记录等）：这类名字不存在 TLS 端点，拨测必然
@@ -320,6 +337,7 @@ func (s *probeService) ProbeDomains(ctx context.Context, domains []string) ([]do
 	if err != nil {
 		return nil, err
 	}
+	prevNX, _ := s.nxDomainCounts(ctx) // 读取失败保守用空表（计数从 1 起算，不阻断拨测）
 
 	// 目标解析：通配符 SAN 有 concreteSubdomainOverride → 以子域名替代拨测
 	// （结果记于子域名、按常规状态判定）；无 override → 保留通配符（记 wildcard_skipped，不拨测）
@@ -362,7 +380,7 @@ func (s *probeService) ProbeDomains(ctx context.Context, domains []string) ([]do
 				return
 			}
 			defer func() { <-sem }()
-			results[idx] = s.probeOne(name, exemptSet, ownership, verifying)
+			results[idx] = s.probeOne(name, exemptSet, ownership, verifying, prevNX)
 		}(i, target)
 	}
 	wg.Wait()
@@ -387,6 +405,7 @@ func (s *probeService) probeOne(
 	exemptSet map[string]bool,
 	ownership map[string]map[string]bool,
 	verifying []domain.ChangeOrder,
+	prevNX map[string]int,
 ) domain.ProbeResult {
 	// 通配符 SAN 无法直接 DNS 解析与 SNI 拨测 → 不拨测，记 wildcard_skipped
 	//（计数可见、不告警、不计差异；override 替换已在目标解析阶段完成）
@@ -400,7 +419,12 @@ func (s *probeService) probeOne(
 	dr, err := s.dialer.Dial(context.Background(), name)
 	if err != nil {
 		// 拨号失败/DNS 失败/超时 → unreachable（不参与差异告警）
-		return domain.ProbeResult{Domain: name, Status: domain.ProbeStatusUnreachable}
+		res := domain.ProbeResult{Domain: name, Status: domain.ProbeStatusUnreachable}
+		// T4：NXDOMAIN 连续轮次累加（非 NXDOMAIN 失败重置为 0，不误标瞬时故障）
+		if errors.Is(err, errProbeNXDomain) {
+			res.NXDomainCount = prevNX[strings.ToLower(name)] + 1
+		}
+		return res
 	}
 	leaf := dr.Leaf
 	onlineFP := leafFingerprintHex(leaf)
@@ -484,6 +508,22 @@ func matchVerifyingOrder(orders []domain.ChangeOrder, domainName, onlineFingerpr
 // isWildcardSAN 通配符 SAN 判定（`*.` 前缀，无法直接 SNI 拨测）。
 func isWildcardSAN(name string) bool {
 	return strings.HasPrefix(name, "*.")
+}
+
+// nxDomainCounts 上一轮各域名的 NXDOMAIN 连续轮次（键小写归一）。读失败返回空表
+// 并入 err——僵尸计数是增益信息，不应阻断整轮拨测。
+func (s *probeService) nxDomainCounts(ctx context.Context) (map[string]int, error) {
+	latest, err := s.probes.LatestPerDomain(ctx)
+	if err != nil {
+		return map[string]int{}, fmt.Errorf("probe: load latest per domain: %w", err)
+	}
+	out := make(map[string]int, len(latest))
+	for i := range latest {
+		if latest[i].NXDomainCount > 0 {
+			out[strings.ToLower(strings.TrimSpace(latest[i].Domain))] = latest[i].NXDomainCount
+		}
+	}
+	return out, nil
 }
 
 // internalDomainSet 上一轮判定为 internal 的域名集合（周级轮的目标集，也是日轮
@@ -684,6 +724,7 @@ func (s *probeService) probeTargets(ctx context.Context, targets []DNSProbeTarge
 	// CDN/DCDN/WAF 记录的 hostname == cert_reference.resourceId，按 (product,hostname)
 	// 查到引用即用其解析指纹做权威 expected；未装配/无快照/无引用则回退 coverage。
 	refIndex := s.buildReferenceIndex(ctx)
+	prevNX, _ := s.nxDomainCounts(ctx) // 同 ProbeDomains：读取失败用空表，不阻断拨测
 
 	results := make([]domain.ProbeResult, len(targets))
 	sem := make(chan struct{}, probeConcurrency)
@@ -701,7 +742,7 @@ func (s *probeService) probeTargets(ctx context.Context, targets []DNSProbeTarge
 				return
 			}
 			defer func() { <-sem }()
-			results[idx] = s.probeOneDNS(tgt, exemptSet, coverage, refIndex, verifying)
+			results[idx] = s.probeOneDNS(tgt, exemptSet, coverage, refIndex, verifying, prevNX)
 		}(i, t)
 	}
 	wg.Wait()
@@ -729,6 +770,7 @@ func (s *probeService) probeOneDNS(
 	coverage *coverageIndex,
 	refIndex map[string]map[string]bool,
 	verifying []domain.ChangeOrder,
+	prevNX map[string]int,
 ) domain.ProbeResult {
 	result := domain.ProbeResult{
 		Domain:         tgt.Hostname,
@@ -743,6 +785,9 @@ func (s *probeService) probeOneDNS(
 	dr, err := s.dialer.Dial(context.Background(), tgt.Hostname)
 	if err != nil {
 		result.Status = domain.ProbeStatusUnreachable
+		if errors.Is(err, errProbeNXDomain) {
+			result.NXDomainCount = prevNX[strings.ToLower(tgt.Hostname)] + 1
+		}
 		return result
 	}
 	leaf := dr.Leaf

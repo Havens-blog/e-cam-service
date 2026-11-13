@@ -245,13 +245,14 @@ db.createCollection("cert_probe_results", {
       probeAt:           { bsonType: "date" },                              // DEFAULT=now()
       onlineFingerprint: { bsonType: "string" },                            // unreachable 时缺省
       onlineNotAfter:    { bsonType: "date" },
-      status:            { bsonType: "string", enum: ["consistent", "diff", "change_linked_diff", "unreachable", "exempt", "wildcard_skipped"] }, // wildcard_skipped=通配符 SAN 默认跳过拨测（可经 wildcardProbeOverrides 指定具体子域名替代探测）
+      status:            { bsonType: "string", enum: ["consistent", "diff", "change_linked_diff", "unreachable", "exempt", "wildcard_skipped", "internal", "protocol_skipped"] }, // wildcard_skipped=通配符 SAN 跳过；internal=解析到内网地址（降频周轮）；protocol_skipped=下划线协议记录不拨测
       changeOrderId:     { bsonType: "string" },                            // status=change_linked_diff 时关联变更单（验证窗口内预期切换）
       tenantId:          { bsonType: "long" },                              // DNS 源探测：记录所属租户（SAN 探测缺省）
       linkedResource:    { bsonType: "string" }                             // DNS 源探测：链路关联资源类型（cdn/waf/external；SAN 探测缺省）
       recordType:        { bsonType: "string" },                            // DNS 源探测：记录类型（A/AAAA/CNAME；SAN 探测缺省）
       recordValue:       { bsonType: "string" },                            // DNS 源探测：解析地址（IP/CNAME 目标）
-      tlsVersion:        { bsonType: "string" }                             // 协商 TLS 版本（unreachable 缺省）
+      tlsVersion:        { bsonType: "string" },                            // 协商 TLS 版本（unreachable 缺省）
+      nxdomainCount:     { bsonType: "int", minimum: 0 }                    // 连续 NXDOMAIN 轮次（≥3 判疑似僵尸记录）
     }
   }}
 });
