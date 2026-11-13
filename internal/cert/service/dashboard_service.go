@@ -47,7 +47,21 @@ var levelIdxByTier = map[DaysLeftTier]int{
 	DaysLeftExpired: levelIdxExpired,
 }
 
-// DashboardSummary 看板汇总卡（5 分级卡 + 2 计数卡 + 3 覆盖率卡）。
+// computeProbeRates 计算探测新口径（T3）：可拨测域分母 = 总数 − internal −
+// protocol_skipped；拨通率与差异率均以该分母计算，避免内网域/协议记录稀释指标。
+// 分母为 0 时两个率均取 0（避免 NaN）。
+func computeProbeRates(s *DashboardSummary) {
+	s.ProbeableCount = s.ProbeTotalCount - s.InternalCount - s.ProtocolSkippedCount - s.WildcardSkippedCount
+	if s.ProbeableCount <= 0 {
+		s.ReachableRateOnProbeable = 0
+		s.DiffRateOnProbeable = 0
+		return
+	}
+	s.ReachableRateOnProbeable = float64(s.ProbeSuccessCount) / float64(s.ProbeableCount)
+	s.DiffRateOnProbeable = float64(s.DiffAlertCount) / float64(s.ProbeableCount)
+}
+
+// DashboardSummary 看板汇总卡（5 分级卡 + 2 计数卡 + 3 覆盖率卡 + 探测可拨测口径）。
 type DashboardSummary struct {
 	CountsByLevel        DashboardLevelCounts
 	HiddenCount          int // 全局被隐藏孤儿数（与 items 同一快照计算）
@@ -57,6 +71,17 @@ type DashboardSummary struct {
 	RegistrationRate     float64
 	ReplaceableRate      float64
 	FingerprintOnlyRate  float64
+
+	// 探测口径（T3，docs/req-probe-classification.md 决策：新口径 + 旧字段保留一版）：
+	// 内网域与协议记录都不是「拨了不通」，把它们从拨通率分母剔除，指标才有意义
+	// （现状 3029 域里约 755 内网域会把拨通率系统性拉低约 25 个百分点）。
+	ProbeTotalCount          int     // 最新探测域总数（旧口径分母，保留一版后废弃）
+	InternalCount            int     // status=internal（解析到内网 IP，已降频到周轮）
+	ProtocolSkippedCount     int     // status=protocol_skipped（下划线协议记录，不拨测）
+	ProbeableCount           int     // 可拨测域数 = 总数 − internal − protocol_skipped − wildcard_skipped
+	ProbeSuccessCount        int     // 拨通且判定完成数 = consistent + diff + change_linked_diff + exempt
+	ReachableRateOnProbeable float64 // ProbeSuccessCount / ProbeableCount（新口径拨通率）
+	DiffRateOnProbeable      float64 // DiffAlertCount / ProbeableCount（新口径差异率）
 }
 
 // DashboardItem 看板证书行（证书粒度：每证一行，同域多证并存不掩盖）。
@@ -194,7 +219,20 @@ func (s *dashboardService) Dashboard(ctx context.Context, includeHidden bool) (D
 		if p.Status == domain.ProbeStatusDiff {
 			view.Summary.DiffAlertCount++
 		}
+		// T3 探测口径计数（按域名粒度，latestProbes 已是每域最新一条）
+		view.Summary.ProbeTotalCount++
+		switch p.Status {
+		case domain.ProbeStatusInternal:
+			view.Summary.InternalCount++
+		case domain.ProbeStatusProtocolSkipped:
+			view.Summary.ProtocolSkippedCount++
+		case domain.ProbeStatusConsistent, domain.ProbeStatusDiff,
+			domain.ProbeStatusChangeLinkedDiff, domain.ProbeStatusExempt:
+			view.Summary.ProbeSuccessCount++
+		}
+		// unreachable / wildcard_skipped 不计入成功也不计入可拨测（见下方口径）
 	}
+	computeProbeRates(&view.Summary)
 
 	// 三态判定上下文单点：最新成功快照 + 快照引用一次拉取（批量内存归约，
 	// 禁逐证 N+1 重拉快照）；referencedClouds 与三态共用同一快照。
