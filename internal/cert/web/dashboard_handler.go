@@ -55,7 +55,9 @@ type DashboardSummaryVO struct {
 	InternalCount        int `json:"internalCount"`
 	ProtocolSkippedCount int `json:"protocolSkippedCount"`
 	// VerificationSkippedCount 站点验证类别名数（CNAME 指向 Google/Bing/QQ 等验证服务）
-	VerificationSkippedCount int     `json:"verificationSkippedCount"`
+	VerificationSkippedCount int `json:"verificationSkippedCount"`
+	// OnlineExpiredCount 线上证书已过期的域名数（安全事件级）
+	OnlineExpiredCount       int     `json:"onlineExpiredCount"`
 	ProbeableCount           int     `json:"probeableCount"`
 	ReachableRateOnProbeable float64 `json:"reachableRateOnProbeable"`
 	DiffRateOnProbeable      float64 `json:"diffRateOnProbeable"`
@@ -139,6 +141,7 @@ func (h *DashboardHandler) Dashboard(c *gin.Context) {
 			InternalCount:            view.Summary.InternalCount,
 			ProtocolSkippedCount:     view.Summary.ProtocolSkippedCount,
 			VerificationSkippedCount: view.Summary.VerificationSkippedCount,
+			OnlineExpiredCount:       view.Summary.OnlineExpiredCount,
 			ProbeableCount:           view.Summary.ProbeableCount,
 			ReachableRateOnProbeable: view.Summary.ReachableRateOnProbeable,
 			DiffRateOnProbeable:      view.Summary.DiffRateOnProbeable,
