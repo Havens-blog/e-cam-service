@@ -51,7 +51,8 @@ var levelIdxByTier = map[DaysLeftTier]int{
 // protocol_skipped；拨通率与差异率均以该分母计算，避免内网域/协议记录稀释指标。
 // 分母为 0 时两个率均取 0（避免 NaN）。
 func computeProbeRates(s *DashboardSummary) {
-	s.ProbeableCount = s.ProbeTotalCount - s.InternalCount - s.ProtocolSkippedCount - s.WildcardSkippedCount
+	s.ProbeableCount = s.ProbeTotalCount - s.InternalCount - s.ProtocolSkippedCount -
+		s.VerificationSkippedCount - s.WildcardSkippedCount
 	if s.ProbeableCount <= 0 {
 		s.ReachableRateOnProbeable = 0
 		s.DiffRateOnProbeable = 0
@@ -78,6 +79,7 @@ type DashboardSummary struct {
 	ProbeTotalCount          int     // 最新探测域总数（旧口径分母，保留一版后废弃）
 	InternalCount            int     // status=internal（解析到内网 IP，已降频到周轮）
 	ProtocolSkippedCount     int     // status=protocol_skipped（下划线协议记录，不拨测）
+	VerificationSkippedCount int     // status=verification_skipped（站点验证类别名，不拨测）
 	ProbeableCount           int     // 可拨测域数 = 总数 − internal − protocol_skipped − wildcard_skipped
 	ProbeSuccessCount        int     // 拨通且判定完成数 = consistent + diff + change_linked_diff + exempt
 	ReachableRateOnProbeable float64 // ProbeSuccessCount / ProbeableCount（新口径拨通率）
@@ -226,6 +228,8 @@ func (s *dashboardService) Dashboard(ctx context.Context, includeHidden bool) (D
 			view.Summary.InternalCount++
 		case domain.ProbeStatusProtocolSkipped:
 			view.Summary.ProtocolSkippedCount++
+		case domain.ProbeStatusVerificationSkipped:
+			view.Summary.VerificationSkippedCount++
 		case domain.ProbeStatusConsistent, domain.ProbeStatusDiff,
 			domain.ProbeStatusChangeLinkedDiff, domain.ProbeStatusExempt:
 			view.Summary.ProbeSuccessCount++
@@ -396,14 +400,15 @@ const probeRankSkipped = 3
 // internal / protocol_skipped 与 wildcard_skipped 同属「跳过拨测」类（不构成告警），
 // 并列排序避免内网域把整张证书的徽标拉低成告警态。
 var probeBadgeRank = map[domain.ProbeStatus]int{
-	domain.ProbeStatusDiff:             0,
-	domain.ProbeStatusChangeLinkedDiff: 1,
-	domain.ProbeStatusUnreachable:      2,
-	domain.ProbeStatusWildcardSkipped:  probeRankSkipped,
-	domain.ProbeStatusProtocolSkipped:  probeRankSkipped,
-	domain.ProbeStatusInternal:         probeRankSkipped,
-	domain.ProbeStatusExempt:           4,
-	domain.ProbeStatusConsistent:       5,
+	domain.ProbeStatusDiff:                0,
+	domain.ProbeStatusChangeLinkedDiff:    1,
+	domain.ProbeStatusUnreachable:         2,
+	domain.ProbeStatusWildcardSkipped:     probeRankSkipped,
+	domain.ProbeStatusProtocolSkipped:     probeRankSkipped,
+	domain.ProbeStatusVerificationSkipped: probeRankSkipped,
+	domain.ProbeStatusInternal:            probeRankSkipped,
+	domain.ProbeStatusExempt:              4,
+	domain.ProbeStatusConsistent:          5,
 }
 
 // probeRankUnprobed 未探测 SAN 的排序尾位（劣于全部已探测态）。

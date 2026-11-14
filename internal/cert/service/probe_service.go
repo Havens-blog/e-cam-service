@@ -112,6 +112,36 @@ func (d *stdTLSDialer) Dial(ctx context.Context, domainName string) (dialResult,
 	return res, nil
 }
 
+// verificationAliasSuffixes 站点归属验证的 CNAME 目标后缀：这类记录用于证明域名所有权
+// （Google Workspace / Bing 站长 / 腾讯企业邮 / 百度站长 / HelpScout），**不存在我方
+// TLS 端点**，拨测必然失败或误判 diff。实测 3029 域中有 34 个（1.1%）属此类。
+var verificationAliasSuffixes = []string{
+	"dv.googlehosted.com", // Google Workspace 站点验证
+	"verify.bing.com",     // Bing 站长验证
+	"mail.qq.com",         // 腾讯企业邮域名验证
+	"helpscout.net",       // HelpScout 域名验证
+	"baidu.com",           // 百度站长验证
+}
+
+// isVerificationAlias CNAME 目标是否指向站点验证服务（仅 CNAME 记录有意义；
+// 值为记录目标，非 A 记录的 IP）。
+func isVerificationAlias(recordType, recordValue string) bool {
+	if !strings.EqualFold(strings.TrimSpace(recordType), "CNAME") {
+		return false
+	}
+	target := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(recordValue), "."))
+	if target == "" {
+		return false
+	}
+	for _, suffix := range verificationAliasSuffixes {
+		// 目标本身等于验证域名（verify.bing.com / mail.qq.com）或其子域
+		if target == suffix || strings.HasSuffix(target, "."+suffix) {
+			return true
+		}
+	}
+	return false
+}
+
 // staleNXDomainThreshold 「疑似僵尸记录」阈值：连续 N 轮 DNS 解析失败才打标
 // （决策见 docs/req-probe-classification.md：3 轮，避免 DNS 瞬时故障误标）。
 const staleNXDomainThreshold = 3
@@ -780,6 +810,13 @@ func (s *probeService) probeOneDNS(
 	// 协议记录（任一标签下划线开头）：不拨测，记 protocol_skipped
 	if hasUnderscoreLabel(tgt.Hostname) {
 		result.Status = domain.ProbeStatusProtocolSkipped
+		return result
+	}
+	// 站点验证别名（CNAME 指向 Google/Bing/QQ/百度/HelpScout 验证服务）：不拨测
+	if isVerificationAlias(tgt.RecordType, tgt.RecordValue) {
+		result.Status = domain.ProbeStatusVerificationSkipped
+		result.RecordType = tgt.RecordType
+		result.RecordValue = tgt.RecordValue
 		return result
 	}
 	dr, err := s.dialer.Dial(context.Background(), tgt.Hostname)

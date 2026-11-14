@@ -30,6 +30,10 @@ const (
 	// ProbeStatusProtocolSkipped 任一标签以下划线开头（ACME `_hash.` / DKIM `_domainkey.` 等
 	// 协议记录）：不存在 TLS 端点，不拨测、不计入分母。
 	ProbeStatusProtocolSkipped ProbeStatus = "protocol_skipped"
+	// ProbeStatusVerificationSkipped CNAME 指向站点归属验证服务（Google Workspace /
+	// Bing / 腾讯企业邮 / 百度 / HelpScout）：该记录用于证明域名所有权，不存在我方
+	// TLS 端点，不拨测、不计入分母。实测 34 个（占探测域 1.1%）。
+	ProbeStatusVerificationSkipped ProbeStatus = "verification_skipped"
 )
 
 // ProbeResult TLS 探测结果文档（cert_probe_results，TTL 90 天自动清理）。
