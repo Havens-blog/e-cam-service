@@ -1007,3 +1007,10 @@ permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(751
 ### 六、未验证项
 
 运行实例仍为旧构建，`verificationSkippedCount` 真实值目前为 0；「大数值 + 四类明细」排版、`nxDomainCount`/`staleMarked` 的真实数据渲染均未在真实数据下验证。
+
+---
+
+## 2026-11-14 **周期回归(16:35)**:全部稳定
+permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7511)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
+权限体检复验：ok=10 denied=0 error=0，无 AK 泄露 ✓
+本轮判定:**无可执行需求** ✓；待确认：STS 不可达时 fail-open/fail-closed、denied 分支需受限 AK 演练
