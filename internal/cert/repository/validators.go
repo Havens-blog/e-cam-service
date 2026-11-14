@@ -249,7 +249,7 @@ var collectionValidators = map[string]bson.M{
 			"onlineFingerprint": str(),
 			"onlineNotAfter":    date(),
 			"status": enumStr("consistent", "diff", "change_linked_diff",
-				"unreachable", "exempt", "wildcard_skipped", "internal", "protocol_skipped"),
+				"unreachable", "exempt", "wildcard_skipped", "internal", "protocol_skipped", "verification_skipped"),
 			"changeOrderId": str(),
 			"nxdomainCount": bson.M{"bsonType": "int", "minimum": 0},
 		},
