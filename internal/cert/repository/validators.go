@@ -252,6 +252,7 @@ var collectionValidators = map[string]bson.M{
 				"unreachable", "exempt", "wildcard_skipped", "internal", "protocol_skipped", "verification_skipped"),
 			"changeOrderId": str(),
 			"nxdomainCount": bson.M{"bsonType": "int", "minimum": 0},
+			"onlineExpired": bson.M{"bsonType": "bool"},
 		},
 	),
 

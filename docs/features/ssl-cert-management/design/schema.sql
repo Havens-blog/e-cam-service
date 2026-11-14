@@ -252,7 +252,8 @@ db.createCollection("cert_probe_results", {
       recordType:        { bsonType: "string" },                            // DNS 源探测：记录类型（A/AAAA/CNAME；SAN 探测缺省）
       recordValue:       { bsonType: "string" },                            // DNS 源探测：解析地址（IP/CNAME 目标）
       tlsVersion:        { bsonType: "string" },                            // 协商 TLS 版本（unreachable 缺省）
-      nxdomainCount:     { bsonType: "int", minimum: 0 }                    // 连续 NXDOMAIN 轮次（≥3 判疑似僵尸记录）
+      nxdomainCount:     { bsonType: "int", minimum: 0 },                   // 连续 NXDOMAIN 轮次（≥3 判疑似僵尸记录）
+      onlineExpired:     { bsonType: "bool" }                               // 线上证书已过期（安全事件级，与常规 diff 区分）
     }
   }}
 });

@@ -76,10 +76,13 @@ type DashboardSummary struct {
 	// 探测口径（T3，docs/req-probe-classification.md 决策：新口径 + 旧字段保留一版）：
 	// 内网域与协议记录都不是「拨了不通」，把它们从拨通率分母剔除，指标才有意义
 	// （现状 3029 域里约 755 内网域会把拨通率系统性拉低约 25 个百分点）。
-	ProbeTotalCount          int     // 最新探测域总数（旧口径分母，保留一版后废弃）
-	InternalCount            int     // status=internal（解析到内网 IP，已降频到周轮）
-	ProtocolSkippedCount     int     // status=protocol_skipped（下划线协议记录，不拨测）
-	VerificationSkippedCount int     // status=verification_skipped（站点验证类别名，不拨测）
+	ProbeTotalCount          int // 最新探测域总数（旧口径分母，保留一版后废弃）
+	InternalCount            int // status=internal（解析到内网 IP，已降频到周轮）
+	ProtocolSkippedCount     int // status=protocol_skipped（下划线协议记录，不拨测）
+	VerificationSkippedCount int // status=verification_skipped（站点验证类别名，不拨测）
+	// OnlineExpiredCount 线上证书已过期的域名数（安全事件级：浏览器直接拒绝，
+	// 与常规 diff「证书不匹配」区分；不受状态过滤影响，任何状态下都计）
+	OnlineExpiredCount       int
 	ProbeableCount           int     // 可拨测域数 = 总数 − internal − protocol_skipped − wildcard_skipped
 	ProbeSuccessCount        int     // 拨通且判定完成数 = consistent + diff + change_linked_diff + exempt
 	ReachableRateOnProbeable float64 // ProbeSuccessCount / ProbeableCount（新口径拨通率）
@@ -223,6 +226,9 @@ func (s *dashboardService) Dashboard(ctx context.Context, includeHidden bool) (D
 		}
 		// T3 探测口径计数（按域名粒度，latestProbes 已是每域最新一条）
 		view.Summary.ProbeTotalCount++
+		if p.OnlineExpired {
+			view.Summary.OnlineExpiredCount++
+		}
 		switch p.Status {
 		case domain.ProbeStatusInternal:
 			view.Summary.InternalCount++

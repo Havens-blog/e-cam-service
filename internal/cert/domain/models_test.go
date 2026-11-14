@@ -63,7 +63,7 @@ func TestBsonTagsMatchSchema(t *testing.T) {
 		{"ProbeResult", ProbeResult{}, true, []string{
 			"domain", "probeAt", "onlineFingerprint", "onlineNotAfter",
 			"status", "changeOrderId", "tenantId", "linkedResource",
-			"recordType", "recordValue", "tlsVersion", "nxdomainCount",
+			"recordType", "recordValue", "tlsVersion", "nxdomainCount", "onlineExpired",
 		}},
 		{"Exemption", Exemption{}, true, []string{"domain", "reason", "operator", "createdAt"}},
 		{"AlertConfig", AlertConfig{}, true, []string{

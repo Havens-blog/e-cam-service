@@ -464,6 +464,7 @@ func (s *probeService) probeOne(
 		OnlineFingerprint: onlineFP,
 		OnlineNotAfter:    &notAfter,
 		TLSVersion:        dr.TLSVersion,
+		OnlineExpired:     notAfter.Before(time.Now()),
 	}
 	// 内网域：握手成功但对端是私网地址 → internal（记录指纹供到期监控，但不参与
 	// 可达率分母与差异告警；降频轮次由 internalProbeIntervalDays 控制）
@@ -832,6 +833,7 @@ func (s *probeService) probeOneDNS(
 	notAfter := leaf.NotAfter
 	result.OnlineFingerprint = onlineFP
 	result.OnlineNotAfter = &notAfter
+	result.OnlineExpired = notAfter.Before(time.Now())
 	result.RecordType = tgt.RecordType
 	result.RecordValue = tgt.RecordValue
 	result.TLSVersion = dr.TLSVersion

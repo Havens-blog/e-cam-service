@@ -54,4 +54,7 @@ type ProbeResult struct {
 	// 失败时重置为 0；连续 ≥3 轮视为「疑似僵尸记录」（云上已删、平台仍有记录），
 	// 阈值常量见 service.staleNXDomainThreshold。
 	NXDomainCount int `bson:"nxdomainCount,omitempty"`
+	// OnlineExpired 线上证书在探测时刻**已过期**（notAfter < probeAt）。与常规 diff 区分：
+	// 过期是安全事件（浏览器直接拒绝/TLS 告警），不是"证书不匹配"这类配置漂移。
+	OnlineExpired bool `bson:"onlineExpired,omitempty"`
 }
