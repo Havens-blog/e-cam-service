@@ -23,6 +23,9 @@ const (
 	AlertCategoryExpiry AlertCategory = "expiry"
 	// AlertCategoryTLSDiff TLS 差异（常规 diff，探测事件触发，4.3 通道消费）。
 	AlertCategoryTLSDiff AlertCategory = "tls_diff"
+	// AlertCategoryTLSOnlineExpired 线上证书**已过期**（安全事件级：浏览器直接拒绝该域名并
+	// 报 TLS 告警）。与 AlertCategoryTLSDiff「不匹配但有效」区分：独立类别 + Critical 级别。
+	AlertCategoryTLSOnlineExpired AlertCategory = "tls_online_expired"
 	// AlertCategoryChangeLinked 变更关联（验证窗口内 change_linked_diff，
 	// 走 verifyWindowRoute 通道，附 orderId）。
 	AlertCategoryChangeLinked AlertCategory = "change_linked"

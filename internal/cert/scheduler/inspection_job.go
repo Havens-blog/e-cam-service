@@ -27,12 +27,13 @@ import (
 
 // 子步名（运行记录 Steps 序，即四步执行顺序）。
 const (
-	StepIntegrity  = "integrity" // 完整性复检（复跑 2.1 校验）
-	StepExpiry     = "expiry"    // 到期分级计算与去重告警（4.2）
-	StepProbe      = "probe"     // TLS 探测调度（台账全部 sans，4.1）
-	StepExemption  = "exemption" // 豁免过滤（exempt 不告警，diff 发 tls_diff）
-	integrityTitle = "证书完整性复检异常"
-	diffTitleFmt   = "TLS 探测差异：%s"
+	StepIntegrity   = "integrity" // 完整性复检（复跑 2.1 校验）
+	StepExpiry      = "expiry"    // 到期分级计算与去重告警（4.2）
+	StepProbe       = "probe"     // TLS 探测调度（台账全部 sans，4.1）
+	StepExemption   = "exemption" // 豁免过滤（exempt 不告警，diff 发 tls_diff）
+	integrityTitle  = "证书完整性复检异常"
+	diffTitleFmt    = "TLS 探测差异：%s"
+	expiredTitleFmt = "线上证书已过期：%s"
 )
 
 // ErrInspectionInProgress 幂等守卫（单飞）：同进程内上一轮巡检仍在执行时，
@@ -399,18 +400,31 @@ func (j *InspectionJob) stepExemptionFilter(ctx context.Context, results []domai
 		switch r.Status {
 		case domain.ProbeStatusDiff:
 			// 常规差异 → tls_diff 事件（域粒度；Fingerprint 留空——事件指纹字段
-			// 为台账归属证口径，探测结果不携带归属映射，线上指纹入 Detail）
-			if pubErr := j.publisher.PublishAlert(ctx, service.CertAlertEvent{
+			// 为台账归属证口径，探测结果不携带归属映射，线上指纹入 Detail）。
+			// 线上证书**已过期**时升级为独立类别（Critical）：浏览器直接拒绝该域名，
+			// 与「不匹配但有效」不是同一严重度，混流会让运维低估。
+			evt := service.CertAlertEvent{
 				Category: service.AlertCategoryTLSDiff,
 				Title:    fmt.Sprintf(diffTitleFmt, r.Domain),
 				Domain:   r.Domain,
 				Detail:   fmt.Sprintf("online fingerprint %s differs from ledger", r.OnlineFingerprint),
 				At:       now,
-			}); pubErr != nil {
+			}
+			if r.OnlineExpired {
+				evt.Category = service.AlertCategoryTLSOnlineExpired
+				evt.Title = fmt.Sprintf(expiredTitleFmt, r.Domain)
+				evt.Detail = fmt.Sprintf("online certificate EXPIRED (notAfter %s); browsers reject this hostname",
+					formatNotAfter(r.OnlineNotAfter))
+			}
+			if pubErr := j.publisher.PublishAlert(ctx, evt); pubErr != nil {
 				errs = append(errs, fmt.Errorf("inspection: publish tls diff for %s: %w", r.Domain, pubErr))
 				continue
 			}
-			m.Extra["diffAlerted"]++
+			if r.OnlineExpired {
+				m.Extra["expiredAlerted"]++
+			} else {
+				m.Extra["diffAlerted"]++
+			}
 		case domain.ProbeStatusExempt:
 			// 豁免域名仍探测、记 exempt、不告警（AC：豁免过滤）
 			m.Extra["exemptProbed"]++
@@ -427,4 +441,12 @@ func (j *InspectionJob) stepExemptionFilter(ctx context.Context, results []domai
 		m.Ok = false // 步骤级错误（清单读取失败已在上方早退/事件发布失败）
 	}
 	return m, errors.Join(errs...)
+}
+
+// formatNotAfter 线上证书到期时间格式化（告警文案用；nil → "unknown"）。
+func formatNotAfter(t *time.Time) string {
+	if t == nil {
+		return "unknown"
+	}
+	return t.UTC().Format(time.RFC3339)
 }
