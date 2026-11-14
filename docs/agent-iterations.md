@@ -955,3 +955,55 @@ permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(751
 permcheck.exe ✓|need credential type=0(口径127) ✓|S2S ✓|expiring ✓(7511)|脱敏 ✓|health ✓|前端 200 ✓|5 端口 UP ✓
 权限体检复验：ok=10 denied=0 error=0，无 AK 泄露 ✓
 本轮判定:**无可执行需求** ✓；待确认：STS 不可达时 fail-open/fail-closed、denied 分支需受限 AK 演练
+
+---
+
+## cam-verification-alias-20261114（站点验证类别名治理：分析 → 分类 → 契约 → 前端）
+
+**状态**：四个 PR 全部**已合并**（e-cam-service #670 / #673 / #675，e-cam-web #393），前端含真实浏览器验收。
+
+### 一、证据链（全量解析，非抽样）
+
+对 3029 个探测域**逐个做 DNS 解析**（并发 25，全部完成，0 错误）：
+
+| 分类 | 数量 | 占比 |
+|---|---|---|
+| 有 CNAME | 1288 | 42.5% |
+| 无 CNAME（A 记录）| 1317 | 43.5% |
+| **NXDOMAIN** | **424** | **14.0%** |
+
+其中 **34 个 CNAME 指向站点归属验证服务**（Google Workspace 25 / 腾讯企业邮 4 / Bing 2 / HelpScout 2 / 百度 1）：这类记录用于证明域名所有权，不存在我方 TLS 端点，拨测必然失败或误判 diff。
+
+### 二、两次认知修正（都来自数据）
+
+1. **僵尸规模**：此前基于 unreachable 子集外推「≈147」，全量解析后实际 **424**（T4 打标后预期数量级由此确定）；
+2. **「随机标签过滤」规则是错的**：81 个随机标签域里既有验证别名，也有真实云资源（`*.elb.amazonaws.com`、`alb-*.aliyuncsslbintl.com`、`cloudfront.net`，部分已 consistent）——按标签随机性过滤会误伤，正确判据是 **CNAME 目标**。
+
+### 三、实现（三个后端 PR + 一个前端 PR）
+
+**#670 分析文档**：全量分布 + 34 条清单 + 「不做什么」的明确结论。
+
+**#673 `verification_skipped`**：
+- 新增状态；`probeOneDNS` 在协议记录之后、拨测之前分类；保留 recordType/recordValue/tenantId 供排障；
+- 指标分母扣除（与 internal / protocol_skipped / wildcard 同处理）；徽标优先序归「跳过类」；validators + schema.sql 枚举同步；
+- 判定细节：`isVerificationAlias` 仅对 CNAME 生效，且必须「目标等于验证域名**或**其子域」——首版只判后缀，`verify.bing.com` / `mail.qq.com` 本身就漏了（本地测试首次即失败，修正后固化用例）。
+
+**#675 VO 字段**：`verificationSkippedCount` 漏下发——后端 Summary 有、`dashboard_handler` 的 VO 没加。属「补状态时漏改展示层」的典型缺漏，由前端实现时发现。
+
+**#393 前端**：探测口径卡副文案由三类扩为四类剔除明细（内网域 / 协议记录 / **验证别名** / 通配符）。
+
+### 四、测试与验证
+
+- 后端新增 12 例（5 种验证服务、大小写与尾点归一、真实 CDN/ALB/ELB **不误伤**、A 记录不看值、空值、DNS 路径不拨测、分母扣除 100−10−5−3−2=80）；
+- 前端：typecheck 0 / 80 单测 / eslint 0 / build 0；
+- **真实浏览器**（:8012 新构建 + :3339）：18 项回归断言全 PASS + 新字段 4 项 PASS（API 下发值、卡 1 副文案含「验证别名」、无 NaN、390 视口无溢出），console 0 / network 0。
+
+### 五、教训
+
+1. **「补一个枚举」必须同步四处**：状态常量、validator、schema.sql、展示 VO——#673 漏了第四处，靠下游实现才发现；
+2. **判定规则的边界要先用真实样例跑一遍**：`verify.bing.com` 这类「目标本身即验证域名」的形态，纯后缀匹配会漏；
+3. **过滤规则应基于语义（CNAME 目标）而非形态（标签随机性）**——形态规则会误伤真实资源。
+
+### 六、未验证项
+
+运行实例仍为旧构建，`verificationSkippedCount` 真实值目前为 0；「大数值 + 四类明细」排版、`nxDomainCount`/`staleMarked` 的真实数据渲染均未在真实数据下验证。
