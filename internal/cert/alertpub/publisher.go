@@ -6,9 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gotomicro/ego/core/elog"
+
 	certdomain "github.com/Havens-blog/e-cam-service/internal/cert/domain"
 	certservice "github.com/Havens-blog/e-cam-service/internal/cert/service"
-	"github.com/gotomicro/ego/core/elog"
 )
 
 // ---------------------------------------------------------------------
@@ -78,6 +79,9 @@ func certAlertSeverity(evt certservice.CertAlertEvent) Severity {
 		}
 		return SeverityWarning
 	case certservice.AlertCategoryRollbackFailed:
+		return SeverityCritical
+	case certservice.AlertCategoryTLSOnlineExpired:
+		// 线上证书过期 = 浏览器直接拒绝该域名，按 Critical 处理（区别于 tls_diff 的 Warning）
 		return SeverityCritical
 	case certservice.AlertCategoryTest:
 		return SeverityInfo
