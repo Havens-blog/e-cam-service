@@ -51,9 +51,11 @@ type DashboardSummaryVO struct {
 	ExemptCount          int            `json:"exemptCount"`
 	WildcardSkippedCount int            `json:"wildcardSkippedCount"`
 	// 探测新口径（T3）：内网域/协议记录从拨通率分母剔除；旧字段保留一版。
-	ProbeTotalCount          int     `json:"probeTotalCount"`
-	InternalCount            int     `json:"internalCount"`
-	ProtocolSkippedCount     int     `json:"protocolSkippedCount"`
+	ProbeTotalCount      int `json:"probeTotalCount"`
+	InternalCount        int `json:"internalCount"`
+	ProtocolSkippedCount int `json:"protocolSkippedCount"`
+	// VerificationSkippedCount 站点验证类别名数（CNAME 指向 Google/Bing/QQ 等验证服务）
+	VerificationSkippedCount int     `json:"verificationSkippedCount"`
 	ProbeableCount           int     `json:"probeableCount"`
 	ReachableRateOnProbeable float64 `json:"reachableRateOnProbeable"`
 	DiffRateOnProbeable      float64 `json:"diffRateOnProbeable"`
@@ -136,6 +138,7 @@ func (h *DashboardHandler) Dashboard(c *gin.Context) {
 			ProbeTotalCount:          view.Summary.ProbeTotalCount,
 			InternalCount:            view.Summary.InternalCount,
 			ProtocolSkippedCount:     view.Summary.ProtocolSkippedCount,
+			VerificationSkippedCount: view.Summary.VerificationSkippedCount,
 			ProbeableCount:           view.Summary.ProbeableCount,
 			ReachableRateOnProbeable: view.Summary.ReachableRateOnProbeable,
 			DiffRateOnProbeable:      view.Summary.DiffRateOnProbeable,
