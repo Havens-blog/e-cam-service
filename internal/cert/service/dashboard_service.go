@@ -392,23 +392,30 @@ func cloudsFromRefs(refs []domain.CertReference) map[string]map[string]bool {
 	return out
 }
 
-// probeRankSkipped 「跳过拨测」类的共同优先序：通配符 / 协议记录 / 内网域同档——
-// 三者都不构成证书健康告警，不能把整张证书的徽标拉低。
-const probeRankSkipped = 3
+// 探测徽标优先序常量（小=最差）：显式命名避免魔数（mnd），并让「跳过类同档」意图自解释。
+const (
+	probeRankDiff         = 0
+	probeRankChangeLinked = 1
+	probeRankUnreachable  = 2
+	// probeRankSkipped 「跳过拨测」类共同优先序：通配符 / 协议记录 / 内网域 / 站点
+	// 验证别名同档——都不构成证书健康告警，不能把整张证书的徽标拉低。
+	probeRankSkipped    = 3
+	probeRankExempt     = 4
+	probeRankConsistent = 5
+)
 
 // probeBadgeRank 探测徽标最差优先序（小=最差；未探测排序尾）。
-// internal / protocol_skipped 与 wildcard_skipped 同属「跳过拨测」类（不构成告警），
-// 并列排序避免内网域把整张证书的徽标拉低成告警态。
+// 跳过类（通配符/协议记录/内网域/验证别名）并列同档，避免把整张证书徽标拉成告警态。
 var probeBadgeRank = map[domain.ProbeStatus]int{
-	domain.ProbeStatusDiff:                0,
-	domain.ProbeStatusChangeLinkedDiff:    1,
-	domain.ProbeStatusUnreachable:         2,
+	domain.ProbeStatusDiff:                probeRankDiff,
+	domain.ProbeStatusChangeLinkedDiff:    probeRankChangeLinked,
+	domain.ProbeStatusUnreachable:         probeRankUnreachable,
 	domain.ProbeStatusWildcardSkipped:     probeRankSkipped,
 	domain.ProbeStatusProtocolSkipped:     probeRankSkipped,
 	domain.ProbeStatusVerificationSkipped: probeRankSkipped,
 	domain.ProbeStatusInternal:            probeRankSkipped,
-	domain.ProbeStatusExempt:              4,
-	domain.ProbeStatusConsistent:          5,
+	domain.ProbeStatusExempt:              probeRankExempt,
+	domain.ProbeStatusConsistent:          probeRankConsistent,
 }
 
 // probeRankUnprobed 未探测 SAN 的排序尾位（劣于全部已探测态）。
